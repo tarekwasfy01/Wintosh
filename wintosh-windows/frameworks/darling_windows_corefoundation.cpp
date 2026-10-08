@@ -466,6 +466,21 @@ std::unordered_map<std::string, std::vector<NotificationObserver>> notifications
 constexpr const char* notification_wildcard = "\x01wildcard";
 }
 
+extern "C" darling_windows_CFRange darling_windows_CFRangeMake(
+	darling_windows_CFIndex location, darling_windows_CFIndex length)
+{
+	return {location, length};
+}
+
+extern "C" darling_windows_CFIndex darling_windows_CFRangeGetMax(
+	darling_windows_CFRange range)
+{
+	const auto maximum = (std::numeric_limits<darling_windows_CFIndex>::max)();
+	if (range.length > 0 && range.location > maximum - range.length)
+		return maximum;
+	return range.location + range.length;
+}
+
 extern "C" void* darling_windows_CFRetain(const void* value)
 {
 	RetainOwned(value);

@@ -24,6 +24,13 @@ void RunLoopCallback(void* context) { runloop_callback_value = *static_cast<int*
 
 int main()
 {
+	const auto range = darling_windows_CFRangeMake(4, 6);
+	if (range.location != 4 || range.length != 6 ||
+		darling_windows_CFRangeGetMax(range) != 10) {
+		std::cerr << "COREFOUNDATION_RANGE=FAIL\n";
+		return 1;
+	}
+	std::cout << "COREFOUNDATION_RANGE=PASS\n";
 	const auto string = darling_windows_CFStringCreateWithCString("Wintosh");
 	char buffer[32]{};
 	const bool string_ok = string != nullptr &&

@@ -23,6 +23,11 @@ using darling_windows_CFRunLoopBlock = void (*)(void* context);
 using darling_windows_CFNotificationCallback = void (*)(const void* observer,
 	const char* name, const void* object);
 
+extern "C" darling_windows_CFRange darling_windows_CFRangeMake(
+	darling_windows_CFIndex location, darling_windows_CFIndex length);
+extern "C" darling_windows_CFIndex darling_windows_CFRangeGetMax(
+	darling_windows_CFRange range);
+
 extern "C" void* darling_windows_CFRetain(const void* value);
 extern "C" void darling_windows_CFRelease(const void* value);
 extern "C" bool darling_windows_CFEqual(const void* left, const void* right);

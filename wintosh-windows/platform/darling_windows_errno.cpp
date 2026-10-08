@@ -70,7 +70,19 @@ void DarwinErrno::SetFromWin32(std::uint32_t value) noexcept
 		current_errno = 9;
 		break;
 	case ERROR_INVALID_PARAMETER:
+	case ERROR_INVALID_NAME:
+	case ERROR_FILE_INVALID:
 		current_errno = 22;
+		break;
+	case ERROR_INVALID_FUNCTION:
+		current_errno = 78;
+		break;
+	case ERROR_NOT_SUPPORTED:
+		current_errno = 45;
+		break;
+	case ERROR_BUSY:
+	case ERROR_DEVICE_IN_USE:
+		current_errno = 16;
 		break;
 	case ERROR_OPERATION_ABORTED:
 		current_errno = 4;

@@ -1,6 +1,6 @@
 family,darling_surface,linux_or_wsl_reference,windows_backend,implementation,status,license_provenance,test_gate,remaining_gap
 process,getpid/getppid/waitpid,posix libc+procfs,Win32 process APIs,adapter,verified,system+Darling,host_api_smoke,signal and fork semantics
-libc,open/read/write/close/fcntl,glibc/musl POSIX,Win32 file handles,adapter,verified,Darling GPL boundary,host_api_smoke,exact errno and cancellation semantics
+libc,open/read/write/close/fcntl,glibc/musl POSIX,Win32 file handles plus expanded Win32 errno translation,adapter,verified,Darling GPL boundary,host_api_smoke,exact errno and cancellation semantics
 socket,socket/connect/sendmsg/recvmsg,POSIX sockets,WinSock2,adapter,verified,system headers,host_api_smoke,ancillary data and Darwin flags
 pthread,pthread_create/attr/mutex/cond/rwlock/TLS,glibc pthread,Win32 threads+STL sync,adapter,verified,Darling GPL boundary,host_api_smoke,full cancellation/scheduling/process-shared attributes
 time,nanosleep/gettimeofday/mach_absolute_time,POSIX clock APIs,Win32 clocks,adapter,verified,system headers,host_api_smoke,clock source and interruption fidelity

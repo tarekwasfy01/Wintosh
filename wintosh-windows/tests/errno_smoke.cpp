@@ -51,6 +51,13 @@ int main()
 		return 3;
 	}
 	std::cout << "DARWIN_ERRNO_INVALID_PARAMETER=PASS\n";
+	darling::windows_host::DarwinErrno::SetFromWin32(ERROR_INVALID_FUNCTION);
+	if (darling::windows_host::DarwinErrno::Get() != 78) return 44;
+	darling::windows_host::DarwinErrno::SetFromWin32(ERROR_NOT_SUPPORTED);
+	if (darling::windows_host::DarwinErrno::Get() != 45) return 45;
+	darling::windows_host::DarwinErrno::SetFromWin32(ERROR_BUSY);
+	if (darling::windows_host::DarwinErrno::Get() != 16) return 46;
+	std::cout << "DARWIN_ERRNO_OPERATION_STATE=PASS\n";
 	darling::windows_host::DarwinErrno::SetFromWin32(ERROR_OPERATION_ABORTED);
 	if (darling::windows_host::DarwinErrno::Get() != 4) {
 		std::cerr << "DARWIN_ERRNO_ABORTED=FAIL\n";

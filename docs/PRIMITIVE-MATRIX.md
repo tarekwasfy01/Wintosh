@@ -111,7 +111,8 @@ transform equality, integral rectangles,
 and union, plus edge division with oversized amounts clamped to the actual
 edge length, translation/scale/rotation convenience constructors, null/infinite
 rectangle predicates, rectangle containment, immutable RGBA color values,
-component extraction, direct red/green/blue getters, and equality. This is
+component extraction, direct red/green/blue/white getters, component-count
+queries, and equality. This is
 geometry/color ABI coverage only; drawing contexts, paths, images, text,
 events, and Quartz display backends remain open.
 

@@ -389,6 +389,21 @@ extern "C" bool darling_windows_CGColorGetBlue(darling_windows_CGColor color,
 	return true;
 }
 
+extern "C" bool darling_windows_CGColorGetWhite(darling_windows_CGColor color,
+	double* value)
+{
+	if (value == nullptr || color.red != color.green || color.green != color.blue)
+		return false;
+	*value = color.red;
+	return true;
+}
+
+extern "C" int darling_windows_CGColorGetNumberOfComponents(
+	darling_windows_CGColor color)
+{
+	return color.red == color.green && color.green == color.blue ? 2 : 4;
+}
+
 extern "C" bool darling_windows_CGColorGetComponents(darling_windows_CGColor color,
 	double* components, int capacity)
 {

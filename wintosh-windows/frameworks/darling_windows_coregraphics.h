@@ -103,6 +103,10 @@ extern "C" bool darling_windows_CGColorGetGreen(darling_windows_CGColor color,
 	double* value);
 extern "C" bool darling_windows_CGColorGetBlue(darling_windows_CGColor color,
 	double* value);
+extern "C" bool darling_windows_CGColorGetWhite(darling_windows_CGColor color,
+	double* value);
+extern "C" int darling_windows_CGColorGetNumberOfComponents(
+	darling_windows_CGColor color);
 extern "C" bool darling_windows_CGColorGetComponents(darling_windows_CGColor color,
 	double* components, int capacity);
 extern "C" bool darling_windows_CGColorEqual(darling_windows_CGColor left,

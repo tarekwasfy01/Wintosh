@@ -1,119 +1,43 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(darling-windows-host LANGUAGES CXX)
+project(wintosh-windows LANGUAGES CXX)
 
-add_library(darling_windows_host STATIC
-	 darwin_windows_process.cpp
-	 darling_windows_runtime.cpp
-	 darling_windows_mach.cpp
-	 darling_windows_macho.cpp
-	 darling_windows_bootstrap.cpp
-	 darling_windows_syscalls.cpp
-	 darling_windows_memory.cpp
-	 darling_windows_terminal.cpp
-	 darling_windows_process_syscalls.cpp
-	 darling_windows_signals.cpp
-	 darling_windows_time.cpp
-	 darling_windows_errno.cpp
-	 darling_windows_paths.cpp
-	 darling_windows_filesystem.cpp
-	 darling_windows_stdio.cpp
-	 darling_windows_library.cpp
-	 darling_windows_sync.cpp
-	 darling_windows_socket.cpp
-	 darling_windows_thread.cpp
-	 darling_windows_tlv.cpp
-	 darling_windows_dyld.cpp
-	 darling_windows_objc.cpp
-	 darling_windows_foundation.cpp
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# Wintosh's native implementation is independent from the local Darling
+# checkout. Darling remains the upstream behavior and license reference.
+file(GLOB_RECURSE WINTOSH_HOST_SOURCES CONFIGURE_DEPENDS
+    core/*.cpp platform/*.cpp abi/*.cpp loader/*.cpp runtime/*.cpp
+    frameworks/*.cpp process/*.cpp
 )
 
-target_include_directories(darling_windows_host PUBLIC
-	${CMAKE_CURRENT_SOURCE_DIR}
+add_library(wintosh_windows_host STATIC ${WINTOSH_HOST_SOURCES})
+target_include_directories(wintosh_windows_host PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/core ${CMAKE_CURRENT_SOURCE_DIR}/platform
+    ${CMAKE_CURRENT_SOURCE_DIR}/abi ${CMAKE_CURRENT_SOURCE_DIR}/loader
+    ${CMAKE_CURRENT_SOURCE_DIR}/runtime ${CMAKE_CURRENT_SOURCE_DIR}/frameworks
+    ${CMAKE_CURRENT_SOURCE_DIR}/process
 )
-
-target_compile_features(darling_windows_host PUBLIC cxx_std_20)
+target_compile_features(wintosh_windows_host PUBLIC cxx_std_20)
 
 if (WIN32)
-	target_compile_definitions(darling_windows_host PUBLIC UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
-	target_link_libraries(darling_windows_host PUBLIC kernel32 advapi32 psapi ws2_32)
-	add_executable(darling_windows_process_smoke process_smoke.cpp)
-	target_link_libraries(darling_windows_process_smoke PRIVATE darling_windows_host)
-	add_executable(darling_windows_process_group_smoke process_group_smoke.cpp)
-	target_link_libraries(darling_windows_process_group_smoke PRIVATE darling_windows_host)
-	add_executable(darling_windows_runtime_smoke runtime_smoke.cpp)
-	target_link_libraries(darling_windows_runtime_smoke PRIVATE darling_windows_host)
-	add_executable(darling_windows_mach_abi_smoke ../../../../mach_abi_smoke.cpp)
-	target_link_libraries(darling_windows_mach_abi_smoke PRIVATE darling_windows_host)
-	add_executable(darling_windows_broker darling_windows_broker.cpp)
-	target_link_libraries(darling_windows_broker PRIVATE darling_windows_host)
-	add_executable(darling_windows_broker_smoke darling_windows_broker_smoke.cpp)
-	target_link_libraries(darling_windows_broker_smoke PRIVATE darling_windows_host)
-	add_executable(darling_windows_macho_smoke macho_smoke.cpp)
-	target_link_libraries(darling_windows_macho_smoke PRIVATE darling_windows_host)
-	add_executable(darling_windows_macho_uuid_smoke macho_uuid_smoke.cpp)
-	target_link_libraries(darling_windows_macho_uuid_smoke PRIVATE darling_windows_host)
-add_executable(darling_windows_macho_install_name_smoke macho_install_name_smoke.cpp)
-target_link_libraries(darling_windows_macho_install_name_smoke PRIVATE darling_windows_host)
+    target_compile_definitions(wintosh_windows_host PUBLIC
+        UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN
+    )
+    target_link_libraries(wintosh_windows_host PUBLIC
+        kernel32 advapi32 psapi ws2_32
+    )
 
-add_executable(darling_windows_objc_runtime_smoke objc_runtime_smoke.cpp)
-target_link_libraries(darling_windows_objc_runtime_smoke PRIVATE darling_windows_host)
-add_executable(darling_windows_foundation_smoke ../../../../foundation_smoke.cpp)
-target_link_libraries(darling_windows_foundation_smoke PRIVATE darling_windows_host)
-	add_executable(darling_windows_rename_host_smoke rename_host_smoke.cpp)
-	target_link_libraries(darling_windows_rename_host_smoke PRIVATE darling_windows_host)
-	add_executable(darling_windows_library_smoke library_smoke.cpp)
-	target_link_libraries(darling_windows_library_smoke PRIVATE darling_windows_host)
-	add_executable(darling_windows_sync_smoke sync_smoke.cpp)
-	target_link_libraries(darling_windows_sync_smoke PRIVATE darling_windows_host)
-	add_executable(darling_windows_socket_smoke socket_smoke.cpp)
-	target_link_libraries(darling_windows_socket_smoke PRIVATE darling_windows_host)
-	add_executable(darling_windows_thread_smoke thread_smoke.cpp)
-	target_link_libraries(darling_windows_thread_smoke PRIVATE darling_windows_host)
-	add_executable(darling_windows_tlv_smoke tlv_smoke.cpp)
-	target_link_libraries(darling_windows_tlv_smoke PRIVATE darling_windows_host)
-	add_executable(darling_windows_initializer_smoke initializer_smoke.cpp)
-	target_link_libraries(darling_windows_initializer_smoke PRIVATE darling_windows_host)
-	add_executable(darling_windows_dynamic_smoke dynamic_smoke.cpp)
-	target_link_libraries(darling_windows_dynamic_smoke PRIVATE darling_windows_host)
-	add_executable(darling_windows_dyld_smoke dyld_smoke.cpp)
-	target_link_libraries(darling_windows_dyld_smoke PRIVATE darling_windows_host)
-	add_executable(darling_windows_runner darling_windows_runner.cpp)
-	target_link_libraries(darling_windows_runner PRIVATE darling_windows_host)
-	add_executable(darling_windows_syscalls_smoke syscalls_smoke.cpp)
-	target_link_libraries(darling_windows_syscalls_smoke PRIVATE darling_windows_host)
-	add_executable(darling_windows_memory_smoke memory_smoke.cpp)
-	target_link_libraries(darling_windows_memory_smoke PRIVATE darling_windows_host)
-	add_executable(darling_windows_terminal_smoke terminal_smoke.cpp)
-	target_link_libraries(darling_windows_terminal_smoke PRIVATE darling_windows_host)
-	add_executable(darling_windows_terminal_input_smoke terminal_input_smoke.cpp)
-	target_link_libraries(darling_windows_terminal_input_smoke PRIVATE darling_windows_host)
-	add_executable(darling_windows_process_syscalls_smoke process_syscalls_smoke.cpp)
-	target_link_libraries(darling_windows_process_syscalls_smoke PRIVATE darling_windows_host)
-	add_executable(darling_windows_signals_smoke signals_smoke.cpp)
-	target_link_libraries(darling_windows_signals_smoke PRIVATE darling_windows_host)
-	add_executable(darling_windows_time_smoke time_smoke.cpp)
-	target_link_libraries(darling_windows_time_smoke PRIVATE darling_windows_host)
-	add_executable(darling_windows_host_api_smoke host_api_smoke.cpp)
-	target_link_libraries(darling_windows_host_api_smoke PRIVATE darling_windows_host)
-	add_executable(darling_windows_exit_smoke exit_smoke.cpp)
-	target_link_libraries(darling_windows_exit_smoke PRIVATE darling_windows_host)
-	add_executable(darling_windows_atexit_smoke atexit_smoke.cpp)
-	target_link_libraries(darling_windows_atexit_smoke PRIVATE darling_windows_host)
-	add_executable(darling_windows_macho_exit_smoke macho_exit_smoke.cpp)
-	target_link_libraries(darling_windows_macho_exit_smoke PRIVATE darling_windows_host)
-	add_executable(darling_windows_runner_smoke runner_smoke.cpp)
-	target_link_libraries(darling_windows_runner_smoke PRIVATE darling_windows_host)
-	add_executable(darling_windows_runner_env_smoke runner_env_smoke.cpp)
-	target_link_libraries(darling_windows_runner_env_smoke PRIVATE darling_windows_host)
-	add_executable(darling_windows_errno_smoke errno_smoke.cpp)
-	target_link_libraries(darling_windows_errno_smoke PRIVATE darling_windows_host)
-	add_executable(darling_windows_paths_smoke paths_smoke.cpp)
-	target_link_libraries(darling_windows_paths_smoke PRIVATE darling_windows_host)
-	add_executable(darling_windows_filesystem_smoke filesystem_smoke.cpp)
-	target_link_libraries(darling_windows_filesystem_smoke PRIVATE darling_windows_host)
-	add_executable(darling_windows_objc_smoke objc_smoke.cpp)
-	target_link_libraries(darling_windows_objc_smoke PRIVATE darling_windows_host)
+    file(GLOB WINTOSH_SMOKE_SOURCES CONFIGURE_DEPENDS tests/*_smoke.cpp)
+    foreach(smoke_source IN LISTS WINTOSH_SMOKE_SOURCES)
+        get_filename_component(smoke_name ${smoke_source} NAME_WE)
+        add_executable(wintosh_${smoke_name} ${smoke_source})
+        target_link_libraries(wintosh_${smoke_name} PRIVATE wintosh_windows_host)
+    endforeach()
+
+    add_executable(wintosh_broker core/darling_windows_broker.cpp)
+    target_link_libraries(wintosh_broker PRIVATE wintosh_windows_host)
 else()
-	message(FATAL_ERROR "darling_windows_host is a Windows-only backend")
+    message(FATAL_ERROR "wintosh-windows is a Windows-only backend")
 endif()

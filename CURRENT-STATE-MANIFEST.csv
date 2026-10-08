@@ -12,7 +12,7 @@ darwin-computa-source,local-source-tree,present,3571,local-only,Boxedwine/Darlin
 macho-ld-source,local-source-tree,present,11,local-only,Mach-O loader reference
 classix-source,local-source-tree,present,323,local-only,PEF/CFM guest boundary reference
 vst-ace-source,local-source-tree,present,334,local-only,mixed host/shim reference
-wintosh-windows,implementation-overlay,present,83,release,native Windows adapter and smoke tests
+wintosh-windows,implementation-overlay,present,85,release,"native Windows adapter, smoke tests and folder READMEs"
 darling-source/src/native/windows,local-comparison-overlay,present,83,local-only,local comparison copy of the Wintosh overlay
 licenses,legal-bundle,present,12,required,licenses notices inventories and provenance scripts
 tools,tooling,present,1,required,WSL/backend probe tooling

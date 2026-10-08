@@ -4,6 +4,9 @@ This file is the navigation map for the repository. The machine-readable
 matrices and the provenance inventories are authoritative for their respective
 data; prose documents explain how to interpret them.
 
+The implementation itself is documented at
+[wintosh-windows/README.md](../wintosh-windows/README.md).
+
 ## Start here
 
 1. [README.md](README.md) — project purpose, current capabilities, build entry
@@ -14,6 +17,7 @@ data; prose documents explain how to interpret them.
    GitHub commit or redistribution.
 4. [CURRENT-STATE.md](CURRENT-STATE.md) — confirmed contents of this complete
    workspace snapshot.
+5. [CONTRIBUTING.md](CONTRIBUTING.md) — contributor and maintainer guidance.
 
 ## Porting and implementation
 

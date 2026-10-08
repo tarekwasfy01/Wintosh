@@ -1,8 +1,8 @@
 # Build and test guide
 
-The repository contains generated Visual Studio projects for the current
-native adapter snapshot. The commands below are PowerShell commands executed
-from the repository root.
+The repository contains the standalone Wintosh implementation under
+`wintosh-windows/`. The commands below are PowerShell commands executed from
+the repository root.
 
 ## Prerequisites
 
@@ -14,27 +14,28 @@ from the repository root.
 ## Build
 
 ```powershell
-$msbuild = 'C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe'
-& $msbuild .\build-windows-msvc\ALL_BUILD.vcxproj /p:Configuration=Release /p:Platform=x64 /m:4
-& $msbuild .\build-windows-win32\ALL_BUILD.vcxproj /p:Configuration=Release /p:Platform=Win32 /m:4
+cmake -S .\wintosh-windows -B .\build-windows-msvc -G "Visual Studio 18 2026" -A x64
+cmake -S .\wintosh-windows -B .\build-windows-win32 -G "Visual Studio 18 2026" -A Win32
+cmake --build .\build-windows-msvc --config Release
+cmake --build .\build-windows-win32 --config Release
 ```
 
-If the Visual Studio installation is elsewhere, set `$msbuild` to the actual
-path. A successful command must finish with exit code 0; merely finding a
-generated project is not a build result.
+If the installed CMake generator has another name, select the matching Visual
+Studio generator. A successful command must finish with exit code 0; merely
+finding a generated project is not a build result.
 
 ## Focused Foundation gate
 
 ```powershell
-& .\build-windows-msvc\Release\darling_windows_foundation_smoke.exe
-& .\build-windows-win32\Release\darling_windows_foundation_smoke.exe
+& .\build-windows-msvc\Release\wintosh_foundation_smoke.exe
+& .\build-windows-win32\Release\wintosh_foundation_smoke.exe
 ```
 
 Expected output includes `FOUNDATION_TYPE_ENCODING_ABI=PASS` for both targets.
 
 ## Regression gate
 
-Run every `darling_windows_*_smoke.exe` under both Release directories and
+Run every `wintosh_*_smoke.exe` under both Release directories and
 record the exit code and output. The filesystem and host-API smoke tests may
 require permissions that are unavailable to a restricted account; if they are
 excluded, record that exclusion rather than counting it as a pass.

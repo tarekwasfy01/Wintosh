@@ -60,15 +60,18 @@ must be implemented and tested family by family.
 
 ## Building the current native targets
 
-The generated Visual Studio projects are in `build-windows-msvc` and
-`build-windows-win32`. A Visual Studio/MSBuild installation is required. The
+The CMake project is in `../wintosh-windows`; generated Visual Studio projects
+are written to `build-windows-msvc` and `build-windows-win32`. A Visual
+Studio/CMake installation is required. The
 Foundation smoke binaries are:
 
 ```powershell
-& 'C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe' .\build-windows-msvc\ALL_BUILD.vcxproj /p:Configuration=Release /p:Platform=x64
-& 'C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe' .\build-windows-win32\ALL_BUILD.vcxproj /p:Configuration=Release /p:Platform=Win32
-& .\build-windows-msvc\Release\darling_windows_foundation_smoke.exe
-& .\build-windows-win32\Release\darling_windows_foundation_smoke.exe
+cmake -S .\wintosh-windows -B .\build-windows-msvc -G "Visual Studio 18 2026" -A x64
+cmake -S .\wintosh-windows -B .\build-windows-win32 -G "Visual Studio 18 2026" -A Win32
+cmake --build .\build-windows-msvc --config Release
+cmake --build .\build-windows-win32 --config Release
+& .\build-windows-msvc\Release\wintosh_foundation_smoke.exe
+& .\build-windows-win32\Release\wintosh_foundation_smoke.exe
 ```
 
 The repository deliberately distinguishes source presence, compilation,

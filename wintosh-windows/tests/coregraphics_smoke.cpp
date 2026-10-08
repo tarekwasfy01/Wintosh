@@ -54,6 +54,14 @@ int main()
 		return 1;
 	}
 	std::cout << "COREGRAPHICS_COLOR_MODEL=PASS\n";
+	double gray_components[2]{};
+	if (!darling_windows_CGColorGetComponents(getter_gray, gray_components, 2) ||
+		gray_components[0] != 0.6 || gray_components[1] != 0.7 ||
+		darling_windows_CGColorGetComponents(getter_gray, gray_components, 1)) {
+		std::cerr << "COREGRAPHICS_COLOR_COMPONENT_MODEL=FAIL\n";
+		return 1;
+	}
+	std::cout << "COREGRAPHICS_COLOR_COMPONENT_MODEL=PASS\n";
 	const auto translated = darling_windows_CGAffineTransformTranslate(identity, 3, 4);
 	const auto scaled = darling_windows_CGAffineTransformScale(translated, 2, 3);
 	const auto rotated = darling_windows_CGAffineTransformRotate(identity, 1.5707963267948966);

@@ -407,7 +407,14 @@ extern "C" int darling_windows_CGColorGetNumberOfComponents(
 extern "C" bool darling_windows_CGColorGetComponents(darling_windows_CGColor color,
 	double* components, int capacity)
 {
-	if (components == nullptr || capacity < 4) return false;
+	if (components == nullptr) return false;
+	if (color.red == color.green && color.green == color.blue) {
+		if (capacity < 2) return false;
+		components[0] = color.red;
+		components[1] = color.alpha;
+		return true;
+	}
+	if (capacity < 4) return false;
 	components[0] = color.red;
 	components[1] = color.green;
 	components[2] = color.blue;

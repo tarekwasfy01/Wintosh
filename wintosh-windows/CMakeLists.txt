@@ -11,6 +11,9 @@ file(GLOB_RECURSE WINTOSH_HOST_SOURCES CONFIGURE_DEPENDS
     core/*.cpp platform/*.cpp abi/*.cpp loader/*.cpp runtime/*.cpp
     frameworks/*.cpp process/*.cpp
 )
+list(REMOVE_ITEM WINTOSH_HOST_SOURCES
+    "${CMAKE_CURRENT_SOURCE_DIR}/core/darling_windows_broker.cpp"
+)
 
 add_library(wintosh_windows_host STATIC ${WINTOSH_HOST_SOURCES})
 target_include_directories(wintosh_windows_host PUBLIC

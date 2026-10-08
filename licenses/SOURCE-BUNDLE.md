@@ -1,10 +1,13 @@
 # Included source
 
-The source is included with this workspace and must accompany any Stage 1
-binary distribution:
+The published Wintosh repository does not vendor the large upstream source
+checkouts. They remain local working references and must be obtained from
+their original repositories under the terms listed in the provenance files:
 
-- Complete Darling source checkout: `../darling-source`
-- Windows port source overlay: `../darling-source/src/native/windows`
+- Complete Darling source: https://github.com/darlinghq/darling
+- WSL reference source: https://github.com/microsoft/WSL
+- Local Darling checkout, when present: `../darling-source`
+- Local Windows port overlay: `../darling-source/src/native/windows`
 - Porting and dependency inventory: `../PORTING-INVENTORY.md`
 - License and provenance bundle: this directory
 
@@ -15,16 +18,15 @@ and Foundation type-encoding families. The exact current file set is the
 source tree itself; do not reduce a corresponding-source archive to an old
 short list of representative files.
 
-The overlay is intentionally kept inside the Darling source tree so that a
-source recipient can inspect the exact integration boundary and rebuild the
-Stage 1 process-host proof. The WSL checkout in `../wsl-source` is reference
-material only; no WSL implementation is silently relicensed as Darling code.
+The overlay is intentionally kept inside the local Darling source tree so that
+developers can inspect the exact integration boundary. It is not part of the
+published Wintosh tree. The WSL checkout is reference material only; no WSL
+implementation is silently relicensed as Darling code.
 
 ## Source completeness status
 
-The main Darling repository and downloaded submodule objects are present. One
-Heimdal submodule cannot be checked out on NTFS because an upstream filename
-contains `:`. That limitation is recorded in
-`SOURCE-LICENSE-INVENTORY.csv`; no binary distribution should claim a complete
-corresponding-source archive until that checkout exception is resolved or the
-affected source is supplied through a filesystem that supports the name.
+The local Darling repository and downloaded submodule objects were used during
+development. One Heimdal submodule cannot be checked out on NTFS because an
+upstream filename contains `:`. That limitation is recorded in
+`SOURCE-LICENSE-INVENTORY.csv`. The published Wintosh repository is not a
+Darling corresponding-source archive; obtain Darling source upstream.

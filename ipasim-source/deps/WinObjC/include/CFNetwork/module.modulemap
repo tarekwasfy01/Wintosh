@@ -1,8 +1,0 @@
-module CFNetwork [extern_c] {
-    umbrella header "CFNetwork.h"
-    export *
-    
-    module * {
-        export *
-    }
-}

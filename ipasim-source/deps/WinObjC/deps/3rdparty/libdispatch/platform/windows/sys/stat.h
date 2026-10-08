@@ -1,4 +1,0 @@
-#ifndef PLATFORM_WINDOWS_SYS_STAT__H
-#define PLATFORM_WINDOWS_SYS_STAT__H
-
-#endif

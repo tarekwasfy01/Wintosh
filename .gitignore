@@ -26,4 +26,7 @@ conpty-*.txt
 *.msix
 *.appx
 
+# Large external reference checkouts stay local and are not vendored here.
+*-source/
+
 # Keep checked-out source trees, license files, and documentation in git.

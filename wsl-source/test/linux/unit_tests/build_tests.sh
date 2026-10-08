@@ -1,1 +1,0 @@
-make -j8 -k -C /data/test

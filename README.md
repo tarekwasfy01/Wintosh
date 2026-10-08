@@ -13,9 +13,10 @@ working porting laboratory and a documented foundation for future work.
 The project is inspired by and developed against the [Darling project](https://github.com/darlinghq/darling).
 Darling remains the primary reference for Darwin userland, Mach-O loading,
 Mach interfaces, Objective-C runtime behavior, and framework contracts. The
-Darling source used for analysis is included under `darling-source` with its
-original license and notices. Please consult the upstream repository for the
-complete Darling project and its current license terms.
+The source is not vendored into this repository. Use the [upstream Darling
+repository](https://github.com/darlinghq/darling) for the complete source and
+its current license terms; the local analysis checkout is intentionally kept
+outside the public Wintosh tree.
 
 ## What works today
 
@@ -41,14 +42,15 @@ must be implemented and tested family by family.
 
 ## Repository guide
 
-- `darling-source/` — Darling source and the Windows-native port files.
-- `wsl-source/` — WSL reference source; it is a design and host-integration
-  reference, not a blanket license to copy Linux/WSL internals.
+- `darling-source/src/native/windows/` — local-only Windows port overlay; the
+  upstream source checkout is not vendored here.
+- `wsl-source/` — local-only WSL reference checkout; it is not published here.
 - `licenses/` — collected licenses, notices, and the source-license inventory.
 - `PRIMITIVE-MATRIX.csv` / `PRIMITIVE-MATRIX.md` — implementation and test map.
 - `SOURCE-EXTRACTION-MATRIX.md` — cross-project source and idea extraction map.
 - `PORTING-INVENTORY.md` — detailed progress log and remaining gaps.
 - `DOCUMENTATION-INDEX.md` — complete documentation map.
+- `docs/porting/README.md` — ordered porting-notes index.
 - `STATUS.md` — evidence-based current status.
 - `BUILD-AND-TEST.md` — reproducible build and test procedure.
 - `CURRENT-STATE.md` / `CURRENT-STATE-MANIFEST.csv` — complete workspace

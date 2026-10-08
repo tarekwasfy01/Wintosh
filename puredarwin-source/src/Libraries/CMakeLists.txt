@@ -1,6 +1,0 @@
-add_subdirectory(AvailabilityVersions)
-add_subdirectory(architecture)
-add_subdirectory(CrashReporterClient)
-add_subdirectory(CommonCrypto)
-add_subdirectory(clang_bootstrap)
-add_subdirectory(libSystem)

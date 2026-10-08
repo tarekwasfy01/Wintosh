@@ -1,4 +1,0 @@
-module OpenGLES [extern_c] {
-    umbrella "."
-    export *
-}

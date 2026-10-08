@@ -1,8 +1,0 @@
-module AddressBookUI [extern_c] {
-    umbrella header "AddressBookUI.h"
-    export *
-    
-    module * {
-        export *
-    }
-}

@@ -1,8 +1,0 @@
-module iAd [extern_c] {
-    umbrella header "iAd.h"
-    export *
-    
-    module * {
-        export *
-    }
-}

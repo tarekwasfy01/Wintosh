@@ -1,8 +1,0 @@
-module MessageUI [extern_c] {
-    umbrella header "MessageUI.h"
-    export *
-    
-    module * {
-        export *
-    }
-}

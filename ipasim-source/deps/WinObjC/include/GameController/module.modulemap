@@ -1,8 +1,0 @@
-module GameController [extern_c] {
-    umbrella header "GameController.h"
-    export *
-
-    module * {
-        export *
-    }
-}

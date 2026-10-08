@@ -1,4 +1,0 @@
-[submodule "docs"]
-	path = docs
-	url = https://github.com/ipasimulator/unittest-cpp.wiki
-    branch = port

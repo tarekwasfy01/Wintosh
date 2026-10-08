@@ -1,8 +1,0 @@
-module AudioUnit [extern_c] {
-    umbrella header "AudioUnit.h"
-    export *
-
-    module * {
-        export *
-    }
-}

@@ -17,6 +17,8 @@ data; prose documents explain how to interpret them.
 
 ## Porting and implementation
 
+- [docs/porting/README.md](docs/porting/README.md) — ordered reading path for
+  all porting notes.
 - [PRIMITIVE-MATRIX.csv](PRIMITIVE-MATRIX.csv) — canonical machine-readable
   family matrix.
 - [PRIMITIVE-MATRIX.md](PRIMITIVE-MATRIX.md) — matrix policy, interpretation,

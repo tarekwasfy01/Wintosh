@@ -1,8 +1,0 @@
-module Twitter [extern_c] {
-    umbrella header "Twitter.h"
-    export *
-    
-    module * {
-        export *
-    }
-}

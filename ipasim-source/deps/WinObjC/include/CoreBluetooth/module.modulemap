@@ -1,8 +1,0 @@
-module CoreBluetooth [extern_c] {
-    umbrella header "CoreBluetooth.h"
-    export *
-    
-    module * {
-        export *
-    }
-}

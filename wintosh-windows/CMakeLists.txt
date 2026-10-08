@@ -41,6 +41,11 @@ if (WIN32)
 
     add_executable(wintosh_broker core/darling_windows_broker.cpp)
     target_link_libraries(wintosh_broker PRIVATE wintosh_windows_host)
+
+    # Public command-line entry point. This is the user-facing executable;
+    # smoke targets remain separate verification programs.
+    add_executable(wintosh runtime/darling_windows_runner.cpp)
+    target_link_libraries(wintosh PRIVATE wintosh_windows_host)
 else()
     message(FATAL_ERROR "wintosh-windows is a Windows-only backend")
 endif()

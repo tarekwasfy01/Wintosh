@@ -17,4 +17,17 @@ reference.
 - `process/` — process and process-group abstractions.
 - `tests/` — focused smoke tests for each implementation family.
 
+## User-facing command line
+
+The main entry point is `wintosh.exe` (built from `runtime/`). It accepts a
+Mach-O image followed by its arguments:
+
+```text
+wintosh.exe <mach-o> [args...]
+```
+
+The current release contains the native Windows loader/bootstrap path and is
+still an experimental compatibility layer; it does not yet provide complete
+Darwin framework or arbitrary macOS application compatibility.
+
 The detailed build and evidence rules are in `../docs/BUILD-AND-TEST.md`.

@@ -61,9 +61,13 @@ jobs:
           Copy-Item -Force LICENSE-WINTOSH-ORIGINAL-MIT.txt (Join-Path $stage 'LICENSE-WINTOSH-ORIGINAL-MIT.txt')
           Copy-Item -Force .gitattributes,.gitignore (Join-Path $stage '.')
           $bin = Join-Path $stage 'bin'
+          $testBin = Join-Path $stage 'tests'
           New-Item -ItemType Directory -Force -Path $bin | Out-Null
-          Get-ChildItem -Path "build-${{ matrix.arch }}" -Filter '*.exe' -File | Copy-Item -Destination $bin -Force
-          if (-not (Get-ChildItem -Path $bin -Filter '*.exe' -File)) { throw 'No Windows executables were produced' }
+          New-Item -ItemType Directory -Force -Path $testBin | Out-Null
+          Copy-Item -Force "build-${{ matrix.arch }}\wintosh.exe" (Join-Path $bin 'wintosh.exe')
+          Copy-Item -Force "build-${{ matrix.arch }}\wintosh_broker.exe" (Join-Path $bin 'wintosh_broker.exe')
+          Get-ChildItem -Path "build-${{ matrix.arch }}" -Filter 'wintosh_*_smoke.exe' -File | Copy-Item -Destination $testBin -Force
+          if (-not (Test-Path (Join-Path $bin 'wintosh.exe'))) { throw 'The main wintosh.exe was not produced' }
           Compress-Archive -Path "$stage\*" -DestinationPath "package\Wintosh-${{ matrix.arch }}.zip" -Force
 
       - name: Attest release archive

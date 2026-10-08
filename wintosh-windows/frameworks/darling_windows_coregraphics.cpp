@@ -79,6 +79,26 @@ extern "C" darling_windows_CGAffineTransform darling_windows_CGAffineTransformId
 	return {1, 0, 0, 1, 0, 0};
 }
 
+extern "C" darling_windows_CGAffineTransform darling_windows_CGAffineTransformMakeTranslation(
+	double tx, double ty)
+{
+	return {1, 0, 0, 1, tx, ty};
+}
+
+extern "C" darling_windows_CGAffineTransform darling_windows_CGAffineTransformMakeScale(
+	double sx, double sy)
+{
+	return {sx, 0, 0, sy, 0, 0};
+}
+
+extern "C" darling_windows_CGAffineTransform darling_windows_CGAffineTransformMakeRotation(
+	double radians)
+{
+	const double cosine = std::cos(radians);
+	const double sine = std::sin(radians);
+	return {cosine, sine, -sine, cosine, 0, 0};
+}
+
 extern "C" darling_windows_CGAffineTransform darling_windows_CGAffineTransformTranslate(
 	darling_windows_CGAffineTransform transform, double tx, double ty)
 {

@@ -7,6 +7,19 @@
 int main()
 {
 	const auto identity = darling_windows_CGAffineTransformIdentity();
+	const auto translation = darling_windows_CGAffineTransformMakeTranslation(4, -3);
+	const auto scaling = darling_windows_CGAffineTransformMakeScale(2, 3);
+	const auto rotation = darling_windows_CGAffineTransformMakeRotation(0.5 * 3.14159265358979323846);
+	const auto translated_point = darling_windows_CGPointApplyAffineTransform({1, 2}, translation);
+	const auto scaled_point = darling_windows_CGPointApplyAffineTransform({2, 3}, scaling);
+	const auto rotated_point = darling_windows_CGPointApplyAffineTransform({1, 0}, rotation);
+	if (translated_point.x != 5 || translated_point.y != -1 ||
+		scaled_point.x != 4 || scaled_point.y != 9 ||
+		std::abs(rotated_point.x) > 1e-12 || std::abs(rotated_point.y - 1) > 1e-12) {
+		std::cerr << "COREGRAPHICS_AFFINE_CONVENIENCE=FAIL\n";
+		return 1;
+	}
+	std::cout << "COREGRAPHICS_AFFINE_CONVENIENCE=PASS\n";
 	const auto translated = darling_windows_CGAffineTransformTranslate(identity, 3, 4);
 	const auto scaled = darling_windows_CGAffineTransformScale(translated, 2, 3);
 	const auto rotated = darling_windows_CGAffineTransformRotate(identity, 1.5707963267948966);

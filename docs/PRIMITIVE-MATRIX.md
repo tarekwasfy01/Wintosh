@@ -20,7 +20,7 @@ adapter layer, with the corresponding source and license provenance retained.
 6. Keep Darwin-only or Apple-framework behavior explicitly `missing` instead
    of silently mapping it to an unrelated Windows behavior.
 
-The machine-readable source is [PRIMITIVE-MATRIX.csv](PRIMITIVE-MATRIX.csv).
+The machine-readable source is [PRIMITIVE-MATRIX.csv](../PRIMITIVE-MATRIX.csv).
 The consolidated cross-source extraction is [SOURCE-EXTRACTION-MATRIX.md](SOURCE-EXTRACTION-MATRIX.md).
 The repository-wide navigation map is [DOCUMENTATION-INDEX.md](DOCUMENTATION-INDEX.md),
 and the current evidence snapshot is [STATUS.md](STATUS.md).

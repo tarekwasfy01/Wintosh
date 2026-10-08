@@ -7,21 +7,22 @@ their original repositories under the terms listed in the provenance files:
 - Complete Darling source: https://github.com/darlinghq/darling
 - WSL reference source: https://github.com/microsoft/WSL
 - Local Darling checkout, when present: `../darling-source`
-- Local Windows port overlay: `../darling-source/src/native/windows`
+- Published Wintosh Windows overlay: `../wintosh-windows`
+- Local comparison overlay: `../darling-source/src/native/windows`
 - Porting and dependency inventory: `../PORTING-INVENTORY.md`
 - License and provenance bundle: this directory
 
-The Windows overlay currently contains the native host adapters and smoke
-tests under `darling-source/src/native/windows`, including process, threading,
+The published Windows overlay contains the native host adapters and smoke
+tests under `wintosh-windows`, including process, threading,
 syscall, socket, Mach/Mach-O, Objective-C, dynamic-loading, broker, terminal,
 and Foundation type-encoding families. The exact current file set is the
 source tree itself; do not reduce a corresponding-source archive to an old
 short list of representative files.
 
-The overlay is intentionally kept inside the local Darling source tree so that
-developers can inspect the exact integration boundary. It is not part of the
-published Wintosh tree. The WSL checkout is reference material only; no WSL
-implementation is silently relicensed as Darling code.
+The overlay is intentionally separated from the local Darling source tree so
+the Wintosh implementation remains available without vendoring all of
+Darling. The WSL checkout is reference material only; no WSL implementation is
+silently relicensed as Darling code.
 
 ## Source completeness status
 

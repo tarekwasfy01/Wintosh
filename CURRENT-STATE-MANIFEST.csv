@@ -12,22 +12,23 @@ darwin-computa-source,local-source-tree,present,3571,local-only,Boxedwine/Darlin
 macho-ld-source,local-source-tree,present,11,local-only,Mach-O loader reference
 classix-source,local-source-tree,present,323,local-only,PEF/CFM guest boundary reference
 vst-ace-source,local-source-tree,present,334,local-only,mixed host/shim reference
-darling-source/src/native/windows,local-implementation-overlay,present,83,local-only,native Windows adapter and smoke tests
+wintosh-windows,implementation-overlay,present,83,release,native Windows adapter and smoke tests
+darling-source/src/native/windows,local-comparison-overlay,present,83,local-only,local comparison copy of the Wintosh overlay
 licenses,legal-bundle,present,12,required,licenses notices inventories and provenance scripts
 tools,tooling,present,1,required,WSL/backend probe tooling
 build-windows-msvc,generated-build,present,787,local-only,generated x64 Visual Studio build tree
 build-windows-win32,generated-build,present,706,local-only,generated Win32 Visual Studio build tree
-README.md,documentation,present,4714,release,project introduction and boundaries
-DOCUMENTATION-INDEX.md,documentation,present,3179,release,documentation navigation
-STATUS.md,documentation,present,1947,release,evidence-based status
+docs/README.md,documentation,present,4714,release,project introduction and boundaries
+docs/DOCUMENTATION-INDEX.md,documentation,present,3179,release,documentation navigation
+docs/STATUS.md,documentation,present,1947,release,evidence-based status
 PRIMITIVE-MATRIX.csv,documentation,present,4334,release,machine-readable port family matrix
-PRIMITIVE-MATRIX.md,documentation,present,2771,release,matrix policy and interpretation
-SOURCE-EXTRACTION-MATRIX.md,documentation,present,4948,release,cross-source extraction record
-SOURCE-CHECKOUT-MANIFEST.md,documentation,present,2696,release,checkout and license boundaries
-PORTING-INVENTORY.md,documentation,present,257063,release,detailed engineering inventory
-BUILD-AND-TEST.md,documentation,present,1791,release,reproducible build and test procedure
-THIRD-PARTY-NOTICES.md,documentation,present,974,release,human-readable third-party notices
-RELEASE-CHECKLIST.md,documentation,present,1377,release,GitHub preparation checklist
+docs/PRIMITIVE-MATRIX.md,documentation,present,2771,release,matrix policy and interpretation
+docs/SOURCE-EXTRACTION-MATRIX.md,documentation,present,4948,release,cross-source extraction record
+docs/SOURCE-CHECKOUT-MANIFEST.md,documentation,present,2696,release,checkout and license boundaries
+docs/PORTING-INVENTORY.md,documentation,present,257063,release,detailed engineering inventory
+docs/BUILD-AND-TEST.md,documentation,present,1791,release,reproducible build and test procedure
+docs/THIRD-PARTY-NOTICES.md,documentation,present,974,release,human-readable third-party notices
+docs/RELEASE-CHECKLIST.md,documentation,present,1377,release,GitHub preparation checklist
 LICENSE-WINTOSH-ORIGINAL-MIT.txt,license,present,1413,release,only clearly original Wintosh code
 CURRENT-STATE.md,documentation,present,1595,release,complete workspace state description
 CURRENT-STATE-MANIFEST.csv,documentation,present,2918,release,machine-readable complete workspace inventory

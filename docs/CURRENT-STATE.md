@@ -2,16 +2,15 @@
 
 This file closes the gap between the working directory and the release
 documentation. The machine-readable inventory is
-[CURRENT-STATE-MANIFEST.csv](CURRENT-STATE-MANIFEST.csv).
+[CURRENT-STATE-MANIFEST.csv](../CURRENT-STATE-MANIFEST.csv).
 
 ## Contents confirmed on 2026-10-08
 
 - 13 complete reference/source checkouts remain available locally, but are not
   committed to the public Wintosh repository.
 - The local primary Darling checkout contains 31,720 files.
-- The local `darling-source/src/native/windows` overlay contains 83
-  implementation, header, CMake, and smoke-test files; it is not vendored into
-  GitHub.
+- The published `wintosh-windows` overlay contains 83 implementation, header,
+  CMake, and smoke-test files; the full Darling checkout remains local-only.
 - The license bundle contains 12 files, including Darling GPL text, WSL
   license/notice text, source inventories, and provenance review material.
 - Generated x64 and Win32 build trees are present locally and are explicitly

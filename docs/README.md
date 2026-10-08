@@ -29,7 +29,7 @@ and VM adapters, and a first Foundation type-encoding adapter.
 
 The Foundation smoke test currently covers scalar types, qualifiers, pointers,
 arrays, structures, unions, and resolver aliases. The current evidence is
-recorded in `PRIMITIVE-MATRIX.csv` and `PORTING-INVENTORY.md`; a passing smoke
+recorded in `../PRIMITIVE-MATRIX.csv` and `PORTING-INVENTORY.md`; a passing smoke
 test is not a claim of full Darwin compatibility.
 
 ## What is next
@@ -42,11 +42,12 @@ must be implemented and tested family by family.
 
 ## Repository guide
 
-- `darling-source/src/native/windows/` — local-only Windows port overlay; the
-  upstream source checkout is not vendored here.
-- `wsl-source/` — local-only WSL reference checkout; it is not published here.
-- `licenses/` — collected licenses, notices, and the source-license inventory.
-- `PRIMITIVE-MATRIX.csv` / `PRIMITIVE-MATRIX.md` — implementation and test map.
+- `../wintosh-windows/` — published Wintosh-native Windows overlay and smoke tests.
+- `../darling-source/src/native/windows/` — local comparison copy; the upstream
+  source checkout is not vendored here.
+- `../wsl-source/` — local-only WSL reference checkout; it is not published here.
+- `../licenses/` — collected licenses, notices, and the source-license inventory.
+- `../PRIMITIVE-MATRIX.csv` / `PRIMITIVE-MATRIX.md` — implementation and test map.
 - `SOURCE-EXTRACTION-MATRIX.md` — cross-project source and idea extraction map.
 - `PORTING-INVENTORY.md` — detailed progress log and remaining gaps.
 - `DOCUMENTATION-INDEX.md` — complete documentation map.
@@ -55,7 +56,7 @@ must be implemented and tested family by family.
 - `BUILD-AND-TEST.md` — reproducible build and test procedure.
 - `CURRENT-STATE.md` / `CURRENT-STATE-MANIFEST.csv` — complete workspace
   contents and release-role inventory.
-- `tools/` — probe and helper scripts.
+- `../tools/` — probe and helper scripts.
 
 ## Building the current native targets
 
@@ -78,8 +79,8 @@ smoke-test execution, and real application compatibility.
 This repository contains multiple license boundaries. Darling is GPL-3.0 and
 its corresponding source and notices must remain available. The WSL checkout
 is MIT-licensed reference material. Other checked-out projects have their own
-licenses. See `licenses/README.md`,
-`licenses/SOURCE-LICENSE-INVENTORY.csv`, and
+licenses. See `../licenses/README.md`,
+`../licenses/SOURCE-LICENSE-INVENTORY.csv`, and
 `THIRD-PARTY-NOTICES.md` before redistribution.
 
 New Wintosh-specific adapter code that is genuinely independent of Darling

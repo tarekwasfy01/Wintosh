@@ -17,9 +17,9 @@ data; prose documents explain how to interpret them.
 
 ## Porting and implementation
 
-- [docs/porting/README.md](docs/porting/README.md) — ordered reading path for
+- [porting/README.md](porting/README.md) — ordered reading path for
   all porting notes.
-- [PRIMITIVE-MATRIX.csv](PRIMITIVE-MATRIX.csv) — canonical machine-readable
+- [../PRIMITIVE-MATRIX.csv](../PRIMITIVE-MATRIX.csv) — canonical machine-readable
   family matrix.
 - [PRIMITIVE-MATRIX.md](PRIMITIVE-MATRIX.md) — matrix policy, interpretation,
   status summary, and test-gate rules.
@@ -45,17 +45,17 @@ data; prose documents explain how to interpret them.
 
 ## Legal and source provenance
 
-- [licenses/README.md](licenses/README.md) — interpretation rules.
-- [licenses/SOURCE-LICENSE-INVENTORY.csv](licenses/SOURCE-LICENSE-INVENTORY.csv)
+- [../licenses/README.md](../licenses/README.md) — interpretation rules.
+- [../licenses/SOURCE-LICENSE-INVENTORY.csv](../licenses/SOURCE-LICENSE-INVENTORY.csv)
   — recognized license files and unresolved entries.
-- [licenses/EXTERNAL-COMPONENT-PROVENANCE.csv](licenses/EXTERNAL-COMPONENT-PROVENANCE.csv)
+- [../licenses/EXTERNAL-COMPONENT-PROVENANCE.csv](../licenses/EXTERNAL-COMPONENT-PROVENANCE.csv)
   — 150 Darling external components with checkout provenance.
-- [licenses/EXTERNAL-COMPONENT-REVIEW.md](licenses/EXTERNAL-COMPONENT-REVIEW.md)
+- [../licenses/EXTERNAL-COMPONENT-REVIEW.md](../licenses/EXTERNAL-COMPONENT-REVIEW.md)
   — explanation of the 147 remaining component reviews.
-- [licenses/SOURCE-BUNDLE.md](licenses/SOURCE-BUNDLE.md) — corresponding-source
+- [../licenses/SOURCE-BUNDLE.md](../licenses/SOURCE-BUNDLE.md) — corresponding-source
   boundary and known NTFS checkout limitation.
 - [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) — human-readable notice.
-- [LICENSE-WINTOSH-ORIGINAL-MIT.txt](LICENSE-WINTOSH-ORIGINAL-MIT.txt) — only
+- [../LICENSE-WINTOSH-ORIGINAL-MIT.txt](../LICENSE-WINTOSH-ORIGINAL-MIT.txt) — only
   for clearly identified Wintosh-original code.
 
 ## Evidence convention

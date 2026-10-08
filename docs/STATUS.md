@@ -42,6 +42,12 @@ booleans, nested arrays, and dictionaries with string keys and reserializes the
 result. Base64 `<data>` and UTC/offset `<date>` decoding with fractional
 seconds are also supported. Binary plists and complete ownership semantics
 remain open.
+The adapter now additionally has a limited `bplist00` reader for single-byte
+ASCII strings, BMP UTF-16 strings, integers, booleans, null, simple arrays,
+string-key dictionaries, extended length markers for strings, arrays, and
+dictionaries, plus binary data/date, IEEE-754 real-number, and UID primitives,
+including UTF-8 string byte extraction and ASCII-whitespace trimming plus mutable append/replace-all/range-replace, mutable data byte access/append/replace/resize/clear, array append/append-array/insert/remove/remove-range/replace, dictionary set/remove/merge, set add/remove/union/intersection/subtract operations, and date and number comparison plus interval creation/difference. Surrogate pairs, complex
+numeric/time semantics, and complete ownership semantics remain open.
 
 The same batch now exposes bulk extraction for array ranges, dictionary
 key/value pairs, and set members, plus validated `CFData` byte-range copies.

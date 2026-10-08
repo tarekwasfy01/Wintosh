@@ -5,6 +5,7 @@
 #include <chrono>
 #include <iostream>
 #include <thread>
+#include <vector>
 
 namespace {
 int notification_count = 0;
@@ -69,6 +70,9 @@ int main()
 	std::int64_t real_as_integer = 0;
 	const bool real_conversion_ok = darling_windows_CFNumberGetInteger(real_number, &real_as_integer) &&
 		real_as_integer == 3;
+	const bool number_compare_ok = darling_windows_CFNumberCompare(number, real_number) > 0 &&
+		darling_windows_CFNumberCompare(real_number, real_number) == 0 &&
+		darling_windows_CFNumberCompare(real_number, number) < 0;
 	const void* keys[] = {string};
 	const void* mapped[] = {number};
 	const auto dictionary = darling_windows_CFDictionaryCreate(keys, mapped, 1);
@@ -93,6 +97,8 @@ int main()
 		(copied_set_values[0] == data || copied_set_values[1] == data) &&
 		darling_windows_CFSetGetValue(set, equal_data) == data;
 	const auto date = darling_windows_CFDateCreate(1234.5);
+	const auto earlier_date = darling_windows_CFDateCreate(1234.0);
+	const auto later_date = darling_windows_CFDateCreate(1235.0);
 	const auto url = darling_windows_CFURLCreateWithFileSystemPath("C:/Wintosh/app");
 	const auto url_path = darling_windows_CFURLCopyFileSystemPath(url);
 	char url_buffer[64]{};
@@ -100,6 +106,13 @@ int main()
 		darling_windows_CFDateGetAbsoluteTime(date) == 1234.5 && url != nullptr &&
 		url_path != nullptr && darling_windows_CFStringGetCString(url_path, url_buffer, sizeof(url_buffer)) &&
 		std::strcmp(url_buffer, "C:/Wintosh/app") == 0;
+	const bool date_compare_ok = darling_windows_CFDateCompare(earlier_date, date) < 0 &&
+		darling_windows_CFDateCompare(date, date) == 0 && darling_windows_CFDateCompare(later_date, date) > 0;
+  const auto shifted_date = darling_windows_CFDateCreateByAddingTimeInterval(date, 60.5);
+  const bool date_interval_ok = shifted_date != nullptr &&
+      darling_windows_CFDateGetAbsoluteTime(shifted_date) == 1295.0 &&
+      darling_windows_CFDateGetTimeIntervalSinceDate(shifted_date, date) == 60.5 &&
+      darling_windows_CFDateGetTimeIntervalSinceDate(date, shifted_date) == -60.5;
 	const auto true_value = darling_windows_CFBooleanGetValue(true);
 	const auto false_value = darling_windows_CFBooleanGetValue(false);
 	const auto null_value = darling_windows_CFNullGetValue();
@@ -109,6 +122,22 @@ int main()
 	const bool equal_ok = darling_windows_CFEqual(string, equal_string) &&
 		darling_windows_CFEqual(data, data) && !darling_windows_CFEqual(string, prefix) &&
 		darling_windows_CFEqual(null_value, null_value);
+	const auto mutable_string = darling_windows_CFStringCreateWithCString("mutable");
+	const auto mutable_target = darling_windows_CFStringCreateWithCString("mutable");
+	const auto mutable_replacement = darling_windows_CFStringCreateWithCString("darwin");
+	const auto whitespace_string = darling_windows_CFStringCreateWithCString("\t Wintosh \n");
+	char mutable_string_buffer[32]{};
+	const bool mutable_string_ok = darling_windows_CFStringAppendCString(mutable_string, " string") &&
+		darling_windows_CFStringReplaceAll(mutable_string, mutable_target, mutable_replacement) &&
+		darling_windows_CFStringReplaceRange(mutable_string, 0, 6, "Wintosh") &&
+		darling_windows_CFStringGetCString(mutable_string, mutable_string_buffer, sizeof(mutable_string_buffer)) &&
+		std::strcmp(mutable_string_buffer, "Wintosh string") == 0;
+	char string_bytes[8]{};
+	const bool string_bytes_ok = darling_windows_CFStringGetBytes(mutable_string, 0, 7,
+		string_bytes, sizeof(string_bytes)) == 7 && std::memcmp(string_bytes, "Wintosh", 7) == 0;
+	const bool trim_ok = darling_windows_CFStringTrimWhitespace(whitespace_string) &&
+		darling_windows_CFStringGetCString(whitespace_string, mutable_string_buffer, sizeof(mutable_string_buffer)) &&
+		std::strcmp(mutable_string_buffer, "Wintosh") == 0;
 	const bool semantic_lookup_ok = darling_windows_CFDictionaryGetValue(dictionary,
 		equal_string) == number;
 	auto loop = darling_windows_CFRunLoopGetCurrent();
@@ -143,6 +172,12 @@ int main()
 	const bool delivered = notification_count == 1;
 	darling_windows_CFNotificationCenterRemoveObserver(center, &notification_count,
 		NotificationCallback, "WintoshNotification");
+	const bool notification_global_remove_ok = darling_windows_CFNotificationCenterAddObserver(
+		center, &notification_count, NotificationCallback, "WintoshNotificationA") &&
+		darling_windows_CFNotificationCenterAddObserver(
+		center, &notification_count, NotificationCallback, "WintoshNotificationB") &&
+		darling_windows_CFNotificationCenterRemoveObserver(
+		center, &notification_count, NotificationCallback, nullptr);
 	const auto plist = darling_windows_CFPropertyListCreateXML(dictionary);
 	char plist_buffer[512]{};
 	const bool plist_ok = plist != nullptr && darling_windows_CFStringGetCString(
@@ -218,12 +253,178 @@ int main()
 		"<plist><date>2001-01-01T01:00:42+01:00</date></plist>");
 	const bool plist_offset_date_ok = parsed_offset_date != nullptr &&
 		darling_windows_CFDateGetAbsoluteTime(static_cast<darling_windows_CFDateRef>(parsed_offset_date)) == 42;
+	std::vector<unsigned char> binary_string_plist(43, 0);
+	std::memcpy(binary_string_plist.data(), "bplist00", 8);
+	binary_string_plist[8] = 0x51;
+	binary_string_plist[9] = 'X';
+	binary_string_plist[10] = 8; // one-byte offset table entry
+	const auto trailer = binary_string_plist.data() + 11;
+	trailer[6] = 1; // offset integer size
+	trailer[7] = 1; // object reference size
+	trailer[15] = 1; // one object
+	trailer[31] = 10; // offset table starts after object and offset entry
+	const auto parsed_binary = darling_windows_CFPropertyListCreateFromBinary(
+		binary_string_plist.data(), static_cast<darling_windows_CFIndex>(binary_string_plist.size()));
+	char binary_buffer[16]{};
+	const bool binary_plist_ok = parsed_binary != nullptr &&
+		darling_windows_CFStringGetCString(static_cast<darling_windows_CFStringRef>(parsed_binary),
+		binary_buffer, sizeof(binary_buffer)) && std::strcmp(binary_buffer, "X") == 0;
+	std::vector<unsigned char> binary_dictionary_plist(50, 0);
+	std::memcpy(binary_dictionary_plist.data(), "bplist00", 8);
+	binary_dictionary_plist[8] = 0xD1; binary_dictionary_plist[9] = 1; binary_dictionary_plist[10] = 2;
+	binary_dictionary_plist[11] = 0x51; binary_dictionary_plist[12] = 'K';
+	binary_dictionary_plist[13] = 0x51; binary_dictionary_plist[14] = 'V';
+	binary_dictionary_plist[15] = 8; binary_dictionary_plist[16] = 11; binary_dictionary_plist[17] = 13;
+	const auto dictionary_trailer = binary_dictionary_plist.data() + 18;
+	dictionary_trailer[6] = 1; dictionary_trailer[7] = 1; dictionary_trailer[15] = 3;
+	dictionary_trailer[31] = 15;
+	const auto parsed_binary_dictionary = darling_windows_CFPropertyListCreateFromBinary(
+		binary_dictionary_plist.data(), static_cast<darling_windows_CFIndex>(binary_dictionary_plist.size()));
+	const auto binary_dictionary_key = darling_windows_CFStringCreateWithCString("K");
+	const auto binary_dictionary_value = darling_windows_CFDictionaryGetValue(
+		static_cast<darling_windows_CFDictionaryRef>(parsed_binary_dictionary), binary_dictionary_key);
+	const bool binary_dictionary_ok = parsed_binary_dictionary != nullptr && binary_dictionary_value != nullptr &&
+		darling_windows_CFStringGetCString(static_cast<darling_windows_CFStringRef>(binary_dictionary_value),
+			binary_buffer, sizeof(binary_buffer)) && std::strcmp(binary_buffer, "V") == 0;
+	std::vector<unsigned char> binary_utf16_plist(46, 0);
+	std::memcpy(binary_utf16_plist.data(), "bplist00", 8);
+	binary_utf16_plist[8] = 0x62; binary_utf16_plist[9] = 0xd8; binary_utf16_plist[10] = 0x3d;
+	binary_utf16_plist[11] = 0xde; binary_utf16_plist[12] = 0x00; binary_utf16_plist[13] = 8;
+	const auto utf16_trailer = binary_utf16_plist.data() + 14;
+	utf16_trailer[6] = 1; utf16_trailer[7] = 1; utf16_trailer[15] = 1; utf16_trailer[31] = 13;
+	const auto parsed_binary_utf16 = darling_windows_CFPropertyListCreateFromBinary(
+		binary_utf16_plist.data(), static_cast<darling_windows_CFIndex>(binary_utf16_plist.size()));
+	const bool binary_utf16_ok = parsed_binary_utf16 != nullptr &&
+		darling_windows_CFStringGetCString(static_cast<darling_windows_CFStringRef>(parsed_binary_utf16),
+		binary_buffer, sizeof(binary_buffer)) && std::strcmp(binary_buffer, "\xF0\x9F\x98\x80") == 0;
+	std::vector<unsigned char> binary_extended_string(47, 0);
+	std::memcpy(binary_extended_string.data(), "bplist00", 8);
+	binary_extended_string[8] = 0x5f; binary_extended_string[9] = 0x10; binary_extended_string[10] = 3;
+	binary_extended_string[11] = 'A'; binary_extended_string[12] = 'B'; binary_extended_string[13] = 'C';
+	binary_extended_string[14] = 8;
+	const auto extended_trailer = binary_extended_string.data() + 15;
+	extended_trailer[6] = 1; extended_trailer[7] = 1; extended_trailer[15] = 1; extended_trailer[31] = 14;
+	const auto parsed_binary_extended = darling_windows_CFPropertyListCreateFromBinary(
+		binary_extended_string.data(), static_cast<darling_windows_CFIndex>(binary_extended_string.size()));
+	const bool binary_extended_ok = parsed_binary_extended != nullptr &&
+		darling_windows_CFStringGetCString(static_cast<darling_windows_CFStringRef>(parsed_binary_extended),
+			binary_buffer, sizeof(binary_buffer)) && std::strcmp(binary_buffer, "ABC") == 0;
+	std::vector<unsigned char> binary_data_plist(45, 0);
+	std::memcpy(binary_data_plist.data(), "bplist00", 8);
+	binary_data_plist[8] = 0x43; binary_data_plist[9] = 1; binary_data_plist[10] = 2; binary_data_plist[11] = 3;
+	binary_data_plist[12] = 8;
+	const auto data_trailer = binary_data_plist.data() + 13;
+	data_trailer[6] = 1; data_trailer[7] = 1; data_trailer[15] = 1; data_trailer[31] = 12;
+	const auto parsed_binary_data = darling_windows_CFPropertyListCreateFromBinary(
+		binary_data_plist.data(), static_cast<darling_windows_CFIndex>(binary_data_plist.size()));
+	const bool binary_data_ok = parsed_binary_data != nullptr &&
+		darling_windows_CFDataGetLength(static_cast<darling_windows_CFDataRef>(parsed_binary_data)) == 3 &&
+		darling_windows_CFDataGetBytePtr(static_cast<darling_windows_CFDataRef>(parsed_binary_data))[2] == 3;
+	std::vector<unsigned char> binary_date_plist(50, 0);
+	std::memcpy(binary_date_plist.data(), "bplist00", 8);
+	binary_date_plist[8] = 0x33;
+	// 42.0 as an IEEE-754 double, stored big-endian by bplist.
+	const unsigned char binary_date_bytes[] = {0x40, 0x45, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+	std::memcpy(binary_date_plist.data() + 9, binary_date_bytes, sizeof(binary_date_bytes));
+	binary_date_plist[17] = 8;
+	const auto binary_date_trailer = binary_date_plist.data() + 18;
+	binary_date_trailer[6] = 1; binary_date_trailer[7] = 1;
+	binary_date_trailer[15] = 1; binary_date_trailer[31] = 17;
+	const auto parsed_binary_date = darling_windows_CFPropertyListCreateFromBinary(
+		binary_date_plist.data(), static_cast<darling_windows_CFIndex>(binary_date_plist.size()));
+	const bool binary_date_ok = parsed_binary_date != nullptr &&
+		std::abs(darling_windows_CFDateGetAbsoluteTime(
+			static_cast<darling_windows_CFDateRef>(parsed_binary_date)) - 42.0) < 1e-9;
+	std::vector<unsigned char> binary_real_plist(50, 0);
+	std::memcpy(binary_real_plist.data(), "bplist00", 8);
+	binary_real_plist[8] = 0x23;
+	const unsigned char binary_real_bytes[] = {0x40, 0x45, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+	std::memcpy(binary_real_plist.data() + 9, binary_real_bytes, sizeof(binary_real_bytes));
+	binary_real_plist[17] = 8;
+	const auto binary_real_trailer = binary_real_plist.data() + 18;
+	binary_real_trailer[6] = 1; binary_real_trailer[7] = 1;
+	binary_real_trailer[15] = 1; binary_real_trailer[31] = 17;
+	const auto parsed_binary_real = darling_windows_CFPropertyListCreateFromBinary(
+		binary_real_plist.data(), static_cast<darling_windows_CFIndex>(binary_real_plist.size()));
+	double binary_real_value = 0;
+	const bool binary_real_ok = parsed_binary_real != nullptr &&
+		darling_windows_CFNumberGetDouble(parsed_binary_real, &binary_real_value) &&
+		std::abs(binary_real_value - 42.0) < 1e-9;
+	std::vector<unsigned char> binary_uid_plist(43, 0);
+	std::memcpy(binary_uid_plist.data(), "bplist00", 8);
+	binary_uid_plist[8] = 0x80; binary_uid_plist[9] = 7;
+	binary_uid_plist[10] = 8;
+	const auto binary_uid_trailer = binary_uid_plist.data() + 11;
+	binary_uid_trailer[6] = 1; binary_uid_trailer[7] = 1;
+	binary_uid_trailer[15] = 1; binary_uid_trailer[31] = 10;
+	const auto parsed_binary_uid = darling_windows_CFPropertyListCreateFromBinary(
+		binary_uid_plist.data(), static_cast<darling_windows_CFIndex>(binary_uid_plist.size()));
+	std::int64_t binary_uid_value = 0;
+	const bool binary_uid_ok = parsed_binary_uid != nullptr &&
+		darling_windows_CFNumberGetInteger(parsed_binary_uid, &binary_uid_value) && binary_uid_value == 7;
+	const auto mutable_array = darling_windows_CFArrayCreate(nullptr, 0);
+	const void* mutable_array_replacement[] = {data};
+	const void* mutable_array_alias_replacement = nullptr;
+	const auto mutable_dictionary = darling_windows_CFDictionaryCreate(nullptr, nullptr, 0);
+	const auto mutable_set = darling_windows_CFSetCreate(nullptr, 0);
+	const bool mutable_array_ok = darling_windows_CFArrayAppendValue(mutable_array, string) &&
+		darling_windows_CFArrayInsertValueAtIndex(mutable_array, 0, prefix) &&
+		darling_windows_CFArrayGetCount(mutable_array) == 2 &&
+		darling_windows_CFArrayRemoveValueAtIndex(mutable_array, 0) &&
+		darling_windows_CFArrayGetCount(mutable_array) == 1 &&
+		darling_windows_CFArrayReplaceValues(mutable_array, 0, 1, mutable_array_replacement, 1) &&
+		darling_windows_CFArrayGetValueAtIndex(mutable_array, 0) == data &&
+		darling_windows_CFArrayAppendValue(mutable_array, string) &&
+		(mutable_array_alias_replacement = darling_windows_CFArrayGetValueAtIndex(mutable_array, 1), true) &&
+		darling_windows_CFArrayReplaceValues(mutable_array, 0, 1,
+		&mutable_array_alias_replacement, 1) &&
+		darling_windows_CFArrayRemoveValues(mutable_array, 0, 2) &&
+		darling_windows_CFArrayGetCount(mutable_array) == 0 &&
+		darling_windows_CFArrayAppendValue(mutable_array, string) &&
+		darling_windows_CFArrayAppendArray(mutable_array, mutable_array) &&
+		darling_windows_CFArrayGetCount(mutable_array) == 2;
+	const bool mutable_dictionary_ok = darling_windows_CFDictionarySetValue(mutable_dictionary, string, number) &&
+		darling_windows_CFDictionaryContainsKey(mutable_dictionary, string) &&
+		darling_windows_CFDictionarySetValue(mutable_dictionary, string, real_number) &&
+		darling_windows_CFDictionaryRemoveValue(mutable_dictionary, string) &&
+		darling_windows_CFDictionaryGetCount(mutable_dictionary) == 0 &&
+		darling_windows_CFDictionarySetValue(mutable_dictionary, string, number) &&
+		darling_windows_CFDictionaryMerge(mutable_dictionary, mutable_dictionary) &&
+		darling_windows_CFDictionaryGetCount(mutable_dictionary) == 1 &&
+		darling_windows_CFDictionaryGetValue(mutable_dictionary, string) == number;
+	const bool mutable_set_ok = darling_windows_CFSetAddValue(mutable_set, string) &&
+		!darling_windows_CFSetAddValue(mutable_set, equal_string) &&
+		darling_windows_CFSetRemoveValue(mutable_set, equal_string) &&
+		darling_windows_CFSetGetCount(mutable_set) == 0 &&
+		darling_windows_CFSetAddValue(mutable_set, string) &&
+		darling_windows_CFSetUnion(mutable_set, mutable_set) &&
+		darling_windows_CFSetGetCount(mutable_set) == 1 &&
+		darling_windows_CFSetIntersect(mutable_set, mutable_set) &&
+		darling_windows_CFSetGetCount(mutable_set) == 1 &&
+		darling_windows_CFSetSubtract(mutable_set, mutable_set) &&
+		darling_windows_CFSetGetCount(mutable_set) == 0;
+	const unsigned char replacement_bytes[] = {9, 8};
+	const bool mutable_data_ok = darling_windows_CFDataAppendBytes(data, replacement_bytes, 2) &&
+		darling_windows_CFDataReplaceBytes(data, 1, 2, replacement_bytes, 1) &&
+		darling_windows_CFDataGetLength(data) == 5 &&
+		darling_windows_CFDataGetBytePtr(data)[1] == 9 &&
+		darling_windows_CFDataSetLength(data, 2) && darling_windows_CFDataGetLength(data) == 2 &&
+		darling_windows_CFDataSetLength(data, 6) && darling_windows_CFDataGetLength(data) == 6 &&
+		darling_windows_CFDataGetBytePtr(data)[5] == 0 &&
+		darling_windows_CFDataGetMutableBytePtr(data)[0] == 1 &&
+		darling_windows_CFDataClear(data) && darling_windows_CFDataGetLength(data) == 0 &&
+		darling_windows_CFDataAppendBytes(data, replacement_bytes, 2) &&
+		darling_windows_CFDataGetLength(data) == 2;
 	darling_windows_CFRetain(string);
 	darling_windows_CFRelease(string);
 	darling_windows_CFRelease(prefix);
 	darling_windows_CFRelease(suffix);
 	darling_windows_CFRelease(folded_needle);
 	darling_windows_CFRelease(equal_string);
+	darling_windows_CFRelease(mutable_string);
+	darling_windows_CFRelease(mutable_target);
+	darling_windows_CFRelease(mutable_replacement);
+	darling_windows_CFRelease(whitespace_string);
 	darling_windows_CFRelease(array);
 	darling_windows_CFRelease(equal_array);
 	darling_windows_CFRelease(data);
@@ -235,11 +436,20 @@ int main()
 	darling_windows_CFRelease(url_path);
 	darling_windows_CFRelease(url);
 	darling_windows_CFRelease(date);
+	darling_windows_CFRelease(earlier_date);
+	darling_windows_CFRelease(later_date);
+	darling_windows_CFRelease(shifted_date);
 	darling_windows_CFRelease(plist);
 	darling_windows_CFRelease(array_plist);
 	darling_windows_CFRelease(data_plist);
 	darling_windows_CFRelease(date_plist);
 	darling_windows_CFRelease(real_plist);
+	darling_windows_CFRelease(parsed_binary_date);
+	darling_windows_CFRelease(parsed_binary_real);
+	darling_windows_CFRelease(parsed_binary_uid);
+	darling_windows_CFRelease(mutable_array);
+	darling_windows_CFRelease(mutable_dictionary);
+	darling_windows_CFRelease(mutable_set);
 	darling_windows_CFRelease(escaped_plist);
 	darling_windows_CFRelease(escaped_dictionary);
 	darling_windows_CFRelease(escaped_string);
@@ -251,8 +461,14 @@ int main()
 	darling_windows_CFRelease(parsed_date);
 	darling_windows_CFRelease(parsed_fractional_date);
 	darling_windows_CFRelease(parsed_offset_date);
+	darling_windows_CFRelease(parsed_binary);
+	darling_windows_CFRelease(binary_dictionary_key);
+	darling_windows_CFRelease(parsed_binary_dictionary);
+	darling_windows_CFRelease(parsed_binary_utf16);
+	darling_windows_CFRelease(parsed_binary_extended);
+	darling_windows_CFRelease(parsed_binary_data);
 	darling_windows_CFRelease(string);
 	std::cout << "DARWIN_COREF_FOUNDATION=\"" <<
-		(string_ok && string_match_ok && string_find_ok && equal_ok && semantic_lookup_ok && collection_equal_ok && array_search_ok && data_ok && data_slice_ok && array_ok && array_values_ok && number_ok && real_number_ok && number_conversion_ok && real_conversion_ok && dictionary_ok && dictionary_values_ok && set_ok && set_values_ok && date_url_ok && scalar_ok && runloop_ok && callback_ok && timer_ok && notification_ok && delivered && plist_ok && array_plist_ok && data_plist_ok && date_plist_ok && real_plist_ok && escaping_ok && plist_parse_ok && plist_dict_parse_ok && plist_data_parse_ok && plist_date_parse_ok && plist_fractional_date_ok && plist_offset_date_ok ? "PASS" : "FAIL") << "\n";
-	return string_ok && string_match_ok && string_find_ok && equal_ok && semantic_lookup_ok && collection_equal_ok && array_search_ok && data_ok && data_slice_ok && array_ok && array_values_ok && number_ok && real_number_ok && number_conversion_ok && real_conversion_ok && dictionary_ok && dictionary_values_ok && set_ok && set_values_ok && date_url_ok && scalar_ok && runloop_ok && callback_ok && timer_ok && notification_ok && delivered && plist_ok && array_plist_ok && data_plist_ok && date_plist_ok && real_plist_ok && escaping_ok && plist_parse_ok && plist_dict_parse_ok && plist_data_parse_ok && plist_date_parse_ok && plist_fractional_date_ok && plist_offset_date_ok ? 0 : 1;
+		(string_ok && string_match_ok && string_find_ok && equal_ok && semantic_lookup_ok && collection_equal_ok && array_search_ok && data_ok && data_slice_ok && array_ok && array_values_ok && number_ok && real_number_ok && number_conversion_ok && real_conversion_ok && dictionary_ok && dictionary_values_ok && set_ok && set_values_ok && date_url_ok && scalar_ok && runloop_ok && callback_ok && timer_ok && notification_ok && delivered && plist_ok && array_plist_ok && data_plist_ok && date_plist_ok && real_plist_ok && escaping_ok && plist_parse_ok && plist_dict_parse_ok && plist_data_parse_ok && plist_date_parse_ok && plist_fractional_date_ok && plist_offset_date_ok && binary_plist_ok && binary_dictionary_ok && binary_utf16_ok && binary_extended_ok && binary_data_ok && binary_date_ok && binary_real_ok && binary_uid_ok && mutable_array_ok && mutable_dictionary_ok && mutable_set_ok && mutable_data_ok ? "PASS" : "FAIL") << "\n";
+	return string_ok && string_match_ok && string_find_ok && equal_ok && mutable_string_ok && string_bytes_ok && trim_ok && semantic_lookup_ok && array_search_ok && data_ok && data_slice_ok && array_ok && array_values_ok && number_ok && real_number_ok && number_conversion_ok && real_conversion_ok && number_compare_ok && dictionary_ok && dictionary_values_ok && set_ok && set_values_ok && date_url_ok && date_compare_ok && date_interval_ok && scalar_ok && runloop_ok && callback_ok && timer_ok && notification_ok && notification_global_remove_ok && delivered && plist_ok && array_plist_ok && data_plist_ok && date_plist_ok && real_plist_ok && escaping_ok && plist_parse_ok && plist_dict_parse_ok && plist_data_parse_ok && plist_date_parse_ok && plist_fractional_date_ok && plist_offset_date_ok && binary_plist_ok && binary_dictionary_ok && binary_utf16_ok && binary_extended_ok && binary_data_ok && binary_date_ok && binary_real_ok && binary_uid_ok && mutable_array_ok && mutable_dictionary_ok && mutable_set_ok && mutable_data_ok ? 0 : 1;
 }

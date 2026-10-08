@@ -102,6 +102,34 @@ std::vector<unsigned char> DecodeBase64(const std::string& input)
 	}
 	return output;
 }
+std::string DecodeUTF16BE(const unsigned char* bytes, std::size_t units)
+{
+	std::string output;
+	for (std::size_t index = 0; index < units; ++index) {
+		std::uint32_t code = static_cast<std::uint16_t>((bytes[index * 2] << 8) | bytes[index * 2 + 1]);
+		if (code >= 0xd800 && code <= 0xdbff && index + 1 < units) {
+			const auto low = static_cast<std::uint16_t>((bytes[(index + 1) * 2] << 8) | bytes[(index + 1) * 2 + 1]);
+			if (low >= 0xdc00 && low <= 0xdfff) {
+				code = 0x10000 + ((code - 0xd800) << 10) + (low - 0xdc00); ++index;
+			}
+		}
+		if (code < 0x80) output.push_back(static_cast<char>(code));
+		else if (code < 0x800) {
+			output.push_back(static_cast<char>(0xc0 | (code >> 6)));
+			output.push_back(static_cast<char>(0x80 | (code & 0x3f)));
+		} else if (code < 0x10000) {
+			output.push_back(static_cast<char>(0xe0 | (code >> 12)));
+			output.push_back(static_cast<char>(0x80 | ((code >> 6) & 0x3f)));
+			output.push_back(static_cast<char>(0x80 | (code & 0x3f)));
+		} else {
+			output.push_back(static_cast<char>(0xf0 | (code >> 18)));
+			output.push_back(static_cast<char>(0x80 | ((code >> 12) & 0x3f)));
+			output.push_back(static_cast<char>(0x80 | ((code >> 6) & 0x3f)));
+			output.push_back(static_cast<char>(0x80 | (code & 0x3f)));
+		}
+	}
+	return output;
+}
 std::string PropertyListDate(double absolute_time)
 {
 	constexpr std::int64_t apple_epoch_unix = 978307200;
@@ -237,6 +265,154 @@ Object* ParsePropertyValue(const std::string& xml, std::size_t& position)
 		else { delete object; return nullptr; }
 	} catch (...) { delete object; return nullptr; }
 	return object;
+}
+struct BinaryPlistContext {
+	const unsigned char* bytes;
+	std::size_t length;
+	std::size_t offset_size;
+	std::size_t reference_size;
+	std::size_t object_count;
+	std::size_t object_table;
+	std::size_t offsets_table;
+};
+std::uint64_t ReadBigEndian(const unsigned char* bytes, std::size_t count)
+{
+	std::uint64_t value = 0;
+	for (std::size_t index = 0; index < count; ++index) value = (value << 8) | bytes[index];
+	return value;
+}
+bool ReadBinaryLength(const BinaryPlistContext& context, std::size_t offset, unsigned char info,
+	std::size_t& length, std::size_t& payload)
+{
+	if (info < 0x0f) { length = info; payload = offset + 1; return payload <= context.length; }
+	if (offset + 2 > context.length || (context.bytes[offset + 1] >> 4) != 0x1) return false;
+	const auto width = std::size_t{1} << (context.bytes[offset + 1] & 0x0f);
+	if (width == 0 || width > sizeof(std::size_t) || offset + 2 + width > context.length) return false;
+	const auto encoded = ReadBigEndian(context.bytes + offset + 2, width);
+	if (encoded > context.length) return false;
+	length = static_cast<std::size_t>(encoded);
+	payload = offset + 2 + width;
+	return payload <= context.length;
+}
+Object* ParseBinaryObject(const BinaryPlistContext& context, std::size_t index,
+	std::vector<bool>& active)
+{
+	if (index >= context.object_count || active[index]) return nullptr;
+	const auto offset_position = context.offsets_table + index * context.offset_size;
+	if (offset_position + context.offset_size > context.length) return nullptr;
+	const auto offset = ReadBigEndian(context.bytes + offset_position, context.offset_size);
+	if (offset >= context.length) return nullptr;
+	const auto descriptor = context.bytes[offset];
+	const auto type = descriptor >> 4;
+	const auto info = descriptor & 0x0f;
+	if (type == 0x0) {
+		auto* object = new Object{};
+		if (info == 0x0) object->kind = Kind::Null;
+		else if (info == 0x8 || info == 0x9) { object->kind = Kind::Boolean; object->boolean = info == 0x9; }
+		else { delete object; return nullptr; }
+		return object;
+	}
+	if (type == 0x1) {
+		const auto width = std::size_t{1} << info;
+		if (width == 0 || width > 8 || offset + 1 + width > context.length) return nullptr;
+		auto* object = new Object{}; object->kind = Kind::Number;
+		object->number = static_cast<std::int64_t>(ReadBigEndian(context.bytes + offset + 1, width));
+		return object;
+	}
+	if (type == 0x2) {
+		const auto width = std::size_t{1} << info;
+		if ((width != 4 && width != 8) || offset + 1 + width > context.length) return nullptr;
+		const auto bits = ReadBigEndian(context.bytes + offset + 1, width);
+		auto* object = new Object{}; object->kind = Kind::Real;
+		if (width == 4) {
+			const auto narrow_bits = static_cast<std::uint32_t>(bits);
+			float narrow = 0;
+			std::memcpy(&narrow, &narrow_bits, sizeof(narrow));
+			object->real_number = narrow;
+		} else {
+			std::uint64_t host_bits = bits;
+			double value = 0;
+			std::memcpy(&value, &host_bits, sizeof(value));
+			object->real_number = value;
+		}
+		return object;
+	}
+	if (type == 0x3 && offset + 9 <= context.length) {
+		// Binary plists store an IEEE-754 double in big-endian byte order.
+		// ReadBigEndian yields the host integer bit pattern which can then be
+		// copied into the little-endian Windows double representation.
+		const std::uint64_t bits = ReadBigEndian(context.bytes + offset + 1, 8);
+		double value = 0;
+		std::memcpy(&value, &bits, sizeof(value));
+		auto* object = new Object{}; object->kind = Kind::Date; object->date = value;
+		return object;
+	}
+	if (type == 0x8) {
+		const auto width = static_cast<std::size_t>(info) + 1;
+		if (width > 8 || offset + 1 + width > context.length) return nullptr;
+		auto* object = new Object{}; object->kind = Kind::Number;
+		object->number = static_cast<std::int64_t>(ReadBigEndian(context.bytes + offset + 1, width));
+		return object;
+	}
+	if (type == 0x4) {
+		std::size_t length = 0;
+		std::size_t payload = 0;
+		if (!ReadBinaryLength(context, offset, info, length, payload) || payload + length > context.length) return nullptr;
+		auto* object = new Object{}; object->kind = Kind::Data;
+		object->data.assign(context.bytes + payload, context.bytes + payload + length);
+		return object;
+	}
+	std::size_t length = 0;
+	std::size_t payload = 0;
+	if (type == 0x5 && ReadBinaryLength(context, offset, info, length, payload) &&
+		payload + length <= context.length) {
+		auto* object = new Object{}; object->kind = Kind::String;
+		object->string.assign(reinterpret_cast<const char*>(context.bytes + payload), length);
+		return object;
+	}
+	if (type == 0x6 && ReadBinaryLength(context, offset, info, length, payload) &&
+		length <= (context.length - payload) / 2) {
+		auto* object = new Object{}; object->kind = Kind::String;
+		object->string = DecodeUTF16BE(context.bytes + payload, length);
+		return object;
+	}
+	if (type == 0xa) {
+		std::size_t count = 0;
+		std::size_t refs_start = 0;
+		if (!ReadBinaryLength(context, offset, info, count, refs_start) ||
+			count > (context.length - refs_start) / context.reference_size) return nullptr;
+		active[index] = true;
+		auto* object = new Object{}; object->kind = Kind::Array;
+		for (std::size_t child = 0; child < count; ++child) {
+			const auto ref = ReadBigEndian(context.bytes + refs_start + child * context.reference_size, context.reference_size);
+			auto* value = ParseBinaryObject(context, static_cast<std::size_t>(ref), active);
+			if (value == nullptr) { delete object; active[index] = false; return nullptr; }
+			object->array.push_back(value);
+		}
+		active[index] = false;
+		return object;
+	}
+	if (type == 0xd) {
+		std::size_t count = 0;
+		std::size_t refs_start = 0;
+		if (!ReadBinaryLength(context, offset, info, count, refs_start) || count >
+			(context.length - refs_start) / (context.reference_size * 2)) return nullptr;
+		const auto refs_count = count * 2;
+		if (refs_start + refs_count * context.reference_size > context.length) return nullptr;
+		active[index] = true;
+		auto* object = new Object{}; object->kind = Kind::Dictionary;
+		for (std::size_t entry = 0; entry < count; ++entry) {
+			const auto key_ref = ReadBigEndian(context.bytes + refs_start + entry * context.reference_size, context.reference_size);
+			const auto value_ref = ReadBigEndian(context.bytes + refs_start + (entry + count) * context.reference_size, context.reference_size);
+			auto* key = ParseBinaryObject(context, static_cast<std::size_t>(key_ref), active);
+			auto* value = ParseBinaryObject(context, static_cast<std::size_t>(value_ref), active);
+			if (key == nullptr || value == nullptr) { delete key; delete value; delete object; active[index] = false; return nullptr; }
+			object->dictionary.emplace_back(key, value);
+		}
+		active[index] = false;
+		return object;
+	}
+	return nullptr;
 }
 struct RunLoop {
 	std::mutex mutex;
@@ -402,6 +578,71 @@ extern "C" darling_windows_CFRange darling_windows_CFStringFind(
 	return { -1, 0 };
 }
 
+extern "C" bool darling_windows_CFStringAppendCString(darling_windows_CFStringRef value,
+	const char* suffix)
+{
+	auto* object = As(value);
+	if (object == nullptr || object->kind != Kind::String || suffix == nullptr) return false;
+	object->string += suffix; return true;
+}
+
+extern "C" bool darling_windows_CFStringReplaceAll(darling_windows_CFStringRef value,
+	darling_windows_CFStringRef target, darling_windows_CFStringRef replacement)
+{
+	auto* object = As(value);
+	const auto* needle = static_cast<const Object*>(target);
+	const auto* substitute = static_cast<const Object*>(replacement);
+	if (object == nullptr || object->kind != Kind::String || needle == nullptr ||
+		needle->kind != Kind::String || needle->string.empty() || substitute == nullptr ||
+		substitute->kind != Kind::String) return false;
+	std::size_t position = 0;
+	while ((position = object->string.find(needle->string, position)) != std::string::npos) {
+		object->string.replace(position, needle->string.size(), substitute->string);
+		position += substitute->string.size();
+	}
+	return true;
+}
+
+extern "C" bool darling_windows_CFStringReplaceRange(darling_windows_CFStringRef value,
+	darling_windows_CFIndex location, darling_windows_CFIndex length, const char* replacement)
+{
+	auto* object = As(value);
+	if (object == nullptr || object->kind != Kind::String || location < 0 || length < 0 || replacement == nullptr ||
+		static_cast<std::size_t>(location) > object->string.size() ||
+		static_cast<std::size_t>(length) > object->string.size() - static_cast<std::size_t>(location)) return false;
+	object->string.replace(static_cast<std::size_t>(location), static_cast<std::size_t>(length), replacement);
+	return true;
+}
+
+extern "C" darling_windows_CFIndex darling_windows_CFStringGetBytes(
+	darling_windows_CFStringRef value, darling_windows_CFIndex location,
+	darling_windows_CFIndex length, char* output, darling_windows_CFIndex capacity)
+{
+	const auto* object = static_cast<const Object*>(value);
+	if (object == nullptr || object->kind != Kind::String || location < 0 || length < 0 || capacity < 0 ||
+		(static_cast<std::size_t>(location) > object->string.size()) ||
+		static_cast<std::size_t>(length) > object->string.size() - static_cast<std::size_t>(location) ||
+		(static_cast<std::size_t>(capacity) != 0 && output == nullptr)) return -1;
+	const auto copied = std::min<std::size_t>(static_cast<std::size_t>(length), static_cast<std::size_t>(capacity));
+	if (copied != 0) std::memcpy(output, object->string.data() + location, copied);
+	return static_cast<darling_windows_CFIndex>(copied);
+}
+
+extern "C" bool darling_windows_CFStringTrimWhitespace(darling_windows_CFStringRef value)
+{
+	auto* object = As(value);
+	if (object == nullptr || object->kind != Kind::String) return false;
+	const auto is_space = [](unsigned char character) {
+		return character == ' ' || character == '\t' || character == '\n' || character == '\r' || character == '\f' || character == '\v';
+	};
+	std::size_t first = 0;
+	while (first < object->string.size() && is_space(static_cast<unsigned char>(object->string[first]))) ++first;
+	std::size_t last = object->string.size();
+	while (last > first && is_space(static_cast<unsigned char>(object->string[last - 1]))) --last;
+	object->string = object->string.substr(first, last - first);
+	return true;
+}
+
 extern "C" darling_windows_CFDataRef darling_windows_CFDataCreate(const void* bytes,
 	darling_windows_CFIndex length)
 {
@@ -418,6 +659,13 @@ extern "C" darling_windows_CFDataRef darling_windows_CFDataCreate(const void* by
 extern "C" const unsigned char* darling_windows_CFDataGetBytePtr(darling_windows_CFDataRef value)
 {
 	const auto* object = static_cast<const Object*>(value);
+	return object != nullptr && object->kind == Kind::Data && !object->data.empty() ?
+		object->data.data() : nullptr;
+}
+
+extern "C" unsigned char* darling_windows_CFDataGetMutableBytePtr(darling_windows_CFDataRef value)
+{
+	auto* object = As(value);
 	return object != nullptr && object->kind == Kind::Data && !object->data.empty() ?
 		object->data.data() : nullptr;
 }
@@ -441,6 +689,45 @@ extern "C" bool darling_windows_CFDataGetBytes(darling_windows_CFDataRef value,
 			static_cast<std::size_t>(range_start)) return false;
 	if (range_count != 0) std::copy_n(object->data.begin() + range_start, range_count, output);
 	return true;
+}
+
+extern "C" bool darling_windows_CFDataAppendBytes(darling_windows_CFDataRef value,
+	const void* bytes, darling_windows_CFIndex length)
+{
+	auto* object = As(value);
+	if (object == nullptr || object->kind != Kind::Data || length < 0 ||
+		(length != 0 && bytes == nullptr)) return false;
+	const auto* input = static_cast<const unsigned char*>(bytes);
+	object->data.insert(object->data.end(), input, input + length); return true;
+}
+
+extern "C" bool darling_windows_CFDataReplaceBytes(darling_windows_CFDataRef value,
+	darling_windows_CFIndex range_start, darling_windows_CFIndex range_count,
+	const void* bytes, darling_windows_CFIndex length)
+{
+	auto* object = As(value);
+	if (object == nullptr || object->kind != Kind::Data || range_start < 0 || range_count < 0 || length < 0 ||
+		(length != 0 && bytes == nullptr) || static_cast<std::size_t>(range_start) > object->data.size() ||
+		static_cast<std::size_t>(range_count) > object->data.size() - static_cast<std::size_t>(range_start)) return false;
+	const auto begin = object->data.begin() + range_start;
+	object->data.erase(begin, begin + range_count);
+	const auto* input = static_cast<const unsigned char*>(bytes);
+	object->data.insert(object->data.begin() + range_start, input, input + length); return true;
+}
+
+extern "C" bool darling_windows_CFDataSetLength(darling_windows_CFDataRef value,
+	darling_windows_CFIndex length)
+{
+	auto* object = As(value);
+	if (object == nullptr || object->kind != Kind::Data || length < 0) return false;
+	object->data.resize(static_cast<std::size_t>(length)); return true;
+}
+
+extern "C" bool darling_windows_CFDataClear(darling_windows_CFDataRef value)
+{
+	auto* object = As(value);
+	if (object == nullptr || object->kind != Kind::Data) return false;
+	object->data.clear(); return true;
 }
 
 extern "C" darling_windows_CFArrayRef darling_windows_CFArrayCreate(const void* const* values,
@@ -517,6 +804,84 @@ extern "C" void darling_windows_CFArrayGetValues(darling_windows_CFArrayRef valu
 	std::copy_n(object->array.begin() + range_start, range_count, output);
 }
 
+extern "C" bool darling_windows_CFArrayAppendValue(darling_windows_CFArrayRef value, const void* element)
+{
+	auto* object = As(value);
+	if (object == nullptr || object->kind != Kind::Array || element == nullptr) return false;
+	object->array.push_back(element); RetainOwned(element); return true;
+}
+
+extern "C" bool darling_windows_CFArrayInsertValueAtIndex(darling_windows_CFArrayRef value,
+	darling_windows_CFIndex index, const void* element)
+{
+	auto* object = As(value);
+	if (object == nullptr || object->kind != Kind::Array || element == nullptr || index < 0 ||
+		static_cast<std::size_t>(index) > object->array.size()) return false;
+	object->array.insert(object->array.begin() + index, element); RetainOwned(element); return true;
+}
+
+extern "C" bool darling_windows_CFArrayRemoveValueAtIndex(darling_windows_CFArrayRef value,
+	darling_windows_CFIndex index)
+{
+	auto* object = As(value);
+	if (object == nullptr || object->kind != Kind::Array || index < 0 ||
+		static_cast<std::size_t>(index) >= object->array.size()) return false;
+	const auto it = object->array.begin() + index; ReleaseOwned(As(*it)); object->array.erase(it); return true;
+}
+
+extern "C" bool darling_windows_CFArrayReplaceValues(darling_windows_CFArrayRef value,
+	darling_windows_CFIndex range_start, darling_windows_CFIndex range_count,
+	const void* const* replacement, darling_windows_CFIndex replacement_count)
+{
+	auto* object = As(value);
+	if (object == nullptr || object->kind != Kind::Array || range_start < 0 || range_count < 0 ||
+		replacement_count < 0 || (replacement_count != 0 && replacement == nullptr) ||
+		static_cast<std::size_t>(range_start) > object->array.size() ||
+		static_cast<std::size_t>(range_count) > object->array.size() - static_cast<std::size_t>(range_start)) return false;
+	for (darling_windows_CFIndex index = 0; index < replacement_count; ++index)
+		if (replacement[index] == nullptr) return false;
+	std::vector<const void*> replacement_values(replacement, replacement + replacement_count);
+	const auto begin = object->array.begin() + range_start;
+	for (darling_windows_CFIndex index = 0; index < range_count; ++index) ReleaseOwned(As(object->array[static_cast<std::size_t>(range_start + index)]));
+	object->array.erase(begin, begin + range_count);
+	object->array.insert(object->array.begin() + range_start,
+		replacement_values.begin(), replacement_values.end());
+	for (darling_windows_CFIndex index = 0; index < replacement_count; ++index) RetainOwned(replacement[index]);
+	return true;
+}
+
+extern "C" bool darling_windows_CFArrayRemoveValues(darling_windows_CFArrayRef value,
+	darling_windows_CFIndex range_start, darling_windows_CFIndex range_count)
+{
+	auto* object = As(value);
+	if (object == nullptr || object->kind != Kind::Array || range_start < 0 || range_count < 0 ||
+		static_cast<std::size_t>(range_start) > object->array.size() ||
+		static_cast<std::size_t>(range_count) > object->array.size() - static_cast<std::size_t>(range_start)) return false;
+	for (darling_windows_CFIndex index = 0; index < range_count; ++index)
+		ReleaseOwned(As(object->array[static_cast<std::size_t>(range_start + index)]));
+	object->array.erase(object->array.begin() + range_start, object->array.begin() + range_start + range_count);
+	return true;
+}
+
+extern "C" bool darling_windows_CFArrayAppendArray(darling_windows_CFArrayRef value,
+	darling_windows_CFArrayRef source)
+{
+	auto* object = As(value);
+	const auto* source_object = static_cast<const Object*>(source);
+	if (object == nullptr || object->kind != Kind::Array || source_object == nullptr ||
+		source_object->kind != Kind::Array) return false;
+	const auto source_values = source_object->array;
+	object->array.insert(object->array.end(), source_values.begin(), source_values.end());
+	for (const auto* element : source_values) RetainOwned(element);
+	return true;
+}
+
+extern "C" void darling_windows_CFArrayRemoveAllValues(darling_windows_CFArrayRef value)
+{
+	auto* object = As(value); if (object == nullptr || object->kind != Kind::Array) return;
+	for (const auto* element : object->array) ReleaseOwned(As(element)); object->array.clear();
+}
+
 extern "C" const void* darling_windows_CFNumberCreateInteger(std::int64_t value)
 {
 	auto* object = new Object{};
@@ -549,6 +914,18 @@ extern "C" bool darling_windows_CFNumberGetDouble(const void* value, double* res
 		(object->kind != Kind::Real && object->kind != Kind::Number)) return false;
 	*result = object->kind == Kind::Real ? object->real_number : static_cast<double>(object->number);
 	return true;
+}
+
+extern "C" int darling_windows_CFNumberCompare(const void* left, const void* right)
+{
+	const auto* lhs = static_cast<const Object*>(left);
+	const auto* rhs = static_cast<const Object*>(right);
+	if (lhs == nullptr || rhs == nullptr ||
+		(lhs->kind != Kind::Number && lhs->kind != Kind::Real) ||
+		(rhs->kind != Kind::Number && rhs->kind != Kind::Real)) return 0;
+	const auto lhs_value = lhs->kind == Kind::Number ? static_cast<double>(lhs->number) : lhs->real_number;
+	const auto rhs_value = rhs->kind == Kind::Number ? static_cast<double>(rhs->number) : rhs->real_number;
+	return lhs_value < rhs_value ? -1 : lhs_value > rhs_value ? 1 : 0;
 }
 
 extern "C" darling_windows_CFDictionaryRef darling_windows_CFDictionaryCreate(
@@ -604,6 +981,55 @@ extern "C" void darling_windows_CFDictionaryGetKeysAndValues(
 	}
 }
 
+extern "C" bool darling_windows_CFDictionarySetValue(darling_windows_CFDictionaryRef value,
+	const void* key, const void* element)
+{
+	auto* object = As(value);
+	if (object == nullptr || object->kind != Kind::Dictionary || key == nullptr || element == nullptr) return false;
+	for (auto& entry : object->dictionary) if (darling_windows_CFEqual(entry.first, key)) {
+		RetainOwned(element); ReleaseOwned(As(entry.second)); entry.second = element; return true;
+	}
+	RetainOwned(key); RetainOwned(element); object->dictionary.emplace_back(key, element); return true;
+}
+
+extern "C" bool darling_windows_CFDictionaryRemoveValue(darling_windows_CFDictionaryRef value, const void* key)
+{
+	auto* object = As(value); if (object == nullptr || object->kind != Kind::Dictionary || key == nullptr) return false;
+	for (auto it = object->dictionary.begin(); it != object->dictionary.end(); ++it) if (darling_windows_CFEqual(it->first, key)) {
+		ReleaseOwned(As(it->first)); ReleaseOwned(As(it->second)); object->dictionary.erase(it); return true;
+	}
+	return false;
+}
+
+extern "C" void darling_windows_CFDictionaryRemoveAllValues(darling_windows_CFDictionaryRef value)
+{
+	auto* object = As(value); if (object == nullptr || object->kind != Kind::Dictionary) return;
+	for (const auto& entry : object->dictionary) { ReleaseOwned(As(entry.first)); ReleaseOwned(As(entry.second)); }
+	object->dictionary.clear();
+}
+
+extern "C" bool darling_windows_CFDictionaryMerge(darling_windows_CFDictionaryRef value,
+	darling_windows_CFDictionaryRef source)
+{
+	auto* object = As(value);
+	const auto* source_object = static_cast<const Object*>(source);
+	if (object == nullptr || object->kind != Kind::Dictionary || source_object == nullptr ||
+		source_object->kind != Kind::Dictionary) return false;
+	const auto source_entries = source_object->dictionary;
+	for (const auto& source_entry : source_entries) {
+		bool replaced = false;
+		for (auto& entry : object->dictionary) if (darling_windows_CFEqual(entry.first, source_entry.first)) {
+			RetainOwned(source_entry.second); ReleaseOwned(As(entry.second)); entry.second = source_entry.second;
+			replaced = true; break;
+		}
+		if (!replaced) {
+			RetainOwned(source_entry.first); RetainOwned(source_entry.second);
+			object->dictionary.push_back(source_entry);
+		}
+	}
+	return true;
+}
+
 extern "C" darling_windows_CFSetRef darling_windows_CFSetCreate(
 	const void* const* values, darling_windows_CFIndex count)
 {
@@ -656,6 +1082,81 @@ extern "C" void darling_windows_CFSetGetValues(darling_windows_CFSetRef value,
 	std::copy(object->array.begin(), object->array.end(), output);
 }
 
+extern "C" bool darling_windows_CFSetAddValue(darling_windows_CFSetRef value, const void* element)
+{
+	auto* object = As(value); if (object == nullptr || object->kind != Kind::Set || element == nullptr) return false;
+	for (const auto* entry : object->array) if (darling_windows_CFEqual(entry, element)) return false;
+	object->array.push_back(element); RetainOwned(element); return true;
+}
+
+extern "C" bool darling_windows_CFSetRemoveValue(darling_windows_CFSetRef value, const void* element)
+{
+	auto* object = As(value); if (object == nullptr || object->kind != Kind::Set || element == nullptr) return false;
+	for (auto it = object->array.begin(); it != object->array.end(); ++it) if (darling_windows_CFEqual(*it, element)) {
+		ReleaseOwned(As(*it)); object->array.erase(it); return true;
+	}
+	return false;
+}
+
+extern "C" void darling_windows_CFSetRemoveAllValues(darling_windows_CFSetRef value)
+{
+	auto* object = As(value); if (object == nullptr || object->kind != Kind::Set) return;
+	for (const auto* element : object->array) ReleaseOwned(As(element)); object->array.clear();
+}
+
+extern "C" bool darling_windows_CFSetUnion(darling_windows_CFSetRef value,
+	darling_windows_CFSetRef source)
+{
+	auto* object = As(value);
+	const auto* source_object = static_cast<const Object*>(source);
+	if (object == nullptr || object->kind != Kind::Set || source_object == nullptr ||
+		source_object->kind != Kind::Set) return false;
+	const auto source_values = source_object->array;
+	for (const auto* candidate : source_values) {
+		bool found = false;
+		for (const auto* existing : object->array)
+			if (darling_windows_CFEqual(existing, candidate)) { found = true; break; }
+		if (!found) { object->array.push_back(candidate); RetainOwned(candidate); }
+	}
+	return true;
+}
+
+extern "C" bool darling_windows_CFSetIntersect(darling_windows_CFSetRef value,
+	darling_windows_CFSetRef source)
+{
+	auto* object = As(value);
+	const auto* source_object = static_cast<const Object*>(source);
+	if (object == nullptr || object->kind != Kind::Set || source_object == nullptr ||
+		source_object->kind != Kind::Set) return false;
+	const auto source_values = source_object->array;
+	for (auto it = object->array.begin(); it != object->array.end();) {
+		bool found = false;
+		for (const auto* candidate : source_values)
+			if (darling_windows_CFEqual(*it, candidate)) { found = true; break; }
+		if (found) { ++it; continue; }
+		ReleaseOwned(As(*it)); it = object->array.erase(it);
+	}
+	return true;
+}
+
+extern "C" bool darling_windows_CFSetSubtract(darling_windows_CFSetRef value,
+	darling_windows_CFSetRef source)
+{
+	auto* object = As(value);
+	const auto* source_object = static_cast<const Object*>(source);
+	if (object == nullptr || object->kind != Kind::Set || source_object == nullptr ||
+		source_object->kind != Kind::Set) return false;
+	const auto source_values = source_object->array;
+	for (auto it = object->array.begin(); it != object->array.end();) {
+		bool found = false;
+		for (const auto* candidate : source_values)
+			if (darling_windows_CFEqual(*it, candidate)) { found = true; break; }
+		if (!found) { ++it; continue; }
+		ReleaseOwned(As(*it)); it = object->array.erase(it);
+	}
+	return true;
+}
+
 extern "C" darling_windows_CFDateRef darling_windows_CFDateCreate(double absolute_time)
 {
 	auto* object = new Object{};
@@ -668,6 +1169,34 @@ extern "C" double darling_windows_CFDateGetAbsoluteTime(darling_windows_CFDateRe
 {
 	const auto* object = static_cast<const Object*>(value);
 	return object != nullptr && object->kind == Kind::Date ? object->date : 0;
+}
+
+extern "C" int darling_windows_CFDateCompare(darling_windows_CFDateRef left,
+	darling_windows_CFDateRef right)
+{
+	const auto* lhs = static_cast<const Object*>(left);
+	const auto* rhs = static_cast<const Object*>(right);
+	if (lhs == nullptr || rhs == nullptr || lhs->kind != Kind::Date || rhs->kind != Kind::Date) return 0;
+	return lhs->date < rhs->date ? -1 : lhs->date > rhs->date ? 1 : 0;
+}
+
+extern "C" darling_windows_CFDateRef darling_windows_CFDateCreateByAddingTimeInterval(
+    darling_windows_CFDateRef value, double seconds)
+{
+	const auto* object = static_cast<const Object*>(value);
+	if (object == nullptr || object->kind != Kind::Date) return nullptr;
+    return darling_windows_CFDateCreate(object->date + seconds);
+}
+
+extern "C" double darling_windows_CFDateGetTimeIntervalSinceDate(
+    darling_windows_CFDateRef value, darling_windows_CFDateRef reference)
+{
+    const auto* object = static_cast<const Object*>(value);
+    const auto* base = static_cast<const Object*>(reference);
+    if (object == nullptr || base == nullptr || object->kind != Kind::Date || base->kind != Kind::Date) {
+        return 0.0;
+    }
+    return object->date - base->date;
 }
 
 extern "C" darling_windows_CFURLRef darling_windows_CFURLCreateWithFileSystemPath(const char* path)
@@ -731,6 +1260,24 @@ extern "C" darling_windows_CFTypeRef darling_windows_CFPropertyListCreateFromXML
 	if (position == std::string::npos) return nullptr;
 	++position;
 	return ParsePropertyValue(document, position);
+}
+
+extern "C" darling_windows_CFTypeRef darling_windows_CFPropertyListCreateFromBinary(
+	const void* bytes, darling_windows_CFIndex length)
+{
+	if (bytes == nullptr || length < 40) return nullptr;
+	const auto* input = static_cast<const unsigned char*>(bytes);
+	if (std::memcmp(input, "bplist00", 8) != 0) return nullptr;
+	const auto trailer = input + length - 32;
+	BinaryPlistContext context{input, static_cast<std::size_t>(length), trailer[6], trailer[7],
+		static_cast<std::size_t>(ReadBigEndian(trailer + 8, 8)), 8,
+		static_cast<std::size_t>(ReadBigEndian(trailer + 24, 8))};
+	if (context.offset_size == 0 || context.reference_size == 0 || context.object_count == 0 ||
+		context.object_count > context.length || context.offsets_table >= context.length ||
+		context.offsets_table < context.object_table ||
+		context.offsets_table + context.object_count * context.offset_size > context.length) return nullptr;
+	std::vector<bool> active(context.object_count, false);
+	return ParseBinaryObject(context, static_cast<std::size_t>(ReadBigEndian(trailer + 16, 8)), active);
 }
 
 extern "C" darling_windows_CFRunLoopRef darling_windows_CFRunLoopGetCurrent()
@@ -828,8 +1375,21 @@ extern "C" bool darling_windows_CFNotificationCenterAddObserver(void* center,
 extern "C" bool darling_windows_CFNotificationCenterRemoveObserver(void* center,
 	const void* observer, darling_windows_CFNotificationCallback callback, const char* name)
 {
-	if (center == nullptr || name == nullptr) return false;
+	if (center == nullptr) return false;
 	std::lock_guard lock(notification_mutex);
+	if (name == nullptr) {
+		bool removed = false;
+		for (auto it = notifications.begin(); it != notifications.end();) {
+			const auto before = it->second.size();
+			it->second.erase(std::remove_if(it->second.begin(), it->second.end(),
+				[observer, callback](const NotificationObserver& entry) {
+					return entry.observer == observer && (callback == nullptr || entry.callback == callback);
+				}), it->second.end());
+			removed = removed || before != it->second.size();
+			if (it->second.empty()) it = notifications.erase(it); else ++it;
+		}
+		return removed;
+	}
 	auto found = notifications.find(name);
 	if (found == notifications.end()) return false;
 	auto& entries = found->second;

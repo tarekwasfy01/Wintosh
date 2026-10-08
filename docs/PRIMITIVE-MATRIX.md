@@ -30,9 +30,9 @@ the process-local Mach C ABI including basic VM and port-type operations. This
 matrix does not claim that ordinary macOS applications run yet.
 
 The framework layer now also has a deliberately small CoreFoundation ABI
-adapter for retain/release, immutable strings, byte data, arrays, integer
+adapter for retain/release, UTF-8 strings with limited mutable operations, byte data, arrays, integer
 integer/real numbers, dictionaries, sets, dates, filesystem URLs, booleans, null values,
-RunLoop callbacks/timers, and process-local notifications. It also has a
+RunLoop callbacks/timers, date and number comparison, date interval creation/difference, and process-local notifications, including global observer removal. It also has a
 minimal XML property-list serializer with XML escaping, nested arrays,
 Base64 data nodes, and ISO-8601 date nodes. Its
 `corefoundation_smoke` gate proves only that adapter subset; there is no plist
@@ -43,8 +43,13 @@ CoreFoundation or Foundation compatibility.
 The XML boundary now also parses scalar strings, integers, reals, booleans,
 nested arrays, and dictionaries with string keys and can reserialize the
 result. Base64 `<data>` and UTC/offset `<date>` decoding with fractional
-seconds are also supported. Binary plists and full ownership semantics remain
-open.
+seconds are also supported. A limited binary `bplist00` reader now handles
+single-byte ASCII strings, BMP UTF-16 strings, integers, booleans, null, simple
+arrays, string-key dictionaries, extended length markers for strings, arrays,
+and dictionaries, plus binary data, date, IEEE-754 real-number, and UID
+primitives, including UTF-8 string byte extraction and ASCII-whitespace trimming plus mutable append/replace-all/range-replace, mutable data byte access/append/replace/resize/clear, array append/append-array/insert/remove/remove-range/replace, dictionary set/remove/merge, and set add/remove/union/intersection/subtract operations.
+Surrogate pairs,
+complex numeric/time semantics, and full ownership semantics remain open.
 
 Immutable strings additionally expose a read-only direct C-string pointer;
 callers must not retain that pointer beyond the lifetime of the CFString.

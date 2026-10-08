@@ -18,6 +18,7 @@ int main()
 	std::uint32_t vm_copy = 0;
 	darling_mach_vm_size_t vm_read_size = 0;
 	darling_mach_port_name_t allocated = 0;
+	darling_mach_port_name_t stale_member = 0;
 	darling_mach_port_name_t port_set = 0;
 	std::uint32_t refs = 0;
 	std::uint32_t port_type = darling_mach_port_type_none;
@@ -86,6 +87,11 @@ int main()
 		darling_windows_mach_port_set_receive(port_set, received, sizeof(received),
 		&received_size, 100) == 0 && received_size == sizeof(payload) &&
 		std::memcmp(received, payload, sizeof(payload)) == 0 &&
+		darling_windows_mach_port_allocate(task, &stale_member) == 0 &&
+		darling_windows_mach_port_move_member(task, stale_member, port_set) == 0 &&
+		darling_windows_mach_port_destroy(task, stale_member) == 0 &&
+		darling_windows_mach_port_set_receive(port_set, received, sizeof(received),
+		&received_size, 1) == 268 &&
 		darling_windows_mach_port_remove_member(task, allocated, port_set) == 0 &&
 		darling_windows_mach_port_remove_member(task, allocated, port_set) == 3 &&
 		(message.msgh_remote_port = allocated,

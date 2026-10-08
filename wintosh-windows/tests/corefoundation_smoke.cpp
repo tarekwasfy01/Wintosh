@@ -4,6 +4,7 @@
 #include <cstring>
 #include <chrono>
 #include <iostream>
+#include <limits>
 #include <thread>
 #include <vector>
 
@@ -31,6 +32,14 @@ int main()
 		return 1;
 	}
 	std::cout << "COREFOUNDATION_RANGE=PASS\n";
+	const auto max_index = (std::numeric_limits<darling_windows_CFIndex>::max)();
+	const auto min_index = (std::numeric_limits<darling_windows_CFIndex>::min)();
+	if (darling_windows_CFRangeGetMax({max_index, 1}) != max_index ||
+		darling_windows_CFRangeGetMax({min_index, -1}) != min_index) {
+		std::cerr << "COREFOUNDATION_RANGE_OVERFLOW=FAIL\n";
+		return 1;
+	}
+	std::cout << "COREFOUNDATION_RANGE_OVERFLOW=PASS\n";
 	const auto string = darling_windows_CFStringCreateWithCString("Wintosh");
 	char buffer[32]{};
 	const bool string_ok = string != nullptr &&

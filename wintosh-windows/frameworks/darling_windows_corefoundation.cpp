@@ -476,8 +476,11 @@ extern "C" darling_windows_CFIndex darling_windows_CFRangeGetMax(
 	darling_windows_CFRange range)
 {
 	const auto maximum = (std::numeric_limits<darling_windows_CFIndex>::max)();
+	const auto minimum = (std::numeric_limits<darling_windows_CFIndex>::min)();
 	if (range.length > 0 && range.location > maximum - range.length)
 		return maximum;
+	if (range.length < 0 && range.location < minimum - range.length)
+		return minimum;
 	return range.location + range.length;
 }
 

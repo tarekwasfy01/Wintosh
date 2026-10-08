@@ -4,6 +4,7 @@
 
 #include <iostream>
 #include <cstring>
+#include <limits>
 
 int main()
 {
@@ -67,6 +68,9 @@ int main()
 		darling_windows_mach_port_insert_right(task, allocated, thread, 1) == 0 &&
 		darling_windows_mach_port_get_refs(task, allocated, 1, &refs) == 0 && refs == 2 &&
 		darling_windows_mach_port_mod_refs(task, allocated, 1, 1) == 0 &&
+		darling_windows_mach_port_get_refs(task, allocated, 1, &refs) == 0 && refs == 3 &&
+		darling_windows_mach_port_mod_refs(task, allocated, 1,
+		(std::numeric_limits<std::int32_t>::min)()) == 4 &&
 		darling_windows_mach_port_get_refs(task, allocated, 1, &refs) == 0 && refs == 3 &&
 		darling_windows_mach_port_type(task, allocated, &port_type) == 0 &&
 		port_type == darling_mach_port_type_receive &&

@@ -28,6 +28,9 @@ Current verified low-level families include libc/file descriptors, sockets,
 process and time primitives, pthread synchronization/TLS, Mach-O loading, and
 the process-local Mach C ABI including basic VM and port-type operations. This
 matrix does not claim that ordinary macOS applications run yet.
+Mach port reference mutation now rejects signed-delta underflow and unsigned
+overflow, including the `INT32_MIN` edge case, while preserving the existing
+process-local queue behavior.
 
 The framework layer now also has a deliberately small CoreFoundation ABI
 adapter for retain/release, UTF-8 strings with limited mutable operations, byte data, arrays, integer

@@ -211,8 +211,12 @@ extern "C" darling_kern_return_t darling_windows_mach_port_mod_refs(
 	const auto port = FindPort(name);
 	if (port == nullptr) return 3;
 	std::lock_guard lock(port->mutex);
-	if (delta < 0 && port->refs < static_cast<std::uint32_t>(-delta)) return 4;
-	port->refs = static_cast<std::uint32_t>(static_cast<std::int64_t>(port->refs) + delta);
+	const auto current = static_cast<std::int64_t>(port->refs);
+	const auto change = static_cast<std::int64_t>(delta);
+	const auto updated = current + change;
+	if (updated < 0 || updated > static_cast<std::int64_t>(
+		(std::numeric_limits<std::uint32_t>::max)())) return 4;
+	port->refs = static_cast<std::uint32_t>(updated);
 	return 0;
 }
 

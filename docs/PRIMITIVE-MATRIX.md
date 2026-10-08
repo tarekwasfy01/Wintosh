@@ -110,8 +110,10 @@ transforms, point/rectangle application, inversion, containment, intersection,
 transform equality, integral rectangles,
 and union, plus edge division with oversized amounts clamped to the actual
 edge length, translation/scale/rotation convenience constructors, null/infinite
-rectangle predicates, rectangle containment, immutable RGBA color values, component extraction, and equality. This is geometry ABI coverage only; drawing contexts, paths, images,
-text, events, and Quartz display backends remain open.
+rectangle predicates, rectangle containment, immutable RGBA color values,
+component extraction, direct red/green/blue getters, and equality. This is
+geometry/color ABI coverage only; drawing contexts, paths, images, text,
+events, and Quartz display backends remain open.
 
 The collection ABI also exposes bulk extraction primitives for array ranges,
 dictionary key/value pairs, and set values. `CFData` additionally supports

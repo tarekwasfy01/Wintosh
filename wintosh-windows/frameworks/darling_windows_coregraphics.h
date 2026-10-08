@@ -97,6 +97,12 @@ extern "C" void darling_windows_CGRectDivide(darling_windows_CGRect rect,
 extern "C" darling_windows_CGColor darling_windows_CGColorMakeRGBA(
 	double red, double green, double blue, double alpha);
 extern "C" double darling_windows_CGColorGetAlpha(darling_windows_CGColor color);
+extern "C" bool darling_windows_CGColorGetRed(darling_windows_CGColor color,
+	double* value);
+extern "C" bool darling_windows_CGColorGetGreen(darling_windows_CGColor color,
+	double* value);
+extern "C" bool darling_windows_CGColorGetBlue(darling_windows_CGColor color,
+	double* value);
 extern "C" bool darling_windows_CGColorGetComponents(darling_windows_CGColor color,
 	double* components, int capacity);
 extern "C" bool darling_windows_CGColorEqual(darling_windows_CGColor left,

@@ -25,25 +25,30 @@ jobs:
       matrix:
         include:
           - arch: x64
-            cmake_arch: x64
+            msvc_arch: x64
           - arch: win32
-            cmake_arch: Win32
+            msvc_arch: x86
 
     steps:
       - name: Check out source
         uses: actions/checkout@v4
 
+      - name: Activate MSVC toolchain
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ matrix.msvc_arch }}
+
       - name: Configure CMake
         shell: pwsh
-        run: cmake -S wintosh-windows -B build-${{ matrix.arch }} -G "Visual Studio 17 2022" -A ${{ matrix.cmake_arch }}
+        run: cmake -S wintosh-windows -B build-${{ matrix.arch }} -G Ninja -DCMAKE_BUILD_TYPE=Release
 
       - name: Build all Wintosh targets
         shell: pwsh
-        run: cmake --build build-${{ matrix.arch }} --config Release --parallel 2
+        run: cmake --build build-${{ matrix.arch }} --parallel 2
 
       - name: Run Foundation smoke test
         shell: pwsh
-        run: .\build-${{ matrix.arch }}\Release\wintosh_foundation_smoke.exe
+        run: .\build-${{ matrix.arch }}\wintosh_foundation_smoke.exe
 
       - name: Package implementation, tests, documentation and licenses
         shell: pwsh

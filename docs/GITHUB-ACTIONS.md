@@ -11,7 +11,10 @@ implementation on Windows runners for x64 and Win32. Each matrix job:
 6. Publishes the archive as a workflow artifact for manual attachment to a
    GitHub Release.
 
-The workflow uses GitHub's official `actions/attest-build-provenance@v2` action.
+The workflow activates the runner's Microsoft C++ toolchain and uses the
+portable Ninja generator, avoiding assumptions about the installed Visual
+Studio generator version. It uses GitHub's official
+`actions/attest-build-provenance@v2` action.
 It deliberately has `contents: read` only and does not modify Releases or
 repository contents automatically.
 The repository workflow permissions include `id-token: write` and

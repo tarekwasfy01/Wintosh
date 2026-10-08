@@ -3,6 +3,7 @@
 
 #include <cmath>
 #include <algorithm>
+#include <limits>
 
 extern "C" darling_windows_CGPoint darling_windows_CGPointMake(double x, double y)
 {
@@ -191,6 +192,24 @@ extern "C" bool darling_windows_CGRectIsEmpty(darling_windows_CGRect rect)
 	return rect.size.width <= 0 || rect.size.height <= 0;
 }
 
+extern "C" darling_windows_CGRect darling_windows_CGRectNull()
+{
+	const double null_value = std::numeric_limits<double>::quiet_NaN();
+	return {{null_value, null_value}, {null_value, null_value}};
+}
+
+extern "C" bool darling_windows_CGRectIsNull(darling_windows_CGRect rect)
+{
+	return std::isnan(rect.origin.x) && std::isnan(rect.origin.y) &&
+		std::isnan(rect.size.width) && std::isnan(rect.size.height);
+}
+
+extern "C" bool darling_windows_CGRectIsInfinite(darling_windows_CGRect rect)
+{
+	return std::isinf(rect.origin.x) || std::isinf(rect.origin.y) ||
+		std::isinf(rect.size.width) || std::isinf(rect.size.height);
+}
+
 extern "C" darling_windows_CGRect darling_windows_CGRectIntegral(
 	darling_windows_CGRect rect)
 {
@@ -207,6 +226,15 @@ extern "C" bool darling_windows_CGRectContainsPoint(darling_windows_CGRect rect,
 	return !darling_windows_CGRectIsEmpty(rect) && point.x >= rect.origin.x &&
 	point.y >= rect.origin.y && point.x <= rect.origin.x + rect.size.width &&
 	point.y <= rect.origin.y + rect.size.height;
+}
+
+extern "C" bool darling_windows_CGRectContainsRect(darling_windows_CGRect rect,
+	darling_windows_CGRect candidate)
+{
+	return darling_windows_CGRectContainsPoint(rect, candidate.origin) &&
+		darling_windows_CGRectContainsPoint(rect,
+		{candidate.origin.x + candidate.size.width,
+		candidate.origin.y + candidate.size.height});
 }
 
 extern "C" darling_windows_CGRect darling_windows_CGRectIntersection(

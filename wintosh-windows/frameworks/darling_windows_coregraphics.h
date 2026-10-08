@@ -60,10 +60,15 @@ extern "C" darling_windows_CGAffineTransform darling_windows_CGAffineTransformIn
 extern "C" bool darling_windows_CGAffineTransformEqualToTransform(
 	darling_windows_CGAffineTransform left, darling_windows_CGAffineTransform right);
 extern "C" bool darling_windows_CGRectIsEmpty(darling_windows_CGRect rect);
+extern "C" darling_windows_CGRect darling_windows_CGRectNull();
+extern "C" bool darling_windows_CGRectIsNull(darling_windows_CGRect rect);
+extern "C" bool darling_windows_CGRectIsInfinite(darling_windows_CGRect rect);
 extern "C" darling_windows_CGRect darling_windows_CGRectIntegral(
 	darling_windows_CGRect rect);
 extern "C" bool darling_windows_CGRectContainsPoint(darling_windows_CGRect rect,
 	darling_windows_CGPoint point);
+extern "C" bool darling_windows_CGRectContainsRect(darling_windows_CGRect rect,
+	darling_windows_CGRect candidate);
 extern "C" darling_windows_CGRect darling_windows_CGRectIntersection(
 	darling_windows_CGRect left, darling_windows_CGRect right);
 extern "C" darling_windows_CGRect darling_windows_CGRectUnion(

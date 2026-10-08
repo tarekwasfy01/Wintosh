@@ -109,8 +109,8 @@ CoreGraphics geometry now has an independent partial adapter for affine
 transforms, point/rectangle application, inversion, containment, intersection,
 transform equality, integral rectangles,
 and union, plus edge division with oversized amounts clamped to the actual
-edge length, translation/scale/rotation convenience constructors, immutable RGBA color values, component extraction, and
-equality. This is geometry ABI coverage only; drawing contexts, paths, images,
+edge length, translation/scale/rotation convenience constructors, null/infinite
+rectangle predicates, rectangle containment, immutable RGBA color values, component extraction, and equality. This is geometry ABI coverage only; drawing contexts, paths, images,
 text, events, and Quartz display backends remain open.
 
 The collection ABI also exposes bulk extraction primitives for array ranges,

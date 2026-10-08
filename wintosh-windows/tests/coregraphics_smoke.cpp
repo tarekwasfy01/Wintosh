@@ -20,6 +20,19 @@ int main()
 		return 1;
 	}
 	std::cout << "COREGRAPHICS_AFFINE_CONVENIENCE=PASS\n";
+	const auto outer = darling_windows_CGRectMake(0, 0, 10, 10);
+	const auto inner = darling_windows_CGRectMake(2, 3, 4, 5);
+	const auto null_rect = darling_windows_CGRectNull();
+	if (!darling_windows_CGRectContainsRect(outer, inner) ||
+		darling_windows_CGRectContainsRect(inner, outer) ||
+		!darling_windows_CGRectIsNull(null_rect) ||
+		darling_windows_CGRectIsInfinite(outer) ||
+		!darling_windows_CGRectIsInfinite(
+			darling_windows_CGRectMake(0, 0, INFINITY, 1))) {
+		std::cerr << "COREGRAPHICS_RECT_PREDICATES=FAIL\n";
+		return 1;
+	}
+	std::cout << "COREGRAPHICS_RECT_PREDICATES=PASS\n";
 	const auto translated = darling_windows_CGAffineTransformTranslate(identity, 3, 4);
 	const auto scaled = darling_windows_CGAffineTransformScale(translated, 2, 3);
 	const auto rotated = darling_windows_CGAffineTransformRotate(identity, 1.5707963267948966);

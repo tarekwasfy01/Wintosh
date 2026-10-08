@@ -42,6 +42,23 @@ std::filesystem::path DarwinPaths::CurrentWorkingDirectory()
 	}
 }
 
+std::filesystem::path DarwinPaths::AbsolutePath(const std::filesystem::path& path)
+{
+	const std::wstring input = path.wstring();
+	std::vector<wchar_t> buffer(256);
+	for (;;) {
+		const DWORD length = GetFullPathNameW(input.c_str(),
+			static_cast<DWORD>(buffer.size()), buffer.data(), nullptr);
+		if (length == 0) {
+			ThrowLastError("GetFullPathNameW");
+		}
+		if (length < buffer.size()) {
+			return std::filesystem::path(std::wstring(buffer.data(), length));
+		}
+		buffer.resize(static_cast<std::size_t>(length) + 1);
+	}
+}
+
 void DarwinPaths::ChangeWorkingDirectory(const std::filesystem::path& path)
 {
 	if (!SetCurrentDirectoryW(path.c_str())) {

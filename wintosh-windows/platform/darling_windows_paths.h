@@ -15,6 +15,8 @@ namespace darling::windows_host {
 class DarwinPaths final {
 public:
 	[[nodiscard]] static std::filesystem::path CurrentWorkingDirectory();
+	[[nodiscard]] static std::filesystem::path AbsolutePath(
+		const std::filesystem::path& path);
 	static void ChangeWorkingDirectory(const std::filesystem::path& path);
 };
 

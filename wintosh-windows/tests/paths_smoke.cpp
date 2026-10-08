@@ -14,6 +14,12 @@ int wmain()
 {
 	try {
 		const auto original = darling::windows_host::DarwinPaths::CurrentWorkingDirectory();
+		const auto absolute = darling::windows_host::DarwinPaths::AbsolutePath(L".");
+		if (absolute != original) {
+			std::cerr << "PATH_SMOKE_ERROR=absolute path mismatch\n";
+			return 1;
+		}
+		std::cout << "DARWIN_ABSOLUTE_PATH=PASS\n";
 		wchar_t temp_path[MAX_PATH]{};
 		const DWORD temp_length = GetTempPathW(MAX_PATH, temp_path);
 		if (temp_length == 0 || temp_length >= MAX_PATH) {

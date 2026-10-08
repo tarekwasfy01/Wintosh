@@ -19,6 +19,8 @@ and the documented development roadmap.
 - Mach-O/dyld parsing and loader-related primitives.
 - Objective-C runtime and Foundation type-encoding primitives.
 - CMake configuration with separate smoke-test targets.
+- CI-built x64 and Win32 preview archives containing the generated `.exe`
+  files under `bin/`.
 - Contributor guidance for GitHub user
   [@tarekwasfy01](https://github.com/tarekwasfy01).
 

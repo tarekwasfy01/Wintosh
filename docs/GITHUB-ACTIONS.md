@@ -6,7 +6,8 @@ implementation on Windows runners for x64 and Win32. Each matrix job:
 1. Configures the standalone `wintosh-windows/CMakeLists.txt` project.
 2. Builds all Wintosh targets.
 3. Runs the Foundation ABI smoke test.
-4. Packages `wintosh-windows/`, `docs/`, `licenses/`, and the Wintosh license.
+4. Packages the generated Windows `.exe` files under `bin/`, together with
+   `wintosh-windows/`, `docs/`, `licenses/`, and the Wintosh license.
 5. Creates a GitHub artifact and a build-provenance attestation.
 6. Publishes the archive as a workflow artifact for manual attachment to a
    GitHub Release.

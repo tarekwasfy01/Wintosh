@@ -60,6 +60,10 @@ jobs:
           Copy-Item -Recurse -Force licenses (Join-Path $stage 'licenses')
           Copy-Item -Force LICENSE-WINTOSH-ORIGINAL-MIT.txt (Join-Path $stage 'LICENSE-WINTOSH-ORIGINAL-MIT.txt')
           Copy-Item -Force .gitattributes,.gitignore (Join-Path $stage '.')
+          $bin = Join-Path $stage 'bin'
+          New-Item -ItemType Directory -Force -Path $bin | Out-Null
+          Get-ChildItem -Path "build-${{ matrix.arch }}" -Filter '*.exe' -File | Copy-Item -Destination $bin -Force
+          if (-not (Get-ChildItem -Path $bin -Filter '*.exe' -File)) { throw 'No Windows executables were produced' }
           Compress-Archive -Path "$stage\*" -DestinationPath "package\Wintosh-${{ matrix.arch }}.zip" -Force
 
       - name: Attest release archive

@@ -17,6 +17,8 @@ public:
 	[[nodiscard]] static std::filesystem::path CurrentWorkingDirectory();
 	[[nodiscard]] static std::filesystem::path AbsolutePath(
 		const std::filesystem::path& path);
+	[[nodiscard]] static std::filesystem::path CanonicalPath(
+		const std::filesystem::path& path);
 	static void ChangeWorkingDirectory(const std::filesystem::path& path);
 };
 

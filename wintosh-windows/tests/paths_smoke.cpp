@@ -30,6 +30,12 @@ int wmain()
 			(target_text.back() == L'\\' || target_text.back() == L'/'))
 			target_text.pop_back();
 		const auto target = std::filesystem::path(target_text).lexically_normal();
+		const auto canonical = darling::windows_host::DarwinPaths::CanonicalPath(target);
+		if (canonical != target) {
+			std::cerr << "PATH_SMOKE_ERROR=canonical path mismatch\n";
+			return 1;
+		}
+		std::cout << "DARWIN_CANONICAL_PATH=PASS\n";
 		darling::windows_host::DarwinPaths::ChangeWorkingDirectory(target);
 		const auto changed = darling::windows_host::DarwinPaths::CurrentWorkingDirectory();
 		darling::windows_host::DarwinPaths::ChangeWorkingDirectory(original);

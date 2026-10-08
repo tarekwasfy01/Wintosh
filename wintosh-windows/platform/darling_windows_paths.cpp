@@ -59,6 +59,38 @@ std::filesystem::path DarwinPaths::AbsolutePath(const std::filesystem::path& pat
 	}
 }
 
+std::filesystem::path DarwinPaths::CanonicalPath(const std::filesystem::path& path)
+{
+	const HANDLE handle = CreateFileW(path.c_str(), 0,
+		FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
+		OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_BACKUP_SEMANTICS, nullptr);
+	if (handle == INVALID_HANDLE_VALUE)
+		ThrowLastError("CreateFileW(canonical path)");
+	std::vector<wchar_t> buffer(256);
+	for (;;) {
+		const DWORD length = GetFinalPathNameByHandleW(handle, buffer.data(),
+			static_cast<DWORD>(buffer.size()), FILE_NAME_NORMALIZED);
+		if (length == 0) {
+			const DWORD error = GetLastError();
+			CloseHandle(handle);
+			if (error == ERROR_ACCESS_DENIED)
+				return AbsolutePath(path);
+			SetLastError(error);
+			ThrowLastError("GetFinalPathNameByHandleW");
+		}
+		if (length < buffer.size()) {
+			std::wstring result(buffer.data(), length);
+			CloseHandle(handle);
+			if (result.rfind(L"\\\\?\\UNC\\", 0) == 0)
+				result = L"\\\\" + result.substr(8);
+			else if (result.rfind(L"\\\\?\\", 0) == 0)
+				result.erase(0, 4);
+			return std::filesystem::path(result);
+		}
+		buffer.resize(static_cast<std::size_t>(length) + 1);
+	}
+}
+
 void DarwinPaths::ChangeWorkingDirectory(const std::filesystem::path& path)
 {
 	if (!SetCurrentDirectoryW(path.c_str())) {

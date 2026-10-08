@@ -11,6 +11,8 @@ int main()
 	const auto intersection = darling_windows_NSIntersectionRange(first, second);
 	const auto united = darling_windows_NSUnionRange(first, second);
 	if (darling_windows_NSMaxRange(first) != 10 ||
+		!darling_windows_NSEqualRanges(first, darling_windows_NSMakeRange(4, 6)) ||
+		darling_windows_NSEqualRanges(first, second) ||
 		darling_windows_NSLocationInRange(9, first) == false ||
 		darling_windows_NSLocationInRange(10, first) ||
 		intersection.location != 8 || intersection.length != 2 ||

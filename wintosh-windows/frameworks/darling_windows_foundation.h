@@ -13,6 +13,8 @@ extern "C" darling_windows_NSRange darling_windows_NSMakeRange(
 extern "C" std::size_t darling_windows_NSMaxRange(darling_windows_NSRange range);
 extern "C" bool darling_windows_NSLocationInRange(
 	std::size_t location, darling_windows_NSRange range);
+extern "C" bool darling_windows_NSEqualRanges(
+	darling_windows_NSRange left, darling_windows_NSRange right);
 extern "C" darling_windows_NSRange darling_windows_NSIntersectionRange(
 	darling_windows_NSRange left, darling_windows_NSRange right);
 extern "C" darling_windows_NSRange darling_windows_NSUnionRange(

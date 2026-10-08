@@ -45,6 +45,12 @@ extern "C" bool darling_windows_NSLocationInRange(
 	return location >= range.location && location < darling_windows_NSMaxRange(range);
 }
 
+extern "C" bool darling_windows_NSEqualRanges(
+	darling_windows_NSRange left, darling_windows_NSRange right)
+{
+	return left.location == right.location && left.length == right.length;
+}
+
 extern "C" darling_windows_NSRange darling_windows_NSIntersectionRange(
 	darling_windows_NSRange left, darling_windows_NSRange right)
 {

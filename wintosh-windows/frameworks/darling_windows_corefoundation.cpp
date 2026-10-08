@@ -1,0 +1,855 @@
+/* Minimal CoreFoundation-compatible primitives; GPL-3.0-only. */
+#include "darling_windows_corefoundation.h"
+
+#include <atomic>
+#include <algorithm>
+#include <cstring>
+#include <cctype>
+#include <cstdint>
+#include <string>
+#include <vector>
+#include <chrono>
+#include <condition_variable>
+#include <mutex>
+#include <thread>
+#include <unordered_map>
+#include <sstream>
+#include <iomanip>
+#include <ctime>
+
+namespace {
+enum class Kind { String, Data, Array, Number, Real, Dictionary, Set, Date, URL, Boolean, Null };
+struct Object {
+	std::atomic<std::size_t> references{1};
+	bool immortal = false;
+	Kind kind;
+	std::string string;
+	std::vector<unsigned char> data;
+	std::vector<const void*> array;
+	std::int64_t number = 0;
+	double real_number = 0;
+	std::vector<std::pair<const void*, const void*>> dictionary;
+	double date = 0;
+	bool boolean = false;
+	~Object();
+};
+Object* As(const void* value) { return const_cast<Object*>(static_cast<const Object*>(value)); }
+void ReleaseOwned(Object* object)
+{
+	if (object == nullptr || object->immortal) return;
+	if (object->references.fetch_sub(1, std::memory_order_acq_rel) == 1) delete object;
+}
+Object::~Object()
+{
+	for (const auto* value : array) ReleaseOwned(As(value));
+	for (const auto& entry : dictionary) {
+		ReleaseOwned(As(entry.first));
+		ReleaseOwned(As(entry.second));
+	}
+}
+void RetainOwned(const void* value)
+{
+	if (value != nullptr) As(value)->references.fetch_add(1, std::memory_order_relaxed);
+}
+std::string EscapeXML(const std::string& value)
+{
+	std::string escaped;
+	for (const char character : value) {
+		switch (character) {
+		case '&': escaped += "&amp;"; break;
+		case '<': escaped += "&lt;"; break;
+		case '>': escaped += "&gt;"; break;
+		case '\"': escaped += "&quot;"; break;
+		case '\'': escaped += "&apos;"; break;
+		default: escaped += character; break;
+		}
+	}
+	return escaped;
+}
+std::string Base64(const std::vector<unsigned char>& bytes)
+{
+	static constexpr char alphabet[] =
+		"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+	std::string result;
+	for (std::size_t index = 0; index < bytes.size(); index += 3) {
+		const std::size_t remaining = bytes.size() - index;
+		const std::uint32_t value = (static_cast<std::uint32_t>(bytes[index]) << 16) |
+			(remaining > 1 ? static_cast<std::uint32_t>(bytes[index + 1]) << 8 : 0) |
+			(remaining > 2 ? bytes[index + 2] : 0);
+		result += alphabet[(value >> 18) & 0x3f];
+		result += alphabet[(value >> 12) & 0x3f];
+		result += remaining > 1 ? alphabet[(value >> 6) & 0x3f] : '=';
+		result += remaining > 2 ? alphabet[value & 0x3f] : '=';
+	}
+	return result;
+}
+std::vector<unsigned char> DecodeBase64(const std::string& input)
+{
+	static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+	std::vector<unsigned char> output;
+	int value = 0;
+	int bits = -8;
+	for (const unsigned char character : input) {
+		if (character == '=') break;
+		const char* found = std::strchr(alphabet, character);
+		if (found == nullptr) continue;
+		value = (value << 6) | static_cast<int>(found - alphabet);
+		bits += 6;
+		if (bits >= 0) {
+			output.push_back(static_cast<unsigned char>((value >> bits) & 0xff));
+			bits -= 8;
+		}
+	}
+	return output;
+}
+std::string PropertyListDate(double absolute_time)
+{
+	constexpr std::int64_t apple_epoch_unix = 978307200;
+	const auto whole_seconds = static_cast<std::int64_t>(absolute_time);
+	const auto fraction = absolute_time - static_cast<double>(whole_seconds);
+	const auto unix_seconds = apple_epoch_unix + whole_seconds;
+	const auto milliseconds = static_cast<int>(fraction * 1000.0 + 0.5);
+	const std::time_t timestamp = static_cast<std::time_t>(unix_seconds);
+	const std::tm* utc = std::gmtime(&timestamp);
+	if (utc == nullptr) return {};
+	std::ostringstream result;
+	result << std::put_time(utc, "%Y-%m-%dT%H:%M:%S");
+	if (milliseconds != 0) result << '.' << std::setw(3) << std::setfill('0') << milliseconds;
+	result << 'Z';
+	return result.str();
+}
+void AppendXML(const Object* object, std::ostringstream& output)
+{
+	if (object == nullptr) { output << "<null/>"; return; }
+	switch (object->kind) {
+	case Kind::String: output << "<string>" << EscapeXML(object->string) << "</string>"; break;
+	case Kind::Number: output << "<integer>" << object->number << "</integer>"; break;
+	case Kind::Real: output << "<real>" << object->real_number << "</real>"; break;
+	case Kind::Data: output << "<data>" << Base64(object->data) << "</data>"; break;
+	case Kind::Date: output << "<date>" << PropertyListDate(object->date) << "</date>"; break;
+	case Kind::Boolean: output << (object->boolean ? "<true/>" : "<false/>"); break;
+	case Kind::Null: output << "<null/>"; break;
+	case Kind::Array:
+		output << "<array>";
+		for (const auto* entry : object->array) AppendXML(static_cast<const Object*>(entry), output);
+		output << "</array>";
+		break;
+	case Kind::Dictionary:
+		output << "<dict>";
+		for (const auto& entry : object->dictionary) {
+			const auto* key = static_cast<const Object*>(entry.first);
+			output << "<key>" << (key == nullptr ? "" : EscapeXML(key->string)) << "</key>";
+			AppendXML(static_cast<const Object*>(entry.second), output);
+		}
+		output << "</dict>";
+		break;
+	default: output << "<unsupported/>"; break;
+	}
+}
+std::string UnescapeXML(std::string value)
+{
+	const std::pair<const char*, const char*> entities[] = {
+		{"&lt;", "<"}, {"&gt;", ">"}, {"&quot;", "\""},
+		{"&apos;", "'"}, {"&amp;", "&"}};
+	for (const auto& entity : entities) {
+		std::size_t position = 0;
+		while ((position = value.find(entity.first, position)) != std::string::npos) {
+			value.replace(position, std::strlen(entity.first), entity.second);
+			position += std::strlen(entity.second);
+		}
+	}
+	return value;
+}
+Object* ParsePropertyValue(const std::string& xml, std::size_t& position)
+{
+	while (position < xml.size() && xml[position] != '<') ++position;
+	if (position >= xml.size()) return nullptr;
+	const auto close = xml.find('>', position);
+	if (close == std::string::npos) return nullptr;
+	const std::string tag = xml.substr(position + 1, close - position - 1);
+	position = close + 1;
+	if (tag == "true/") { auto* object = new Object{}; object->kind = Kind::Boolean; object->boolean = true; return object; }
+	if (tag == "false/") { auto* object = new Object{}; object->kind = Kind::Boolean; return object; }
+	if (tag == "null/") { auto* object = new Object{}; object->kind = Kind::Null; return object; }
+	if (tag == "array") {
+		auto* object = new Object{}; object->kind = Kind::Array;
+		while (position < xml.size() && xml.compare(position, 8, "</array>") != 0) {
+			auto* child = ParsePropertyValue(xml, position);
+			if (child == nullptr) { delete object; return nullptr; }
+			object->array.push_back(child);
+		}
+		if (xml.compare(position, 8, "</array>") != 0) { delete object; return nullptr; }
+		position += 8; return object;
+	}
+	if (tag == "dict") {
+		auto* object = new Object{}; object->kind = Kind::Dictionary;
+		while (position < xml.size() && xml.compare(position, 7, "</dict>") != 0) {
+			while (position < xml.size() && xml[position] != '<') ++position;
+			if (xml.compare(position, 5, "<key>") != 0) { delete object; return nullptr; }
+			position += 5;
+			const auto key_end = xml.find("</key>", position);
+			if (key_end == std::string::npos) { delete object; return nullptr; }
+			auto* key = new Object{}; key->kind = Kind::String;
+			key->string = UnescapeXML(xml.substr(position, key_end - position));
+			position = key_end + 6;
+			auto* child = ParsePropertyValue(xml, position);
+			if (child == nullptr) { delete key; delete object; return nullptr; }
+			object->dictionary.emplace_back(key, child);
+		}
+		if (xml.compare(position, 7, "</dict>") != 0) { delete object; return nullptr; }
+		position += 7; return object;
+	}
+	const std::string end_tag = "</" + tag + ">";
+	const auto end = xml.find(end_tag, position);
+	if (end == std::string::npos) return nullptr;
+	const auto text = UnescapeXML(xml.substr(position, end - position));
+	position = end + end_tag.size();
+	auto* object = new Object{};
+	try {
+		if (tag == "string") { object->kind = Kind::String; object->string = text; }
+		else if (tag == "integer") { object->kind = Kind::Number; object->number = std::stoll(text); }
+		else if (tag == "real") { object->kind = Kind::Real; object->real_number = std::stod(text); }
+		else if (tag == "data") { object->kind = Kind::Data; object->data = DecodeBase64(text); }
+		else if (tag == "date") {
+			std::tm calendar{};
+			std::istringstream input(text);
+			input >> std::get_time(&calendar, "%Y-%m-%dT%H:%M:%S");
+			if (input.fail()) { delete object; return nullptr; }
+			auto unix_seconds = static_cast<std::int64_t>(_mkgmtime(&calendar));
+			if (text.size() > 19 && text[19] != 'Z') {
+				const auto sign = text[19] == '-' ? -1 : text[19] == '+' ? 1 : 0;
+				if (sign != 0 && text.size() >= 25 && text[22] == ':') {
+					const auto hours = std::stoi(text.substr(20, 2));
+					const auto minutes = std::stoi(text.substr(23, 2));
+					unix_seconds -= sign * (hours * 3600 + minutes * 60);
+				}
+			}
+			object->kind = Kind::Date;
+			double fraction = 0.0;
+			const auto decimal = text.find('.', 19);
+			if (decimal != std::string::npos) {
+				const auto end = text.find('Z', decimal);
+				const auto digits = text.substr(decimal + 1, end == std::string::npos ? std::string::npos : end - decimal - 1);
+				if (!digits.empty()) fraction = std::stod("0." + digits);
+			}
+			object->date = static_cast<double>(unix_seconds - 978307200) + fraction;
+		}
+		else { delete object; return nullptr; }
+	} catch (...) { delete object; return nullptr; }
+	return object;
+}
+struct RunLoop {
+	std::mutex mutex;
+	std::condition_variable condition;
+	bool running = false;
+	bool stopped = false;
+	std::vector<std::pair<darling_windows_CFRunLoopBlock, void*>> blocks;
+};
+RunLoop current_run_loop;
+struct NotificationObserver {
+	const void* observer;
+	darling_windows_CFNotificationCallback callback;
+};
+std::mutex notification_mutex;
+std::unordered_map<std::string, std::vector<NotificationObserver>> notifications;
+}
+
+extern "C" void* darling_windows_CFRetain(const void* value)
+{
+	if (value != nullptr) As(value)->references.fetch_add(1, std::memory_order_relaxed);
+	return const_cast<void*>(value);
+}
+
+extern "C" void darling_windows_CFRelease(const void* value)
+{
+	if (value != nullptr && As(value)->references.fetch_sub(1, std::memory_order_acq_rel) == 1)
+		delete As(value);
+}
+
+extern "C" bool darling_windows_CFEqual(const void* left, const void* right)
+{
+	if (left == right) return true;
+	if (left == nullptr || right == nullptr) return false;
+	const auto* lhs = static_cast<const Object*>(left);
+	const auto* rhs = static_cast<const Object*>(right);
+	if (lhs->kind != rhs->kind) return false;
+	switch (lhs->kind) {
+	case Kind::String:
+	case Kind::URL: return lhs->string == rhs->string;
+	case Kind::Data: return lhs->data == rhs->data;
+	case Kind::Number: return lhs->number == rhs->number;
+	case Kind::Real: return lhs->real_number == rhs->real_number;
+	case Kind::Date: return lhs->date == rhs->date;
+	case Kind::Boolean: return lhs->boolean == rhs->boolean;
+	case Kind::Null: return true;
+	case Kind::Array:
+		if (lhs->array.size() != rhs->array.size()) return false;
+		for (std::size_t index = 0; index < lhs->array.size(); ++index)
+			if (!darling_windows_CFEqual(lhs->array[index], rhs->array[index])) return false;
+		return true;
+	case Kind::Set:
+		if (lhs->array.size() != rhs->array.size()) return false;
+		for (const auto* left_value : lhs->array) {
+			bool found = false;
+			for (const auto* right_value : rhs->array)
+				if (darling_windows_CFEqual(left_value, right_value)) { found = true; break; }
+			if (!found) return false;
+		}
+		return true;
+	case Kind::Dictionary:
+		if (lhs->dictionary.size() != rhs->dictionary.size()) return false;
+		for (const auto& left_entry : lhs->dictionary) {
+			bool found = false;
+			for (const auto& right_entry : rhs->dictionary)
+				if (darling_windows_CFEqual(left_entry.first, right_entry.first) &&
+					darling_windows_CFEqual(left_entry.second, right_entry.second)) {
+					found = true; break;
+				}
+			if (!found) return false;
+		}
+		return true;
+	default: return false;
+	}
+}
+
+extern "C" darling_windows_CFStringRef darling_windows_CFStringCreateWithCString(const char* value)
+{
+	if (value == nullptr) return nullptr;
+	auto* object = new Object{};
+	object->kind = Kind::String;
+	object->string = value;
+	return object;
+}
+
+extern "C" darling_windows_CFIndex darling_windows_CFStringGetLength(darling_windows_CFStringRef value)
+{
+	const auto* object = static_cast<const Object*>(value);
+	return object != nullptr && object->kind == Kind::String ?
+		static_cast<darling_windows_CFIndex>(object->string.size()) : 0;
+}
+
+extern "C" bool darling_windows_CFStringGetCString(darling_windows_CFStringRef value,
+	char* buffer, darling_windows_CFIndex capacity)
+{
+	const auto* object = static_cast<const Object*>(value);
+	if (object == nullptr || object->kind != Kind::String || buffer == nullptr || capacity <= 0 ||
+		static_cast<darling_windows_CFIndex>(object->string.size() + 1) > capacity) return false;
+	std::memcpy(buffer, object->string.c_str(), object->string.size() + 1);
+	return true;
+}
+
+extern "C" const char* darling_windows_CFStringGetCStringPtr(
+	darling_windows_CFStringRef value)
+{
+	const auto* object = static_cast<const Object*>(value);
+	return object != nullptr && object->kind == Kind::String ? object->string.c_str() : nullptr;
+}
+
+extern "C" bool darling_windows_CFStringHasPrefix(darling_windows_CFStringRef value,
+	darling_windows_CFStringRef prefix)
+{
+	const auto* object = static_cast<const Object*>(value);
+	const auto* candidate = static_cast<const Object*>(prefix);
+	return object != nullptr && candidate != nullptr && object->kind == Kind::String &&
+		candidate->kind == Kind::String && object->string.rfind(candidate->string, 0) == 0;
+}
+
+extern "C" bool darling_windows_CFStringHasSuffix(darling_windows_CFStringRef value,
+	darling_windows_CFStringRef suffix)
+{
+	const auto* object = static_cast<const Object*>(value);
+	const auto* candidate = static_cast<const Object*>(suffix);
+	return object != nullptr && candidate != nullptr && object->kind == Kind::String &&
+		candidate->kind == Kind::String && object->string.size() >= candidate->string.size() &&
+		object->string.compare(object->string.size() - candidate->string.size(),
+			candidate->string.size(), candidate->string) == 0;
+}
+
+extern "C" int darling_windows_CFStringCompare(darling_windows_CFStringRef left,
+	darling_windows_CFStringRef right)
+{
+	const auto* lhs = static_cast<const Object*>(left);
+	const auto* rhs = static_cast<const Object*>(right);
+	if (lhs == nullptr || rhs == nullptr || lhs->kind != Kind::String ||
+		rhs->kind != Kind::String) return 0;
+	const int comparison = lhs->string.compare(rhs->string);
+	return comparison < 0 ? -1 : comparison > 0 ? 1 : 0;
+}
+
+extern "C" darling_windows_CFRange darling_windows_CFStringFind(
+	darling_windows_CFStringRef value, darling_windows_CFStringRef needle, int flags)
+{
+	const auto* object = static_cast<const Object*>(value);
+	const auto* candidate = static_cast<const Object*>(needle);
+	if (object == nullptr || candidate == nullptr || object->kind != Kind::String || candidate->kind != Kind::String)
+		return { -1, 0 };
+	if ((flags & darling_windows_CFCompareCaseInsensitive) == 0) {
+		const auto position = object->string.find(candidate->string);
+		return position == std::string::npos ? darling_windows_CFRange{ -1, 0 } : darling_windows_CFRange{
+			static_cast<darling_windows_CFIndex>(position), static_cast<darling_windows_CFIndex>(candidate->string.size()) };
+	}
+	if (candidate->string.empty()) return { 0, 0 };
+	for (std::size_t position = 0; position + candidate->string.size() <= object->string.size(); ++position) {
+		bool match = true;
+		for (std::size_t offset = 0; offset < candidate->string.size(); ++offset) {
+			const auto lhs = static_cast<unsigned char>(object->string[position + offset]);
+			const auto rhs = static_cast<unsigned char>(candidate->string[offset]);
+			if (std::tolower(lhs) != std::tolower(rhs)) { match = false; break; }
+		}
+		if (match) return { static_cast<darling_windows_CFIndex>(position),
+			static_cast<darling_windows_CFIndex>(candidate->string.size()) };
+	}
+	return { -1, 0 };
+}
+
+extern "C" darling_windows_CFDataRef darling_windows_CFDataCreate(const void* bytes,
+	darling_windows_CFIndex length)
+{
+	if (length < 0 || (length != 0 && bytes == nullptr)) return nullptr;
+	auto* object = new Object{};
+	object->kind = Kind::Data;
+	if (length != 0) {
+		const auto* begin = static_cast<const unsigned char*>(bytes);
+		object->data.assign(begin, begin + length);
+	}
+	return object;
+}
+
+extern "C" const unsigned char* darling_windows_CFDataGetBytePtr(darling_windows_CFDataRef value)
+{
+	const auto* object = static_cast<const Object*>(value);
+	return object != nullptr && object->kind == Kind::Data && !object->data.empty() ?
+		object->data.data() : nullptr;
+}
+
+extern "C" darling_windows_CFIndex darling_windows_CFDataGetLength(darling_windows_CFDataRef value)
+{
+	const auto* object = static_cast<const Object*>(value);
+	return object != nullptr && object->kind == Kind::Data ?
+		static_cast<darling_windows_CFIndex>(object->data.size()) : 0;
+}
+
+extern "C" bool darling_windows_CFDataGetBytes(darling_windows_CFDataRef value,
+	darling_windows_CFIndex range_start, darling_windows_CFIndex range_count,
+	unsigned char* output)
+{
+	const auto* object = static_cast<const Object*>(value);
+	if (object == nullptr || object->kind != Kind::Data || range_start < 0 ||
+		range_count < 0 || (range_count != 0 && output == nullptr) ||
+		static_cast<std::size_t>(range_start) > object->data.size() ||
+		static_cast<std::size_t>(range_count) > object->data.size() -
+			static_cast<std::size_t>(range_start)) return false;
+	if (range_count != 0) std::copy_n(object->data.begin() + range_start, range_count, output);
+	return true;
+}
+
+extern "C" darling_windows_CFArrayRef darling_windows_CFArrayCreate(const void* const* values,
+	darling_windows_CFIndex count)
+{
+	if (count < 0 || (count != 0 && values == nullptr)) return nullptr;
+	auto* object = new Object{};
+	object->kind = Kind::Array;
+	if (count != 0) {
+		object->array.assign(values, values + count);
+		for (const auto* value : object->array) RetainOwned(value);
+	}
+	return object;
+}
+
+extern "C" darling_windows_CFIndex darling_windows_CFArrayGetCount(darling_windows_CFArrayRef value)
+{
+	const auto* object = static_cast<const Object*>(value);
+	return object != nullptr && object->kind == Kind::Array ?
+		static_cast<darling_windows_CFIndex>(object->array.size()) : 0;
+}
+
+extern "C" darling_windows_CFTypeRef darling_windows_CFArrayGetValueAtIndex(
+	darling_windows_CFArrayRef value, darling_windows_CFIndex index)
+{
+	const auto* object = static_cast<const Object*>(value);
+	if (object == nullptr || object->kind != Kind::Array || index < 0 ||
+		static_cast<std::size_t>(index) >= object->array.size()) return nullptr;
+	return object->array[static_cast<std::size_t>(index)];
+}
+
+extern "C" darling_windows_CFIndex darling_windows_CFArrayGetFirstIndexOfValue(
+	darling_windows_CFArrayRef value, const void* candidate)
+{
+	const auto* object = static_cast<const Object*>(value);
+	if (object == nullptr || object->kind != Kind::Array) return -1;
+	for (std::size_t index = 0; index < object->array.size(); ++index)
+		if (darling_windows_CFEqual(object->array[index], candidate))
+			return static_cast<darling_windows_CFIndex>(index);
+	return -1;
+}
+
+extern "C" darling_windows_CFIndex darling_windows_CFArrayGetCountOfValue(
+	darling_windows_CFArrayRef value, const void* candidate)
+{
+	const auto* object = static_cast<const Object*>(value);
+	if (object == nullptr || object->kind != Kind::Array) return 0;
+	darling_windows_CFIndex count = 0;
+	for (const auto* entry : object->array)
+		if (darling_windows_CFEqual(entry, candidate)) ++count;
+	return count;
+}
+
+extern "C" darling_windows_CFIndex darling_windows_CFArrayGetLastIndexOfValue(
+	darling_windows_CFArrayRef value, const void* candidate)
+{
+	const auto* object = static_cast<const Object*>(value);
+	if (object == nullptr || object->kind != Kind::Array) return -1;
+	for (std::size_t index = object->array.size(); index > 0; --index)
+		if (darling_windows_CFEqual(object->array[index - 1], candidate))
+			return static_cast<darling_windows_CFIndex>(index - 1);
+	return -1;
+}
+
+extern "C" void darling_windows_CFArrayGetValues(darling_windows_CFArrayRef value,
+	darling_windows_CFIndex range_start, darling_windows_CFIndex range_count, const void** output)
+{
+	const auto* object = static_cast<const Object*>(value);
+	if (object == nullptr || object->kind != Kind::Array || output == nullptr ||
+		range_start < 0 || range_count < 0 ||
+		static_cast<std::size_t>(range_start) > object->array.size() ||
+		static_cast<std::size_t>(range_count) > object->array.size() -
+			static_cast<std::size_t>(range_start)) return;
+	std::copy_n(object->array.begin() + range_start, range_count, output);
+}
+
+extern "C" const void* darling_windows_CFNumberCreateInteger(std::int64_t value)
+{
+	auto* object = new Object{};
+	object->kind = Kind::Number;
+	object->number = value;
+	return object;
+}
+
+extern "C" bool darling_windows_CFNumberGetInteger(const void* value, std::int64_t* result)
+{
+	const auto* object = static_cast<const Object*>(value);
+	if (object == nullptr || result == nullptr ||
+		(object->kind != Kind::Number && object->kind != Kind::Real)) return false;
+	*result = object->kind == Kind::Number ? object->number : static_cast<std::int64_t>(object->real_number);
+	return true;
+}
+
+extern "C" const void* darling_windows_CFNumberCreateDouble(double value)
+{
+	auto* object = new Object{};
+	object->kind = Kind::Real;
+	object->real_number = value;
+	return object;
+}
+
+extern "C" bool darling_windows_CFNumberGetDouble(const void* value, double* result)
+{
+	const auto* object = static_cast<const Object*>(value);
+	if (object == nullptr || result == nullptr ||
+		(object->kind != Kind::Real && object->kind != Kind::Number)) return false;
+	*result = object->kind == Kind::Real ? object->real_number : static_cast<double>(object->number);
+	return true;
+}
+
+extern "C" darling_windows_CFDictionaryRef darling_windows_CFDictionaryCreate(
+	const void* const* keys, const void* const* values, darling_windows_CFIndex count)
+{
+	if (count < 0 || (count != 0 && (keys == nullptr || values == nullptr))) return nullptr;
+	auto* object = new Object{};
+	object->kind = Kind::Dictionary;
+	for (darling_windows_CFIndex index = 0; index < count; ++index) {
+		object->dictionary.emplace_back(keys[index], values[index]);
+		RetainOwned(keys[index]);
+		RetainOwned(values[index]);
+	}
+	return object;
+}
+
+extern "C" darling_windows_CFIndex darling_windows_CFDictionaryGetCount(
+	darling_windows_CFDictionaryRef value)
+{
+	const auto* object = static_cast<const Object*>(value);
+	return object != nullptr && object->kind == Kind::Dictionary ?
+		static_cast<darling_windows_CFIndex>(object->dictionary.size()) : 0;
+}
+
+extern "C" darling_windows_CFTypeRef darling_windows_CFDictionaryGetValue(
+	darling_windows_CFDictionaryRef value, const void* key)
+{
+	const auto* object = static_cast<const Object*>(value);
+	if (object == nullptr || object->kind != Kind::Dictionary) return nullptr;
+	for (const auto& entry : object->dictionary)
+		if (darling_windows_CFEqual(entry.first, key)) return entry.second;
+	return nullptr;
+}
+
+extern "C" bool darling_windows_CFDictionaryContainsKey(
+	darling_windows_CFDictionaryRef value, const void* key)
+{
+	const auto* object = static_cast<const Object*>(value);
+	if (object == nullptr || object->kind != Kind::Dictionary) return false;
+	for (const auto& entry : object->dictionary)
+		if (darling_windows_CFEqual(entry.first, key)) return true;
+	return false;
+}
+
+extern "C" void darling_windows_CFDictionaryGetKeysAndValues(
+	darling_windows_CFDictionaryRef value, const void** keys, const void** values)
+{
+	const auto* object = static_cast<const Object*>(value);
+	if (object == nullptr || object->kind != Kind::Dictionary) return;
+	for (std::size_t index = 0; index < object->dictionary.size(); ++index) {
+		if (keys != nullptr) keys[index] = object->dictionary[index].first;
+		if (values != nullptr) values[index] = object->dictionary[index].second;
+	}
+}
+
+extern "C" darling_windows_CFSetRef darling_windows_CFSetCreate(
+	const void* const* values, darling_windows_CFIndex count)
+{
+	if (count < 0 || (count != 0 && values == nullptr)) return nullptr;
+	auto* object = new Object{};
+	object->kind = Kind::Set;
+	for (darling_windows_CFIndex index = 0; index < count; ++index) {
+		const auto duplicate = std::find_if(object->array.begin(), object->array.end(),
+			[&](const void* existing) { return darling_windows_CFEqual(existing, values[index]); });
+		if (duplicate == object->array.end()) {
+			object->array.push_back(values[index]);
+			RetainOwned(values[index]);
+		}
+	}
+	return object;
+}
+
+extern "C" darling_windows_CFIndex darling_windows_CFSetGetCount(darling_windows_CFSetRef value)
+{
+	const auto* object = static_cast<const Object*>(value);
+	return object != nullptr && object->kind == Kind::Set ?
+		static_cast<darling_windows_CFIndex>(object->array.size()) : 0;
+}
+
+extern "C" bool darling_windows_CFSetContainsValue(darling_windows_CFSetRef value,
+	const void* candidate)
+{
+	const auto* object = static_cast<const Object*>(value);
+	if (object == nullptr || object->kind != Kind::Set) return false;
+	for (const auto* entry : object->array)
+		if (darling_windows_CFEqual(entry, candidate)) return true;
+	return false;
+}
+
+extern "C" darling_windows_CFTypeRef darling_windows_CFSetGetValue(
+	darling_windows_CFSetRef value, const void* candidate)
+{
+	const auto* object = static_cast<const Object*>(value);
+	if (object == nullptr || object->kind != Kind::Set) return nullptr;
+	for (const auto* entry : object->array)
+		if (darling_windows_CFEqual(entry, candidate)) return entry;
+	return nullptr;
+}
+
+extern "C" void darling_windows_CFSetGetValues(darling_windows_CFSetRef value,
+	const void** output)
+{
+	const auto* object = static_cast<const Object*>(value);
+	if (object == nullptr || object->kind != Kind::Set || output == nullptr) return;
+	std::copy(object->array.begin(), object->array.end(), output);
+}
+
+extern "C" darling_windows_CFDateRef darling_windows_CFDateCreate(double absolute_time)
+{
+	auto* object = new Object{};
+	object->kind = Kind::Date;
+	object->date = absolute_time;
+	return object;
+}
+
+extern "C" double darling_windows_CFDateGetAbsoluteTime(darling_windows_CFDateRef value)
+{
+	const auto* object = static_cast<const Object*>(value);
+	return object != nullptr && object->kind == Kind::Date ? object->date : 0;
+}
+
+extern "C" darling_windows_CFURLRef darling_windows_CFURLCreateWithFileSystemPath(const char* path)
+{
+	if (path == nullptr || path[0] == '\0') return nullptr;
+	auto* object = new Object{};
+	object->kind = Kind::URL;
+	object->string = path;
+	return object;
+}
+
+extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyFileSystemPath(
+	darling_windows_CFURLRef value)
+{
+	const auto* object = static_cast<const Object*>(value);
+	if (object == nullptr || object->kind != Kind::URL) return nullptr;
+	return darling_windows_CFStringCreateWithCString(object->string.c_str());
+}
+
+extern "C" darling_windows_CFBooleanRef darling_windows_CFBooleanGetValue(bool value)
+{
+	static Object false_value{};
+	static Object true_value{};
+	static const bool initialized = ((false_value.kind = Kind::Boolean),
+		(true_value.kind = Kind::Boolean), (true_value.boolean = true),
+		(false_value.immortal = true), (true_value.immortal = true), true);
+	(void)initialized;
+	return value ? &true_value : &false_value;
+}
+
+extern "C" bool darling_windows_CFBooleanIsTrue(darling_windows_CFBooleanRef value)
+{
+	const auto* object = static_cast<const Object*>(value);
+	return object != nullptr && object->kind == Kind::Boolean && object->boolean;
+}
+
+extern "C" darling_windows_CFTypeRef darling_windows_CFNullGetValue()
+{
+	static Object null_value{};
+	static const bool initialized = (null_value.kind = Kind::Null, null_value.immortal = true, true);
+	(void)initialized;
+	return &null_value;
+}
+
+extern "C" darling_windows_CFStringRef darling_windows_CFPropertyListCreateXML(
+	darling_windows_CFTypeRef value)
+{
+	std::ostringstream payload;
+	payload << "<?xml version=\"1.0\" encoding=\"UTF-8\"?><plist version=\"1.0\">";
+	AppendXML(static_cast<const Object*>(value), payload);
+	payload << "</plist>";
+	return darling_windows_CFStringCreateWithCString(payload.str().c_str());
+}
+
+extern "C" darling_windows_CFTypeRef darling_windows_CFPropertyListCreateFromXML(const char* xml)
+{
+	if (xml == nullptr) return nullptr;
+	std::string document(xml);
+	const auto plist = document.find("<plist");
+	std::size_t position = plist == std::string::npos ? 0 : document.find('>', plist);
+	if (position == std::string::npos) return nullptr;
+	++position;
+	return ParsePropertyValue(document, position);
+}
+
+extern "C" darling_windows_CFRunLoopRef darling_windows_CFRunLoopGetCurrent()
+{
+	return &current_run_loop;
+}
+
+extern "C" int darling_windows_CFRunLoopRunInMode(double seconds, bool return_after_source)
+{
+	if (seconds < 0) return -1;
+	auto& loop = current_run_loop;
+	std::unique_lock lock(loop.mutex);
+	loop.running = true;
+	loop.stopped = false;
+	const auto duration = std::chrono::duration<double>(seconds);
+	loop.condition.wait_for(lock, duration, [&loop] { return loop.stopped || !loop.blocks.empty(); });
+	if (!loop.stopped && !loop.blocks.empty()) {
+		auto pending = std::move(loop.blocks);
+		lock.unlock();
+		for (const auto& entry : pending) if (entry.first != nullptr) entry.first(entry.second);
+		lock.lock();
+	}
+	loop.running = false;
+	return loop.stopped || return_after_source ? 0 : 1;
+}
+
+extern "C" void darling_windows_CFRunLoopStop(darling_windows_CFRunLoopRef value)
+{
+	if (value == nullptr) return;
+	auto* loop = static_cast<RunLoop*>(value);
+	{
+		std::lock_guard lock(loop->mutex);
+		loop->stopped = true;
+	}
+	loop->condition.notify_all();
+}
+
+extern "C" bool darling_windows_CFRunLoopIsRunning(darling_windows_CFRunLoopRef value)
+{
+	if (value == nullptr) return false;
+	auto* loop = static_cast<RunLoop*>(value);
+	std::lock_guard lock(loop->mutex);
+	return loop->running;
+}
+
+extern "C" bool darling_windows_CFRunLoopPerformBlock(darling_windows_CFRunLoopRef value,
+	darling_windows_CFRunLoopBlock block, void* context)
+{
+	if (value == nullptr || block == nullptr) return false;
+	auto* loop = static_cast<RunLoop*>(value);
+	{
+		std::lock_guard lock(loop->mutex);
+		loop->blocks.emplace_back(block, context);
+	}
+	loop->condition.notify_all();
+	return true;
+}
+
+extern "C" void darling_windows_CFRunLoopWakeUp(darling_windows_CFRunLoopRef value)
+{
+	if (value != nullptr) static_cast<RunLoop*>(value)->condition.notify_all();
+}
+
+extern "C" bool darling_windows_CFRunLoopPerformOneShotTimer(
+	darling_windows_CFRunLoopRef value, double seconds,
+	darling_windows_CFRunLoopBlock block, void* context)
+{
+	if (value == nullptr || block == nullptr || seconds < 0) return false;
+	auto* loop = static_cast<RunLoop*>(value);
+	std::thread([loop, seconds, block, context] {
+		std::this_thread::sleep_for(std::chrono::duration<double>(seconds));
+		(void)darling_windows_CFRunLoopPerformBlock(loop, block, context);
+	}).detach();
+	return true;
+}
+
+extern "C" void* darling_windows_CFNotificationCenterGetLocal()
+{
+	static int local_center;
+	return &local_center;
+}
+
+extern "C" bool darling_windows_CFNotificationCenterAddObserver(void* center,
+	const void* observer, darling_windows_CFNotificationCallback callback, const char* name)
+{
+	if (center == nullptr || callback == nullptr || name == nullptr) return false;
+	std::lock_guard lock(notification_mutex);
+	auto& entries = notifications[name];
+	for (const auto& entry : entries)
+		if (entry.observer == observer && entry.callback == callback) return true;
+	entries.push_back({observer, callback});
+	return true;
+}
+
+extern "C" bool darling_windows_CFNotificationCenterRemoveObserver(void* center,
+	const void* observer, darling_windows_CFNotificationCallback callback, const char* name)
+{
+	if (center == nullptr || name == nullptr) return false;
+	std::lock_guard lock(notification_mutex);
+	auto found = notifications.find(name);
+	if (found == notifications.end()) return false;
+	auto& entries = found->second;
+	entries.erase(std::remove_if(entries.begin(), entries.end(),
+		[observer, callback](const NotificationObserver& entry) {
+			return entry.observer == observer && (callback == nullptr || entry.callback == callback);
+		}), entries.end());
+	if (entries.empty()) notifications.erase(found);
+	return true;
+}
+
+extern "C" void darling_windows_CFNotificationCenterPostNotification(void* center,
+	const char* name, const void* object)
+{
+	if (center == nullptr || name == nullptr) return;
+	std::vector<NotificationObserver> snapshot;
+	{
+		std::lock_guard lock(notification_mutex);
+		const auto found = notifications.find(name);
+		if (found != notifications.end()) snapshot = found->second;
+	}
+	for (const auto& entry : snapshot) entry.callback(entry.observer, name, object);
+}

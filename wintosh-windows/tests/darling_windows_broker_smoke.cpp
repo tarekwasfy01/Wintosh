@@ -38,7 +38,7 @@ int wmain()
 		const auto pipe_name = L"darling-broker-stage1-" +
 			std::to_wstring(GetCurrentProcessId());
 		const auto broker = std::filesystem::path(CurrentExecutableDirectory()) /
-			L"darling_windows_broker.exe";
+			L"wintosh_broker.exe";
 		const std::wstring command_line = L"\"" + broker.wstring() + L"\" \"" +
 			root.wstring() + L"\" \"" + pipe_name + L"\"";
 		std::cout << "BROKER_PIPE=darling-broker-stage1-" << GetCurrentProcessId() << "\n";

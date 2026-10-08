@@ -2017,7 +2017,33 @@ extern "C" int darling_windows_mkstemp(char* path_template)
 		const auto prefix = filename.substr(0, (std::min<std::size_t>)(3, filename.size()));
 		wchar_t temporary_name[MAX_PATH]{};
 		if (GetTempFileNameW(directory.c_str(), prefix.c_str(), 0, temporary_name) == 0) {
-			darling::windows_host::DarwinErrno::SetFromWin32(GetLastError());
+			const DWORD error = GetLastError();
+			// App-container temp providers can reject GetTempFileNameW even
+			// though CREATE_NEW is permitted.  Fall back to an atomic unique
+			// CREATE_NEW candidate in the requested directory.
+			for (unsigned int attempt = 0; attempt < 128; ++attempt) {
+				const unsigned long long nonce =
+					static_cast<unsigned long long>(GetTickCount64()) +
+					static_cast<unsigned long long>(GetCurrentProcessId()) + attempt;
+				std::wstring candidate_filename = filename;
+				wchar_t nonce_text[7]{};
+				_swprintf_p(nonce_text, std::size(nonce_text), L"%06llX", nonce & 0xFFFFFFULL);
+				candidate_filename.replace(candidate_filename.size() - 6, 6, nonce_text);
+				const auto candidate = directory / candidate_filename;
+				const HANDLE handle = CreateFileW(candidate.c_str(), GENERIC_READ | GENERIC_WRITE,
+					FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, CREATE_NEW,
+					FILE_ATTRIBUTE_NORMAL, nullptr);
+				if (handle != INVALID_HANDLE_VALUE) {
+					CloseHandle(handle);
+					const auto candidate_utf8 = Utf8String(candidate.wstring());
+					if (!candidate_utf8.empty() && candidate_utf8.size() <= original.size()) {
+						std::memcpy(path_template, candidate_utf8.c_str(), candidate_utf8.size() + 1);
+						return global_syscalls.Open(candidate, 2);
+					}
+					DeleteFileW(candidate.c_str());
+				}
+			}
+			darling::windows_host::DarwinErrno::SetFromWin32(error);
 			return -1;
 		}
 		const std::filesystem::path generated(temporary_name);
@@ -2033,6 +2059,25 @@ extern "C" int darling_windows_mkstemp(char* path_template)
 		const auto final_path = directory / replacement;
 		if (!MoveFileExW(generated.c_str(), final_path.c_str(), MOVEFILE_COPY_ALLOWED)) {
 			const DWORD error = GetLastError();
+			// Some sandboxed Windows temp providers allow creation but deny a
+			// rename in the same directory.  The generated name is already
+			// unique and therefore remains a valid mkstemp result.
+			if (error == ERROR_ACCESS_DENIED || error == ERROR_PRIVILEGE_NOT_HELD) {
+				const HANDLE replacement_handle = CreateFileW(final_path.c_str(),
+					GENERIC_READ | GENERIC_WRITE,
+					FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
+					CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
+				if (replacement_handle != INVALID_HANDLE_VALUE) {
+					CloseHandle(replacement_handle);
+					DeleteFileW(generated.c_str());
+					const auto final_utf8 = Utf8String(final_path.wstring());
+					std::memcpy(path_template, final_utf8.c_str(), final_utf8.size() + 1);
+					return global_syscalls.Open(final_path, 2);
+				}
+				DeleteFileW(generated.c_str());
+				darling::windows_host::DarwinErrno::SetFromWin32(GetLastError());
+				return -1;
+			}
 			DeleteFileW(generated.c_str());
 			darling::windows_host::DarwinErrno::SetFromWin32(error);
 			return -1;
@@ -2080,6 +2125,20 @@ extern "C" int darling_windows_mkstemps(char* path_template, int suffix_length)
 		const auto final_wide = Utf8Path(final_path.c_str());
 		if (generated_wide.empty() || final_wide.empty() ||
 			!MoveFileExW(generated_wide.c_str(), final_wide.c_str(), MOVEFILE_COPY_ALLOWED)) {
+			const DWORD error = GetLastError();
+			if ((error == ERROR_ACCESS_DENIED || error == ERROR_PRIVILEGE_NOT_HELD) &&
+				!generated_wide.empty() && !final_wide.empty()) {
+				const HANDLE replacement_handle = CreateFileW(final_wide.c_str(),
+					GENERIC_READ | GENERIC_WRITE,
+					FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
+					CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
+				if (replacement_handle != INVALID_HANDLE_VALUE) {
+					CloseHandle(replacement_handle);
+					DeleteFileW(generated_wide.c_str());
+					std::memcpy(path_template, final_path.c_str(), final_path.size() + 1);
+					return global_syscalls.Open(final_wide, 2);
+				}
+			}
 			return -1;
 		}
 		std::memcpy(path_template, final_path.c_str(), final_path.size() + 1);

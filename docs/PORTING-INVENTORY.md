@@ -413,7 +413,7 @@ The file ABI now also resolves `_open` and `_unlink`, including UTF-8 path
 conversion and write/create flags. The host smoke validates an actual
 open/write/close/unlink cycle through the exported C functions.
 
-`darling_windows_runner.exe` now exposes the bootstrap as a standalone command
+`wintosh.exe` now exposes the bootstrap as the standalone product command
 line runner. It accepts a Mach-O path plus arguments, converts them to UTF-8,
 collects the Windows environment as UTF-8 `envp`, and returns the native entry result as its Windows exit code. This runner is
 ready for no-dependency x86-64 Mach-O images; full libSystem resolution is
@@ -2698,7 +2698,7 @@ both architectures. Real third-party Mach-O binaries, Darwin startup ABI,
 `argc`/`argv`/`envp` ABI parity, `atexit` and stdio flushing, dyld closure/
 shared-cache behavior, and 32-bit executable entry remain open.
 
-The production-style `darling_windows_runner.exe` path now has an end-to-end
+The production-style `wintosh.exe` path now has an end-to-end
 fixture on both execution widths: it starts a temporary x86-64 Mach-O under
 x64 and a temporary 32-bit x86 Mach-O under Win32 as separate Windows child
 processes, passes the image path plus two arguments, and each Mach-O entry

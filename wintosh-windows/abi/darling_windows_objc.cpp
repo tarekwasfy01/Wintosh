@@ -1591,6 +1591,27 @@ extern "C" id objc_msgSend(id receiver, SEL selector, ...)
 		return nullptr;
 	if (std::strcmp(types, "@@:") == 0)
 		return Dispatch(receiver, receiver->isa, selector);
+	if (std::strcmp(types, "v@:") == 0) {
+		darling_objc_msgSend_void0(receiver, selector);
+		return nullptr;
+	}
+	if (std::strcmp(types, "i@:") == 0 || std::strcmp(types, "q@:") == 0 ||
+		std::strcmp(types, "B@:") == 0 || std::strcmp(types, "^v@:") == 0) {
+		const IMP implementation = FindMethod(receiver, selector);
+		if (!implementation)
+			return nullptr;
+		if (std::strcmp(types, "i@:") == 0)
+			return reinterpret_cast<id>(static_cast<std::intptr_t>(
+				reinterpret_cast<int (*)(id, SEL)>(implementation)(receiver, selector)));
+		if (std::strcmp(types, "q@:") == 0)
+			return reinterpret_cast<id>(static_cast<std::uintptr_t>(
+				reinterpret_cast<std::int64_t (*)(id, SEL)>(implementation)(receiver, selector)));
+		if (std::strcmp(types, "B@:") == 0)
+			return reinterpret_cast<id>(static_cast<std::uintptr_t>(
+				reinterpret_cast<bool (*)(id, SEL)>(implementation)(receiver, selector)));
+		return reinterpret_cast<id>(reinterpret_cast<void* (*)(id, SEL)>(implementation)(
+			receiver, selector));
+	}
 	va_list arguments;
 	va_start(arguments, selector);
 	id result = nullptr;
@@ -1679,6 +1700,29 @@ extern "C" id objc_msgSendSuper(id receiver, Class superclass, SEL selector, ...
 		return nullptr;
 	if (std::strcmp(types, "@@:") == 0)
 		return Dispatch(receiver, superclass, selector);
+	if (std::strcmp(types, "v@:") == 0) {
+		const IMP implementation = class_getMethodImplementation(superclass, selector);
+		if (implementation)
+			reinterpret_cast<void (*)(id, SEL)>(implementation)(receiver, selector);
+		return nullptr;
+	}
+	if (std::strcmp(types, "i@:") == 0 || std::strcmp(types, "q@:") == 0 ||
+		std::strcmp(types, "B@:") == 0 || std::strcmp(types, "^v@:") == 0) {
+		const IMP implementation = class_getMethodImplementation(superclass, selector);
+		if (!implementation)
+			return nullptr;
+		if (std::strcmp(types, "i@:") == 0)
+			return reinterpret_cast<id>(static_cast<std::intptr_t>(
+				reinterpret_cast<int (*)(id, SEL)>(implementation)(receiver, selector)));
+		if (std::strcmp(types, "q@:") == 0)
+			return reinterpret_cast<id>(static_cast<std::uintptr_t>(
+				reinterpret_cast<std::int64_t (*)(id, SEL)>(implementation)(receiver, selector)));
+		if (std::strcmp(types, "B@:") == 0)
+			return reinterpret_cast<id>(static_cast<std::uintptr_t>(
+				reinterpret_cast<bool (*)(id, SEL)>(implementation)(receiver, selector)));
+		return reinterpret_cast<id>(reinterpret_cast<void* (*)(id, SEL)>(implementation)(
+			receiver, selector));
+	}
 	va_list arguments;
 	va_start(arguments, selector);
 	id result = nullptr;

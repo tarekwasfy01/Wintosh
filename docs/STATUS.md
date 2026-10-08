@@ -16,6 +16,91 @@ Status date: 2026-10-08
 | Darling component licenses | incomplete review | 150 external components; 147 remain review-required |
 | Corresponding source completeness | exception remains | Heimdal filename cannot be materialized on NTFS |
 
+## Current local integration evidence
+
+The complete configured Release smoke suite now builds target-by-target and
+passes: **38/38 CTest tests**. Three consecutive parallel CTest runs also
+passed after correcting the ObjC smoke's autorelease ownership. The Visual
+Studio aggregate build target can
+still stall during orchestration, so the reproducible fallback is to build
+the generated targets individually; this does not represent a test failure.
+
+The CoreFoundation run-loop and signal-registry smoke tests are marked
+`RUN_SERIAL` in CTest because they intentionally exercise process-global
+boundary state. This prevents concurrent smoke processes from turning a valid
+runtime check into cross-test interference.
+
+The current source batch expands the CoreFoundation adapter with strings,
+data, arrays, integer/real numbers, dictionaries, sets, dates, filesystem URLs, booleans,
+null values, a process-local RunLoop/notification subset, and a minimal XML
+property-list serializer with escaping, nested arrays, and Base64 data nodes. `corefoundation_smoke` covers this
+subset. It deliberately does not claim plist parsing or binary plists, full
+collection ownership/`CFEqual` semantics, true Apple timer/source behavior,
+or full Foundation/CoreFoundation compatibility.
+The adapter now also parses XML property-list strings, integers, reals,
+booleans, nested arrays, and dictionaries with string keys and reserializes the
+result. Base64 `<data>` and UTC/offset `<date>` decoding with fractional
+seconds are also supported. Binary plists and complete ownership semantics
+remain open.
+
+The same batch now exposes bulk extraction for array ranges, dictionary
+key/value pairs, and set members, plus validated `CFData` byte-range copies.
+These are pointer-level operations and do not add CoreFoundation callback,
+equality, or ownership semantics.
+Container ownership has since been strengthened: arrays, dictionaries, and
+sets retain members on creation and release them when the container is
+destroyed. Callback allocators, hash callbacks, mutation, and complete Apple
+collection semantics remain open.
+
+The string adapter also exposes a read-only direct C-string pointer whose
+validity is limited to the lifetime of its CFString object.
+It also provides `CFRange`-based literal and ASCII case-insensitive substring
+search; this does not claim Unicode collation or the full CFString option set.
+
+The Foundation type-encoding adapter now covers Darwin LP64 `long`, block
+encoding `@?`, `void`, unknown/function pointers, decimal bitfields, and the
+Darwin `long double` encoding `D` with a fixed 16-byte representation. Its
+remaining ABI gap includes exact packed bitfield
+layout, compiler-specific aggregate ABI corner cases, and the full Foundation
+object model.
+The same adapter now also provides value-level `NSRange` construction,
+maximum, containment, intersection, and union primitives, covered by the
+Foundation smoke gate.
+Quoted aggregate field names such as `"x"` and `"y"` are skipped while
+parsing, matching common Objective-C runtime encodings.
+The machine-readable matrix records the same coverage for LP64, blocks,
+complex numbers, quoted aggregates, and nested pointers.
+
+CoreGraphics now has a separate partial geometry/color adapter with the
+`coregraphics_smoke` gate. It does not provide drawing contexts, paths, image
+decoding, text rendering, events, or AppKit.
+The adapter now includes point/size/rectangle constructors and
+standardization, affine transform inversion/application, rectangle operations,
+transform equality and integral rectangles, and RGBA/grayscale/white/clear colors.
+
+The Release package was regenerated locally as
+`Wintosh-0.1.1-AMD64.zip` and inspected. SHA-256 is
+`E8531F0F9B36252DA5E98165E1BB44777DA478DA11AB2CDE101A290545B0AB99`.
+It contains
+`bin/wintosh.exe`, `bin/wintosh_broker.exe`, the Windows README, and the
+bundled license/provenance files.
+
+The current unpushed worktree additionally verifies the product CLI and the
+native loader path on x64 Windows:
+
+| Gate | Result | Evidence |
+|---|---|---|
+| `wintosh.exe` build | pass | CMake Release target `wintosh` |
+| Mach-O entry execution | pass | `wintosh_runner_smoke=0` |
+| Host `_getenv` binding and `envp` | pass | `wintosh_runner_env_smoke=0` |
+| Dylib graph, RPATH, bind/rebase/chained paths | pass | `wintosh_dyld_smoke=0` |
+| Objective-C registry/runtime | pass | `wintosh_objc_smoke=0`, `wintosh_objc_runtime_smoke=0` |
+| Memory/process/thread/sync/socket/time families | pass | selected smoke targets all returned zero |
+| Filesystem family | pass with environmental skip | hardlink check reports `ACCESS_DENIED` when Windows rights are unavailable |
+
+These are native adapter and synthetic Mach-O gates. They do not prove that an
+unmodified third-party macOS executable or the full Darling server runs.
+
 ## What this means
 
 Wintosh is a documented native Windows compatibility experiment with real

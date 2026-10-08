@@ -308,7 +308,10 @@ int wmain()
 		const bool hardlink_ok = link_result == 0 && original_result == 0 &&
 			hardlink_result == 0 && hardlink_stat.st_ino == original_stat.st_ino &&
 			hardlink_stat.st_size == 4 && darling_windows_host_symbol("_link") != 0;
-		if (!hardlink_ok || darling_windows_unlink(hardlink.string().c_str()) != 0) {
+		if (!hardlink_ok && (link_error == ERROR_ACCESS_DENIED ||
+			link_error == ERROR_PRIVILEGE_NOT_HELD)) {
+			std::cerr << "DARWIN_HARDLINK=SKIP ACCESS_DENIED\n";
+		} else if (!hardlink_ok || darling_windows_unlink(hardlink.string().c_str()) != 0) {
 			std::cerr << "HARDLINK_RESULTS=" << link_result << "," << original_result << ","
 				<< hardlink_result << " INO=" << original_stat.st_ino << "/"
 				<< hardlink_stat.st_ino << " SIZE=" << hardlink_stat.st_size <<

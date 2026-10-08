@@ -1,0 +1,75 @@
+/* CoreGraphics geometry smoke; GPL-3.0-only. */
+#include "darling_windows_coregraphics.h"
+
+#include <cmath>
+#include <iostream>
+
+int main()
+{
+	const auto identity = darling_windows_CGAffineTransformIdentity();
+	const auto translated = darling_windows_CGAffineTransformTranslate(identity, 3, 4);
+	const auto scaled = darling_windows_CGAffineTransformScale(translated, 2, 3);
+	const auto rotated = darling_windows_CGAffineTransformRotate(identity, 1.5707963267948966);
+	const auto combined = darling_windows_CGAffineTransformConcat(scaled, identity);
+	const darling_windows_CGRect rect{{0, 0}, {10, 20}};
+	const auto transformed_rect = darling_windows_CGRectApplyAffineTransform(rect, translated);
+	bool invertible = false;
+	const auto inverse = darling_windows_CGAffineTransformInvert(scaled, &invertible);
+	const auto point = darling_windows_CGPointApplyAffineTransform({1, 1}, scaled);
+	const auto restored = darling_windows_CGPointApplyAffineTransform(point, inverse);
+	const auto intersection = darling_windows_CGRectIntersection(rect, {{5, 5}, {10, 10}});
+	const auto united = darling_windows_CGRectUnion(rect, {{20, 20}, {5, 5}});
+	const auto inset = darling_windows_CGRectInset(rect, 1, 2);
+	const auto offset = darling_windows_CGRectOffset(rect, 2, 3);
+	darling_windows_CGRect slice{}, remainder{};
+	darling_windows_CGRectDivide(rect, 3, darling_windows_CGMinXEdge, &slice, &remainder);
+	const auto color = darling_windows_CGColorMakeRGBA(0.1, 0.2, 0.3, 0.75);
+	const auto same_color = darling_windows_CGColorMakeRGBA(0.1, 0.2, 0.3, 0.75);
+	const auto negative_rect = darling_windows_CGRectStandardize(
+		darling_windows_CGRectMake(10, 20, -5, -6));
+	const auto integral_rect = darling_windows_CGRectIntegral({{1.2, 2.8}, {3.1, 4.1}});
+	const auto gray = darling_windows_CGColorMakeGray(0.5, 0.25);
+	const auto white = darling_windows_CGColorMakeWhite(1);
+	const auto clear = darling_windows_CGColorMakeClear();
+	const auto vector = darling_windows_CGVectorMake(3, 4);
+	bool vector_valid = false;
+	const auto normalized = darling_windows_CGVectorNormalize(vector, &vector_valid);
+	const auto point_sum = darling_windows_CGPointAdd({1, 2}, vector);
+	const auto point_delta = darling_windows_CGPointSubtract(point_sum, {1, 2});
+	double components[4]{};
+	const bool ok = translated.tx == 3 && translated.ty == 4 &&
+		scaled.a == 2 && scaled.d == 3 &&
+		std::abs(rotated.a) < 1e-12 && std::abs(rotated.b - 1) < 1e-12 &&
+		combined.tx == scaled.tx && combined.ty == scaled.ty &&
+		darling_windows_CGAffineTransformEqualToTransform(identity, identity) &&
+		transformed_rect.origin.x == 3 && transformed_rect.origin.y == 4 &&
+		invertible && std::abs(restored.x - 1) < 1e-12 && std::abs(restored.y - 1) < 1e-12 &&
+		!darling_windows_CGRectIsEmpty(intersection) && intersection.size.width == 5 &&
+		darling_windows_CGRectContainsPoint(rect, {5, 5}) && united.size.width == 25 &&
+		darling_windows_CGColorGetAlpha(color) == 0.75 &&
+		darling_windows_CGColorEqual(color, same_color) && negative_rect.origin.x == 5 &&
+		negative_rect.origin.y == 14 && negative_rect.size.width == 5 &&
+		negative_rect.size.height == 6 && gray.red == gray.green &&
+		integral_rect.origin.x == 1 && integral_rect.origin.y == 2 &&
+		integral_rect.size.width == 4 && integral_rect.size.height == 5 &&
+		white.red == 1 && white.alpha == 1 && clear.alpha == 0 &&
+		darling_windows_CGColorGetComponents(color, components, 4) &&
+		components[0] == 0.1 && components[3] == 0.75 && inset.size.width == 8 &&
+		inset.size.height == 16 && offset.origin.x == 2 && offset.origin.y == 3 &&
+		darling_windows_CGRectGetMinX(rect) == 0 && darling_windows_CGRectGetMidX(rect) == 5 &&
+		darling_windows_CGRectGetMaxX(rect) == 10 && darling_windows_CGRectGetMinY(rect) == 0 &&
+		 darling_windows_CGRectGetMidY(rect) == 10 && darling_windows_CGRectGetMaxY(rect) == 20;
+	const bool geometry_access_ok = darling_windows_CGRectGetWidth(rect) == 10 &&
+		darling_windows_CGRectGetHeight(rect) == 20 &&
+		darling_windows_CGPointEqualToPoint({1, 2}, {1, 2}) &&
+		darling_windows_CGSizeEqualToSize({10, 20}, {10, 20}) &&
+		 darling_windows_CGRectEqualToRect(rect, {{0, 0}, {10, 20}});
+	const bool divide_ok = slice.size.width == 3 && remainder.origin.x == 3 &&
+		remainder.size.width == 7;
+	const bool vector_ok = vector_valid && darling_windows_CGVectorLength(vector) == 5 &&
+		darling_windows_CGVectorDot(vector, vector) == 25 &&
+		std::abs(normalized.dx - 0.6) < 1e-12 && point_delta.dx == 3 && point_delta.dy == 4;
+	const bool all_ok = ok && vector_ok && geometry_access_ok && divide_ok;
+	std::cout << "DARWIN_COREGRAPHICS_GEOMETRY=" << (all_ok ? "PASS" : "FAIL") << "\n";
+	return all_ok ? 0 : 1;
+}

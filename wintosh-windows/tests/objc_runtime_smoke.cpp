@@ -23,6 +23,15 @@ void SubRuntimeMethod(id, SEL)
 {
 }
 
+void NoArgVoidMethod(id, SEL)
+{
+}
+
+int NoArgIntMethod(id, SEL)
+{
+	return 42;
+}
+
 id EchoCallback(void*, id argument)
 {
 	return argument;
@@ -110,6 +119,8 @@ int main()
 	SEL scale_selector = sel_registerName("scale:");
 	SEL add_doubles_selector = sel_registerName("addDouble:and:");
 	SEL rect_selector = sel_registerName("frame");
+	SEL noarg_void_selector = sel_registerName("noArgVoid");
+	SEL noarg_int_selector = sel_registerName("noArgInt");
 	if (!class_addMethod(cls, echo_selector, reinterpret_cast<IMP>(&EchoMethod), "@@:@") ||
 		!class_addMethod(cls, add_selector, reinterpret_cast<IMP>(&AddOneMethod), "q@:q") ||
 		!class_addMethod(cls, add_two_selector, reinterpret_cast<IMP>(&AddTwoMethod), "q@:qq") ||
@@ -119,7 +130,9 @@ int main()
 		!class_addMethod(cls, pi_selector, reinterpret_cast<IMP>(&PiMethod), "d@:") ||
 		!class_addMethod(cls, scale_selector, reinterpret_cast<IMP>(&ScaleMethod), "d@:d") ||
 		!class_addMethod(cls, add_doubles_selector, reinterpret_cast<IMP>(&AddDoublesMethod), "d@:dd") ||
-		!class_addMethod(cls, rect_selector, reinterpret_cast<IMP>(&RectMethod), "{DarlingObjcRect=dddd}@:"))
+		!class_addMethod(cls, rect_selector, reinterpret_cast<IMP>(&RectMethod), "{DarlingObjcRect=dddd}@:") ||
+		!class_addMethod(cls, noarg_void_selector, reinterpret_cast<IMP>(&NoArgVoidMethod), "v@:") ||
+		!class_addMethod(cls, noarg_int_selector, reinterpret_cast<IMP>(&NoArgIntMethod), "i@:"))
 		return 5;
 
 	Protocol protocol = objc_allocateProtocol("DarlingRuntimeSmokeProtocol");
@@ -185,7 +198,7 @@ int main()
 		return 14;
 	unsigned int method_count = 0;
 	Method* methods = class_copyMethodList(cls, &method_count);
-	if (!methods || method_count != 11 || method_getName(methods[0]) == nullptr)
+	if (!methods || method_count != 13 || method_getName(methods[0]) == nullptr)
 		return 15;
 	std::free(methods);
 	unsigned int protocol_count = 0;
@@ -203,6 +216,10 @@ int main()
 	id object = class_createInstance(cls, 0);
 	if (!object || object_getClass(object) != cls || object_isClass(object))
 		return 19;
+	if (objc_msgSend(object, noarg_void_selector) != nullptr ||
+		reinterpret_cast<std::intptr_t>(objc_msgSend(object, noarg_int_selector)) != 42 ||
+		reinterpret_cast<std::intptr_t>(objc_msgSendSuper(object, cls, noarg_int_selector)) != 42)
+		return 36;
 	DarlingObjcCallbackBlock* block = darling_objc_block_create1(&EchoCallback, nullptr);
 	if (!block)
 		return 17;
@@ -256,6 +273,9 @@ int main()
 	void* pool = objc_autoreleasePoolPush();
 	if (!pool)
 		return 29;
+	// Keep the caller's ownership while the autorelease pool consumes its
+	// scheduled release; later weak/block probes still use this object.
+	objc_retain(object);
 	if (objc_autorelease(object) != object)
 		return 30;
 	objc_autoreleasePoolPop(pool);

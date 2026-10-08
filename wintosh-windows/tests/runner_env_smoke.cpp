@@ -181,7 +181,7 @@ int wmain()
 			return 2;
 		}
 		const auto runner = std::filesystem::path(executable, executable + executable_length).parent_path() /
-			L"darling_windows_runner.exe";
+			L"wintosh.exe";
 		const std::wstring command_line = L"\"" + runner.wstring() + L"\" \"" + image.wstring() + L"\"";
 		auto command = CommandLine(command_line);
 		STARTUPINFOW startup{};

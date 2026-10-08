@@ -29,13 +29,17 @@ void AddCandidate(std::vector<std::filesystem::path>& candidates,
 }
 
 std::filesystem::path ExpandRPath(const std::filesystem::path& image_directory,
+	const std::filesystem::path& executable_directory,
 	const std::filesystem::path& rpath)
 {
 	const auto value = rpath.string();
-	if (value.rfind("@loader_path/", 0) == 0 ||
-		value.rfind("@executable_path/", 0) == 0) {
+	if (value.rfind("@loader_path/", 0) == 0) {
 		const auto separator = value.find('/');
 		return image_directory / value.substr(separator + 1);
+	}
+	if (value.rfind("@executable_path/", 0) == 0) {
+		const auto separator = value.find('/');
+		return executable_directory / value.substr(separator + 1);
 	}
 	return rpath;
 }
@@ -159,7 +163,8 @@ std::filesystem::path DylibResolver::Resolve(
 	if (dependency.rfind(rpath_token, 0) == 0) {
 		const auto suffix = dependency.substr(rpath_token.size());
 		for (const auto& rpath : effective_rpaths) {
-			const auto expanded = ExpandRPath(image_directory, rpath) / suffix;
+			const auto expanded = ExpandRPath(image_directory,
+				executable_directory, rpath) / suffix;
 			AddCandidate(candidates, expanded);
 		}
 	} else if (dependency.rfind(loader_token + "/", 0) == 0) {

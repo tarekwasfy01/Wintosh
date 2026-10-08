@@ -39,10 +39,13 @@ Run a supported Mach-O image and pass arguments to its entry point:
 .\bin\wintosh.exe .\bin\example.macho --verbose input.txt
 .\bin\wintosh.exe --prefix .\runtime --rpath .\runtime\lib \
     --env WINTOSH_MODE=portable .\bin\example.macho
+.\bin\wintosh.exe --inspect .\bin\example.macho
 ```
 
 The options are `--help`, `--version`, `--prefix <directory>`, repeated
-`--rpath <directory>`, repeated `--env KEY=VALUE`, and `--` to end options.
+`--rpath <directory>`, repeated `--env KEY=VALUE`, `--inspect`, and `--` to
+end options. `--inspect` prints the selected architecture, Mach-O type,
+segments, and every declared dylib dependency without executing the image.
 The CLI inherits the current Windows environment, uses the Mach-O image's
 parent directory as the initial Wintosh prefix, and forwards the image path
 plus all following arguments to the native Darwin bootstrap. A missing image
@@ -56,3 +59,20 @@ architecture, and does not yet provide full Darling framework coverage,
 automatic `.app` discovery, or universal execution of arbitrary macOS apps.
 
 The detailed build and evidence rules are in `../docs/BUILD-AND-TEST.md`.
+
+## Installation layout
+
+The CMake install target places the product entry points in `bin/`:
+
+```powershell
+cmake --install build --config Release --prefix dist
+.\dist\bin\wintosh.exe --help
+```
+
+The smoke executables are intentionally not installed as product binaries;
+they remain available from the build directory for verification and CI.
+The CPack ZIP contains the same product-only `bin/` layout:
+
+```powershell
+cpack --config build/CPackConfig.cmake -B build
+```

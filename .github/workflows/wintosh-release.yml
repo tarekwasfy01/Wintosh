@@ -46,9 +46,9 @@ jobs:
         shell: pwsh
         run: cmake --build build-${{ matrix.arch }} --parallel 2
 
-      - name: Run Foundation smoke test
+      - name: Run complete CTest smoke suite
         shell: pwsh
-        run: .\build-${{ matrix.arch }}\wintosh_foundation_smoke.exe
+        run: ctest --test-dir build-${{ matrix.arch }} -C Release --output-on-failure --parallel 2
 
       - name: Package implementation, tests, documentation and licenses
         shell: pwsh

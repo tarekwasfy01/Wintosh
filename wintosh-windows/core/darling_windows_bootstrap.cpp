@@ -12,11 +12,9 @@
 #include "darling_windows_macho.h"
 #include "darling_windows_objc.h"
 #include "darling_windows_stdio.h"
-#include "darling_windows_syscalls.h"
 #include "darling_windows_tlv.h"
 
 #include <algorithm>
-#include <array>
 #include <cstdio>
 #include <cstring>
 #include <stdexcept>
@@ -179,27 +177,10 @@ void InitializeTLVSections(const MachOImage& image,
 int DarwinBootstrap::Run(const std::filesystem::path& image_path,
 	const DarwinLaunchOptions& options)
 {
-	DarwinSyscalls file_syscalls;
-	const int descriptor = file_syscalls.OpenRead(image_path);
-	std::array<std::uint8_t, sizeof(MachHeader64)> raw_header{};
-	if (file_syscalls.Read(descriptor, raw_header.data(), raw_header.size()) !=
-		raw_header.size()) {
-		file_syscalls.Close(descriptor);
-		throw std::runtime_error("Mach-O header is truncated");
-	}
-	file_syscalls.Close(descriptor);
-	MachHeader64 header{};
-	const auto magic = *reinterpret_cast<const std::uint32_t*>(raw_header.data());
-	if (magic == MH_MAGIC) {
-		const auto* header32 = reinterpret_cast<const MachHeader32*>(raw_header.data());
-		header = {header32->magic, header32->cpu_type, header32->cpu_subtype,
-			header32->file_type, header32->command_count, header32->command_bytes,
-			header32->flags, 0};
-	} else if (magic == MH_MAGIC_64) {
-		std::memcpy(&header, raw_header.data(), sizeof(header));
-	} else {
-		throw std::runtime_error("Darwin bootstrap requires a supported Mach-O header");
-	}
+	// Open through MachOImage first so fat binaries are sliced to the best
+	// supported architecture before the bootstrap validates the header.
+	const auto image = MachOImage::Open(image_path.wstring());
+	const auto& header = image.Header();
 	if ((header.magic == MH_MAGIC && header.cpu_type != CPU_TYPE_X86) ||
 		(header.magic == MH_MAGIC_64 && header.cpu_type != CPU_TYPE_X86_64 &&
 			header.cpu_type != CPU_TYPE_ARM64)) {
@@ -210,7 +191,6 @@ int DarwinBootstrap::Run(const std::filesystem::path& image_path,
 	// semantics in DylibGraph::Load.
 	const auto bindings = DylibGraph::BindImports(
 		image_path, options.rpaths, options.prefix);
-	const auto image = MachOImage::Open(image_path.wstring());
 	const auto mapping = image.MapSegments();
 	const auto preferred_provider_address = mapping.Segments().empty() ? 0 :
 		mapping.Segments().front().address;

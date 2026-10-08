@@ -7,6 +7,7 @@
  */
 
 #include "darling_windows_bootstrap.h"
+#include "darling_windows_dyld.h"
 
 #include <windows.h>
 
@@ -16,6 +17,7 @@
 #include <limits>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -60,10 +62,43 @@ void Usage()
 		<< L"\nOptions:\n"
 		<< L"  --help                 Show this help\n"
 		<< L"  --version              Show the Wintosh version\n"
+		<< L"  --inspect              Inspect a Mach-O without executing it\n"
 		<< L"  --prefix <directory>   Set the initial Wintosh prefix\n"
 		<< L"  --rpath <directory>    Add a dynamic-library search path\n"
 		<< L"  --env KEY=VALUE        Add an environment entry\n"
 		<< L"  --                    End options before the Mach-O path\n";
+}
+
+void SetEnvironment(std::vector<std::string>& environment, std::string value)
+{
+	const auto separator = value.find('=');
+	if (separator == std::string::npos || separator == 0)
+		throw std::runtime_error("--env expects KEY=VALUE");
+	const auto key = value.substr(0, separator);
+	for (auto& existing : environment) {
+		if (existing.size() > key.size() &&
+			existing.compare(0, key.size(), key) == 0 &&
+			existing[key.size()] == '=') {
+			existing = std::move(value);
+			return;
+		}
+	}
+	environment.push_back(std::move(value));
+}
+
+std::filesystem::path ResolveImage(std::filesystem::path image)
+{
+	std::error_code error;
+	if (!std::filesystem::exists(image, error))
+		throw std::runtime_error("Mach-O image does not exist: " + image.string());
+	if (!std::filesystem::is_directory(image, error))
+		return image;
+	if (image.extension() != L".app")
+		throw std::runtime_error("image path is a directory, expected a Mach-O file or .app bundle");
+	const auto executable = image / L"Contents" / L"MacOS" / image.stem();
+	if (std::filesystem::is_regular_file(executable, error))
+		return executable;
+	throw std::runtime_error(".app bundle has no matching Contents/MacOS executable: " + image.string());
 }
 
 } // namespace
@@ -78,6 +113,7 @@ int wmain(int argc, wchar_t** argv)
 		darling::windows_host::DarwinLaunchOptions options;
 		options.environment = Environment();
 		std::filesystem::path image;
+		bool inspect = false;
 		bool end_options = false;
 		for (int index = 1; index < argc; ++index) {
 			const std::wstring argument(argv[index]);
@@ -88,6 +124,10 @@ int wmain(int argc, wchar_t** argv)
 			if (!end_options && argument == L"--version") {
 				std::wcout << L"Wintosh 0.1.1\n";
 				return 0;
+			}
+			if (!end_options && argument == L"--inspect") {
+				inspect = true;
+				continue;
 			}
 			if (!end_options && argument == L"--") {
 				end_options = true;
@@ -103,10 +143,12 @@ int wmain(int argc, wchar_t** argv)
 				else if (argument == L"--rpath")
 					options.rpaths.emplace_back(argv[index]);
 				else
-					options.environment.push_back(value);
+					SetEnvironment(options.environment, value);
 				continue;
 			}
-			if (image.empty()) {
+			if (!end_options && image.empty() && !argument.empty() && argument[0] == L'-')
+				throw std::runtime_error("unknown CLI option: " + Utf8(argv[index]));
+		if (image.empty()) {
 				image = std::filesystem::path(argv[index]);
 				options.arguments.push_back(Utf8(argv[index]));
 				continue;
@@ -117,8 +159,35 @@ int wmain(int argc, wchar_t** argv)
 			Usage();
 			return 64;
 		}
+		image = ResolveImage(image);
+		if (!options.arguments.empty())
+			options.arguments.front() = Utf8(image.c_str());
 		if (options.prefix.empty())
 			options.prefix = image.parent_path();
+		if (inspect) {
+			const auto inspected = darling::windows_host::MachOImage::Open(image.wstring());
+			const auto& header = inspected.Header();
+			std::wcout << L"path=" << image.wstring() << L"\n"
+				<< L"architecture=" << (inspected.Is32Bit() ? L"x86" :
+					(header.cpu_type == darling::windows_host::CPU_TYPE_ARM64 ? L"arm64" : L"x86_64")) << L"\n"
+				<< L"file_type=" << header.file_type << L"\n"
+				<< L"segments=" << inspected.Segments().size() << L"\n"
+				<< L"dependencies=" << inspected.Dependencies().size() << L"\n";
+			for (const auto& dependency : inspected.Dependencies())
+				std::wcout << L"dependency=" << std::wstring(dependency.begin(), dependency.end()) << L"\n";
+			const auto graph = darling::windows_host::DylibGraph::Load(
+				image, options.rpaths, options.prefix);
+			for (const auto& node : graph) {
+				std::wcout << L"image=" << node.path.wstring() << L"\n";
+				for (const auto& dependency : node.dependencies)
+					std::wcout << L"resolved=" << dependency.wstring() << L"\n";
+			}
+			const auto order = darling::windows_host::DylibGraph::InitializationOrder(
+				image, options.rpaths, options.prefix);
+			for (const auto& path : order)
+				std::wcout << L"init=" << path.wstring() << L"\n";
+			return 0;
+		}
 		const int result = darling::windows_host::DarwinBootstrap::Run(image, options);
 		if (result < 0) {
 			return 1;

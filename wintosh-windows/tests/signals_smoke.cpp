@@ -71,9 +71,10 @@ int main()
 		darling_windows_host_symbol("sigqueue") != 0;
 	std::cout << "DARWIN_NORMALIZED_SIGNAL_SYMBOLS="
 		<< (normalized_signal_symbols ? "PASS" : "FAIL") << "\n";
-	if (sigaction_result != 0 || sigprocmask_result != 0 ||
-		 sigpending_result != 0 || !signal_symbols || !normalized_signal_symbols) {
-		std::cout << "SIGNAL_SMOKE_ERROR=setup sigaction=" << sigaction_result
+	const bool setup_ok = sigaction_result == 0 && sigprocmask_result == 0 &&
+		sigpending_result == 0 && signal_symbols && normalized_signal_symbols;
+	if (!setup_ok) {
+		std::cerr << "SIGNAL_SMOKE_ERROR=setup sigaction=" << sigaction_result
 			<< " sigprocmask=" << sigprocmask_result
 			<< " sigpending=" << sigpending_result
 			<< " symbols=" << (signal_symbols ? 1 : 0) << "\n";

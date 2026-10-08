@@ -18,6 +18,7 @@ The implementation itself is documented at
 4. [CURRENT-STATE.md](CURRENT-STATE.md) — confirmed contents of this complete
    workspace snapshot.
 5. [CONTRIBUTING.md](CONTRIBUTING.md) — contributor and maintainer guidance.
+6. [GITHUB-ACTIONS.md](GITHUB-ACTIONS.md) — Windows build and attestation workflow.
 
 ## Porting and implementation
 

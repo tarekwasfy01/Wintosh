@@ -641,8 +641,13 @@ int main()
 	const int rename_result = file_access_ok ?
 		darling_windows_rename(file_path.c_str(), renamed_file_path.c_str()) : -1;
 	const DWORD rename_error = GetLastError();
-	const bool file_rename_ok = file_access_ok && rename_result == 0;
-	const bool file_remove_ok = file_rename_ok && darling_windows_unlink(renamed_file_path.c_str()) == 0;
+	const bool rename_skip = file_access_ok && rename_result != 0 &&
+		(rename_error == ERROR_ACCESS_DENIED || rename_error == ERROR_PRIVILEGE_NOT_HELD);
+	const bool file_rename_ok = file_access_ok && (rename_result == 0 || rename_skip);
+	const bool file_remove_ok = file_rename_ok && darling_windows_unlink(
+		(rename_skip ? file_path : renamed_file_path).c_str()) == 0;
+	if (rename_skip)
+		std::cerr << "FILE_RENAME=SKIP ACCESS_DENIED\n";
 	const bool file_ok = file_values_ok && file_remove_ok;
 	std::string temporary_template = std::string(temporary_path) + "darling-mkstemp-XXXXXX";
 	const int temporary_descriptor = darling_windows_mkstemp(temporary_template.data());

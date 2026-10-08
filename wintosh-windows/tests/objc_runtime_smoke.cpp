@@ -105,6 +105,22 @@ int main()
 		return 3;
 	if (!class_addMethod(cls, selector, reinterpret_cast<IMP>(&RuntimeMethod), "v@:@"))
 		return 4;
+	const objc_property_attribute_t property_attributes[] = {
+		{"T", "@\"NSString\""}, {"N", ""}, {"V", "_title"}};
+	if (!class_addProperty(cls, "title", property_attributes, 3))
+		return 4;
+	const auto title_property = class_getProperty(cls, "title");
+	if (!title_property || std::strcmp(property_getName(title_property), "title") != 0 ||
+		std::strcmp(property_getAttributes(title_property),
+			"T@\"NSString\",N,V_title") != 0)
+		return 4;
+	if (class_addProperty(cls, "title", property_attributes, 3))
+		return 4;
+	unsigned int property_count = 0;
+	auto* properties = class_copyPropertyList(cls, &property_count);
+	if (!properties || property_count != 1 || properties[0] != title_property)
+		return 4;
+	std::free(properties);
 	SEL class_probe_selector = sel_registerName("classProbe");
 	if (!class_addClassMethod(cls, class_probe_selector,
 		reinterpret_cast<IMP>(&ClassProbeMethod), "@@:"))
@@ -160,6 +176,22 @@ int main()
 		!class_conformsToProtocol(cls, parent_protocol))
 		return 11;
 	objc_registerClassPair(cls);
+	Class meta = objc_getMetaClass("DarlingRuntimeSmokeClass");
+	if (!meta || meta == cls || class_getSuperclass(meta) != nullptr ||
+		!object_isClass(reinterpret_cast<id>(meta)) ||
+		!class_getInstanceMethod(meta, class_probe_selector) ||
+		method_getImplementation(class_getInstanceMethod(meta, class_probe_selector)) !=
+			reinterpret_cast<IMP>(&ClassProbeMethod) ||
+		darling_objc_msgSend_class0(meta, class_probe_selector) !=
+			reinterpret_cast<id>(cls))
+		return 16;
+	SEL late_class_selector = sel_registerName("lateClassProbe");
+	if (!class_addClassMethod(cls, late_class_selector,
+		reinterpret_cast<IMP>(&ClassProbeMethod), "@@:") ||
+		!class_getInstanceMethod(meta, late_class_selector) ||
+		darling_objc_msgSend_class0(meta, late_class_selector) !=
+		reinterpret_cast<id>(cls))
+		return 16;
 	if (darling_objc_msgSend_class0(cls, class_probe_selector) !=
 		reinterpret_cast<id>(cls))
 		return 16;

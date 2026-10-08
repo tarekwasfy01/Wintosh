@@ -32,6 +32,10 @@ using Protocol = objc_protocol*;
 using Method = objc_method*;
 using Ivar = objc_ivar*;
 using objc_property_t = objc_property*;
+struct objc_property_attribute_t final {
+	const char* name;
+	const char* value;
+};
 
 using objc_AssociationPolicy = std::uintptr_t;
 constexpr objc_AssociationPolicy OBJC_ASSOCIATION_ASSIGN = 0;
@@ -93,6 +97,8 @@ const char* ivar_getTypeEncoding(Ivar ivar);
 std::ptrdiff_t ivar_getOffset(Ivar ivar);
 Ivar* class_copyIvarList(Class cls, unsigned int* out_count);
 objc_property_t class_getProperty(Class cls, const char* name);
+bool class_addProperty(Class cls, const char* name,
+	const objc_property_attribute_t* attributes, unsigned int attribute_count);
 const char* property_getName(objc_property_t property);
 const char* property_getAttributes(objc_property_t property);
 objc_property_t* class_copyPropertyList(Class cls, unsigned int* out_count);

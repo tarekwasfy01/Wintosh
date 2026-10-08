@@ -16,6 +16,7 @@
 #include <sstream>
 #include <iomanip>
 #include <ctime>
+#include <cmath>
 
 namespace {
 enum class Kind { String, Data, Array, Number, Real, Dictionary, Set, Date, URL, Boolean, Null };
@@ -34,6 +35,39 @@ struct Object {
 	~Object();
 };
 Object* As(const void* value) { return const_cast<Object*>(static_cast<const Object*>(value)); }
+darling_windows_CFIndex UTF16Length(const std::string& value)
+{
+	std::size_t index = 0;
+	darling_windows_CFIndex length = 0;
+	while (index < value.size()) {
+		const auto first = static_cast<unsigned char>(value[index]);
+		std::uint32_t codepoint = 0xfffd;
+		std::size_t width = 1;
+		if (first < 0x80) { codepoint = first; }
+		else if (first >= 0xc2 && first <= 0xdf && index + 1 < value.size() &&
+			(static_cast<unsigned char>(value[index + 1]) & 0xc0) == 0x80) {
+			codepoint = ((first & 0x1f) << 6) |
+				(static_cast<unsigned char>(value[index + 1]) & 0x3f); width = 2;
+		} else if (first >= 0xe0 && first <= 0xef && index + 2 < value.size() &&
+			(static_cast<unsigned char>(value[index + 1]) & 0xc0) == 0x80 &&
+			(static_cast<unsigned char>(value[index + 2]) & 0xc0) == 0x80) {
+			codepoint = ((first & 0x0f) << 12) |
+				((static_cast<unsigned char>(value[index + 1]) & 0x3f) << 6) |
+				(static_cast<unsigned char>(value[index + 2]) & 0x3f); width = 3;
+		} else if (first >= 0xf0 && first <= 0xf4 && index + 3 < value.size() &&
+			(static_cast<unsigned char>(value[index + 1]) & 0xc0) == 0x80 &&
+			(static_cast<unsigned char>(value[index + 2]) & 0xc0) == 0x80 &&
+			(static_cast<unsigned char>(value[index + 3]) & 0xc0) == 0x80) {
+			codepoint = ((first & 0x07) << 18) |
+				((static_cast<unsigned char>(value[index + 1]) & 0x3f) << 12) |
+				((static_cast<unsigned char>(value[index + 2]) & 0x3f) << 6) |
+				(static_cast<unsigned char>(value[index + 3]) & 0x3f); width = 4;
+		}
+		length += codepoint > 0xffff ? 2 : 1;
+		index += width;
+	}
+	return length;
+}
 void ReleaseOwned(Object* object)
 {
 	if (object == nullptr || object->immortal) return;
@@ -133,10 +167,11 @@ std::string DecodeUTF16BE(const unsigned char* bytes, std::size_t units)
 std::string PropertyListDate(double absolute_time)
 {
 	constexpr std::int64_t apple_epoch_unix = 978307200;
-	const auto whole_seconds = static_cast<std::int64_t>(absolute_time);
+	const auto whole_seconds = static_cast<std::int64_t>(std::floor(absolute_time));
 	const auto fraction = absolute_time - static_cast<double>(whole_seconds);
-	const auto unix_seconds = apple_epoch_unix + whole_seconds;
-	const auto milliseconds = static_cast<int>(fraction * 1000.0 + 0.5);
+	auto unix_seconds = apple_epoch_unix + whole_seconds;
+	auto milliseconds = static_cast<int>(std::llround(fraction * 1000.0));
+	if (milliseconds >= 1000) { ++unix_seconds; milliseconds -= 1000; }
 	const std::time_t timestamp = static_cast<std::time_t>(unix_seconds);
 	const std::tm* utc = std::gmtime(&timestamp);
 	if (utc == nullptr) return {};
@@ -428,18 +463,18 @@ struct NotificationObserver {
 };
 std::mutex notification_mutex;
 std::unordered_map<std::string, std::vector<NotificationObserver>> notifications;
+constexpr const char* notification_wildcard = "\x01wildcard";
 }
 
 extern "C" void* darling_windows_CFRetain(const void* value)
 {
-	if (value != nullptr) As(value)->references.fetch_add(1, std::memory_order_relaxed);
+	RetainOwned(value);
 	return const_cast<void*>(value);
 }
 
 extern "C" void darling_windows_CFRelease(const void* value)
 {
-	if (value != nullptr && As(value)->references.fetch_sub(1, std::memory_order_acq_rel) == 1)
-		delete As(value);
+	ReleaseOwned(As(value));
 }
 
 extern "C" bool darling_windows_CFEqual(const void* left, const void* right)
@@ -448,6 +483,13 @@ extern "C" bool darling_windows_CFEqual(const void* left, const void* right)
 	if (left == nullptr || right == nullptr) return false;
 	const auto* lhs = static_cast<const Object*>(left);
 	const auto* rhs = static_cast<const Object*>(right);
+	const bool lhs_number = lhs->kind == Kind::Number || lhs->kind == Kind::Real;
+	const bool rhs_number = rhs->kind == Kind::Number || rhs->kind == Kind::Real;
+	if (lhs_number && rhs_number) {
+		const auto left_value = lhs->kind == Kind::Number ? static_cast<long double>(lhs->number) : lhs->real_number;
+		const auto right_value = rhs->kind == Kind::Number ? static_cast<long double>(rhs->number) : rhs->real_number;
+		return left_value == right_value;
+	}
 	if (lhs->kind != rhs->kind) return false;
 	switch (lhs->kind) {
 	case Kind::String:
@@ -501,7 +543,7 @@ extern "C" darling_windows_CFIndex darling_windows_CFStringGetLength(darling_win
 {
 	const auto* object = static_cast<const Object*>(value);
 	return object != nullptr && object->kind == Kind::String ?
-		static_cast<darling_windows_CFIndex>(object->string.size()) : 0;
+		UTF16Length(object->string) : 0;
 }
 
 extern "C" bool darling_windows_CFStringGetCString(darling_windows_CFStringRef value,
@@ -632,13 +674,54 @@ extern "C" bool darling_windows_CFStringTrimWhitespace(darling_windows_CFStringR
 {
 	auto* object = As(value);
 	if (object == nullptr || object->kind != Kind::String) return false;
-	const auto is_space = [](unsigned char character) {
-		return character == ' ' || character == '\t' || character == '\n' || character == '\r' || character == '\f' || character == '\v';
+	const auto decode = [](const std::string& input, std::size_t offset, std::uint32_t& codepoint) {
+		const auto first = static_cast<unsigned char>(input[offset]);
+		if (first < 0x80) { codepoint = first; return std::size_t{1}; }
+		if (first >= 0xc2 && first <= 0xdf && offset + 1 < input.size() &&
+			(static_cast<unsigned char>(input[offset + 1]) & 0xc0) == 0x80) {
+			codepoint = ((first & 0x1f) << 6) | (static_cast<unsigned char>(input[offset + 1]) & 0x3f); return std::size_t{2};
+		}
+		if (first >= 0xe0 && first <= 0xef && offset + 2 < input.size() &&
+			(static_cast<unsigned char>(input[offset + 1]) & 0xc0) == 0x80 &&
+			(static_cast<unsigned char>(input[offset + 2]) & 0xc0) == 0x80) {
+			codepoint = ((first & 0x0f) << 12) |
+				((static_cast<unsigned char>(input[offset + 1]) & 0x3f) << 6) |
+				(static_cast<unsigned char>(input[offset + 2]) & 0x3f); return std::size_t{3};
+		}
+		if (first >= 0xf0 && first <= 0xf4 && offset + 3 < input.size() &&
+			(static_cast<unsigned char>(input[offset + 1]) & 0xc0) == 0x80 &&
+			(static_cast<unsigned char>(input[offset + 2]) & 0xc0) == 0x80 &&
+			(static_cast<unsigned char>(input[offset + 3]) & 0xc0) == 0x80) {
+			codepoint = ((first & 0x07) << 18) |
+				((static_cast<unsigned char>(input[offset + 1]) & 0x3f) << 12) |
+				((static_cast<unsigned char>(input[offset + 2]) & 0x3f) << 6) |
+				(static_cast<unsigned char>(input[offset + 3]) & 0x3f); return std::size_t{4};
+		}
+		codepoint = first; return std::size_t{1};
+	};
+	const auto is_space = [](std::uint32_t codepoint) {
+		return (codepoint >= 0x0009 && codepoint <= 0x000d) || codepoint == 0x0020 ||
+			codepoint == 0x0085 || codepoint == 0x00a0 || codepoint == 0x1680 ||
+			(codepoint >= 0x2000 && codepoint <= 0x200a) || codepoint == 0x2028 ||
+			codepoint == 0x2029 || codepoint == 0x202f || codepoint == 0x205f ||
+			codepoint == 0x3000;
 	};
 	std::size_t first = 0;
-	while (first < object->string.size() && is_space(static_cast<unsigned char>(object->string[first]))) ++first;
+	while (first < object->string.size()) {
+		std::uint32_t codepoint = 0;
+		const auto width = decode(object->string, first, codepoint);
+		if (!is_space(codepoint)) break;
+		first += width;
+	}
 	std::size_t last = object->string.size();
-	while (last > first && is_space(static_cast<unsigned char>(object->string[last - 1]))) --last;
+	while (last > first) {
+		std::size_t start = last - 1;
+		while (start > first && (static_cast<unsigned char>(object->string[start]) & 0xc0) == 0x80) --start;
+		std::uint32_t codepoint = 0;
+		const auto width = decode(object->string, start, codepoint);
+		if (start + width != last || !is_space(codepoint)) break;
+		last = start;
+	}
 	object->string = object->string.substr(first, last - first);
 	return true;
 }
@@ -687,7 +770,8 @@ extern "C" bool darling_windows_CFDataGetBytes(darling_windows_CFDataRef value,
 		static_cast<std::size_t>(range_start) > object->data.size() ||
 		static_cast<std::size_t>(range_count) > object->data.size() -
 			static_cast<std::size_t>(range_start)) return false;
-	if (range_count != 0) std::copy_n(object->data.begin() + range_start, range_count, output);
+	if (range_count != 0) std::memmove(output, object->data.data() + range_start,
+		static_cast<std::size_t>(range_count));
 	return true;
 }
 
@@ -698,7 +782,9 @@ extern "C" bool darling_windows_CFDataAppendBytes(darling_windows_CFDataRef valu
 	if (object == nullptr || object->kind != Kind::Data || length < 0 ||
 		(length != 0 && bytes == nullptr)) return false;
 	const auto* input = static_cast<const unsigned char*>(bytes);
-	object->data.insert(object->data.end(), input, input + length); return true;
+	std::vector<unsigned char> copy;
+	if (length != 0) copy.assign(input, input + length);
+	object->data.insert(object->data.end(), copy.begin(), copy.end()); return true;
 }
 
 extern "C" bool darling_windows_CFDataReplaceBytes(darling_windows_CFDataRef value,
@@ -709,10 +795,12 @@ extern "C" bool darling_windows_CFDataReplaceBytes(darling_windows_CFDataRef val
 	if (object == nullptr || object->kind != Kind::Data || range_start < 0 || range_count < 0 || length < 0 ||
 		(length != 0 && bytes == nullptr) || static_cast<std::size_t>(range_start) > object->data.size() ||
 		static_cast<std::size_t>(range_count) > object->data.size() - static_cast<std::size_t>(range_start)) return false;
+	const auto* input = static_cast<const unsigned char*>(bytes);
+	std::vector<unsigned char> copy;
+	if (length != 0) copy.assign(input, input + length);
 	const auto begin = object->data.begin() + range_start;
 	object->data.erase(begin, begin + range_count);
-	const auto* input = static_cast<const unsigned char*>(bytes);
-	object->data.insert(object->data.begin() + range_start, input, input + length); return true;
+	object->data.insert(object->data.begin() + range_start, copy.begin(), copy.end()); return true;
 }
 
 extern "C" bool darling_windows_CFDataSetLength(darling_windows_CFDataRef value,
@@ -796,12 +884,14 @@ extern "C" void darling_windows_CFArrayGetValues(darling_windows_CFArrayRef valu
 	darling_windows_CFIndex range_start, darling_windows_CFIndex range_count, const void** output)
 {
 	const auto* object = static_cast<const Object*>(value);
-	if (object == nullptr || object->kind != Kind::Array || output == nullptr ||
+	if (object == nullptr || object->kind != Kind::Array ||
 		range_start < 0 || range_count < 0 ||
+		(range_count != 0 && output == nullptr) ||
 		static_cast<std::size_t>(range_start) > object->array.size() ||
 		static_cast<std::size_t>(range_count) > object->array.size() -
 			static_cast<std::size_t>(range_start)) return;
-	std::copy_n(object->array.begin() + range_start, range_count, output);
+	if (range_count != 0) std::memmove(output, object->array.data() + range_start,
+		static_cast<std::size_t>(range_count) * sizeof(const void*));
 }
 
 extern "C" bool darling_windows_CFArrayAppendValue(darling_windows_CFArrayRef value, const void* element)
@@ -935,6 +1025,14 @@ extern "C" darling_windows_CFDictionaryRef darling_windows_CFDictionaryCreate(
 	auto* object = new Object{};
 	object->kind = Kind::Dictionary;
 	for (darling_windows_CFIndex index = 0; index < count; ++index) {
+		const auto found = std::find_if(object->dictionary.begin(), object->dictionary.end(),
+			[&](const auto& entry) { return darling_windows_CFEqual(entry.first, keys[index]); });
+		if (found != object->dictionary.end()) {
+			RetainOwned(values[index]);
+			ReleaseOwned(As(found->second));
+			found->second = values[index];
+			continue;
+		}
 		object->dictionary.emplace_back(keys[index], values[index]);
 		RetainOwned(keys[index]);
 		RetainOwned(values[index]);
@@ -1079,7 +1177,8 @@ extern "C" void darling_windows_CFSetGetValues(darling_windows_CFSetRef value,
 {
 	const auto* object = static_cast<const Object*>(value);
 	if (object == nullptr || object->kind != Kind::Set || output == nullptr) return;
-	std::copy(object->array.begin(), object->array.end(), output);
+	if (!object->array.empty()) std::memmove(output, object->array.data(),
+		object->array.size() * sizeof(const void*));
 }
 
 extern "C" bool darling_windows_CFSetAddValue(darling_windows_CFSetRef value, const void* element)
@@ -1295,7 +1394,13 @@ extern "C" int darling_windows_CFRunLoopRunInMode(double seconds, bool return_af
 	const auto duration = std::chrono::duration<double>(seconds);
 	loop.condition.wait_for(lock, duration, [&loop] { return loop.stopped || !loop.blocks.empty(); });
 	if (!loop.stopped && !loop.blocks.empty()) {
-		auto pending = std::move(loop.blocks);
+		std::vector<std::pair<darling_windows_CFRunLoopBlock, void*>> pending;
+		if (return_after_source) {
+			pending.push_back(loop.blocks.front());
+			loop.blocks.erase(loop.blocks.begin());
+		} else {
+			pending = std::move(loop.blocks);
+		}
 		lock.unlock();
 		for (const auto& entry : pending) if (entry.first != nullptr) entry.first(entry.second);
 		lock.lock();
@@ -1363,9 +1468,9 @@ extern "C" void* darling_windows_CFNotificationCenterGetLocal()
 extern "C" bool darling_windows_CFNotificationCenterAddObserver(void* center,
 	const void* observer, darling_windows_CFNotificationCallback callback, const char* name)
 {
-	if (center == nullptr || callback == nullptr || name == nullptr) return false;
+	if (center == nullptr || callback == nullptr) return false;
 	std::lock_guard lock(notification_mutex);
-	auto& entries = notifications[name];
+	auto& entries = notifications[name == nullptr ? notification_wildcard : name];
 	for (const auto& entry : entries)
 		if (entry.observer == observer && entry.callback == callback) return true;
 	entries.push_back({observer, callback});
@@ -1393,12 +1498,14 @@ extern "C" bool darling_windows_CFNotificationCenterRemoveObserver(void* center,
 	auto found = notifications.find(name);
 	if (found == notifications.end()) return false;
 	auto& entries = found->second;
+	const auto before = entries.size();
 	entries.erase(std::remove_if(entries.begin(), entries.end(),
 		[observer, callback](const NotificationObserver& entry) {
 			return entry.observer == observer && (callback == nullptr || entry.callback == callback);
 		}), entries.end());
+	const bool removed = before != entries.size();
 	if (entries.empty()) notifications.erase(found);
-	return true;
+	return removed;
 }
 
 extern "C" void darling_windows_CFNotificationCenterPostNotification(void* center,
@@ -1410,6 +1517,9 @@ extern "C" void darling_windows_CFNotificationCenterPostNotification(void* cente
 		std::lock_guard lock(notification_mutex);
 		const auto found = notifications.find(name);
 		if (found != notifications.end()) snapshot = found->second;
+		const auto wildcard = notifications.find(notification_wildcard);
+		if (wildcard != notifications.end())
+			snapshot.insert(snapshot.end(), wildcard->second.begin(), wildcard->second.end());
 	}
 	for (const auto& entry : snapshot) entry.callback(entry.observer, name, object);
 }

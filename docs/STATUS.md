@@ -46,7 +46,7 @@ The adapter now additionally has a limited `bplist00` reader for single-byte
 ASCII strings, BMP UTF-16 strings, integers, booleans, null, simple arrays,
 string-key dictionaries, extended length markers for strings, arrays, and
 dictionaries, plus binary data/date, IEEE-754 real-number, and UID primitives,
-including UTF-8 string byte extraction and ASCII-whitespace trimming plus mutable append/replace-all/range-replace, mutable data byte access/append/replace/resize/clear, array append/append-array/insert/remove/remove-range/replace, dictionary set/remove/merge, set add/remove/union/intersection/subtract operations, and date and number comparison plus interval creation/difference. Surrogate pairs, complex
+including UTF-8 string byte extraction and UTF-16-unit string length for valid UTF-8 (including surrogate-pair accounting) and common-Unicode-whitespace trimming plus mutable append/replace-all/range-replace, mutable data byte access/append/replace/resize/clear, array append/append-array/insert/remove/remove-range/replace, dictionary duplicate-key collapse/set/remove/merge, numeric cross-type equality, set add/remove/union/intersection/subtract operations, date and number comparison plus interval creation/difference, and named/wildcard local notifications with global removal. Unicode collation, normalization, malformed-UTF-8 recovery policy, complex
 numeric/time semantics, and complete ownership semantics remain open.
 
 The same batch now exposes bulk extraction for array ranges, dictionary
@@ -74,7 +74,10 @@ maximum, containment, intersection, and union primitives, covered by the
 Foundation smoke gate.
 Quoted aggregate field names such as `"x"` and `"y"` are skipped while
 parsing, matching common Objective-C runtime encodings.
-The machine-readable matrix records the same coverage for LP64, blocks,
+The Objective-C bridge now also supports separate lazy metaclass objects for
+registered classes, class-method lookup through those metaclasses, and runtime
+`class_addProperty` registration
+with serialized attribute pairs and verified lookup. The machine-readable matrix records the same coverage for LP64, blocks,
 complex numbers, quoted aggregates, and nested pointers.
 
 CoreGraphics now has a separate partial geometry/color adapter with the

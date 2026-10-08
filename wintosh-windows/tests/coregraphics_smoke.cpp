@@ -66,10 +66,15 @@ int main()
 		 darling_windows_CGRectEqualToRect(rect, {{0, 0}, {10, 20}});
 	const bool divide_ok = slice.size.width == 3 && remainder.origin.x == 3 &&
 		remainder.size.width == 7;
+	darling_windows_CGRect oversized_slice{}, oversized_remainder{};
+	darling_windows_CGRectDivide(rect, 50, darling_windows_CGMaxXEdge,
+		&oversized_slice, &oversized_remainder);
+	const bool oversized_divide_ok = oversized_slice.origin.x == 0 &&
+		oversized_slice.size.width == 10 && oversized_remainder.size.width == 0;
 	const bool vector_ok = vector_valid && darling_windows_CGVectorLength(vector) == 5 &&
 		darling_windows_CGVectorDot(vector, vector) == 25 &&
 		std::abs(normalized.dx - 0.6) < 1e-12 && point_delta.dx == 3 && point_delta.dy == 4;
-	const bool all_ok = ok && vector_ok && geometry_access_ok && divide_ok;
+	const bool all_ok = ok && vector_ok && geometry_access_ok && divide_ok && oversized_divide_ok;
 	std::cout << "DARWIN_COREGRAPHICS_GEOMETRY=" << (all_ok ? "PASS" : "FAIL") << "\n";
 	return all_ok ? 0 : 1;
 }

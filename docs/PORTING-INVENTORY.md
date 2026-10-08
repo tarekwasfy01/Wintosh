@@ -287,9 +287,10 @@ thread-local isolation together.
 The Windows libc host-symbol boundary now includes heap-backed dynamic
 formatting through `_asprintf` and `_vasprintf`. The host API proof exercises
 allocation, formatting, and release together and emits `DARWIN_HOST_API=PASS`.
-The remaining Mach-O loader gap is threaded pointer-chain execution; its
-opcode recognition is present, but applying the chain still fails closed until
-an ordinal-table fixture and runtime implementation are added.
+The threaded Mach-O bind path now applies the decoded pointer chain through the
+ordinal table and is covered by the dyld smoke fixture. The remaining boundary
+is full parity for authenticated and ARM64 threaded pointers, plus validation
+against non-synthetic production images; unsupported variants still fail closed.
 
 The host-symbol boundary now also provides the POSIX-style `_strerror_r`
 buffered error API with truncation reporting. The host API proof covers both

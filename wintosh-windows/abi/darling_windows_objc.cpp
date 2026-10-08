@@ -45,6 +45,9 @@ struct objc_method final {
 struct objc_class final {
 	std::string name;
 	Class superclass{};
+	Class metaclass{};
+	Class owner_class{};
+	bool is_metaclass{};
 	struct Method final {
 		IMP implementation{};
 		std::string types;
@@ -379,6 +382,21 @@ std::vector<std::unique_ptr<objc_class>>& ClassStorage()
 	return storage;
 }
 
+Class EnsureMetaClass(Class cls)
+{
+	if (!cls || cls->is_metaclass) return cls;
+	if (cls->metaclass) return cls->metaclass;
+	ClassStorage().push_back(std::make_unique<objc_class>());
+	Class meta = ClassStorage().back().get();
+	meta->name = cls->name;
+	meta->is_metaclass = true;
+	meta->owner_class = cls;
+	meta->superclass = cls->superclass ? EnsureMetaClass(cls->superclass) : nullptr;
+	meta->methods = cls->class_methods;
+	cls->metaclass = meta;
+	return meta;
+}
+
 std::unordered_map<std::string, Protocol>& Protocols()
 {
 	static std::unordered_map<std::string, Protocol> protocols;
@@ -676,7 +694,11 @@ extern "C" Class objc_getClass(const char* name)
 
 extern "C" Class objc_getMetaClass(const char* name)
 {
-	return objc_getClass(name);
+	if (!name)
+		return nullptr;
+	std::lock_guard lock(RuntimeMutex());
+	const auto existing = Classes().find(name);
+	return existing == Classes().end() ? nullptr : EnsureMetaClass(existing->second);
 }
 
 extern "C" int objc_getClassList(Class* buffer, int buffer_count)
@@ -1129,8 +1151,9 @@ extern "C" Method class_getClassMethod(Class cls, SEL selector)
 		return nullptr;
 	std::lock_guard lock(RuntimeMutex());
 	for (Class current = cls; current; current = current->superclass) {
-		auto method = current->class_methods.find(selector);
-		if (method != current->class_methods.end())
+		const auto& method_map = current->is_metaclass ? current->methods : current->class_methods;
+		auto method = method_map.find(selector);
+		if (method != method_map.end())
 			return MakeMethodView(selector, method->second);
 	}
 	return nullptr;
@@ -1255,6 +1278,27 @@ extern "C" const char* property_getAttributes(objc_property_t property)
 	return property ? property->attributes.c_str() : nullptr;
 }
 
+extern "C" bool class_addProperty(Class cls, const char* name,
+	const objc_property_attribute_t* attributes, unsigned int attribute_count)
+{
+	if (!cls || !name || name[0] == '\0' ||
+		(attribute_count != 0 && attributes == nullptr))
+		return false;
+	auto property = std::make_unique<objc_property>();
+	property->name = name;
+	for (unsigned int index = 0; index < attribute_count; ++index) {
+		if (!attributes[index].name || !attributes[index].value)
+			return false;
+		if (!property->attributes.empty()) property->attributes += ',';
+		property->attributes += attributes[index].name;
+		property->attributes += attributes[index].value;
+	}
+	std::lock_guard lock(RuntimeMutex());
+	if (cls->properties.find(name) != cls->properties.end()) return false;
+	cls->properties.emplace(property->name, std::move(property));
+	return true;
+}
+
 extern "C" objc_property_t* class_copyPropertyList(Class cls,
 	unsigned int* out_count)
 {
@@ -1316,8 +1360,11 @@ extern "C" bool class_addClassMethod(Class cls, SEL selector, IMP implementation
 	if (!cls || !selector || !implementation)
 		return false;
 	std::lock_guard lock(RuntimeMutex());
-	return cls->class_methods.emplace(selector,
-		objc_class::Method{implementation, types ? types : ""}).second;
+	const auto result = cls->class_methods.emplace(selector,
+		objc_class::Method{implementation, types ? types : ""});
+	if (result.second && cls->metaclass)
+		cls->metaclass->methods.emplace(selector, result.first->second);
+	return result.second;
 }
 
 extern "C" IMP class_getMethodImplementation(Class cls, SEL selector)
@@ -1368,8 +1415,8 @@ extern "C" bool object_isClass(id object)
 	if (!object)
 		return false;
 	std::lock_guard lock(RuntimeMutex());
-	for (const auto& entry : Classes())
-		if (reinterpret_cast<id>(entry.second) == object)
+	for (const auto& entry : ClassStorage())
+		if (reinterpret_cast<id>(entry.get()) == object)
 			return true;
 	return false;
 }
@@ -1781,13 +1828,15 @@ extern "C" id darling_objc_msgSend_class0(Class cls, SEL selector)
 		return nullptr;
 	std::lock_guard lock(RuntimeMutex());
 	for (Class current = cls; current; current = current->superclass) {
-		const auto method = current->class_methods.find(selector);
-		if (method == current->class_methods.end())
+		const auto& method_map = current->is_metaclass ? current->methods : current->class_methods;
+		const auto method = method_map.find(selector);
+		if (method == method_map.end())
 			continue;
 		if (method->second.types != "@@:")
 			return nullptr;
 		using ClassMethod = id (*)(Class, SEL);
-		return reinterpret_cast<ClassMethod>(method->second.implementation)(cls,
+		return reinterpret_cast<ClassMethod>(method->second.implementation)(
+			cls->is_metaclass && cls->owner_class ? cls->owner_class : cls,
 			selector);
 	}
 	return nullptr;

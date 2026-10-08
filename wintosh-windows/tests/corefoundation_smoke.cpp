@@ -9,9 +9,14 @@
 
 namespace {
 int notification_count = 0;
+int wildcard_notification_count = 0;
 void NotificationCallback(const void*, const char* name, const void* object)
 {
 	if (std::strcmp(name, "WintoshNotification") == 0 && object != nullptr) ++notification_count;
+}
+void WildcardNotificationCallback(const void*, const char* name, const void* object)
+{
+	if (name != nullptr && object != nullptr) ++wildcard_notification_count;
 }
 int runloop_callback_value = 0;
 void RunLoopCallback(void* context) { runloop_callback_value = *static_cast<int*>(context); }
@@ -36,6 +41,13 @@ int main()
 	const auto folded_needle = darling_windows_CFStringCreateWithCString("TOSH");
 	const bool string_find_ok = darling_windows_CFStringFind(string, folded_needle,
 		darling_windows_CFCompareCaseInsensitive).location == 3;
+	const auto unicode_string = darling_windows_CFStringCreateWithCString("A\xF0\x9F\x98\x80Z");
+	const bool unicode_length_ok = unicode_string != nullptr &&
+		darling_windows_CFStringGetLength(unicode_string) == 4;
+	const auto unicode_whitespace = darling_windows_CFStringCreateWithCString("\xC2\xA0\xE2\x80\x83Trim\xE2\x80\x89");
+	const bool unicode_trim_ok = unicode_whitespace != nullptr &&
+		darling_windows_CFStringTrimWhitespace(unicode_whitespace) &&
+		std::strcmp(darling_windows_CFStringGetCStringPtr(unicode_whitespace), "Trim") == 0;
 	const unsigned char bytes[] = {1, 2, 3, 4};
 	const auto data = darling_windows_CFDataCreate(bytes, 4);
 	const bool data_ok = data != nullptr && darling_windows_CFDataGetLength(data) == 4 &&
@@ -51,6 +63,10 @@ int main()
 	const void* copied_values[2]{};
 	darling_windows_CFArrayGetValues(array, 0, 2, copied_values);
 	const bool array_values_ok = copied_values[0] == string && copied_values[1] == data;
+	darling_windows_CFArrayGetValues(array, 0, 2, copied_values);
+	const bool array_overlap_copy_ok = copied_values[0] == string && copied_values[1] == data;
+	darling_windows_CFArrayGetValues(array, 0, 0, nullptr);
+	const bool array_empty_range_ok = darling_windows_CFArrayGetCount(array) == 2;
 	const bool array_search_ok = darling_windows_CFArrayGetFirstIndexOfValue(array,
 		data) == 1 && darling_windows_CFArrayGetFirstIndexOfValue(array, prefix) == -1 &&
 		darling_windows_CFArrayGetCountOfValue(array, string) == 1 &&
@@ -73,12 +89,22 @@ int main()
 	const bool number_compare_ok = darling_windows_CFNumberCompare(number, real_number) > 0 &&
 		darling_windows_CFNumberCompare(real_number, real_number) == 0 &&
 		darling_windows_CFNumberCompare(real_number, number) < 0;
+	const auto equal_real_number = darling_windows_CFNumberCreateDouble(42.0);
+	const bool numeric_equal_ok = darling_windows_CFEqual(number, equal_real_number) &&
+		!darling_windows_CFEqual(number, real_number);
 	const void* keys[] = {string};
 	const void* mapped[] = {number};
 	const auto dictionary = darling_windows_CFDictionaryCreate(keys, mapped, 1);
 	const bool dictionary_ok = dictionary != nullptr &&
 		darling_windows_CFDictionaryGetCount(dictionary) == 1 &&
 		darling_windows_CFDictionaryGetValue(dictionary, string) == number;
+	const void* duplicate_keys[] = {string, string};
+	const void* duplicate_values[] = {number, real_number};
+	const auto duplicate_dictionary = darling_windows_CFDictionaryCreate(
+		duplicate_keys, duplicate_values, 2);
+	const bool duplicate_dictionary_ok = duplicate_dictionary != nullptr &&
+		darling_windows_CFDictionaryGetCount(duplicate_dictionary) == 1 &&
+		darling_windows_CFDictionaryGetValue(duplicate_dictionary, string) == real_number;
 	const void* copied_keys[1]{};
 	const void* copied_dictionary_values[1]{};
 	darling_windows_CFDictionaryGetKeysAndValues(dictionary, copied_keys,
@@ -113,11 +139,31 @@ int main()
       darling_windows_CFDateGetAbsoluteTime(shifted_date) == 1295.0 &&
       darling_windows_CFDateGetTimeIntervalSinceDate(shifted_date, date) == 60.5 &&
       darling_windows_CFDateGetTimeIntervalSinceDate(date, shifted_date) == -60.5;
+	const auto negative_date = darling_windows_CFDateCreate(-0.5);
+	const auto negative_date_xml = darling_windows_CFPropertyListCreateXML(negative_date);
+	char negative_date_buffer[256]{};
+	const bool negative_date_ok = negative_date_xml != nullptr &&
+		darling_windows_CFStringGetCString(negative_date_xml, negative_date_buffer,
+			sizeof(negative_date_buffer)) &&
+		std::strstr(negative_date_buffer, "2000-12-31T23:59:59.500Z") != nullptr;
+	const auto rounding_date = darling_windows_CFDateCreate(1.9996);
+	const auto rounding_date_xml = darling_windows_CFPropertyListCreateXML(rounding_date);
+	char rounding_date_buffer[256]{};
+	const bool date_rounding_ok = rounding_date_xml != nullptr &&
+		darling_windows_CFStringGetCString(rounding_date_xml, rounding_date_buffer,
+			sizeof(rounding_date_buffer)) &&
+		std::strstr(rounding_date_buffer, "2001-01-01T00:00:02Z") != nullptr;
 	const auto true_value = darling_windows_CFBooleanGetValue(true);
 	const auto false_value = darling_windows_CFBooleanGetValue(false);
 	const auto null_value = darling_windows_CFNullGetValue();
 	const bool scalar_ok = true_value != false_value && darling_windows_CFBooleanIsTrue(true_value) &&
 		!darling_windows_CFBooleanIsTrue(false_value) && null_value != nullptr;
+	const bool singleton_lifetime_ok = darling_windows_CFRetain(true_value) == true_value &&
+		darling_windows_CFRetain(null_value) == null_value;
+	darling_windows_CFRelease(true_value);
+	darling_windows_CFRelease(null_value);
+	const bool singleton_still_valid = darling_windows_CFBooleanIsTrue(true_value) &&
+		darling_windows_CFNullGetValue() == null_value;
 	const auto equal_string = darling_windows_CFStringCreateWithCString("Wintosh");
 	const bool equal_ok = darling_windows_CFEqual(string, equal_string) &&
 		darling_windows_CFEqual(data, data) && !darling_windows_CFEqual(string, prefix) &&
@@ -157,6 +203,15 @@ int main()
 	std::thread callback_thread([&] { darling_windows_CFRunLoopRunInMode(1.0, true); });
 	callback_thread.join();
 	const bool callback_ok = queued && runloop_callback_value == 7;
+	int second_callback_value = 11;
+	const bool queued_sources = darling_windows_CFRunLoopPerformBlock(loop, RunLoopCallback, &callback_value) &&
+		darling_windows_CFRunLoopPerformBlock(loop, RunLoopCallback, &second_callback_value);
+	runloop_callback_value = 0;
+	const int first_source_result = darling_windows_CFRunLoopRunInMode(1.0, true);
+	const bool one_source_ok = queued_sources && first_source_result == 0 && runloop_callback_value == 7;
+	runloop_callback_value = 0;
+	const int second_source_result = darling_windows_CFRunLoopRunInMode(1.0, true);
+	const bool source_queue_ok = second_source_result == 0 && runloop_callback_value == 11;
 	int timer_value = 0;
 	const bool timer_queued = darling_windows_CFRunLoopPerformOneShotTimer(
 		loop, 0.01, RunLoopCallback, &callback_value);
@@ -167,9 +222,11 @@ int main()
 	const int notification_object = 1;
 	const bool notification_ok = darling_windows_CFNotificationCenterAddObserver(
 		center, &notification_count, NotificationCallback, "WintoshNotification");
+	const bool wildcard_notification_ok = darling_windows_CFNotificationCenterAddObserver(
+		center, &wildcard_notification_count, WildcardNotificationCallback, nullptr);
 	darling_windows_CFNotificationCenterPostNotification(center, "WintoshNotification",
 		&notification_object);
-	const bool delivered = notification_count == 1;
+	const bool delivered = notification_count == 1 && wildcard_notification_count == 1;
 	darling_windows_CFNotificationCenterRemoveObserver(center, &notification_count,
 		NotificationCallback, "WintoshNotification");
 	const bool notification_global_remove_ok = darling_windows_CFNotificationCenterAddObserver(
@@ -178,6 +235,8 @@ int main()
 		center, &notification_count, NotificationCallback, "WintoshNotificationB") &&
 		darling_windows_CFNotificationCenterRemoveObserver(
 		center, &notification_count, NotificationCallback, nullptr);
+	const bool notification_missing_remove_ok = !darling_windows_CFNotificationCenterRemoveObserver(
+		center, &notification_count, NotificationCallback, "WintoshNotificationMissing");
 	const auto plist = darling_windows_CFPropertyListCreateXML(dictionary);
 	char plist_buffer[512]{};
 	const bool plist_ok = plist != nullptr && darling_windows_CFStringGetCString(
@@ -415,8 +474,24 @@ int main()
 		darling_windows_CFDataClear(data) && darling_windows_CFDataGetLength(data) == 0 &&
 		darling_windows_CFDataAppendBytes(data, replacement_bytes, 2) &&
 		darling_windows_CFDataGetLength(data) == 2;
+	const unsigned char alias_bytes[] = {9, 8, 7};
+	const auto alias_data = darling_windows_CFDataCreate(alias_bytes, 3);
+	const auto* alias_source = alias_data == nullptr ? nullptr :
+		darling_windows_CFDataGetBytePtr(alias_data) + 1;
+	const bool mutable_data_alias_ok = alias_data != nullptr &&
+		darling_windows_CFDataAppendBytes(alias_data, alias_source, 2) &&
+		darling_windows_CFDataGetLength(alias_data) == 5 &&
+		darling_windows_CFDataGetBytePtr(alias_data)[3] == 8 &&
+		darling_windows_CFDataGetBytePtr(alias_data)[4] == 7;
+	const bool data_overlap_copy_ok = alias_data != nullptr &&
+		darling_windows_CFDataGetBytes(alias_data, 1, 3,
+		darling_windows_CFDataGetMutableBytePtr(alias_data)) &&
+		darling_windows_CFDataGetBytePtr(alias_data)[0] == 8 &&
+		darling_windows_CFDataGetBytePtr(alias_data)[1] == 7 &&
+		darling_windows_CFDataGetBytePtr(alias_data)[2] == 8;
 	darling_windows_CFRetain(string);
 	darling_windows_CFRelease(string);
+	darling_windows_CFRelease(alias_data);
 	darling_windows_CFRelease(prefix);
 	darling_windows_CFRelease(suffix);
 	darling_windows_CFRelease(folded_needle);
@@ -431,7 +506,9 @@ int main()
 	darling_windows_CFRelease(set);
 	darling_windows_CFRelease(equal_data);
 	darling_windows_CFRelease(dictionary);
+	darling_windows_CFRelease(duplicate_dictionary);
 	darling_windows_CFRelease(number);
+	darling_windows_CFRelease(equal_real_number);
 	darling_windows_CFRelease(real_number);
 	darling_windows_CFRelease(url_path);
 	darling_windows_CFRelease(url);
@@ -439,6 +516,10 @@ int main()
 	darling_windows_CFRelease(earlier_date);
 	darling_windows_CFRelease(later_date);
 	darling_windows_CFRelease(shifted_date);
+	darling_windows_CFRelease(negative_date);
+	darling_windows_CFRelease(negative_date_xml);
+	darling_windows_CFRelease(rounding_date);
+	darling_windows_CFRelease(rounding_date_xml);
 	darling_windows_CFRelease(plist);
 	darling_windows_CFRelease(array_plist);
 	darling_windows_CFRelease(data_plist);
@@ -470,5 +551,7 @@ int main()
 	darling_windows_CFRelease(string);
 	std::cout << "DARWIN_COREF_FOUNDATION=\"" <<
 		(string_ok && string_match_ok && string_find_ok && equal_ok && semantic_lookup_ok && collection_equal_ok && array_search_ok && data_ok && data_slice_ok && array_ok && array_values_ok && number_ok && real_number_ok && number_conversion_ok && real_conversion_ok && dictionary_ok && dictionary_values_ok && set_ok && set_values_ok && date_url_ok && scalar_ok && runloop_ok && callback_ok && timer_ok && notification_ok && delivered && plist_ok && array_plist_ok && data_plist_ok && date_plist_ok && real_plist_ok && escaping_ok && plist_parse_ok && plist_dict_parse_ok && plist_data_parse_ok && plist_date_parse_ok && plist_fractional_date_ok && plist_offset_date_ok && binary_plist_ok && binary_dictionary_ok && binary_utf16_ok && binary_extended_ok && binary_data_ok && binary_date_ok && binary_real_ok && binary_uid_ok && mutable_array_ok && mutable_dictionary_ok && mutable_set_ok && mutable_data_ok ? "PASS" : "FAIL") << "\n";
-	return string_ok && string_match_ok && string_find_ok && equal_ok && mutable_string_ok && string_bytes_ok && trim_ok && semantic_lookup_ok && array_search_ok && data_ok && data_slice_ok && array_ok && array_values_ok && number_ok && real_number_ok && number_conversion_ok && real_conversion_ok && number_compare_ok && dictionary_ok && dictionary_values_ok && set_ok && set_values_ok && date_url_ok && date_compare_ok && date_interval_ok && scalar_ok && runloop_ok && callback_ok && timer_ok && notification_ok && notification_global_remove_ok && delivered && plist_ok && array_plist_ok && data_plist_ok && date_plist_ok && real_plist_ok && escaping_ok && plist_parse_ok && plist_dict_parse_ok && plist_data_parse_ok && plist_date_parse_ok && plist_fractional_date_ok && plist_offset_date_ok && binary_plist_ok && binary_dictionary_ok && binary_utf16_ok && binary_extended_ok && binary_data_ok && binary_date_ok && binary_real_ok && binary_uid_ok && mutable_array_ok && mutable_dictionary_ok && mutable_set_ok && mutable_data_ok ? 0 : 1;
+	darling_windows_CFRelease(unicode_string);
+	darling_windows_CFRelease(unicode_whitespace);
+	return string_ok && string_match_ok && string_find_ok && unicode_length_ok && unicode_trim_ok && equal_ok && mutable_string_ok && string_bytes_ok && trim_ok && semantic_lookup_ok && array_search_ok && data_ok && data_slice_ok && array_ok && array_values_ok && array_overlap_copy_ok && array_empty_range_ok && number_ok && real_number_ok && number_conversion_ok && real_conversion_ok && number_compare_ok && numeric_equal_ok && dictionary_ok && duplicate_dictionary_ok && dictionary_values_ok && set_ok && set_values_ok && date_url_ok && date_compare_ok && date_interval_ok && negative_date_ok && date_rounding_ok && scalar_ok && singleton_lifetime_ok && singleton_still_valid && runloop_ok && callback_ok && queued_sources && one_source_ok && source_queue_ok && timer_ok && notification_ok && wildcard_notification_ok && notification_global_remove_ok && notification_missing_remove_ok && delivered && plist_ok && array_plist_ok && data_plist_ok && date_plist_ok && real_plist_ok && escaping_ok && plist_parse_ok && plist_dict_parse_ok && plist_data_parse_ok && plist_date_parse_ok && plist_fractional_date_ok && plist_offset_date_ok && binary_plist_ok && binary_dictionary_ok && binary_utf16_ok && binary_extended_ok && binary_data_ok && binary_date_ok && binary_real_ok && binary_uid_ok && mutable_array_ok && mutable_dictionary_ok && mutable_set_ok && mutable_data_ok && mutable_data_alias_ok && data_overlap_copy_ok ? 0 : 1;
 }

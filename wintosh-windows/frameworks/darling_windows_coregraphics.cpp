@@ -266,24 +266,38 @@ extern "C" void darling_windows_CGRectDivide(darling_windows_CGRect rect,
 	if (remainder != nullptr) *remainder = rect;
 	switch (edge) {
 	case darling_windows_CGMinXEdge:
+		{
+		const double used = (std::min)(clamped, (std::max)(0.0, rect.size.width));
 		if (slice != nullptr) *slice = {{rect.origin.x, rect.origin.y},
-			{(std::min)(clamped, rect.size.width), rect.size.height}};
-		if (remainder != nullptr) { remainder->origin.x += clamped; remainder->size.width -= clamped; }
+			{used, rect.size.height}};
+		if (remainder != nullptr) { remainder->origin.x += used; remainder->size.width -= used; }
+		}
 		break;
 	case darling_windows_CGMinYEdge:
+		{
+		const double used = (std::min)(clamped, (std::max)(0.0, rect.size.height));
 		if (slice != nullptr) *slice = {{rect.origin.x, rect.origin.y},
-			{rect.size.width, (std::min)(clamped, rect.size.height)}};
-		if (remainder != nullptr) { remainder->origin.y += clamped; remainder->size.height -= clamped; }
+			{rect.size.width, used}};
+		if (remainder != nullptr) { remainder->origin.y += used; remainder->size.height -= used; }
+		}
 		break;
 	case darling_windows_CGMaxXEdge:
+		{
+		const double used = (std::min)(clamped, (std::max)(0.0, rect.size.width));
 		if (slice != nullptr) *slice = {{rect.origin.x + rect.size.width - clamped, rect.origin.y},
-			{(std::min)(clamped, rect.size.width), rect.size.height}};
-		if (remainder != nullptr) remainder->size.width -= clamped;
+			{used, rect.size.height}};
+		if (slice != nullptr) slice->origin.x = rect.origin.x + rect.size.width - used;
+		if (remainder != nullptr) remainder->size.width -= used;
+		}
 		break;
 	case darling_windows_CGMaxYEdge:
+		{
+		const double used = (std::min)(clamped, (std::max)(0.0, rect.size.height));
 		if (slice != nullptr) *slice = {{rect.origin.x, rect.origin.y + rect.size.height - clamped},
-			{rect.size.width, (std::min)(clamped, rect.size.height)}};
-		if (remainder != nullptr) remainder->size.height -= clamped;
+			{rect.size.width, used}};
+		if (slice != nullptr) slice->origin.y = rect.origin.y + rect.size.height - used;
+		if (remainder != nullptr) remainder->size.height -= used;
+		}
 		break;
 	}
 	if (remainder != nullptr) {

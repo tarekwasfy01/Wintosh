@@ -37,8 +37,12 @@ Run a supported Mach-O image and pass arguments to its entry point:
 ```powershell
 .\bin\wintosh.exe .\Applications\Example.app\Contents\MacOS\Example
 .\bin\wintosh.exe .\bin\example.macho --verbose input.txt
+.\bin\wintosh.exe --prefix .\runtime --rpath .\runtime\lib \
+    --env WINTOSH_MODE=portable .\bin\example.macho
 ```
 
+The options are `--help`, `--version`, `--prefix <directory>`, repeated
+`--rpath <directory>`, repeated `--env KEY=VALUE`, and `--` to end options.
 The CLI inherits the current Windows environment, uses the Mach-O image's
 parent directory as the initial Wintosh prefix, and forwards the image path
 plus all following arguments to the native Darwin bootstrap. A missing image

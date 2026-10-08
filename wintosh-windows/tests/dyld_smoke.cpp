@@ -375,6 +375,12 @@ int wmain()
 			throw std::runtime_error("embedded Mach-O rpath did not resolve dylib");
 		}
 		std::cout << "DYLD_EMBEDDED_RPATH=PASS\n";
+		const auto combined_resolved = darling::windows_host::DylibResolver::Resolve(
+			image, "@rpath/libSystem.B.dylib", {root / "not-the-provider"}, root);
+		if (combined_resolved != library) {
+			throw std::runtime_error("embedded Mach-O rpath was ignored with external rpaths");
+		}
+		std::cout << "DYLD_COMBINED_RPATH=PASS\n";
 		const auto loader_resolved = darling::windows_host::DylibResolver::Resolve(
 			image, "@loader_path/Demo", {}, root);
 		std::cout << "DYLD_LOADER_PATH=" << loader_resolved.filename().string() << "\n";

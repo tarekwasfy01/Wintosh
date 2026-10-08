@@ -153,10 +153,20 @@ std::filesystem::path DylibResolver::Resolve(
 	const std::string rpath_token = "@rpath/";
 	std::vector<std::filesystem::path> candidates;
 	std::vector<std::filesystem::path> effective_rpaths = rpaths;
-	if (effective_rpaths.empty() && dependency.rfind(rpath_token, 0) == 0) {
+	// Darwin combines loader-supplied runpaths with the LC_RPATH commands
+	// embedded in the image.  Do not skip the image runpaths merely because a
+	// caller supplied one or more search roots.
+	if (dependency.rfind(rpath_token, 0) == 0) {
 		const auto image = MachOImage::Open(image_path.wstring());
 		for (const auto& rpath : image.RPaths()) {
-			effective_rpaths.emplace_back(rpath);
+			// Keep @loader_path/@executable_path tokens intact; lexical
+			// normalization would treat the token as an ordinary directory and
+			// can erase it before ExpandRPath sees it.
+			const std::filesystem::path candidate_rpath(rpath);
+			if (std::find(effective_rpaths.begin(), effective_rpaths.end(), candidate_rpath) ==
+				effective_rpaths.end()) {
+				effective_rpaths.emplace_back(candidate_rpath);
+			}
 		}
 	}
 

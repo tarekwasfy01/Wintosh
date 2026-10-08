@@ -1,0 +1,25 @@
+{
+  "cSpell.language": "en",
+  "cSpell.words": [
+    "IIRC",
+    "LLDB",
+    "LLVM",
+    "LLVM's",
+    "Redistributable",
+    "TAPI",
+    "dylib",
+    "ipasim",
+    "recurse",
+    "roadmap",
+    "submodules"
+  ],
+  "editor.rulers": [
+    80
+  ],
+  "files.associations": {
+    "*.m": "objective-c",
+    ".clang-format": "yaml",
+    ".lfsconfig": "properties"
+  },
+  "git.inputValidationLength": 50
+}

@@ -1,0 +1,33 @@
+path,kind,presence,file_count_or_bytes,release_role,status
+darling-source,source-tree,present,31720,corresponding-source,primary Darling checkout plus Windows overlay
+wsl-source,source-tree,present,1508,reference-only,WSL host integration reference
+puredarwin-source,source-tree,present,8069,reference-only,Darwin/XNU contract reference
+ipasim-source,source-tree,present,87462,reference-only,iOS/Mach-O/framework reference
+wine64-darwin-source,source-tree,present,6519,reference-only,Wine/Darwin reference
+sherlockelf-source,source-tree,present,700,reference-only,ELF/Mach-O inspection reference
+touchhle-source,source-tree,present,418,reference-only,HLE/framework reference
+directhw-source,source-tree,present,25,reference-only,hardware boundary reference
+cocotron-source,source-tree,present,2485,reference-only,Foundation/AppKit API reference
+darwin-computa-source,source-tree,present,3571,reference-only,Boxedwine/Darling architecture reference
+macho-ld-source,source-tree,present,11,reference-only,Mach-O loader reference
+classix-source,source-tree,present,323,reference-only,PEF/CFM guest boundary reference
+vst-ace-source,source-tree,present,334,reference-only,mixed host/shim reference
+darling-source/src/native/windows,implementation-overlay,present,83,source-and-tests,native Windows adapter and smoke tests
+licenses,legal-bundle,present,12,required,licenses notices inventories and provenance scripts
+tools,tooling,present,1,required,WSL/backend probe tooling
+build-windows-msvc,generated-build,present,787,local-only,generated x64 Visual Studio build tree
+build-windows-win32,generated-build,present,706,local-only,generated Win32 Visual Studio build tree
+README.md,documentation,present,4714,release,project introduction and boundaries
+DOCUMENTATION-INDEX.md,documentation,present,3179,release,documentation navigation
+STATUS.md,documentation,present,1947,release,evidence-based status
+PRIMITIVE-MATRIX.csv,documentation,present,4334,release,machine-readable port family matrix
+PRIMITIVE-MATRIX.md,documentation,present,2771,release,matrix policy and interpretation
+SOURCE-EXTRACTION-MATRIX.md,documentation,present,4948,release,cross-source extraction record
+SOURCE-CHECKOUT-MANIFEST.md,documentation,present,2696,release,checkout and license boundaries
+PORTING-INVENTORY.md,documentation,present,257063,release,detailed engineering inventory
+BUILD-AND-TEST.md,documentation,present,1791,release,reproducible build and test procedure
+THIRD-PARTY-NOTICES.md,documentation,present,974,release,human-readable third-party notices
+RELEASE-CHECKLIST.md,documentation,present,1377,release,GitHub preparation checklist
+LICENSE-WINTOSH-ORIGINAL-MIT.txt,license,present,1413,release,only clearly original Wintosh code
+CURRENT-STATE.md,documentation,present,1595,release,complete workspace state description
+CURRENT-STATE-MANIFEST.csv,documentation,present,2918,release,machine-readable complete workspace inventory

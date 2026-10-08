@@ -1,0 +1,1131 @@
+/* peload -- CLI front end: inspect a Windows VST2 plugin and render it to WAV,
+ * natively, without Wine. See pehost.h for the hosting API.
+ *
+ * Everything below `main` is one stage of a run, in the order a run does them.
+ * They were all inline in `main` until it reached three hundred lines and you
+ * could no longer see that a run is: parse, maybe detect, open, describe,
+ * patch, dump, render, capture. */
+#define _GNU_SOURCE
+#include "pehost.h"
+#include "patch.h"
+#include "win32host.h"
+#include "hostfault.h"
+#include "hostprof.h"
+#ifdef PELOAD_LIVE
+#include "live.h"
+#endif
+#include <ctype.h>
+#include <math.h>
+#include <stdio.h>
+#include <strings.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdint.h>
+#include <unistd.h>
+
+#define RATE 48000
+
+/* Everything the command line can say. */
+/* Win32 mouse messages, the form pehost_editor_mouse takes. Only the three a
+ * click is made of are needed here. */
+#define WM_MOUSEMOVE   0x0200
+#define WM_LBUTTONDOWN 0x0201
+#define WM_LBUTTONUP   0x0202
+#define MAX_CLICKS     400   /* a grid probe of one editor is a few hundred */
+/* Parameters watched across a click, to report what one actually did. */
+#define MAX_WATCH_PARAMS 512
+
+typedef struct {
+    const char *path;             /* the plugin, or a bank that names one */
+    const char *wav;              /* --render */
+    const char *shot;             /* --editor */
+    int         selftest;         /* --msvcp-selftest */
+    const char *patch_in;         /* --patch, or a .json given positionally */
+    const char *patch_out;        /* --save-patch */
+    int         ed_w, ed_h;       /* --editor-size WxH */
+    const char *state_out;        /* --save-state */
+    const char *state_in;         /* --load-state */
+    const char *pick;             /* --pick */
+    const char *as_name;          /* --as */
+    int         detect;           /* --detect */
+    int         dump;             /* --params */
+    int         list_patches;
+    int         list_programs;
+    int         secs, note, prog;
+    /* The host runs at 256; matching it here is what reproduces a plugin that
+     * only misbehaves under the block size it will actually be given. */
+    int         block;
+    /* Live mode: play the plug-in from a MIDI port instead of rendering a
+     * file. `sink` names where the audio goes; without one the graph decides. */
+    int         play;
+    const char *midi_from;
+    const char *sink;
+    /* --click X,Y, repeatable. See the click loop in the editor capture. */
+    struct { int x, y; } click[MAX_CLICKS];
+    int         nclick;
+    /* --drag x1,y1,x2,y2: press, sweep, release. See drag_pump. */
+    int         drag[4];
+    int         has_drag;
+    /* --live N: hold the note and run the audio for N seconds with the editor
+     * pumped between blocks, so the picture is of a plugin that is playing. */
+    int         live;
+    /* --type TEXT: typed into the editor after the clicks. A plug-in that will
+     * not work until something is typed into it cannot be tested any other way
+     * -- daHornet refuses to make a sound, and keeps its registration panel
+     * over the interface, until its serial number has been entered. */
+    const char *type;
+} opts;
+
+/* A scripted drag, driven from inside the plug-in's own tracking loop.
+ *
+ * A Classic control does not get told the pointer moved -- on mouse-down it
+ * spins, polling GetMouse until the button comes up, redrawing itself as it
+ * goes. That is what makes a dial follow the pointer, and it means the host
+ * cannot simply send it a stream of move events: nothing of the host's runs
+ * until the loop ends. What runs instead is the input pump, which the shim
+ * calls from inside that poll -- see cfm_set_input_pump.
+ *
+ * So the sweep lives here, in the pump: each time the plug-in asks where the
+ * pointer is, it has moved a little further along. Which is exactly what a
+ * window system would have been doing, and it makes a drag reproducible
+ * without a display or a hand on a mouse. */
+static struct {
+    pehost *h;
+    int     x0, y0, x1, y1;
+    int     step, steps, released;
+    float   seen[512];        /* the value at each step, to prove it tracked */
+    int     nseen, watch, nparam;
+    float   base[MAX_WATCH_PARAMS];   /* values before the press, to spot the one moving */
+} g_drag;
+
+static void drag_pump(void *ud)
+{
+    int x, y;
+
+    (void)ud;
+    if (!g_drag.h) return;
+    if (g_drag.step >= g_drag.steps) {
+        /* The gesture ends here, inside the plug-in's own loop, because that is
+         * the only place it can: the loop spins until the button comes up, so a
+         * release sent from outside it would never arrive. This is the hand
+         * letting go of the mouse. */
+        if (!g_drag.released) {
+            g_drag.released = 1;
+            pehost_editor_mouse(g_drag.h, g_drag.x1, g_drag.y1, WM_LBUTTONUP, 0, 0);
+        }
+        return;
+    }
+    g_drag.step++;
+    x = g_drag.x0 + (g_drag.x1 - g_drag.x0) * g_drag.step / g_drag.steps;
+    y = g_drag.y0 + (g_drag.y1 - g_drag.y0) * g_drag.step / g_drag.steps;
+    pehost_editor_mouse(g_drag.h, x, y, WM_MOUSEMOVE, 1, 0);
+    /* Nothing is read from the plug-in here. This runs inside the plug-in's own
+     * tracking loop, so asking it for a parameter would be a second entry into
+     * code that is already running -- the same re-entrancy the parameter list
+     * guards against in the windows. Whether the control tracked is settled
+     * after the gesture, by where it ended up: a press alone puts it under the
+     * pointer's start, so a value matching the *end* is proof it followed. */
+    g_drag.nseen++;
+}
+
+/* ------------------------------------------------------------- file output */
+
+/* Dump the editor's pixels as a PPM: enough to confirm the Win32 layer really
+ * produced an image, without needing a window system. */
+static int write_ppm(const char *path, const unsigned int *px, int w, int h)
+{
+    FILE *f = fopen(path, "wb");
+    int y, x;
+    if (!f) { perror(path); return 0; }
+    fprintf(f, "P6\n%d %d\n255\n", w, h);
+    for (y = 0; y < h; y++)
+        for (x = 0; x < w; x++) {
+            unsigned int p = px[(size_t)y * w + x];
+            unsigned char rgb[3] = { (unsigned char)(p >> 16), (unsigned char)(p >> 8),
+                                     (unsigned char)p };
+            fwrite(rgb, 1, 3, f);
+        }
+    fclose(f);
+    return 1;
+}
+
+static int write_wav(const char *path, const float *inter, int frames, int sr)
+{
+    unsigned char h[44];
+    uint32_t bytes = (uint32_t)frames * 4u;
+    int16_t *pcm;
+    FILE *f;
+    int i;
+
+    if (!(pcm = malloc((size_t)frames * 2 * sizeof *pcm))) return 0;
+    for (i = 0; i < frames * 2; i++) {
+        double v = (double)inter[i] * 32767.0;
+        pcm[i] = (int16_t)(v > 32767.0 ? 32767.0 : (v < -32768.0 ? -32768.0 : v));
+    }
+    memcpy(h, "RIFF", 4);
+    { uint32_t v = 36 + bytes; memcpy(h + 4, &v, 4); }
+    memcpy(h + 8, "WAVEfmt ", 8);
+    { uint32_t v = 16;     memcpy(h + 16, &v, 4); }
+    { uint16_t v = 1;      memcpy(h + 20, &v, 2); }
+    { uint16_t v = 2;      memcpy(h + 22, &v, 2); }
+    { uint32_t v = sr;     memcpy(h + 24, &v, 4); }
+    { uint32_t v = sr * 4; memcpy(h + 28, &v, 4); }
+    { uint16_t v = 4;      memcpy(h + 32, &v, 2); }
+    { uint16_t v = 16;     memcpy(h + 34, &v, 2); }
+    memcpy(h + 36, "data", 4);
+    memcpy(h + 40, &bytes, 4);
+    if (!(f = fopen(path, "wb"))) { perror(path); free(pcm); return 0; }
+    fwrite(h, 1, sizeof h, f);
+    fwrite(pcm, 2, (size_t)frames * 2, f);
+    fclose(f); free(pcm);
+    return 1;
+}
+
+/* ------------------------------------------------------------ the command */
+
+static void usage(void)
+{
+    fprintf(stderr,
+        "usage: peload <plugin.dll|bank.json> [--params] [--render out.wav]\n"
+        "              [--secs N] [--note N] [--program N]\n"
+        "              [--patch bank.json]  apply a patch before rendering\n"
+        "              [--pick name|N]      which patch, when the file holds several\n"
+        "              [--list-patches]     name the patches in it\n"
+        "              [--list-programs]    name the plugin's own programs\n"
+        "              [--detect]           say what platform/loader the file needs, then stop\n"
+        "              [--as KIND]          force a loader instead of auto-detecting\n"
+        "                                   (auto, win-vst2-64, win-vst2-32, win-vst3,\n"
+        "                                    linux-vst3, linux-vst2, mac-vst2, mac-vst3,\n"
+        "                                    mac-au, classic-mac)\n"
+        "              [--save-patch out.json]  write the current state\n"
+        "              [--save-state out.bin]   the plug-in's own opaque state\n"
+        "              [--load-state in.bin]    read that back\n"
+        "              [--editor out.ppm]   open the GUI and capture it\n"
+        "              [--live N]           hold the note and run the audio for N\n"
+        "                                   seconds first, so an animated editor\n"
+        "                                   is photographed while it is playing\n"
+       "              [--click X,Y]        click there first (repeatable)\n"
+       "              [--drag X1,Y1,X2,Y2] press, sweep, release -- and report\n"
+       "                                   whether a control tracked the sweep\n"
+       "              [--type TEXT]        type it into whatever the clicks focused\n"
+        "              [--block N]          frames per block (default 512)\n"
+              "              [--play]             play live: MIDI in, audio out\n"
+              "              [--midi CLIENT:PORT] connect that MIDI port to it\n"
+              "              [--sink NAME]        send the audio to that sink\n"
+        "\n"
+        "A bank names the plugin it was written for, so `peload bank.json`\n"
+        "opens that plugin with the patch already applied.\n");
+}
+
+/* Fills `o`. Returns 0, or an exit status if the command line is unusable. */
+static int parse_args(int argc, char **argv, opts *o)
+{
+    int i;
+
+    memset(o, 0, sizeof *o);
+    o->secs = 3;
+    o->note = 60;
+    o->block = 512;
+
+    for (i = 1; i < argc; i++) {
+        if (!strcmp(argv[i], "--render") && i + 1 < argc)        o->wav   = argv[++i];
+        else if (!strcmp(argv[i], "--secs") && i + 1 < argc)     o->secs  = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--note") && i + 1 < argc)     o->note  = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--live") && i + 1 < argc)     o->live  = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--type") && i + 1 < argc)     o->type  = argv[++i];
+        else if (!strcmp(argv[i], "--program") && i + 1 < argc)  o->prog  = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--params"))                   o->dump  = 1;
+        else if (!strcmp(argv[i], "--editor") && i + 1 < argc)   o->shot  = argv[++i];
+        else if (!strcmp(argv[i], "--msvcp-selftest"))           o->selftest = 1;
+        else if (!strcmp(argv[i], "--drag") && i + 1 < argc) {
+            if (sscanf(argv[++i], "%d,%d,%d,%d", &o->drag[0], &o->drag[1],
+                       &o->drag[2], &o->drag[3]) != 4) {
+                fprintf(stderr, "--drag wants X1,Y1,X2,Y2\n"); return 2;
+            }
+            o->has_drag = 1;
+        }
+        else if (!strcmp(argv[i], "--click") && i + 1 < argc) {
+            int cx, cy;
+            if (sscanf(argv[++i], "%d,%d", &cx, &cy) != 2) {
+                fprintf(stderr, "--click wants X,Y\n"); return 2;
+            }
+            if (o->nclick < MAX_CLICKS) {
+                o->click[o->nclick].x = cx; o->click[o->nclick].y = cy; o->nclick++;
+            }
+        }
+        else if (!strcmp(argv[i], "--play"))                     o->play = 1;
+        else if (!strcmp(argv[i], "--midi") && i + 1 < argc)     o->midi_from = argv[++i];
+        else if (!strcmp(argv[i], "--sink") && i + 1 < argc)     o->sink = argv[++i];
+        else if (!strcmp(argv[i], "--block") && i + 1 < argc)    o->block = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--patch") && i + 1 < argc)    o->patch_in  = argv[++i];
+        else if (!strcmp(argv[i], "--save-patch") && i + 1 < argc)
+                                                                 o->patch_out = argv[++i];
+        else if (!strcmp(argv[i], "--editor-size") && i + 1 < argc) {
+            /* Ask the editor to be a size other than its own, to see whether
+             * it lays itself out again or merely sits in a bigger window. */
+            if (sscanf(argv[++i], "%dx%d", &o->ed_w, &o->ed_h) != 2)
+                o->ed_w = o->ed_h = 0;
+        }
+        else if (!strcmp(argv[i], "--save-state") && i + 1 < argc)
+                                                                 o->state_out = argv[++i];
+        else if (!strcmp(argv[i], "--load-state") && i + 1 < argc)
+                                                                 o->state_in = argv[++i];
+        else if (!strcmp(argv[i], "--pick") && i + 1 < argc)     o->pick = argv[++i];
+        else if (!strcmp(argv[i], "--list-patches"))             o->list_patches  = 1;
+        else if (!strcmp(argv[i], "--list-programs"))            o->list_programs = 1;
+        else if (!strcmp(argv[i], "--detect"))                   o->detect = 1;
+        else if (!strcmp(argv[i], "--as") && i + 1 < argc)       o->as_name = argv[++i];
+        else if (argv[i][0] != '-')                              o->path = argv[i];
+        else { fprintf(stderr, "unknown option %s\n", argv[i]); return 2; }
+    }
+
+    /* The positional argument may be the bank rather than the plugin. A bank
+     * records the plugin it was written for, so naming one is enough to open
+     * both -- which is the whole point of "pluginPath". */
+    if (o->path && !o->patch_in) {
+        const char *dot = strrchr(o->path, '.');
+        if (dot && !strcasecmp(dot, ".json")) {
+            o->patch_in = o->path;
+            o->path     = NULL;
+        }
+    }
+    if (o->block < 16 || o->block > 8192) o->block = 512;
+    return 0;
+}
+
+/* Report what the file is and which loader it needs, then stop. A downloader's
+ * "what did I just get" query, and a way to see why a plugin is being refused
+ * before trying to render it. */
+static int cmd_detect(const char *path)
+{
+    pehost_info info;
+
+    pehost_classify(path, &info);
+    printf("%s\n", path);
+    printf("  kind      %s (%s)\n", pehost_kind_name(info.kind), info.label);
+    printf("  os        %s\n", info.os[0]     ? info.os     : "-");
+    printf("  arch      %s\n", info.arch[0]   ? info.arch   : "-");
+    printf("  format    %s\n", info.format[0] ? info.format : "-");
+    if (strcmp(info.binary, path))
+        printf("  binary    %s\n", info.binary);
+    printf("  loadable  %s\n", info.loadable ? "yes" : "no");
+    if (!info.loadable && info.why[0])
+        printf("  reason    %s\n", info.why);
+    return info.loadable ? 0 : 1;
+}
+
+/* Read the bank named by --patch, honour --list-patches and --pick, and let it
+ * supply the plugin path when none was given. Returns 0, or an exit status.
+ * `*out` is left NULL when there is no bank to read. */
+static int open_bank(opts *o, patch_bank **out, int *patch_ix)
+{
+    patch_bank *bank;
+    char        err[256];
+    int         i;
+
+    *out = NULL;
+    *patch_ix = 0;
+    if (!o->patch_in) return 0;
+
+    if (!(bank = patch_bank_read(o->patch_in, err, sizeof err))) {
+        fprintf(stderr, "patch: %s\n", err);
+        return 1;
+    }
+    *out = bank;
+
+    if (o->list_patches) {
+        printf("%d patch(es) in %s", patch_bank_count(bank), o->patch_in);
+        if (*patch_bank_plugin_name(bank))
+            printf("  [%s]", patch_bank_plugin_name(bank));
+        printf("\n");
+        for (i = 0; i < patch_bank_count(bank); i++)
+            printf("  %2d  %s\n", i, patch_bank_patch_name(bank, i));
+    }
+
+    /* --pick takes a name or an index, because a bank is read by people and
+     * driven by scripts, and those want different handles on the same thing.
+     * Resolved before the plugin below: in a bank spanning machines each patch
+     * names its own, so the pick decides which one to open. */
+    if (o->pick) {
+        int ix = -1;
+        for (i = 0; i < patch_bank_count(bank); i++)
+            if (!strcasecmp(o->pick, patch_bank_patch_name(bank, i))) { ix = i; break; }
+        if (ix < 0 && isdigit((unsigned char)o->pick[0])) {
+            ix = atoi(o->pick);
+            if (ix >= patch_bank_count(bank)) ix = -1;
+        }
+        if (ix < 0) {
+            fprintf(stderr, "no patch called \"%s\" in %s "
+                            "(--list-patches to see them)\n", o->pick, o->patch_in);
+            return 2;
+        }
+        *patch_ix = ix;
+    }
+
+    if (!o->path) {
+        o->path = patch_bank_patch_plugin_path(bank, *patch_ix);
+        if (!*o->path) {
+            fprintf(stderr, "%s names no \"pluginPath\" -- give the plugin "
+                            "as well\n", o->patch_in);
+            return 2;
+        }
+    }
+    return 0;
+}
+
+static void describe(pehost *h, const opts *o)
+{
+    int i;
+
+    printf("\n%s -- %s\n", pehost_name(h), pehost_vendor(h));
+    printf("  uniqueID 0x%08x  %s  in %d  out %d  programs %d  params %d\n",
+           pehost_unique_id(h), pehost_is_synth(h) ? "synth" : "effect",
+           pehost_num_inputs(h), pehost_num_outputs(h),
+           pehost_num_programs(h), pehost_num_params(h));
+
+    /* Every program's name, from one load. The alternative is --program N in a
+     * loop, which reloads the plugin sixty-four times to read sixty-four
+     * strings -- and is how you end up waiting ten minutes to find out whether
+     * a machine has a harp in it. */
+    if (o->list_programs) {
+        int np = pehost_num_programs(h);
+        printf("  %d program(s):\n", np);
+        for (i = 0; i < np; i++) {
+            char pn[64] = {0};
+            pehost_program_name(h, i, pn, sizeof pn);
+            printf("  %3d  %s\n", i, pn);
+        }
+    }
+
+    pehost_set_program(h, o->prog);
+    {
+        char pn[64];
+        pehost_program_name(h, o->prog, pn, sizeof pn);
+        printf("  program %d: \"%s\"\n", o->prog, pn);
+    }
+}
+
+/* After the program, never before it: selecting a program makes the plugin
+ * overwrite every parameter with that program's values. */
+static int apply_patch(pehost *h, patch_bank *bank, int patch_ix, int block)
+{
+    char err[256];
+    int  applied = 0, missed = 0;
+
+    if (patch_bank_apply(bank, patch_ix, h, err, sizeof err, &applied, &missed) != 0) {
+        fprintf(stderr, "patch: %s\n", err);
+        return 1;
+    }
+    /* One block through the plugin before anything is read back. Parameter
+     * writes are queued for the audio thread, and on the 32-bit bridge the
+     * helper applies them only as it renders -- so without this the dump below
+     * and --save-patch would both report the state from before the patch. This
+     * process is single-threaded, which is what makes rendering a block here
+     * safe to do. */
+    {
+        float *scratch = calloc((size_t)block * 2, sizeof *scratch);
+        if (scratch) { pehost_render(h, scratch, block); free(scratch); }
+    }
+    printf("  patch \"%s\": %d parameter(s) set",
+           patch_bank_patch_name(bank, patch_ix), applied);
+    if (missed) printf(", %d key(s) matched nothing", missed);
+    printf("\n");
+    if (err[0]) fprintf(stderr, "  warning: %s\n", err);
+    return 0;
+}
+
+static void dump_params(pehost *h, int all)
+{
+    int n = pehost_num_params(h);
+    int lim = all ? n : (n < 12 ? n : 12);
+    int i;
+
+    printf("\nparameters:\n");
+    for (i = 0; i < lim; i++) {
+        char nm[64], ds[64], lb[64];
+        pehost_param_name(h, i, nm, sizeof nm);
+        pehost_param_display(h, i, ds, sizeof ds);
+        pehost_param_label(h, i, lb, sizeof lb);
+        printf("  %3d %-24s %-10s %-8s (raw %.4f)\n", i, nm, ds, lb,
+               pehost_get_param(h, i));
+    }
+    if (lim < n) printf("  ... %d more (--params for all)\n", n - lim);
+}
+
+/* What an effect gets fed. Impulses alone excite delays, filters and phasers,
+ * but a spectral processor needs something continuous -- fed only impulses,
+ * every one of the MNSpectral units reports silence and looks broken. So: a
+ * tone plus an impulse train, which covers both. */
+static void fill_test_signal(float *src, int frames, int at)
+{
+    int j;
+    for (j = 0; j < frames; j++) {
+        double ph = 2.0 * M_PI * 220.0 * (at + j) / (double)RATE;
+        float  v  = (float)(0.4 * sin(ph));
+        if ((at + j) % 12000 == 0) v += 0.5f;
+        src[2 * j] = src[2 * j + 1] = v;
+    }
+}
+
+/* --load-state: the plug-in's own opaque block, as saved below.
+ *
+ * A patch bank carries parameter values, which is everything for most plug-ins
+ * and not everything for any plug-in that sets effFlagsProgramChunks. This is
+ * the rest of it, byte for byte as the plug-in handed it over. */
+static void load_state_in(pehost *h, const opts *o)
+{
+    FILE *f;
+    long  len;
+    void *buf;
+
+    if (!o->state_in) return;
+    if (!(f = fopen(o->state_in, "rb"))) { perror(o->state_in); return; }
+    fseek(f, 0, SEEK_END); len = ftell(f); fseek(f, 0, SEEK_SET);
+    if (len <= 0) { fclose(f); fprintf(stderr, "%s is empty\n", o->state_in); return; }
+    if (!(buf = malloc((size_t)len))) { fclose(f); return; }
+    if (fread(buf, 1, (size_t)len, f) != (size_t)len) {
+        fprintf(stderr, "%s: short read\n", o->state_in);
+        free(buf); fclose(f); return;
+    }
+    fclose(f);
+    if (pehost_set_state(h, 0, buf, (int)len))
+        printf("loaded %ld bytes of plug-in state from %s\n", len, o->state_in);
+    else
+        fprintf(stderr, "%s: this plug-in does not take an opaque state block "
+                        "(no effFlagsProgramChunks), so nothing was loaded\n",
+                o->state_in);
+    free(buf);
+}
+
+/* --save-state, the counterpart. */
+static void save_state_out(pehost *h, const opts *o)
+{
+    const void *data = NULL;
+    int len;
+    FILE *f;
+
+    if (!o->state_out) return;
+    if (!pehost_has_state(h)) {
+        fprintf(stderr, "save-state: this plug-in keeps no state beyond its "
+                        "parameters -- use --save-patch\n");
+        return;
+    }
+    if (!(len = pehost_get_state(h, 0, &data)) || !data) {
+        fprintf(stderr, "save-state: the plug-in returned no state\n");
+        return;
+    }
+    if (!(f = fopen(o->state_out, "wb"))) { perror(o->state_out); return; }
+    if (fwrite(data, 1, (size_t)len, f) != (size_t)len) perror(o->state_out);
+    else printf("wrote %s (%d bytes of plug-in state)\n", o->state_out, len);
+    fclose(f);
+}
+
+/* --save-patch, wherever the caller decided the state is worth taking. */
+static void save_patch_out(pehost *h, const opts *o)
+{
+    char err[256];
+    if (!o->patch_out) return;
+    if (patch_save(h, o->patch_out, o->path, err, sizeof err) != 0)
+        fprintf(stderr, "save-patch: %s\n", err);
+    else
+        printf("\nwrote %s (%d parameters)\n", o->patch_out, pehost_num_params(h));
+    /* Worth saying: a patch beside a plug-in that has chunk state is a partial
+     * record of it, and silence about that is how a restored session comes
+     * back sounding different. */
+    if (pehost_has_state(h) && !o->state_out)
+        fprintf(stderr, "note: this plug-in also keeps state its parameters do "
+                        "not describe -- --save-state writes that too\n");
+}
+
+static int render_to_wav(pehost *h, const opts *o)
+{
+    int     total = RATE * o->secs, bs = 512, done = 0, i;
+    float  *inter = malloc((size_t)total * 2 * sizeof *inter);
+    float  *src   = NULL;
+    double  peak  = 0.0;
+    int     fx_in = pehost_num_inputs(h);
+
+    if (!inter) return 1;
+    if (fx_in > 0) {
+        /* An effect has nothing to process unless we feed it. */
+        if (!(src = calloc((size_t)bs * 2, sizeof *src))) { free(inter); return 1; }
+        printf("(effect: feeding a tone and impulse train to %d input(s))\n", fx_in);
+    }
+
+    /* --note -1 renders without sending any note, which separates a plugin's
+     * DSP from its MIDI handling when one of them misbehaves. */
+    if (o->note >= 0) pehost_note_on(h, o->note, 100);
+    while (done < total) {
+        int n = (total - done < bs) ? total - done : bs;
+        if (o->note >= 0 && done <= total * 2 / 3 && done + n > total * 2 / 3)
+            pehost_note_off(h, o->note);
+        if (src) fill_test_signal(src, n, done);
+        pehost_render_io(h, src, inter + (size_t)done * 2, n);
+        done += n;
+    }
+    free(src);
+
+    for (i = 0; i < total * 2; i++)
+        if (fabs(inter[i]) > peak) peak = fabs(inter[i]);
+    printf("\nrendered %d frames, peak %.4f%s\n", total, peak,
+           peak < 1e-9 ? "  !! silence" : "");
+    if (write_wav(o->wav, inter, total, RATE)) printf("wrote %s\n", o->wav);
+    free(inter);
+    return 0;
+}
+
+#ifdef PEHOST_HAVE_X11
+#include <X11/Xlib.h>
+#include <X11/Xutil.h>
+#include <poll.h>
+#include <time.h>          /* clock_gettime, for the run loop's timers */
+#include "vst3.h"
+
+/* A run loop, for the editors that need one.
+ *
+ * A VST2 editor draws when it is idled, which is why capturing one needs
+ * nothing but a window and effEditIdle. A VST3 editor does not: it hands the
+ * host file descriptors and timers through IRunLoop and waits to be told when
+ * they are ready. Give it no run loop and it never draws a pixel -- which is
+ * what capturing Surge XT, Odin 2 and OB-Xf produced before this: a window of
+ * exactly the right size, containing nothing.
+ *
+ * pestudio has one of these built out of Qt's event loop. This is the same
+ * contract in thirty lines, so that the editor path can be exercised without
+ * a GUI toolkit -- which is the difference between these editors being
+ * testable and not. */
+#define RL_MAX 16
+static struct { void *handler; int fd; } g_rl_fd[RL_MAX];
+static struct { void *handler; unsigned long long ms, due; } g_rl_tm[RL_MAX];
+static int g_rl_nfd, g_rl_ntm;
+
+static unsigned long long rl_now_ms(void)
+{
+    struct timespec t;
+    clock_gettime(CLOCK_MONOTONIC, &t);
+    return (unsigned long long)t.tv_sec * 1000ull + (unsigned long long)(t.tv_nsec / 1000000);
+}
+static void rl_add_fd(void *ud, void *handler, int fd)
+{ (void)ud; if (g_rl_nfd < RL_MAX) { g_rl_fd[g_rl_nfd].handler = handler;
+                                     g_rl_fd[g_rl_nfd].fd = fd; g_rl_nfd++; } }
+static void rl_del_fd(void *ud, void *handler)
+{
+    int i; (void)ud;
+    for (i = 0; i < g_rl_nfd; i++)
+        if (g_rl_fd[i].handler == handler) g_rl_fd[i] = g_rl_fd[--g_rl_nfd];
+}
+static void rl_add_timer(void *ud, void *handler, unsigned long long ms)
+{
+    (void)ud;
+    if (g_rl_ntm >= RL_MAX) return;
+    if (ms < 1) ms = 1;
+    g_rl_tm[g_rl_ntm].handler = handler;
+    g_rl_tm[g_rl_ntm].ms = ms;
+    g_rl_tm[g_rl_ntm].due = rl_now_ms() + ms;
+    g_rl_ntm++;
+}
+static void rl_del_timer(void *ud, void *handler)
+{
+    int i; (void)ud;
+    for (i = 0; i < g_rl_ntm; i++)
+        if (g_rl_tm[i].handler == handler) g_rl_tm[i] = g_rl_tm[--g_rl_ntm];
+}
+static void rl_install(void)
+{
+    v3_runloop_hooks hk;
+    memset(&hk, 0, sizeof hk);
+    hk.ud = NULL;
+    hk.add_fd = rl_add_fd;   hk.del_fd = rl_del_fd;
+    hk.add_timer = rl_add_timer; hk.del_timer = rl_del_timer;
+    g_rl_nfd = g_rl_ntm = 0;
+    v3_set_runloop_hooks(&hk);
+}
+/* One turn: anything readable, then anything due. */
+static void rl_turn(int wait_ms)
+{
+    struct pollfd pfd[RL_MAX];
+    unsigned long long now;
+    int i, np = 0, r;
+
+    for (i = 0; i < g_rl_nfd; i++) {
+        pfd[np].fd = g_rl_fd[i].fd; pfd[np].events = POLLIN; pfd[np].revents = 0; np++;
+    }
+    r = poll(pfd, (nfds_t)np, wait_ms);
+    if (r > 0)
+        for (i = 0; i < np && i < g_rl_nfd; i++)
+            if (pfd[i].revents) v3_runloop_fd(g_rl_fd[i].handler, g_rl_fd[i].fd);
+    now = rl_now_ms();
+    for (i = 0; i < g_rl_ntm; i++)
+        if (now >= g_rl_tm[i].due) {
+            g_rl_tm[i].due = now + g_rl_tm[i].ms;
+            v3_runloop_timer(g_rl_tm[i].handler);
+        }
+}
+
+/* Capture a native plug-in's editor by giving it a window to live in.
+ *
+ * A Windows or macOS editor is drawn by this host into a buffer, so capturing
+ * one is reading that buffer. A native Linux plug-in draws with X itself and
+ * needs a real window, which is why this used to print "X11 embed (needs a
+ * window)" and stop -- leaving the one class of editor that cannot be checked
+ * without a desktop also the one that could not be checked at all.
+ *
+ * So make the window. Override-redirect, so no window manager adopts it,
+ * takes focus from whatever the user is doing, or gives it a taskbar entry;
+ * mapped because the plug-in has to be able to draw into something real, and
+ * torn down immediately afterwards. */
+static void capture_editor_x11(pehost *h, const char *shot, int want_w, int want_h)
+{
+    Display *d = XOpenDisplay(NULL);
+    XSetWindowAttributes at;
+    XImage *im;
+    Window  win;
+    FILE   *f;
+    int     w = 0, ht = 0, x, y, i;
+
+    if (!d) {
+        printf("  no X display (DISPLAY/XAUTHORITY); cannot host the editor\n");
+        return;
+    }
+    pehost_editor_size(h, &w, &ht);
+    if (w <= 0 || ht <= 0) { w = 800; ht = 600; }
+    printf("  reported size %dx%d\n", w, ht);
+
+    memset(&at, 0, sizeof at);
+    at.override_redirect = True;
+    at.background_pixel  = 0x202020;
+    win = XCreateWindow(d, DefaultRootWindow(d), 0, 0, (unsigned)w, (unsigned)ht,
+                        0, CopyFromParent, InputOutput, CopyFromParent,
+                        CWOverrideRedirect | CWBackPixel, &at);
+    XStoreName(d, win, "peload editor");
+    XMapRaised(d, win);
+    XSync(d, False);
+
+    rl_install();
+    if (pehost_editor_attach(h, (unsigned long)win) != 0) {
+        printf("  the plug-in refused the window\n");
+        XDestroyWindow(d, win); XCloseDisplay(d); return;
+    }
+    /* Let it build and draw: idles for a VST2, the run loop for a VST3. */
+    for (i = 0; i < 30; i++) { pehost_editor_pump(h); rl_turn(5); XSync(d, False); usleep(20000); }
+
+    /* Ask again, now the editor exists. A plug-in that reported one size
+     * before opening and then built a window of another -- TripleCheese says
+     * 712x350 and makes 900x550 -- would otherwise be captured cropped, which
+     * is exactly how it looked in a host that believed the first answer. */
+    {
+        int rw = 0, rh = 0;
+        pehost_editor_size(h, &rw, &rh);
+        if (rw > 0 && rh > 0 && (rw != w || rh != ht)) {
+            printf("  the editor built itself %dx%d; resizing to match\n", rw, rh);
+            w = rw; ht = rh;
+            XResizeWindow(d, win, (unsigned)w, (unsigned)ht);
+            XSync(d, False);
+        }
+    }
+    /* And then to whatever was asked for, if anything was. */
+    if (want_w > 0 && want_h > 0 && (want_w != w || want_h != ht)) {
+        if (!pehost_editor_can_resize(h)) {
+            printf("  this editor says it cannot be resized; asking anyway\n");
+        }
+        printf("  asking the editor for %dx%d\n", want_w, want_h);
+        w = want_w; ht = want_h;
+        XResizeWindow(d, win, (unsigned)w, (unsigned)ht);
+        XSync(d, False);
+        pehost_editor_resized(h, w, ht);
+        for (i = 0; i < 25; i++) { pehost_editor_pump(h); rl_turn(5); XSync(d, False); usleep(20000); }
+    }
+    for (i = 0; i < 40; i++) { pehost_editor_pump(h); rl_turn(5); XSync(d, False); usleep(20000); }
+
+    im = XGetImage(d, win, 0, 0, (unsigned)w, (unsigned)ht, AllPlanes, ZPixmap);
+    if (!im) {
+        printf("  could not read the window back\n");
+    } else if (!(f = fopen(shot, "wb"))) {
+        perror(shot);
+    } else {
+        long nonblack = 0, total = (long)w * ht;
+        fprintf(f, "P6\n%d %d\n255\n", w, ht);
+        for (y = 0; y < ht; y++)
+            for (x = 0; x < w; x++) {
+                unsigned long px = XGetPixel(im, x, y);
+                unsigned char rgb[3];
+                rgb[0] = (unsigned char)((px >> 16) & 0xff);
+                rgb[1] = (unsigned char)((px >> 8) & 0xff);
+                rgb[2] = (unsigned char)(px & 0xff);
+                if (rgb[0] || rgb[1] || rgb[2]) nonblack++;
+                fwrite(rgb, 1, 3, f);
+            }
+        fclose(f);
+        printf("  captured %dx%d, %ld/%ld pixels non-black (%.1f%%)\n",
+               w, ht, nonblack, total, 100.0 * (double)nonblack / (double)total);
+        printf("  wrote %s\n", shot);
+    }
+    if (im) XDestroyImage(im);
+    pehost_editor_detach(h);
+    XDestroyWindow(d, win);
+    XFlush(d);
+    XCloseDisplay(d);
+}
+#endif
+
+static void capture_editor(pehost *h, const char *shot, const opts *o)
+{
+    int kind = pehost_editor_kind(h);
+    int w = 0, ht = 0;
+
+    /* Which backend produced the pixels is worth saying: they are very
+     * different paths, and "it drew something" is the interesting part. */
+    printf("\neditor: %s\n",
+           kind == PEHOST_EDITOR_PIXELS
+               ? (pehost_is_classic(h) ? "pixel buffer (QuickDraw shim)"
+                  : pehost_is_macos(h) ? "pixel buffer (software Metal)"
+                                     : "pixel buffer (Win32 layer)")
+           : kind == PEHOST_EDITOR_X11 ? "X11 embed"
+                                       : "none");
+#ifdef PEHOST_HAVE_X11
+    if (kind == PEHOST_EDITOR_X11) { capture_editor_x11(h, shot, o->ed_w, o->ed_h); return; }
+#endif
+    if (kind != PEHOST_EDITOR_PIXELS) return;
+
+    pehost_editor_size(h, &w, &ht);
+    printf("  reported size %dx%d\n", w, ht);
+    if (pehost_editor_open(h) != 0) { printf("  effEditOpen failed\n"); return; }
+
+    {
+        const unsigned int *px = NULL;
+        int pw = 0, ph = 0, frame, ci;
+        float before[MAX_WATCH_PARAMS];
+
+        /* Let it settle: editors commonly need a few idle cycles before the
+         * first full repaint lands. */
+        for (frame = 0; frame < 40; frame++) {
+            pehost_editor_pump(h);
+            usleep(16000);
+        }
+        /* Then any clicks asked for. An editor whose controls only appear once
+         * a tab is selected, or a page turned, cannot be photographed without
+         * being touched first -- and doing it here means the picture can be
+         * checked without a display or a person. Each click is a press, a
+         * short hold and a release, with idles throughout, because that is
+         * what a plug-in watching for a drag expects to see. */
+        /* The state to compare against, taken once the editor has settled. */
+        {
+            int np = pehost_num_params(h), pi;
+            for (pi = 0; pi < np && pi < MAX_WATCH_PARAMS; pi++)
+                before[pi] = pehost_get_param(h, pi);
+        }
+        for (ci = 0; ci < o->nclick; ci++) {
+            pehost_editor_mouse(h, o->click[ci].x, o->click[ci].y, WM_MOUSEMOVE, 0, 0);
+            pehost_editor_pump(h); usleep(16000);
+            pehost_editor_mouse(h, o->click[ci].x, o->click[ci].y, WM_LBUTTONDOWN, 1, 0);
+            for (frame = 0; frame < 4; frame++) { pehost_editor_pump(h); usleep(16000); }
+            pehost_editor_mouse(h, o->click[ci].x, o->click[ci].y, WM_LBUTTONUP, 0, 0);
+            for (frame = 0; frame < 30; frame++) { pehost_editor_pump(h); usleep(16000); }
+            /* Say what the click did to the plug-in, not just that it happened.
+             * A control that draws but does not move is the failure this is
+             * looking for, and it is invisible in a screenshot. */
+            {
+                int np = pehost_num_params(h), pi, moved = 0;
+                printf("  clicked %d,%d", o->click[ci].x, o->click[ci].y);
+                for (pi = 0; pi < np && pi < MAX_WATCH_PARAMS; pi++) {
+                    float now = pehost_get_param(h, pi);
+                    if (fabs(now - before[pi]) > 1e-6) {
+                        char nm[64] = "";
+                        pehost_param_name(h, pi, nm, sizeof nm);
+                        printf("%s %s %.3f -> %.3f", moved++ ? "," : " --",
+                               nm[0] ? nm : "param", before[pi], now);
+                        before[pi] = now;
+                    }
+                }
+                printf("%s\n", moved ? "" : " -- nothing moved");
+            }
+        }
+
+        /* Then anything asked to be typed. Whatever the clicks above left
+         * focused is what receives it: a serial box, a name field, a preset
+         * search. Each character goes as a key down, a WM_CHAR and a key up,
+         * because a control that reads only one of the three is common; the
+         * virtual-key code for a printable character is its upper-case form,
+         * which is what a US layout reports. Return is sent at the end, since
+         * a field that commits on Enter will not commit on anything else. */
+        if (o->type && *o->type) {
+            const char *t;
+            for (t = o->type; *t; t++) {
+                int ch = (unsigned char)*t;
+                int vk = (ch >= 'a' && ch <= 'z') ? ch - 'a' + 'A' : ch;
+                pehost_editor_key(h, vk, 1, ch);
+                pehost_editor_pump(h); usleep(8000);
+                pehost_editor_key(h, vk, 0, ch);
+                pehost_editor_pump(h); usleep(8000);
+            }
+            pehost_editor_key(h, 13, 1, 13);          /* VK_RETURN */
+            pehost_editor_pump(h); usleep(8000);
+            pehost_editor_key(h, 13, 0, 13);
+            for (frame = 0; frame < 30; frame++) { pehost_editor_pump(h); usleep(16000); }
+            printf("  typed %d character(s)\n", (int)strlen(o->type));
+        }
+
+        /* The drag. Which parameter to watch is whichever the press moves --
+         * the control under the pointer names itself by changing. */
+        if (o->has_drag) {
+            int np = pehost_num_params(h), pi, swept = 0;
+#define SWEEP_STEPS 16
+            for (pi = 0; pi < np && pi < MAX_WATCH_PARAMS; pi++)
+                before[pi] = pehost_get_param(h, pi);
+
+            g_drag.h = h;
+            g_drag.x0 = o->drag[0]; g_drag.y0 = o->drag[1];
+            g_drag.x1 = o->drag[2]; g_drag.y1 = o->drag[3];
+            g_drag.step = 0; g_drag.steps = 60; g_drag.nseen = 0; g_drag.watch = -1;
+            g_drag.released = 0;
+            g_drag.nparam = np < MAX_WATCH_PARAMS ? np : MAX_WATCH_PARAMS;
+            for (pi = 0; pi < g_drag.nparam; pi++) g_drag.base[pi] = before[pi];
+
+            pehost_editor_mouse(h, o->drag[0], o->drag[1], WM_MOUSEMOVE, 0, 0);
+            pehost_editor_pump(h);
+            /* Find the control by pressing: whatever moves is what is under it. */
+            /* Watch every parameter, because which one the press moves cannot
+             * be known before the press -- and the press does not return until
+             * the plug-in's loop has run the whole gesture. */
+            g_drag.watch = -1;
+            pehost_editor_mouse(h, o->drag[0], o->drag[1], WM_LBUTTONDOWN, 1, 0);
+            for (pi = 0; pi < np && pi < MAX_WATCH_PARAMS; pi++)
+                if (fabs(pehost_get_param(h, pi) - before[pi]) > 1e-6) {
+                    g_drag.watch = pi; break;
+                }
+            /* Then let it sweep. The plug-in may already be spinning inside its
+             * own loop here, in which case the pump above has been driving the
+             * pointer all along and these idles simply let it finish. */
+            for (frame = 0; frame < 120 && g_drag.step < g_drag.steps; frame++) {
+                pehost_editor_pump(h);
+                usleep(4000);
+            }
+            /* A Cocoa editor never enters that loop. It returns from mouseDown:
+             * and waits for the mouseDragged: events a run loop would deliver,
+             * so the host delivers them -- which is exactly what both windows do
+             * when the pointer moves with a button held. Without this the
+             * gesture was a press and a release with nothing in between, and a
+             * control that only moves while tracking never moved at all. */
+            if (g_drag.nseen == 0) {
+                for (swept = 1; swept <= SWEEP_STEPS; swept++) {
+                    int mx = o->drag[0] + (o->drag[2] - o->drag[0]) * swept / SWEEP_STEPS;
+                    int my = o->drag[1] + (o->drag[3] - o->drag[1]) * swept / SWEEP_STEPS;
+                    pehost_editor_mouse(h, mx, my, WM_MOUSEMOVE, 1, 0);
+                    if (g_drag.watch >= 0)
+                        g_drag.seen[swept - 1] = pehost_get_param(h, g_drag.watch);
+                    usleep(4000);
+                }
+                swept = SWEEP_STEPS;
+            }
+            if (!g_drag.released) {
+                g_drag.released = 1;
+                pehost_editor_mouse(h, o->drag[2], o->drag[3], WM_LBUTTONUP, 0, 0);
+            }
+            for (frame = 0; frame < 20; frame++) { pehost_editor_pump(h); usleep(16000); }
+            g_drag.h = NULL;          /* the pump is a no-op from here */
+
+            {
+                int moved = 0;
+                printf("  dragged %d,%d -> %d,%d, %d pointer step(s) delivered",
+                       o->drag[0], o->drag[1], o->drag[2], o->drag[3],
+                       g_drag.nseen ? g_drag.nseen : swept);
+                for (pi = 0; pi < np && pi < MAX_WATCH_PARAMS; pi++) {
+                    float now = pehost_get_param(h, pi);
+                    if (fabs(now - before[pi]) > 1e-6) {
+                        char nm[64] = "";
+                        pehost_param_name(h, pi, nm, sizeof nm);
+                        printf("%s %s %.3f -> %.3f", moved++ ? "," : " --",
+                               nm[0] ? nm : "param", before[pi], now);
+                    }
+                }
+                if (!moved) printf(" -- nothing moved");
+                printf("\n");
+                if (g_drag.nseen == 0 && swept == 0)
+                    printf("    (no steps delivered: the plug-in never entered a "
+                           "tracking loop, so this was a click, not a drag)\n");
+                /* Whether the control tracked the sweep or merely landed on the
+                 * final value. A knob that only answers the release looks
+                 * identical at the end and completely different to use. */
+                if (g_drag.watch >= 0 && swept > 0) {
+                    int st, tracked = 0;
+                    for (st = 1; st < swept; st++)
+                        if (fabs(g_drag.seen[st] - g_drag.seen[st - 1]) > 1e-6) tracked++;
+                    printf("    tracked the sweep: %d of %d steps changed the value\n",
+                           tracked, swept - 1);
+                }
+            }
+        }
+        /* An editor whose lights are driven by what the plugin is playing --
+         * an arpeggiator's step LEDs, a level meter, an envelope display --
+         * shows none of it in a photograph taken while the plugin is silent.
+         * --live holds the note and runs the audio with the editor pumped
+         * between blocks, so the capture is of something actually sounding. */
+        if (o->live > 0 && o->note >= 0) {
+            int   bs = 512, total = RATE * o->live, done = 0;
+            float *out = malloc((size_t)bs * 2 * sizeof *out);
+            float *src = pehost_num_inputs(h) > 0
+                       ? calloc((size_t)bs * 2, sizeof *src) : NULL;
+            if (out) {
+                printf("  playing note %d for %ds with the editor running\n",
+                       o->note, o->live);
+                pehost_note_on(h, o->note, 100);
+                while (done < total) {
+                    int n = (total - done < bs) ? total - done : bs;
+                    if (src) fill_test_signal(src, n, done);
+                    pehost_render_io(h, src, out, n);
+                    done += n;
+                    pehost_editor_pump(h);
+                    /* Paced to the audio it just produced. An editor's lights
+                     * are driven by its own timer, and a loop that renders two
+                     * seconds in two hundred milliseconds gives that timer
+                     * almost nothing to fire on. */
+                    usleep((useconds_t)((double)n * 1000000.0 / RATE));
+                }
+                /* The note is deliberately left down: the photograph is meant
+                 * to be of a plugin that is playing, and everything an
+                 * arpeggiator lights up goes dark the moment the key is up. */
+                free(out);
+            }
+            free(src);
+        }
+        if (pehost_editor_pixels(h, &px, &pw, &ph) && px && pw > 0 && ph > 0) {
+            long nonzero = 0;
+            int  k;
+            /* How many different colours are in it, up to a handful.
+             *
+             * "Non-black" alone cannot tell a drawn interface from a window
+             * flood-filled with one colour, and both score 100%. Four JUCE
+             * plug-ins were read as working editors for exactly that reason
+             * when what they had painted was their background and nothing
+             * else. Two colours or fewer is not an interface. */
+            enum { COLMAX = 8 };
+            uint32_t seen[COLMAX];
+            int ncol = 0;
+            for (k = 0; k < pw * ph; k++) {
+                uint32_t v = px[k] & 0x00FFFFFF;
+                int q, dup = 0;
+                if (v) nonzero++;
+                if (ncol >= COLMAX) continue;
+                for (q = 0; q < ncol; q++) if (seen[q] == v) { dup = 1; break; }
+                if (!dup) seen[ncol++] = v;
+            }
+            printf("  captured %dx%d, %ld/%d pixels non-black (%.1f%%), "
+                   "%s%d colour%s%s\n",
+                   pw, ph, nonzero, pw * ph, 100.0 * nonzero / (pw * ph),
+                   ncol >= COLMAX ? ">=" : "", ncol, ncol == 1 ? "" : "s",
+                   ncol <= 2 ? "  !! flat: nothing was drawn over the background"
+                             : "");
+            if (write_ppm(shot, px, pw, ph)) printf("  wrote %s\n", shot);
+        } else printf("  no pixels produced\n");
+        w32_stats();
+    }
+}
+
+int main(int argc, char **argv)
+{
+    /* Before anything the plug-in can reach: a fault inside a shim should
+     * name the shim rather than leave a core file. */
+    hostfault_install();
+    hostprof_start();      /* PELOAD_PROFILE=1 */
+    opts        o;
+    patch_bank *bank = NULL;
+    int         patch_ix = 0, rc;
+    pehost_kind force = PEHOST_KIND_AUTO;
+    pehost     *h;
+
+    if ((rc = parse_args(argc, argv, &o))) return rc;
+    if ((rc = open_bank(&o, &bank, &patch_ix))) return rc;
+    if (!o.path) { usage(); return 2; }
+    if (o.detect) return cmd_detect(o.path);
+
+    /* --as forces a loader. An unknown name is an error rather than a silent
+     * fall-back to auto, so a typo does not quietly load under the wrong guess. */
+    if (o.as_name) {
+        force = pehost_kind_from_name(o.as_name);
+        if (force == PEHOST_KIND_AUTO && strcasecmp(o.as_name, "auto")) {
+            fprintf(stderr, "unknown --as loader '%s'\n", o.as_name);
+            return 2;
+        }
+    }
+
+    /* Before the plug-in opens, not after: the Classic shim is handed the pump
+     * when it is built, so one installed later is never seen. pestudio's own
+     * main() says the same thing above its call for the same reason. */
+    if (o.has_drag) pehost_set_input_pump(drag_pump, NULL);
+
+    if (!(h = pehost_open_as(o.path, force, (double)RATE, o.block))) {
+        fprintf(stderr, "load failed: %s\n", pehost_last_error());
+        return 1;
+    }
+
+    /* Compare msvcp_shim.h against a real msvcp120.dll. Done with a plug-in
+     * loaded rather than on its own: the C runtime a side-loaded DLL starts up
+     * against is the one the host has already built, and a comparison run in
+     * some other state would not be comparing what a plug-in sees. */
+    if (o.selftest) { int r = pehost_msvcp_selftest(); pehost_close(h); return r; }
+
+    describe(h, &o);
+    /* Before the bank: a chunk can move every parameter, so applying it after
+     * a patch would undo the patch. State first, then the parameter values the
+     * caller asked for on top of it. */
+    load_state_in(h, &o);
+    if (bank && apply_patch(h, bank, patch_ix, o.block)) { pehost_close(h); return 1; }
+    dump_params(h, o.dump);
+
+    /* Order matters when both are asked for. Normally the render comes first,
+     * so a WAV describes the state the listing above just printed. But a --click
+     * or --drag exists to change something, and the question it is asked to
+     * answer is whether the change reached the audio -- so the gesture goes
+     * first and the render records what came out afterwards.
+     *
+     * The patch file follows the same rule, for the same reason. Without a
+     * gesture it is written from the state the dump above just described, so
+     * the file and the listing always agree -- including when --patch put us
+     * here. With one, the state worth saving is the one the gesture produced;
+     * writing it first saved the values the user had just moved away from, and
+     * said nothing about having done so. */
+    /* Live mode instead of a render: it does not finish on its own, so
+     * everything below it would never run. */
+    if (o.play) {
+#ifdef PELOAD_LIVE
+        int r = live_run(h, RATE, o.block > 0 ? o.block : 512, o.midi_from, o.sink);
+        pehost_close(h);
+        return r;
+#else
+        fprintf(stderr, "this build has no live mode: it needs libpipewire-0.3 "
+                        "and alsa at build time\n");
+        pehost_close(h);
+        return 2;
+#endif
+    }
+    {
+        const int gestured = o.shot && (o.nclick || o.has_drag);
+        if (!gestured) { save_patch_out(h, &o); save_state_out(h, &o); }
+        if (gestured) {
+            capture_editor(h, o.shot, &o);
+            if (o.wav && render_to_wav(h, &o)) { pehost_close(h); return 1; }
+            save_patch_out(h, &o);
+            save_state_out(h, &o);
+        } else {
+            if (o.wav && render_to_wav(h, &o)) { pehost_close(h); return 1; }
+            if (o.shot) capture_editor(h, o.shot, &o);
+        }
+    }
+
+    {
+        int impl, stub, called;
+        pehost_import_stats(&impl, &stub, &called);
+        printf("\nimports: %d implemented, %d stubbed, %d stubs reached\n",
+               impl, stub, called);
+    }
+    pehost_close(h);
+
+    /* Leave without running the plugin's global destructors. Foreign plugin
+     * code registers its own atexit/DSO teardown, and some of it faults --
+     * Cardinal does -- long after the render is safely written. Exiting this
+     * way keeps the status code meaningful instead of reporting a crash for
+     * work that completed. */
+    hostprof_report();
+    fflush(NULL);
+    _exit(0);
+}

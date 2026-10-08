@@ -1,0 +1,245 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="15.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="..\packages\Microsoft.Windows.CppWinRT.1.0.190205.2\build\native\Microsoft.Windows.CppWinRT.props" Condition="Exists('..\packages\Microsoft.Windows.CppWinRT.1.0.190205.2\build\native\Microsoft.Windows.CppWinRT.props')" />
+  <PropertyGroup Label="Globals">
+    <CppWinRTEnabled>true</CppWinRTEnabled>
+    <MinimalCoreWin>true</MinimalCoreWin>
+    <ProjectGuid>{12396109-267a-4788-a4a2-9791ed7c5f3f}</ProjectGuid>
+    <ProjectName>IpaSimApp</ProjectName>
+    <RootNamespace>IpaSimApp</RootNamespace>
+    <DefaultLanguage>en-US</DefaultLanguage>
+    <MinimumVisualStudioVersion>15.0</MinimumVisualStudioVersion>
+    <AppContainerApplication>true</AppContainerApplication>
+    <ApplicationType>Windows Store</ApplicationType>
+    <ApplicationTypeRevision>10.0</ApplicationTypeRevision>
+    <WindowsTargetPlatformVersion Condition=" '$(WindowsTargetPlatformVersion)' == '' ">10.0.17763.0</WindowsTargetPlatformVersion>
+    <WindowsTargetPlatformMinVersion>10.0.17763.0</WindowsTargetPlatformMinVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <PlatformToolset>v140</PlatformToolset>
+    <PlatformToolset Condition="'$(VisualStudioVersion)' == '15.0'">v141</PlatformToolset>
+    <PlatformToolset Condition="'$(VisualStudioVersion)' == '16.0'">v142</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)'=='Debug'" Label="Configuration">
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <LinkIncremental>true</LinkIncremental>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)'=='Release'" Label="Configuration">
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <LinkIncremental>false</LinkIncremental>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <PackageCertificateKeyFile>IpaSimApp_TemporaryKey.pfx</PackageCertificateKeyFile>
+    <PackageCertificateThumbprint>08B59888948AD8D17E3889737CAFF4AB80BF1F81</PackageCertificateThumbprint>
+    <GenerateAppInstallerFile>False</GenerateAppInstallerFile>
+    <AppxAutoIncrementPackageRevision>False</AppxAutoIncrementPackageRevision>
+    <AppxSymbolPackageEnabled>False</AppxSymbolPackageEnabled>
+    <AppxBundle>Never</AppxBundle>
+    <AppInstallerUpdateFrequency>1</AppInstallerUpdateFrequency>
+    <AppInstallerCheckForUpdateFrequency>OnApplicationRun</AppInstallerCheckForUpdateFrequency>
+    <GenerateTestArtifacts>True</GenerateTestArtifacts>
+    <HoursBetweenUpdateChecks>0</HoursBetweenUpdateChecks>
+    <AppxPackageSigningEnabled>True</AppxPackageSigningEnabled>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+      <PrecompiledHeaderOutputFile>$(IntDir)pch.pch</PrecompiledHeaderOutputFile>
+      <WarningLevel>Level4</WarningLevel>
+      <AdditionalOptions>%(AdditionalOptions) /bigobj /experimental:external /external:anglebrackets /external:W0 /external:templates-</AdditionalOptions>
+      <DisableSpecificWarnings>4453;28204;4146</DisableSpecificWarnings>
+      <AdditionalIncludeDirectories>..\..\..\include;..\..\..\deps\unicorn\include;..\..\..\deps\LIEF\include;..\..\..\deps\LIEF\api\c\include;..\..\..\cmake\lief-x86-$(Configuration)\include;..\..\..\cmake\Libffi-x86-$(Configuration)\build\include;$(ProjectDir);$(GeneratedFilesDir);$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;_SILENCE_CXX17_ITERATOR_BASE_CLASS_DEPRECATION_WARNING;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ForcedIncludeFiles>..\my_iso646.h</ForcedIncludeFiles>
+    </ClCompile>
+    <Link>
+      <AdditionalDependencies>..\..\..\cmake\ipasim-x86-$(Configuration)\bin\libIpaSimLibrary.dll.a;WindowsApp.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)'=='Debug'">
+    <ClCompile>
+      <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)'=='Release'">
+    <ClCompile>
+      <PreprocessorDefinitions>NDEBUG;IPASIM_SHOW_LOG_WINDOW;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClInclude Include="LogPage.h">
+      <DependentUpon>LogPage.xaml</DependentUpon>
+      <SubType>Code</SubType>
+    </ClInclude>
+    <ClInclude Include="pch.h" />
+    <ClInclude Include="App.h">
+      <DependentUpon>App.xaml</DependentUpon>
+    </ClInclude>
+    <ClInclude Include="MainPage.h">
+      <DependentUpon>MainPage.xaml</DependentUpon>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ApplicationDefinition Include="App.xaml">
+      <SubType>Designer</SubType>
+    </ApplicationDefinition>
+    <Page Include="LogPage.xaml">
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="MainPage.xaml">
+      <SubType>Designer</SubType>
+    </Page>
+  </ItemGroup>
+  <ItemGroup>
+    <AppxManifest Include="Package.appxmanifest">
+      <SubType>Designer</SubType>
+    </AppxManifest>
+    <None Include="IpaSimApp_TemporaryKey.pfx" />
+    <None Include="packages.config" />
+    <None Include="..\..\..\cmake\ipasim-x86-$(Configuration)\bin\libunicorn.dll">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="..\..\..\cmake\ipasim-x86-$(Configuration)\bin\libIpaSimLibrary.dll">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="..\..\..\cmake\ipasim-x86-$(Configuration)\bin\libEGL.dll">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="..\..\..\cmake\ipasim-x86-$(Configuration)\bin\libGLESv2.dll">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="..\..\..\cmake\ipasim-x86-$(Configuration)\bin\libdispatch.dll">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="gen\**">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="..\..\..\cmake\ipasim-x86-$(Configuration)\bin\Frameworks\*.dll">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="..\..\..\deps\WinObjC\deps\prebuilt\Universal Windows\x86\libxml2.dll">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="..\..\..\deps\WinObjC\deps\prebuilt\Universal Windows\x86\icuuc57.dll">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="..\..\..\deps\WinObjC\deps\prebuilt\Universal Windows\x86\icudt57.dll">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="..\..\..\deps\WinObjC\deps\prebuilt\Universal Windows\x86\icuin57.dll">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="..\..\..\cmake\winobjc-x86-$(Configuration)\bin\Logging.dll">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="..\..\..\cmake\winobjc-x86-$(Configuration)\bin\WOCStdLib.dll">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="..\..\..\cmake\winobjc-x86-$(Configuration)\bin\WinObjCRT.dll">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="..\..\..\cmake\ipasim-x86-$(Configuration)\bin\libpthread.dll">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="..\..\..\cmake\ipasim-x86-$(Configuration)\bin\libobjc.dll">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="..\..\..\deps\WinObjC\Frameworks\UIKit.Xaml\prebuilt\$(Configuration)\UIKit.Xaml.dll">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="..\..\..\deps\WinObjC\Frameworks\Social.Xaml\prebuilt\$(Configuration)\Social.Xaml.dll">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="..\..\..\deps\WinObjC\Frameworks\CoreFoundation\CharacterSets\**">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="..\..\..\deps\crt\ucrtbase.dll">
+      <DeploymentContent Condition="'$(Configuration)'=='Release'">true</DeploymentContent>
+    </None>
+    <None Include="UIKit.Xaml\**">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="Social.Xaml\**">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="Assets\LockScreenLogo.scale-200.png" />
+    <Image Include="Assets\SplashScreen.scale-200.png" />
+    <Image Include="Assets\Square150x150Logo.scale-200.png" />
+    <Image Include="Assets\Square44x44Logo.scale-200.png" />
+    <Image Include="Assets\Square44x44Logo.targetsize-24_altform-unplated.png" />
+    <Image Include="Assets\StoreLogo.png" />
+    <Image Include="Assets\Wide310x150Logo.scale-200.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="LogPage.cpp">
+      <DependentUpon>LogPage.xaml</DependentUpon>
+      <SubType>Code</SubType>
+    </ClCompile>
+    <ClCompile Include="pch.cpp">
+      <PrecompiledHeader>Create</PrecompiledHeader>
+      <DependentUpon>pch.h</DependentUpon>
+    </ClCompile>
+    <ClCompile Include="App.cpp">
+      <DependentUpon>App.xaml</DependentUpon>
+    </ClCompile>
+    <ClCompile Include="MainPage.cpp">
+      <DependentUpon>MainPage.xaml</DependentUpon>
+    </ClCompile>
+    <ClCompile Include="$(GeneratedFilesDir)module.g.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <Midl Include="App.idl">
+      <DependentUpon>App.xaml</DependentUpon>
+    </Midl>
+    <Midl Include="LogPage.idl">
+      <DependentUpon>LogPage.xaml</DependentUpon>
+      <SubType>Code</SubType>
+    </Midl>
+    <Midl Include="MainPage.idl">
+      <DependentUpon>MainPage.xaml</DependentUpon>
+    </Midl>
+  </ItemGroup>
+  <ItemGroup>
+    <Text Include="readme.txt">
+      <DeploymentContent>false</DeploymentContent>
+    </Text>
+  </ItemGroup>
+  <ItemGroup>
+    <SDKReference Include="Microsoft.VCLibs.Desktop, Version=14.0" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+    <Import Project="..\packages\Microsoft.Windows.CppWinRT.1.0.190205.2\build\native\Microsoft.Windows.CppWinRT.targets" Condition="Exists('..\packages\Microsoft.Windows.CppWinRT.1.0.190205.2\build\native\Microsoft.Windows.CppWinRT.targets')" />
+  </ImportGroup>
+  <Target Name="EnsureNuGetPackageBuildImports" BeforeTargets="PrepareForBuild">
+    <PropertyGroup>
+      <ErrorText>This project references NuGet package(s) that are missing on this computer. Use NuGet Package Restore to download them.  For more information, see http://go.microsoft.com/fwlink/?LinkID=322105. The missing file is {0}.</ErrorText>
+    </PropertyGroup>
+    <Error Condition="!Exists('..\packages\Microsoft.Windows.CppWinRT.1.0.190205.2\build\native\Microsoft.Windows.CppWinRT.props')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\Microsoft.Windows.CppWinRT.1.0.190205.2\build\native\Microsoft.Windows.CppWinRT.props'))" />
+    <Error Condition="!Exists('..\packages\Microsoft.Windows.CppWinRT.1.0.190205.2\build\native\Microsoft.Windows.CppWinRT.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\Microsoft.Windows.CppWinRT.1.0.190205.2\build\native\Microsoft.Windows.CppWinRT.targets'))" />
+  </Target>
+</Project>

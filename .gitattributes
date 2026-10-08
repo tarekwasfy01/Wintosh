@@ -1,0 +1,11 @@
+* text=auto
+*.sh text eol=lf
+*.ps1 text eol=crlf
+*.cpp text
+*.h text
+*.md text
+*.csv text
+
+# No Git-LFS rule is needed for the current source/documentation snapshot.
+# Add LFS only for a deliberately tracked large binary asset, never for source
+# or licenses, and record that asset in the release manifest first.

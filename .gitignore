@@ -1,0 +1,29 @@
+# Native build output
+build/
+build-*/
+out/
+dist/
+bin/
+obj/
+
+# IDE and local state
+.vs/
+.idea/
+*.user
+*.suo
+
+# Logs and temporary probes
+*.log
+*.tmp
+*.bak
+conpty-*.txt
+
+# Generated archives and package output
+*.zip
+*.7z
+*.tar
+*.tar.gz
+*.msix
+*.appx
+
+# Keep checked-out source trees, license files, and documentation in git.

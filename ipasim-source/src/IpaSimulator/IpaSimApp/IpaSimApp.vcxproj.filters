@@ -1,0 +1,122 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Midl Include="App.idl" />
+    <Midl Include="MainPage.idl" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="App.cpp" />
+    <ClCompile Include="MainPage.cpp" />
+    <ClCompile Include="$(GeneratedFilesDir)module.g.cpp">
+      <Filter>Content</Filter>
+    </ClCompile>
+    <ClCompile Include="pch.cpp">
+      <Filter>Content</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="App.h" />
+    <ClInclude Include="MainPage.h" />
+    <ClInclude Include="pch.h">
+      <Filter>Content</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="Assets\Wide310x150Logo.scale-200.png">
+      <Filter>Assets</Filter>
+    </Image>
+    <Image Include="Assets\StoreLogo.png">
+      <Filter>Assets</Filter>
+    </Image>
+    <Image Include="Assets\Square150x150Logo.scale-200.png">
+      <Filter>Assets</Filter>
+    </Image>
+    <Image Include="Assets\Square44x44Logo.targetsize-24_altform-unplated.png">
+      <Filter>Assets</Filter>
+    </Image>
+    <Image Include="Assets\Square44x44Logo.scale-200.png">
+      <Filter>Assets</Filter>
+    </Image>
+    <Image Include="Assets\SplashScreen.scale-200.png">
+      <Filter>Assets</Filter>
+    </Image>
+    <Image Include="Assets\LockScreenLogo.scale-200.png">
+      <Filter>Assets</Filter>
+    </Image>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\..\..\cmake\ipasim-x86-$(Configuration)\bin\libunicorn.dll" />
+    <None Include="..\..\..\cmake\ipasim-x86-$(Configuration)\bin\libIpaSimLibrary.dll" />
+    <None Include="..\..\..\cmake\ipasim-x86-$(Configuration)\bin\libEGL.dll" />
+    <None Include="..\..\..\cmake\ipasim-x86-$(Configuration)\bin\libGLESv2.dll" />
+    <None Include="..\..\..\cmake\ipasim-x86-$(Configuration)\bin\libdispatch.dll" />
+    <None Include="gen\**">
+      <Filter>bin</Filter>
+    </None>
+    <None Include="..\..\..\cmake\ipasim-x86-$(Configuration)\bin\Frameworks\*.dll">
+      <Filter>bin</Filter>
+    </None>
+    <None Include="..\..\..\deps\WinObjC\deps\prebuilt\Universal Windows\x86\libxml2.dll" />
+    <None Include="..\..\..\deps\WinObjC\deps\prebuilt\Universal Windows\x86\icuuc57.dll" />
+    <None Include="..\..\..\deps\WinObjC\deps\prebuilt\Universal Windows\x86\icudt57.dll" />
+    <None Include="..\..\..\deps\WinObjC\deps\prebuilt\Universal Windows\x86\icuin57.dll" />
+    <None Include="..\..\..\cmake\winobjc-x86-$(Configuration)\bin\Logging.dll" />
+    <None Include="..\..\..\cmake\winobjc-x86-$(Configuration)\bin\WOCStdLib.dll" />
+    <None Include="..\..\..\cmake\winobjc-x86-$(Configuration)\bin\WinObjCRT.dll" />
+    <None Include="..\..\..\cmake\ipasim-x86-$(Configuration)\bin\libpthread.dll" />
+    <None Include="..\..\..\cmake\ipasim-x86-$(Configuration)\bin\libobjc.dll" />
+    <None Include="..\..\..\deps\WinObjC\Frameworks\UIKit.Xaml\prebuilt\$(Configuration)\UIKit.Xaml.dll" />
+    <None Include="..\..\..\deps\WinObjC\Frameworks\Social.Xaml\prebuilt\$(Configuration)\Social.Xaml.dll" />
+    <None Include="..\..\..\deps\WinObjC\Frameworks\CoreFoundation\CharacterSets\**">
+      <Filter>bin</Filter>
+    </None>
+    <None Include="..\..\..\deps\crt\ucrtbase.dll" />
+    <None Include="UIKit.Xaml\**">
+      <Filter>bin</Filter>
+    </None>
+    <None Include="Social.Xaml\**">
+      <Filter>bin</Filter>
+    </None>
+    <None Include="IpaSimApp_TemporaryKey.pfx">
+      <Filter>Content</Filter>
+    </None>
+    <None Include="packages.config">
+      <Filter>Content</Filter>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="Assets">
+      <UniqueIdentifier>{e48dc53e-40b1-40cb-970a-f89935452892}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="bin">
+      <UniqueIdentifier>{690030eb-7fdc-4292-b586-4866e630b9b2}</UniqueIdentifier>
+      <Extensions>dll;lib;exp;dylib</Extensions>
+    </Filter>
+    <Filter Include="Content">
+      <UniqueIdentifier>{5c03dc11-3fdf-42aa-8119-81ddc4715b27}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ApplicationDefinition Include="App.xaml">
+      <Filter>Content</Filter>
+    </ApplicationDefinition>
+  </ItemGroup>
+  <ItemGroup>
+    <Page Include="MainPage.xaml">
+      <Filter>Content</Filter>
+    </Page>
+    <Page Include="LogPage.xaml">
+      <Filter>Content</Filter>
+    </Page>
+  </ItemGroup>
+  <ItemGroup>
+    <AppxManifest Include="Package.appxmanifest">
+      <Filter>Content</Filter>
+    </AppxManifest>
+  </ItemGroup>
+  <ItemGroup>
+    <Text Include="readme.txt">
+      <Filter>Content</Filter>
+    </Text>
+  </ItemGroup>
+</Project>

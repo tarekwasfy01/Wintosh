@@ -1,0 +1,5 @@
+* text=auto
+
+# We need `.tbd` files to have LF line endings because they
+# are parsed by `tapi` which doesn't play nicely with CRLF.
+*.tbd text eol=lf

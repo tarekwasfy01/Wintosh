@@ -1,0 +1,23 @@
+component,license_or_notice_path,status,notes
+darling,../darling-source/LICENSE,present,Darling top-level GPL-3.0 license
+darling,../darling-source/debian/copyright,present,Debian copyright and source provenance metadata
+Rez,../darling-source/src/buildtools/Rez/COPYING,present,Imported build-tool license
+BerkeleyDB,../darling-source/src/external/BerkeleyDB/db/LICENSE,present,Component-specific license; keep with BerkeleyDB sources
+BerkeleyDB,../darling-source/src/external/BerkeleyDB/db/dist/vx_setup/LICENSE.TXT,present,Additional component notice
+BerkeleyDB,../darling-source/src/external/BerkeleyDB/db/docs/license/license_db.html,present,Additional component license document
+quarantine,../darling-source/src/quarantine/LICENSE,present,Component-specific license
+unresolved-submodules,../darling-source/.gitmodules,review-required,Many submodules are not checked out on NTFS; inventory each license before redistribution
+wsl-reference,../wsl-source/LICENSE,present,Microsoft WSL source license; reference source only unless WSL code is copied into the port
+wsl-reference,../wsl-source/NOTICE.txt,present,Microsoft WSL third-party notices; reference source only unless WSL code is copied into the port
+touchHLE-reference,../touchhle-source/LICENSE,present,touchHLE source license stated as MPL-2.0; reference source only, no code copied
+touchHLE-reference,../touchhle-source/README.md,review-required,README distinguishes MPL-2.0 source from GPL-3-or-later binaries and lists dependency-specific licenses; audit dependencies before reuse
+darwine-reference,external historical SourceForge download page,review-required,Historical Darwine page lists Wine/WineHelper/qemu-darwin-user sources but does not provide a complete component license inventory
+directhw-reference,../directhw-source/Copying.rtf,present,DirectHW component license document; preserve with the archived reference and do not copy code without review
+directhw-reference,../directhw-source/README.md,review-required,Archived Darwin kernel-driver/framework reference; privileged hardware behavior requires separate Windows driver and security review
+cocotron-reference,../cocotron-source/LICENSE.txt,present,Permissive MIT-style notice with multiple copyright holders; preserve and review nested components before reuse
+cocotron-reference,../cocotron-source/README,review-required,Historical Objective-C framework tree; source and dependency boundaries require component-level review
+darwin-computa-reference,../darwin-computa-source/license.txt,present,Darwin_Computa checkout carries GPLv2; Boxedwine, Darling userland and rootfs dependencies require separate provenance review
+darwin-computa-reference,../darwin-computa-source/README.md,review-required,Describes Boxedwine fork, real Darling binaries, BOXEDWINE_DARWIN gate and separate upstream boundaries
+macho-ld-reference,../macho-ld-source/README.md,review-required,Checkout has no verified top-level license file in the inventory; no source copied
+classix-reference,../classix-source/LICENSE,present,GPLv3; README attributes interpreter basis to Dolphin and requires copyleft boundary
+vst-ace-reference,../vst-ace-source/README.md,review-required,Mixed PE/Mach-O/CFM host and third-party plugin corpus; audit each component before reuse

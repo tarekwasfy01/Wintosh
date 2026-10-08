@@ -1,0 +1,145 @@
+/* vstdirs -- the plug-in folders the user has set, kept where both windows
+ * can see them.
+ *
+ * pestudio and dwstudio browse the same machine, so "where are my plug-ins"
+ * has to have one answer: a folder added in the Qt window is one the GTK
+ * window searches too, and neither of them is the authoritative copy. That is
+ * what this file is -- one list, on disk, that both read at startup and both
+ * write when the user changes it.
+ *
+ * Each folder carries the platform it holds, so a Windows corpus, a Linux one
+ * and a macOS one are three separate entries rather than one undifferentiated
+ * pile -- which is how people keep them, and how the tree here is laid out
+ * (windows/VST2-64, linux/extracted, macos/VST2).
+ *
+ * That tag says what the folder is *for*. It does not decide what anything in
+ * it is: every plug-in is sniffed when it is scanned, and its own binary
+ * settles which loader runs it and which platform the browser files it under.
+ * A Windows .dll dropped in the Linux folder is still listed as Windows. The
+ * tag is there so the settings list is legible and so a folder can be added or
+ * dropped a platform at a time; VSTDIRS_ANY is for a folder holding a mix, or
+ * one the user did not care to label.
+ *
+ * The corpora found by walking up from the binary, and the system VST
+ * directories, are *not* in here. Those are discovered every run and would
+ * only go stale if written down; this is the list of places the user has
+ * pointed us at, which is exactly the part a program cannot work out for
+ * itself.
+ *
+ * Format: one folder per line, "<platform>\t<path>", '#' starting a comment,
+ * blanks ignored. A line with no tab is read as VSTDIRS_ANY, which is what an
+ * older version of this file wrote. Plain text rather than a settings database
+ * because the thing it holds is a handful of paths, and being able to fix it
+ * in an editor -- or see at a glance what a broken install is searching -- is
+ * worth more here than any structure. */
+#ifndef VSTDIRS_H
+#define VSTDIRS_H
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#define VSTDIRS_MAX      64
+#define VSTDIRS_PATHLEN  1024
+
+/* The platform tags, as written in the file. Spelled the way pehost_info::os
+ * spells them, so a folder's tag and a plug-in's detected platform compare
+ * directly. */
+#define VSTDIRS_WINDOWS  "windows"
+#define VSTDIRS_LINUX    "linux"
+#define VSTDIRS_MACOS    "macos"
+/* Mac OS 9 / Classic, spelled the way pehost_info::os spells it. Its own
+ * group rather than a corner of the macOS one: they share no format, no
+ * binary layout and no loader -- a Classic plug-in is CFM/PEF PowerPC run by
+ * an interpreter, where a macOS one is Mach-O x86-64 run natively. */
+#define VSTDIRS_CLASSIC  "classic"
+#define VSTDIRS_ANY      "any"
+
+typedef struct {
+    char os[16];                   /* one of the four above */
+    char path[VSTDIRS_PATHLEN];
+} vstdir;
+
+/* The config file's own path, e.g. ~/.config/vst-ace/plugin-folders. Always
+ * returns something so a dialog can show it whether or not it exists yet. */
+const char *vstdirs_file(void);
+
+/* "windows" -> "Windows". For the settings dialogs, so both spell it alike. */
+const char *vstdirs_os_label(const char *os);
+
+/* Read the list into `out`, at most `max` entries, and return how many. Never
+ * fails: a missing or unreadable file is an empty list, which is the correct
+ * starting state. Entries are returned as written, including any that no
+ * longer exist -- a folder on a disconnected drive is still the user's
+ * setting, and silently dropping it would lose it on the next save. */
+int vstdirs_load(vstdir *out, int max);
+
+/* Write the list back. Returns 0, or -1 with errno set. Written to a temporary
+ * file and renamed, so an interrupted save cannot leave a half-written list
+ * where a good one was. */
+int vstdirs_save(const vstdir *dirs, int n);
+
+/* Add one folder under a platform, or remove one whatever its platform.
+ * `os` may be NULL, meaning VSTDIRS_ANY. `dir` is stored resolved, so the same
+ * folder reached by two paths is one entry. Adding a folder that is already
+ * listed under a different platform re-tags it rather than duplicating it.
+ *
+ * add returns 1 when the list changed, 0 when it already said exactly this,
+ * -1 on error; remove returns 1 when it was there, 0 when it was not, -1 on
+ * error. */
+int vstdirs_add(const char *os, const char *dir);
+int vstdirs_remove(const char *dir);
+
+/* Plug-ins taken off the list. Removing a plug-in from the library does not
+ * delete its file: it puts the path in a second file beside the folder list,
+ * and the scans skip it. Kept between sessions, shared by every window, and
+ * undone with vstdirs_unhide. hide and unhide return 1 when the list changed,
+ * 0 when it already said so, -1 on error. */
+const char *vstdirs_hidden_file(void);
+int vstdirs_is_hidden(const char *path);
+int vstdirs_hide(const char *path);
+int vstdirs_unhide(const char *path);
+int vstdirs_hidden_list(char (*out)[VSTDIRS_PATHLEN], int max);
+
+/* Whether `path` is inside one of the folders in the list, once both are
+ * resolved. For a file that names a plug-in -- a saved session, a patch --
+ * to be taken at its word only when the plug-in is one the user has already
+ * pointed this program at. */
+int vstdirs_contains(const char *path);
+
+/* Which plug-in a path is, for spotting the same one found twice while
+ * scanning. The folders a browser walks overlap in ways a path comparison
+ * cannot see: a VST_PATH folder of symlinks into a corpus, ~/.vst3 holding a
+ * copy of something the corpus also has. Taken once per candidate and kept,
+ * so comparing against everything already listed costs no further stats. */
+typedef struct {
+    unsigned long long dev, ino, size;
+    int                regular;       /* a plain file, so its bytes can be compared */
+    /* What the rest of the id describes when it is not the candidate itself:
+     * a bundle directory has no bytes of its own worth comparing, so it is
+     * identified by the module inside it (Contents/<arch>-<os>/<module>, or
+     * the library in a flat bundle). Empty when the candidate was stat'ed
+     * directly -- a plain file, or a bundle no module could be found in. */
+    char               mod[VSTDIRS_PATHLEN];
+} vstdirs_id;
+
+/* 0, or -1 when the path cannot be stat'ed (the id is then all zero, and
+ * matches nothing). Symlinks are followed. */
+int vstdirs_identify(const char *path, vstdirs_id *id);
+
+/* Whether two candidates are the same plug-in: the same file however it was
+ * reached, or two plain files with identical contents. Contents are read only
+ * when the names and sizes already agree, which for distinct plug-ins is
+ * almost never.
+ * Two copies of one bundle -- a .vst3 installed by copying it out of the
+ * unpacked release the corpus also holds -- are the same plug-in, settled by
+ * the module bytes inside; two versions of one plug-in differ there and are
+ * both kept. A bundle with no findable module is the same only as itself. */
+int vstdirs_same_plugin(const char *a, const vstdirs_id *ia,
+                        const char *b, const vstdirs_id *ib);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* VSTDIRS_H */

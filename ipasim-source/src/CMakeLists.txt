@@ -1,0 +1,6 @@
+add_subdirectory (crt)
+add_subdirectory (HeadersAnalyzer)
+add_subdirectory (IpaSimulator)
+add_subdirectory (objc)
+add_subdirectory (pthread)
+add_subdirectory (RTObjCInterop)

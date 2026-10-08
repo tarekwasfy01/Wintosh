@@ -1,0 +1,25 @@
+# We don't use version 3.x, so that memory limits work. Versions 3.x are
+# intended to be used with "swarm mode" which we don't use anyway.
+version: "2.4"
+
+services:
+  ipasim:
+    image: ipasim/build
+    build: .
+    volumes:
+      - type: bind
+        source: .
+        target: c:/ipaSim/src
+    mem_limit: 16G
+    networks:
+      - default
+    environment:
+      - BUILD_TABLEGENS_ONLY=${BUILD_TABLEGENS_ONLY}
+    ports:
+      - "4022:4022"
+      - "4023:4023"
+
+networks:
+  default:
+    external:
+      name: nat

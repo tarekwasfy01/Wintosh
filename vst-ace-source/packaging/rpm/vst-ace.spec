@@ -1,0 +1,263 @@
+# The version is a placeholder; packaging/build-rpm.sh passes the real one with
+# --define, the same way build-deb.sh rewrites the changelog.
+%global pkglibdir  %{_libdir}/%{name}
+%global pkgdatadir %{_datadir}/%{name}
+
+# This tree is not a candidate for link-time optimization, which Fedora turns on
+# by default. peload_cxx_throw_c and peload_ms_badjmp are reached only from
+# top-level asm() blocks, so a whole-program pass sees nothing calling them and
+# drops both -- it shows up as two undefined references while linking peserve.
+# A `used` attribute would fix those two and not the general case: the host
+# hands function addresses to guest code, which calls them from PE, Mach-O and
+# PEF images LTO never sees, and the next symptom need not be a link error.
+%global _lto_cflags %{nil}
+
+# Debug symbols are still packaged; what is turned off here is dwz, the DWARF
+# compressor rpm runs over them on the way into the -debuginfo subpackage,
+# which does not cope with the guest images and hand-written trampolines this
+# host carries. %%{nil} skips that pass outright -- the tunable this used to
+# set (%%_dwz_low_mem_die_limit) only moved dwz's low-memory threshold and left
+# the pass itself running, so it never had the intended effect.
+%global _find_debuginfo_dwz_opts %{nil}
+
+Name:           vst-ace
+Version:        0.3.0
+Release:        1%{?dist}
+Summary:        Run Windows, macOS and Linux audio plug-ins natively, without Wine
+
+License:        MIT
+URL:            https://github.com/spacestate1/VST-ace
+Source0:        %{name}-%{version}.tar.gz
+
+ExclusiveArch:  x86_64
+
+BuildRequires:  gcc
+BuildRequires:  gcc-c++
+BuildRequires:  make
+BuildRequires:  cmake >= 3.16
+BuildRequires:  pkgconfig
+BuildRequires:  pkgconfig(gtk4)
+BuildRequires:  pkgconfig(Qt6Widgets)
+BuildRequires:  pkgconfig(alsa)
+BuildRequires:  pkgconfig(libpipewire-0.3)
+BuildRequires:  pkgconfig(x11)
+BuildRequires:  pkgconfig(cairo)
+BuildRequires:  pkgconfig(freetype2)
+BuildRequires:  desktop-file-utils
+
+Suggests:       xorg-x11-server-Xwayland
+
+%description
+Audio plug-ins built for Windows, macOS and Linux, loaded and run as native
+code on Linux. Not emulation and not Wine: a PE loader with a Win32 subsystem
+underneath it, a Mach-O loader with an Objective-C runtime and a software Metal
+rasteriser, and a CFM/PEF interpreter for Classic Mac OS -- six hosts sharing
+one set of shims.
+
+Three windows are included. pestudio (Qt6) is a plug-in browser and player: pick
+a folder, pick a plug-in, and get its programs, every exposed parameter, a
+playable keyboard, a pitch wheel, patch banks, a recorder, and the plug-in's
+own editor -- blitted for Windows plug-ins, embedded as an X11 child window for
+native Linux ones. studio is the same host in a session window: a tab per
+plug-in beside the pattern tracker's tab, and studiogtk is that session
+window in GTK. dwstudio (GTK4) drives the
+reimplemented engines: a Korg DW-8000, a 4-op FM synth, a Juno-6 and sample
+kits.
+
+The command line has the same hosts: va peload inspects and renders a plug-in
+without a window, and va play runs the DW-8000 engine with no plug-in loaded at
+all.
+
+This package hosts 64-bit plug-ins. The i386 loader is not built here, as it
+needs a 32-bit toolchain and 32-bit FreeType, X11, ALSA and PipeWire; build
+from source for 32-bit Windows plug-ins. No plug-in binaries are included --
+the plug-ins these hosts load are their authors' own.
+
+%prep
+%autosetup
+
+%build
+# Three build systems in one tree: c/ is a plain Makefile, and peload/, gui/
+# and session/ are separate CMake projects (gui/ and session/ pull peload/ in
+# for the host library). Each is driven explicitly rather than through %%cmake,
+# which assumes one per tree.
+#
+# `va` is compiled knowing where it was installed, which is what lets it find
+# its helpers with no source tree above it -- see locate_tree() in c/src/dw.c.
+%make_build -C c \
+    CFLAGS="%{build_cflags} -Wno-format-truncation" \
+    LDFLAGS="%{build_ldflags}" \
+    DW_PKGDEFS='-DDW_PKGLIBDIR=\"%{pkglibdir}\" -DDW_PKGDATADIR=\"%{pkgdatadir}\"'
+
+cmake -B obj-peload -S peload \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX=%{_prefix} \
+    -DCMAKE_C_FLAGS="%{build_cflags}" \
+    -DCMAKE_CXX_FLAGS="%{build_cxxflags}" \
+    -DCMAKE_EXE_LINKER_FLAGS="%{build_ldflags}"
+cmake --build obj-peload --parallel
+
+cmake -B obj-gui -S gui \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX=%{_prefix} \
+    -DCMAKE_C_FLAGS="%{build_cflags}" \
+    -DCMAKE_EXE_LINKER_FLAGS="%{build_ldflags}"
+cmake --build obj-gui --parallel --target dwstudio
+
+cmake -B obj-session -S session \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX=%{_prefix} \
+    -DCMAKE_C_FLAGS="%{build_cflags}" \
+    -DCMAKE_CXX_FLAGS="%{build_cxxflags}" \
+    -DCMAKE_EXE_LINKER_FLAGS="%{build_ldflags}"
+cmake --build obj-session --parallel --target studio
+cmake --build obj-session --parallel --target studiogtk
+
+# pestudio, dwstudio and studio are skipped rather than failed when their
+# toolkit is missing, so without this a package built without Qt6 or GTK4
+# would ship quietly incomplete.
+test -x obj-peload/peload
+test -x obj-peload/peserve
+test -x obj-peload/pestudio
+test -x obj-gui/dwstudio
+test -x obj-session/studio
+test -x obj-session/studiogtk
+
+%install
+# The real programs go together in one private directory because that is where
+# each of them looks for the others: the bridge finds peserve beside the
+# running executable, and /proc/self/exe resolves the symlinks below back here.
+install -D -m 0755 obj-peload/peload   %{buildroot}%{pkglibdir}/peload
+install -D -m 0755 obj-peload/peserve  %{buildroot}%{pkglibdir}/peserve
+install -D -m 0755 obj-peload/pestudio %{buildroot}%{pkglibdir}/pestudio
+install -D -m 0755 obj-gui/dwstudio    %{buildroot}%{pkglibdir}/dwstudio
+install -D -m 0755 obj-session/studio  %{buildroot}%{pkglibdir}/studio
+%{pkglibdir}/studiogtk
+install -D -m 0755 obj-session/studiogtk %{buildroot}%{pkglibdir}/studiogtk
+install -D -m 0755 c/build/va          %{buildroot}%{_bindir}/va
+
+# Where real Microsoft runtime DLLs go. Empty, because the redistributable is
+# not ours to ship; owned by the package, because the host searches next to its
+# own binaries and the user should not have to read the source to learn that.
+install -d %{buildroot}%{pkglibdir}/runtime
+install -d %{buildroot}%{pkglibdir}/runtime32
+install -D -m 0644 packaging/runtime-README %{buildroot}%{pkglibdir}/runtime/README
+
+# -r, so the links are relative: an absolute one records the buildroot's idea
+# of the path and rpm warns about it. /proc/self/exe resolves either kind back
+# to pkglibdir, which is what the helper lookup depends on.
+for p in peload pestudio dwstudio studio studiogtk; do
+    ln -sfr %{buildroot}%{pkglibdir}/$p %{buildroot}%{_bindir}/$p
+done
+
+# The patch banks. Only the .json banks -- the generators beside them in the
+# tree are for producing more, and need the plug-in corpus to run.
+install -d %{buildroot}%{pkgdatadir}/patches
+cd patches && find . -name '*.json' -type f \
+    -exec install -D -m 0644 '{}' %{buildroot}%{pkgdatadir}/patches/'{}' \;
+cd ..
+
+install -D -m 0644 packaging/pestudio.desktop \
+    %{buildroot}%{_datadir}/applications/pestudio.desktop
+install -D -m 0644 packaging/dwstudio.desktop \
+    %{buildroot}%{_datadir}/applications/dwstudio.desktop
+install -D -m 0644 packaging/studio.desktop \
+    %{buildroot}%{_datadir}/applications/studio.desktop
+%{_datadir}/applications/studiogtk.desktop
+install -D -m 0644 packaging/studiogtk.desktop \
+    %{buildroot}%{_datadir}/applications/studiogtk.desktop
+
+for m in va peload pestudio dwstudio studio studiogtk; do
+    install -D -m 0644 packaging/$m.1 %{buildroot}%{_mandir}/man1/$m.1
+done
+
+%check
+desktop-file-validate %{buildroot}%{_datadir}/applications/pestudio.desktop
+desktop-file-validate %{buildroot}%{_datadir}/applications/dwstudio.desktop
+desktop-file-validate %{buildroot}%{_datadir}/applications/studio.desktop
+desktop-file-validate %{buildroot}%{_datadir}/applications/studiogtk.desktop
+
+%files
+%license LICENSE
+%doc README.md PLUGINS.md
+%{_bindir}/va
+%{_bindir}/peload
+%{_bindir}/pestudio
+%{_bindir}/dwstudio
+%{_bindir}/studio
+%{_bindir}/studiogtk
+%dir %{pkglibdir}
+%{pkglibdir}/peload
+%{pkglibdir}/peserve
+%{pkglibdir}/pestudio
+%{pkglibdir}/dwstudio
+%{pkglibdir}/studio
+%dir %{pkglibdir}/runtime
+%dir %{pkglibdir}/runtime32
+%{pkglibdir}/runtime/README
+%dir %{pkgdatadir}
+%{pkgdatadir}/patches
+%{_datadir}/applications/pestudio.desktop
+%{_datadir}/applications/dwstudio.desktop
+%{_datadir}/applications/studio.desktop
+%{_mandir}/man1/va.1*
+%{_mandir}/man1/peload.1*
+%{_mandir}/man1/pestudio.1*
+%{_mandir}/man1/dwstudio.1*
+%{_mandir}/man1/studio.1*
+%{_mandir}/man1/studiogtk.1*
+
+%changelog
+* Mon Sep 07 2026 Connor McRann <cmcrann@protonmail.com> - 0.3.0-1
+- Send MIDI as well as receive it. Both windows carry an out port that was
+  created and never written to; everything played locally now goes out of it,
+  thru echoes what arrives, and a sequencer's clock drives the transport, so a
+  tracker at the other end can play these and be played by them.
+- Reach the plug-in with raw MIDI: wheels, pedals, aftertouch and song position
+  arrive unchanged, where before only notes, bend and all-notes-off did.
+- Give dwstudio the inputs pestudio had -- an audio device chooser, an "is
+  anything arriving" line, the input-channel mask, and the same four effect
+  input sources -- so the two windows answer the same questions the same way.
+- Drive either window from the keyboard: shortcuts for the plug-in list, the
+  programs, the editor, rescan, thru, panic and the volume, all on the menus
+  they belong to.
+- Drop the Engines/Plug-ins switcher: hosting plug-ins is what this is for, and
+  the built-in engines stay as what sounds when nothing is loaded.
+- Play the computer keyboard while a plug-in's editor has focus, instead of the
+  keys going dead the moment a knob is touched.
+- Report a fault instead of dying quietly: the failing address is named from the
+  symbol table or the import table, the instruction bytes are dumped, a guest
+  stack overflow is recognised as one, and a sampling profiler says which stub a
+  slow load is sitting in.
+- Resolve 7223 ordinal imports by number, and answer the Win32, GDI+ and CRT
+  calls the corpus was measured making rather than the ones its import tables
+  list.
+- Recover a dead 32-bit bridge or out-of-process host rather than leaving a
+  window that has quietly stopped working.
+* Wed Sep 02 2026 Connor McRann <cmcrann@protonmail.com> - 0.2.0-1
+- Host macOS VST3 plug-ins, which never loaded before: the bundle search only
+  knew the Windows and Linux layouts, and there was no path that took a Mach-O
+  image. All 18 in the test corpus render and drive their own editors.
+- Draw and operate macOS editors. The Objective-C runtime was not told about a
+  plug-in's own classes, Quartz drew no paths, and frames arrived upside down;
+  12 editors that showed nothing now work. macOS VST2 goes from 19 to 31
+  rendering, 30 with a working GUI.
+- Load the eight Audio Damage Audio Units that are Symbiosis wrappers as the
+  VST2 they contain, rather than failing them. 41 of 50 Audio Units render.
+- Offer macOS VST2 and VST3 in both windows by default. Audio Units are behind
+  -DPESTUDIO_AU=1 / -DPLUGVIEW_AU=1, since each duplicates a .vst beside it.
+- Add macfont.h and png_in.h to the source package. Both were #included by the
+  build and had never been committed, so only a working copy could compile.
+- Stop staging the built launcher into the source tarball, which build-rpm.sh
+  had kept doing under the launcher's old name.
+
+* Mon Aug 31 2026 Connor McRann <cmcrann@protonmail.com> - 0.1.1-1
+- Fix both desktop entries, which named the launcher by its old name and so
+  failed to start either window from the desktop menu.
+- Follow the same rename through the man pages, the package descriptions and
+  va's own usage text.
+- Stamp the About boxes with the version the package is built as, rather than
+  the one written into the CMake files.
+
+* Sat Aug 29 2026 Connor McRann <cmcrann@protonmail.com> - 0.1.0-1
+- Initial release.

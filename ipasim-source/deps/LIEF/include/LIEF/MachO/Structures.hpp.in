@@ -1,0 +1,90 @@
+// From llvm/Support/MachO.h - The MachO file format
+#ifndef LIEF_MACHO_STRUCTURES_H_
+#define LIEF_MACHO_STRUCTURES_H_
+
+#include <cstdint>
+
+#include "LIEF/types.hpp"
+
+#include "LIEF/MachO/enums.hpp"
+
+
+// Swap 2 byte, 16 bit values:
+#define Swap2Bytes(val) \
+ ( (((val) >> 8) & 0x00FF) | (((val) << 8) & 0xFF00) )
+
+
+// Swap 4 byte, 32 bit values:
+#define Swap4Bytes(val) \
+ ( (((val) >> 24) & 0x000000FF) | (((val) >>  8) & 0x0000FF00) | \
+   (((val) <<  8) & 0x00FF0000) | (((val) << 24) & 0xFF000000) )
+
+
+
+// Swap 8 byte, 64 bit values:
+#define Swap8Bytes(val) \
+ ( (((val) >> 56) & 0x00000000000000FF) | (((val) >> 40) & 0x000000000000FF00) | \
+   (((val) >> 24) & 0x0000000000FF0000) | (((val) >>  8) & 0x00000000FF000000) | \
+   (((val) <<  8) & 0x000000FF00000000) | (((val) << 24) & 0x0000FF0000000000) | \
+   (((val) << 40) & 0x00FF000000000000) | (((val) << 56) & 0xFF00000000000000) )
+
+namespace LIEF {
+//! Namespace related to the LIEF's MachO module
+namespace MachO {
+
+  @LIEF_MACHO_STRUCTURES@
+
+
+  static const HEADER_FLAGS header_flags_array[] = {
+    HEADER_FLAGS::MH_NOUNDEFS,              HEADER_FLAGS::MH_INCRLINK,
+    HEADER_FLAGS::MH_DYLDLINK,              HEADER_FLAGS::MH_BINDATLOAD,
+    HEADER_FLAGS::MH_PREBOUND,              HEADER_FLAGS::MH_SPLIT_SEGS,
+    HEADER_FLAGS::MH_LAZY_INIT,             HEADER_FLAGS::MH_TWOLEVEL,
+    HEADER_FLAGS::MH_FORCE_FLAT,            HEADER_FLAGS::MH_NOMULTIDEFS,
+    HEADER_FLAGS::MH_NOFIXPREBINDING,       HEADER_FLAGS::MH_PREBINDABLE,
+    HEADER_FLAGS::MH_ALLMODSBOUND,          HEADER_FLAGS::MH_SUBSECTIONS_VIA_SYMBOLS,
+    HEADER_FLAGS::MH_CANONICAL,             HEADER_FLAGS::MH_WEAK_DEFINES,
+    HEADER_FLAGS::MH_BINDS_TO_WEAK,         HEADER_FLAGS::MH_ALLOW_STACK_EXECUTION,
+    HEADER_FLAGS::MH_ROOT_SAFE,             HEADER_FLAGS::MH_SETUID_SAFE,
+    HEADER_FLAGS::MH_NO_REEXPORTED_DYLIBS,  HEADER_FLAGS::MH_PIE,
+    HEADER_FLAGS::MH_DEAD_STRIPPABLE_DYLIB, HEADER_FLAGS::MH_HAS_TLV_DESCRIPTORS,
+    HEADER_FLAGS::MH_NO_HEAP_EXECUTION,     HEADER_FLAGS::MH_APP_EXTENSION_SAFE
+  };
+
+
+  static const MACHO_SECTION_FLAGS section_flags_array[] = {
+    MACHO_SECTION_FLAGS::S_ATTR_PURE_INSTRUCTIONS, MACHO_SECTION_FLAGS::S_ATTR_NO_TOC,
+    MACHO_SECTION_FLAGS::S_ATTR_STRIP_STATIC_SYMS, MACHO_SECTION_FLAGS::S_ATTR_NO_DEAD_STRIP,
+    MACHO_SECTION_FLAGS::S_ATTR_LIVE_SUPPORT,      MACHO_SECTION_FLAGS::S_ATTR_SELF_MODIFYING_CODE,
+    MACHO_SECTION_FLAGS::S_ATTR_DEBUG,             MACHO_SECTION_FLAGS::S_ATTR_SOME_INSTRUCTIONS,
+    MACHO_SECTION_FLAGS::S_ATTR_EXT_RELOC,         MACHO_SECTION_FLAGS::S_ATTR_LOC_RELOC
+  };
+
+
+  class MachO32 {
+    public:
+    using header                  = mach_header;
+    using segment_command         = segment_command_32;
+    using section                 = section_32;
+    using routines_command        = routines_command_32;
+    using dylib_module            = dylib_module_32;
+    using nlist                   = nlist_32;
+
+    using uint                    = uint32_t;
+  };
+
+  class MachO64 {
+    public:
+    using header                  = mach_header_64;
+    using segment_command         = segment_command_64;
+    using section                 = section_64;
+    using routines_command        = routines_command_64;
+    using dylib_module            = dylib_module_64;
+    using nlist                   = nlist_64;
+
+    using uint                    = uint64_t;
+  };
+
+} // end namespace MachO
+}
+#endif

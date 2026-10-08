@@ -1,0 +1,33 @@
+# Complete current workspace state
+
+This file closes the gap between the working directory and the release
+documentation. The machine-readable inventory is
+[CURRENT-STATE-MANIFEST.csv](CURRENT-STATE-MANIFEST.csv).
+
+## Contents confirmed on 2026-10-08
+
+- 13 complete reference/source checkouts are present.
+- The primary Darling checkout contains 31,720 files.
+- `darling-source/src/native/windows` contains 83 implementation, header,
+  CMake, and smoke-test files.
+- The license bundle contains 12 files, including Darling GPL text, WSL
+  license/notice text, source inventories, and provenance review material.
+- Generated x64 and Win32 build trees are present locally and are explicitly
+  classified as generated local artifacts, not corresponding source.
+- All release documentation is present and linked from
+  [DOCUMENTATION-INDEX.md](DOCUMENTATION-INDEX.md).
+
+## What is included in a source release
+
+Include the source checkouts, the Windows overlay, all documentation, and the
+`licenses` directory. Keep every original upstream license and notice with
+its source. A source release must not silently replace a third-party license
+with the Wintosh-original MIT notice.
+
+## What is not claimed
+
+This manifest proves that the current files are present in this workspace. It
+does not prove that all 150 Darling external components are license-cleared,
+that the NTFS-incompatible Heimdal checkout is complete, that the global build
+passes, or that arbitrary macOS applications run on Windows. Those boundaries
+remain in [STATUS.md](STATUS.md) and [RELEASE-CHECKLIST.md](RELEASE-CHECKLIST.md).

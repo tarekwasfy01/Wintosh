@@ -1,0 +1,7 @@
+!*.lib
+!*.dll
+!*.pdb
+
+# [port] CHANGED: Added this line, because we build `RTObjCInterop.dll`
+# [port] from sources (see `/src/RTObjCInterop/`).
+/Universal Windows/x86/RTObjCInterop.*

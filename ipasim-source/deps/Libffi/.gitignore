@@ -1,0 +1,11 @@
+# Builds
+build/
+
+# MacOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Git Time Metric
+/.gtm/

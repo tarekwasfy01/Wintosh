@@ -1,0 +1,87 @@
+EXPORTS
+
+; From objc-msg-simulator-i386.s.obj.
+_objc_msgNil
+_objc_msgNil_fpret
+_objc_msgNil_stret
+cache_getImp
+objc_msgSend
+objc_msgLookup
+objc_msgSendSuper
+objc_msgLookupSuper
+objc_msgSendSuper2
+objc_msgLookupSuper2
+objc_msgSend_fpret
+objc_msgLookup_fpret
+objc_msgSend_stret
+objc_msgLookup_stret
+objc_msgSendSuper_stret
+objc_msgLookupSuper_stret
+objc_msgSendSuper2_stret
+objc_msgLookupSuper2_stret
+_objc_msgSend_uncached
+_objc_msgSend_stret_uncached
+_objc_msgLookup_uncached
+_objc_msgLookup_stret_uncached
+_objc_msgForward_impcache
+_objc_msgForward
+_objc_msgForward_stret
+objc_msgSend_debug
+objc_msgSendSuper2_debug
+objc_msgSend_stret_debug
+objc_msgSendSuper2_stret_debug
+objc_msgSend_fpret_debug
+objc_msgSend_noarg
+method_invoke
+method_invoke_stret
+
+; From a1a2-blocktramps-i386.s.obj and a2a3-blocktramps-i386.s.obj.
+_a1a2_tramphead
+_a1a2_firsttramp
+_a1a2_nexttramp
+_a2a3_tramphead
+_a1a2_trampend
+_a2a3_firsttramp
+_a2a3_nexttramp
+_a2a3_trampend
+
+; From objc-sel-table.s.obj.
+_objc_opt_data DATA
+_objc_opt_rw_data DATA
+
+; From objc-cache.mm.obj.
+_objc_empty_cache DATA
+
+; TODO: Export these from source code instead.
+
+; From data.c.obj.
+_NSConcreteStackBlock DATA
+_NSConcreteMallocBlock DATA
+_NSConcreteAutoBlock DATA
+_NSConcreteFinalizingBlock DATA
+_NSConcreteGlobalBlock DATA
+_NSConcreteWeakBlockVariable DATA
+
+; From runtime.c.obj.
+_Block_use_RR2
+_Block_copy
+_Block_release
+_Block_tryRetain
+_Block_isDeallocating
+Block_size
+_Block_use_stret
+_Block_has_signature
+_Block_signature
+_Block_layout
+_Block_extended_layout
+_Block_object_assign
+_Block_object_dispose
+
+; From objc-exception.mm.obj.
+; TODO: Why is this not exported even though it has `OBJC_EXPORT` in source code?
+objc_ehtype_vtable DATA
+
+; From NSObject.mm.obj.
+OBJC_CLASS_$_NSObject DATA
+OBJC_METACLASS_$_NSObject DATA
+OBJC_IVAR_$_NSObject.isa DATA

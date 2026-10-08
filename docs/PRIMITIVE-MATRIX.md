@@ -31,6 +31,9 @@ matrix does not claim that ordinary macOS applications run yet.
 Mach port reference mutation now rejects signed-delta underflow and unsigned
 overflow, including the `INT32_MIN` edge case, while preserving the existing
 process-local queue behavior.
+Port release also removes stale membership from every process-local port set;
+cross-process Mach IPC and the full kernel notification/disposition model
+remain outside this adapter.
 
 The framework layer now also has a deliberately small CoreFoundation ABI
 adapter for retain/release, UTF-8 strings with limited mutable operations, byte data, arrays, integer

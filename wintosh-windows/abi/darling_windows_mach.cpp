@@ -165,6 +165,10 @@ extern "C" darling_kern_return_t darling_windows_mach_port_deallocate(
 	{
 		std::lock_guard lock(ports_mutex);
 		ports.erase(name);
+		for (auto& [set_name, members] : port_sets) {
+			(void)set_name;
+			members.erase(name);
+		}
 	}
 	return 0; // Host tokens are borrowed pseudo-rights; nothing to close here.
 }

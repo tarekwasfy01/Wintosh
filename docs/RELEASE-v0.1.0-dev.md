@@ -48,6 +48,22 @@ provenance material is retained under `licenses/`. Darling-derived boundaries
 remain subject to the applicable Darling GPL-3.0 terms; the Wintosh-original
 license applies only to clearly identified original Wintosh code.
 
+The release tree includes the following legal files:
+
+- `LICENSE-WINTOSH-ORIGINAL-MIT.txt` — Wintosh-original code boundary.
+- `licenses/LICENSE-darling-GPL-3.0.txt` — Darling GPL-3.0 license text.
+- `licenses/LICENSE-wsl-MIT.txt` and `licenses/NOTICE-wsl.txt` — WSL notice
+  material.
+- `licenses/SOURCE-LICENSE-INVENTORY.csv` — recognized source license files.
+- `licenses/EXTERNAL-COMPONENT-PROVENANCE.csv` and
+  `licenses/EXTERNAL-COMPONENT-REVIEW.md` — component provenance and open
+  review status.
+- `licenses/README.md`, `licenses/SOURCE-BUNDLE.md`, and
+  `docs/THIRD-PARTY-NOTICES.md` — redistribution instructions and notices.
+
+The repository does not relicense Darling or any other third-party source.
+The original upstream terms remain authoritative.
+
 ## Feedback
 
 Please include the Windows version, architecture, CMake generator, compiler

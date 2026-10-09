@@ -3,6 +3,7 @@
 #include "darling_windows_stdio.h"
 
 #include <iostream>
+#include <atomic>
 #include <chrono>
 #include <cstring>
 #include <limits>
@@ -41,6 +42,25 @@ int main()
 	if (darling_windows_thread_get_state(thread, darling_x86_float_state64_flavor,
 		&float_state, &float_count) != 0 || float_count != darling_x86_float_state64_count)
 		return 1;
+	std::atomic<bool> worker_ready = false;
+	std::atomic<bool> worker_stop = false;
+	std::thread worker([&] {
+		worker_ready.store(true, std::memory_order_release);
+		while (!worker_stop.load(std::memory_order_acquire)) std::this_thread::yield();
+	});
+	while (!worker_ready.load(std::memory_order_acquire)) std::this_thread::yield();
+	const auto worker_thread = static_cast<darling_mach_port_name_t>(GetThreadId(worker.native_handle()));
+	darling_x86_float_state64 worker_float_state{};
+	std::uint32_t worker_float_count = darling_x86_float_state64_count;
+	const auto worker_get = worker_thread == 0 ? 4 : darling_windows_thread_get_state(worker_thread,
+		darling_x86_float_state64_flavor, &worker_float_state, &worker_float_count);
+	if (worker_get != 0 || worker_float_count != darling_x86_float_state64_count) {
+		worker_stop.store(true, std::memory_order_release);
+		worker.join();
+		return 1;
+	}
+	worker_stop.store(true, std::memory_order_release);
+	worker.join();
 	darling_x86_exception_state64 exception_state{};
 	std::uint32_t exception_count = darling_x86_exception_state64_count;
 	if (darling_windows_thread_get_state(thread, darling_x86_exception_state64_flavor,

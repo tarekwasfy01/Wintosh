@@ -32,6 +32,10 @@ matrix does not claim that ordinary macOS applications run yet.
 The process row also covers the four-word Darwin signal-set constructors and
 membership operations, verified by `signals_smoke`; this does not establish
 native cross-process signal delivery or complete Darwin signal semantics.
+
+`pthread_sigmask` resolves to the same thread-local mask backend and is
+verified as an import boundary by the signal smoke test; cancellation and
+cross-process delivery remain separate gaps.
 Mach port reference mutation now rejects signed-delta underflow and unsigned
 overflow, including the `INT32_MIN` edge case, while preserving the existing
 process-local queue behavior.

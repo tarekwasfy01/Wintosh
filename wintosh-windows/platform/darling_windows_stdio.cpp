@@ -3721,6 +3721,11 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 	if (std::strcmp(name, "_sigprocmask") == 0 || std::strcmp(name, "sigprocmask") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_sigprocmask);
 	}
+	if (std::strcmp(name, "_pthread_sigmask") == 0 ||
+		std::strcmp(name, "__pthread_sigmask") == 0 ||
+		std::strcmp(name, "pthread_sigmask") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_sigprocmask);
+	}
 	if (std::strcmp(name, "__sigprocmask") == 0 ||
 		std::strcmp(name, "_sigprocmask_nocancel") == 0 ||
 		std::strcmp(name, "__sigprocmask_nocancel") == 0 ||

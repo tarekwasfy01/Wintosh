@@ -97,6 +97,8 @@ int main()
 		darling_windows_host_symbol("sigwait_nocancel") != 0 &&
 		darling_windows_host_symbol("sigwaitinfo_nocancel") != 0 &&
 		darling_windows_host_symbol("sigqueue_nocancel") != 0 &&
+		darling_windows_host_symbol("pthread_sigmask") != 0 &&
+		darling_windows_host_symbol("__pthread_sigmask") != 0 &&
 		darling_windows_host_symbol("__sigaction") != 0;
 	std::cout << "DARWIN_NORMALIZED_SIGNAL_SYMBOLS="
 		<< (normalized_signal_symbols ? "PASS" : "FAIL") << "\n";

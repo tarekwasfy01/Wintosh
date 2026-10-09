@@ -458,6 +458,11 @@ The signal-set resolver also accepts the common double-underscore spellings
 `__sigemptyset`, `__sigfillset`, `__sigaddset`, `__sigdelset`, and
 `__sigismember`; the signal smoke checks representative lookup entries.
 
+The thread-mask ABI now resolves `pthread_sigmask` and its common
+double-underscore spelling to the existing thread-local Darwin mask adapter.
+This covers the import boundary; full pthread cancellation interaction and
+native cross-process signal delivery remain open.
+
 The VM read bridge now records returned local buffers and makes
 `mach_vm_deallocate` release those buffers in the current Windows process,
 even when the read targeted a different PID. This closes the previous

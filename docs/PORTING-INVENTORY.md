@@ -4344,3 +4344,8 @@ and `sigismember` using the existing four-word Darwin layout. The dedicated
 signal smoke covers construction, membership, deletion, full-set population,
 invalid signal rejection, and resolver entries. Cross-process delivery, full
 kernel mask behavior, and exact Darwin signal-set corner cases remain open.
+
+`pthread_sigmask` now resolves through the thread-local mask path, including
+the common `__pthread_sigmask` spelling. This closes the import-level gap for
+thread mask management but not cancellation interaction or native
+cross-process signal delivery.

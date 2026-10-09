@@ -4398,6 +4398,14 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 		std::strcmp(name, "clock_getres_nocancel") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_clock_getres);
 	}
+	if (std::strcmp(name, "_clock_nanosleep") == 0 ||
+		std::strcmp(name, "__clock_nanosleep") == 0 ||
+		std::strcmp(name, "clock_nanosleep") == 0 ||
+		std::strcmp(name, "_clock_nanosleep_nocancel") == 0 ||
+		std::strcmp(name, "__clock_nanosleep_nocancel") == 0 ||
+		std::strcmp(name, "clock_nanosleep_nocancel") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_clock_nanosleep);
+	}
 	if (std::strcmp(name, "_mach_absolute_time") == 0 ||
 		std::strcmp(name, "__mach_absolute_time") == 0 ||
 		std::strcmp(name, "mach_absolute_time") == 0) {
@@ -6295,6 +6303,40 @@ extern "C" int darling_windows_clock_getres(int clock_id, darling_timespec* resu
 	result->tv_sec = 0;
 	result->tv_nsec = clock_id == 0 ? 100 : 1;
 	return 0;
+}
+
+extern "C" int darling_windows_clock_nanosleep(int clock_id, int flags,
+	const darling_timespec* request, darling_timespec* remaining)
+{
+	if (request == nullptr || (clock_id != 0 && clock_id != 6) ||
+		(flags & ~1) != 0 || request->tv_sec < 0 || request->tv_nsec < 0 ||
+		request->tv_nsec >= 1'000'000'000) {
+		darling::windows_host::DarwinErrno::Set(22);
+		return 22;
+	}
+	if ((flags & 1) == 0) {
+		return darling_windows_nanosleep(request, remaining) == 0 ? 0 : 22;
+	}
+	darling_timespec now{};
+	if (darling_windows_clock_gettime(clock_id, &now) != 0) {
+		return 22;
+	}
+	const auto target = static_cast<std::uint64_t>(request->tv_sec) * 1'000'000'000ull +
+		static_cast<std::uint64_t>(request->tv_nsec);
+	const auto current = static_cast<std::uint64_t>(now.tv_sec) * 1'000'000'000ull +
+		static_cast<std::uint64_t>(now.tv_nsec);
+	if (target <= current) {
+		if (remaining != nullptr) {
+			remaining->tv_sec = 0;
+			remaining->tv_nsec = 0;
+		}
+		return 0;
+	}
+	const auto delta = target - current;
+	darling_timespec relative{
+		static_cast<std::int64_t>(delta / 1'000'000'000ull),
+		static_cast<std::int64_t>(delta % 1'000'000'000ull)};
+	return darling_windows_nanosleep(&relative, remaining) == 0 ? 0 : 22;
 }
 
 extern "C" std::uint64_t darling_windows_mach_absolute_time()

@@ -4327,3 +4327,10 @@ spellings. The host API smoke resolves the complete alias set and passes on
 the current Release build. These names reuse the existing clock and sleep
 adapters; true Darwin cancellation-point interruption, restart behavior, and
 thread-cancellation interaction remain open.
+
+The same time batch now adds `clock_nanosleep` and
+`clock_nanosleep_nocancel`. Relative waits delegate to the validated nanosleep
+adapter; absolute waits compute a checked deadline against the selected wall
+or monotonic clock before sleeping. Resolver and host smoke coverage pass on
+the current Release build. Signal interruption, remaining-time restart rules,
+and exact Darwin cancellation semantics remain open.

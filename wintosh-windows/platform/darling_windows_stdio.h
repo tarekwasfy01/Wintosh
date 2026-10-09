@@ -411,6 +411,8 @@ extern "C" const char* darling_windows_getprogname();
 extern "C" void darling_windows_setprogname(const char* name);
 extern "C" int darling_windows_clock_gettime(int clock_id, darling_timespec* result);
 extern "C" int darling_windows_clock_getres(int clock_id, darling_timespec* result);
+extern "C" int darling_windows_clock_nanosleep(int clock_id, int flags,
+	const darling_timespec* request, darling_timespec* remaining);
 extern "C" std::uint64_t darling_windows_mach_absolute_time();
 extern "C" int darling_windows_mach_timebase_info(darling_mach_timebase_info* result);
 extern "C" int darling_windows_nanosleep(const darling_timespec* request, darling_timespec* remaining);

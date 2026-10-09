@@ -622,6 +622,12 @@ double-underscore spellings. They intentionally reuse the already verified
 Windows time adapters; cancellation-point interruption and exact Darwin restart
 semantics remain open.
 
+`clock_nanosleep` and `clock_nanosleep_nocancel` are now mapped for the
+supported wall-clock and monotonic-clock IDs, including relative and absolute
+deadlines with checked timespec validation. The host API smoke checks both
+resolver names; Windows sleep interruption and exact Darwin cancellation
+semantics remain outside this adapter.
+
 The runtime README now records the actual Mach-O execution boundary: the
 Windows x86_64 runner can enter compatible x86_64 images after mapping,
 relocations, bindings, initializers, and protection setup, while i386 and

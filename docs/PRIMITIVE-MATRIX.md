@@ -166,6 +166,11 @@ double-underscore spellings. The aliases intentionally share the existing
 Windows implementations; they do not claim Darwin thread-cancellation or
 interruption semantics.
 
+It also includes `clock_nanosleep` and its cancellation-safe spelling for
+relative and absolute waits on the supported wall-clock and monotonic-clock
+IDs. Deadline handling is adapted to Windows clocks and is not full Darwin
+interruption or cancellation behavior.
+
 ## Source boundaries
 
 Linux/WSL references are compatibility evidence and test material, not a new

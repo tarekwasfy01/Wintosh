@@ -934,7 +934,9 @@ int main()
 		darling_windows_host_symbol("uname") != 0 &&
 		darling_windows_host_symbol("gethostname") != 0 &&
 		darling_windows_host_symbol("clock_gettime") != 0 &&
-		darling_windows_host_symbol("clock_getres") != 0;
+		darling_windows_host_symbol("clock_getres") != 0 &&
+		darling_windows_host_symbol("clock_nanosleep") != 0 &&
+		darling_windows_host_symbol("clock_nanosleep_nocancel") != 0;
 	std::cout << "DARWIN_NORMALIZED_SYSTEM_SYMBOLS="
 		<< (normalized_system_symbols ? "PASS" : "FAIL") << "\n";
 	const bool normalized_mach_time_symbols =

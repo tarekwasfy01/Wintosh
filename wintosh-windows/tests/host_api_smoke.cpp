@@ -133,13 +133,17 @@ namespace {
 	struct BarrierSmokeContext final {
 		void* barrier = nullptr;
 		std::atomic<int>* completed = nullptr;
+		std::atomic<int>* serial_returns = nullptr;
 	};
 	void* PthreadBarrierSmokeStart(void* argument)
 	{
 		auto& context = *static_cast<BarrierSmokeContext*>(argument);
 		for (int phase = 0; phase < 2; ++phase) {
-			if (darling_windows_pthread_barrier_wait(context.barrier) == 0)
+			const int result = darling_windows_pthread_barrier_wait(context.barrier);
+			if (result == 0 || result == -1)
 				context.completed->fetch_add(1, std::memory_order_release);
+			if (result == -1)
+				context.serial_returns->fetch_add(1, std::memory_order_release);
 		}
 		return nullptr;
 	}
@@ -1377,10 +1381,11 @@ int main()
 		darling_windows_pthread_barrierattr_setpshared(pthread_barrier_attributes, 1) == 95 &&
 		darling_windows_pthread_barrierattr_destroy(&pthread_barrier_attributes) == 0;
 	std::atomic<int> pthread_barrier_completed{0};
+	std::atomic<int> pthread_barrier_serial_returns{0};
 	const bool pthread_barrier_initialized = pthread_barrier_symbols_ok && pthread_barrier_attributes_ok &&
 		darling_windows_pthread_barrier_init(&pthread_barrier_storage, nullptr, 2) == 0;
 	BarrierSmokeContext pthread_barrier_context{&pthread_barrier_storage,
-		&pthread_barrier_completed};
+		&pthread_barrier_completed, &pthread_barrier_serial_returns};
 	std::thread pthread_barrier_thread_a(PthreadBarrierSmokeStart,
 		&pthread_barrier_context);
 	std::thread pthread_barrier_thread_b(PthreadBarrierSmokeStart,
@@ -1389,6 +1394,7 @@ int main()
 	pthread_barrier_thread_b.join();
 	const bool pthread_barrier_ok = pthread_barrier_initialized &&
 		pthread_barrier_completed.load(std::memory_order_acquire) == 4 &&
+		pthread_barrier_serial_returns.load(std::memory_order_acquire) == 2 &&
 		darling_windows_pthread_barrier_destroy(&pthread_barrier_storage) == 0;
 	void* pthread_rwlock_storage = nullptr;
 	const bool pthread_rwlock_ok =

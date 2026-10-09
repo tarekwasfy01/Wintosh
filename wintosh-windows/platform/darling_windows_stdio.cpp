@@ -28,7 +28,6 @@
 
 #include <cstdint>
 #include <atomic>
-#include <barrier>
 #include <array>
 #include <cstring>
 #include <cstdarg>
@@ -2790,9 +2789,12 @@ struct DarlingPthreadSpinlock final {
 };
 
 struct DarlingPthreadBarrier final {
-	explicit DarlingPthreadBarrier(unsigned participants)
-		: value(static_cast<std::ptrdiff_t>(participants)) {}
-	std::barrier<> value;
+	explicit DarlingPthreadBarrier(unsigned participants) : participants(participants) {}
+	const unsigned participants;
+	unsigned arrived = 0;
+	unsigned generation = 0;
+	std::mutex mutex;
+	std::condition_variable condition;
 };
 
 struct DarlingPthreadBarrierAttributes final {
@@ -3043,7 +3045,19 @@ extern "C" int darling_windows_pthread_barrier_wait(void* barrier)
 {
 	auto* value = PthreadBarrierFromStorage(barrier);
 	if (value == nullptr) return 22;
-	value->value.arrive_and_wait();
+	std::unique_lock lock(value->mutex);
+	const unsigned current_generation = value->generation;
+	++value->arrived;
+	if (value->arrived == value->participants) {
+		value->arrived = 0;
+		++value->generation;
+		lock.unlock();
+		value->condition.notify_all();
+		return -1;
+	}
+	value->condition.wait(lock, [&]() {
+		return value->generation != current_generation;
+	});
 	return 0;
 }
 

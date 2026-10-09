@@ -507,11 +507,11 @@ cleanup ordering, and exact Darwin cancellation behavior remain open.
 The host API smoke now proves the mutex case with a worker blocked behind a
 held mutex, cancellation, canceled join, and orderly mutex cleanup.
 
-The pthread mutex-attribute boundary now exposes default-only attribute objects
-with type and process-sharing getters/setters. Unsupported recursive,
-error-checking, and process-shared execution modes fail closed with `ENOTSUP`;
-the host smoke verifies initialization, default reads, unsupported writes, and
-destruction. Native recursive/robust/shared mutex behavior remains open.
+The pthread mutex-attribute boundary now exposes attribute objects with type
+and process-sharing getters/setters. Normal and recursive mutexes use distinct
+Windows backends, and the host smoke verifies recursive relocking. Unsupported
+error-checking and process-shared execution modes fail closed with `ENOTSUP`;
+robust/shared mutex behavior remains open.
 
 It also proves cancellation while a worker is inside `pthread_cond_wait`, then
 joins the canceled worker and destroys the condition and mutex normally.

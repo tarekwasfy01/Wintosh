@@ -54,10 +54,12 @@ When cancellation is observed from `pthread_cond_wait` or
 `pthread_cond_timedwait`, the adapter now preserves the POSIX rule that the
 associated mutex is reacquired before cleanup handlers run. The host smoke
 verifies this from a cleanup callback and releases the mutex there.
-The mutex-attribute subfamily now has default-only `init`, `destroy`, `gettype`,
-`settype`, `getpshared`, and `setpshared` adapters plus resolver coverage.
-Unsupported recursive/error-checking and process-shared execution modes return
-`ENOTSUP` explicitly; they are not silently treated as ordinary mutexes.
+The mutex-attribute subfamily now has `init`, `destroy`, `gettype`, `settype`,
+`getpshared`, and `setpshared` adapters plus resolver coverage. Normal and
+recursive mutexes are backed by distinct Windows synchronization objects and
+the host smoke verifies recursive relocking. Error-checking and process-shared
+execution modes return `ENOTSUP` explicitly; they are not silently treated as
+ordinary mutexes.
 Mach port reference mutation now rejects signed-delta underflow and unsigned
 overflow, including the `INT32_MIN` edge case, while preserving the existing
 process-local queue behavior.

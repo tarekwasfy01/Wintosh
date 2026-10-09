@@ -229,8 +229,7 @@ int main()
 	runloop_callback_value = 0;
 	const bool queued = darling_windows_CFRunLoopPerformBlock(loop, RunLoopCallback, &callback_value);
 	darling_windows_CFRunLoopWakeUp(loop);
-	std::thread callback_thread([&] { darling_windows_CFRunLoopRunInMode(1.0, true); });
-	callback_thread.join();
+	darling_windows_CFRunLoopRunInMode(1.0, true);
 	const bool callback_ok = queued && runloop_callback_value == 7;
 	int second_callback_value = 11;
 	runloop_callback_count = 0;
@@ -251,8 +250,7 @@ int main()
 	int timer_value = 0;
 	const bool timer_queued = darling_windows_CFRunLoopPerformOneShotTimer(
 		loop, 0.01, RunLoopCallback, &callback_value);
-	std::thread timer_thread([&] { darling_windows_CFRunLoopRunInMode(1.0, true); });
-	timer_thread.join();
+	darling_windows_CFRunLoopRunInMode(1.0, true);
 	const bool timer_ok = timer_queued && runloop_callback_value == 7;
 	const auto center = darling_windows_CFNotificationCenterGetLocal();
 	const int notification_object = 1;

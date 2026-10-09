@@ -2744,10 +2744,24 @@ extern "C" int darling_windows_pthread_threadid_np(std::uint64_t thread,
 }
 
 namespace {
-std::mutex* PthreadMutexFromStorage(void* storage)
+struct DarlingPthreadMutex final {
+	explicit DarlingPthreadMutex(int requested_type)
+		: type(requested_type), recursive(requested_type == 1) {}
+
+	bool try_lock() { return recursive ? recursive_mutex.try_lock() : mutex.try_lock(); }
+	void lock() { recursive ? recursive_mutex.lock() : mutex.lock(); }
+	void unlock() { recursive ? recursive_mutex.unlock() : mutex.unlock(); }
+
+	int type = 0;
+	bool recursive = false;
+	std::mutex mutex;
+	std::recursive_mutex recursive_mutex;
+};
+
+DarlingPthreadMutex* PthreadMutexFromStorage(void* storage)
 {
 	if (storage == nullptr) return nullptr;
-	return *reinterpret_cast<std::mutex**>(storage);
+	return *reinterpret_cast<DarlingPthreadMutex**>(storage);
 }
 
 struct DarlingPthreadMutexAttributes final {
@@ -2784,7 +2798,7 @@ extern "C" int darling_windows_pthread_mutexattr_settype(void* attributes, int t
 	auto* value = PthreadMutexAttributesFromStorage(attributes);
 	if (value == nullptr || (type != 0 && type != 1 && type != 2)) return 22;
 	value->type = type;
-	return type == 0 ? 0 : 95;
+	return type == 2 ? 95 : 0;
 }
 
 extern "C" int darling_windows_pthread_mutexattr_gettype(const void* attributes, int* type)
@@ -2816,9 +2830,12 @@ extern "C" int darling_windows_pthread_mutex_init(void* mutex, const void* attri
 	if (mutex == nullptr) return 22;
 	const auto* attr = PthreadMutexAttributesFromStorage(attributes);
 	if (attributes != nullptr && attr == nullptr) return 22;
-	if (attr != nullptr && (attr->type != 0 || attr->pshared != 0)) return 95;
-	*reinterpret_cast<std::mutex**>(mutex) = new (std::nothrow) std::mutex();
-	return *reinterpret_cast<std::mutex**>(mutex) == nullptr ? 12 : 0;
+	if (attr != nullptr && attr->pshared != 0) return 95;
+	const int type = attr == nullptr ? 0 : attr->type;
+	if (type == 2) return 95;
+	*reinterpret_cast<DarlingPthreadMutex**>(mutex) =
+		new (std::nothrow) DarlingPthreadMutex(type);
+	return *reinterpret_cast<DarlingPthreadMutex**>(mutex) == nullptr ? 12 : 0;
 }
 
 extern "C" int darling_windows_pthread_mutex_destroy(void* mutex)
@@ -2826,7 +2843,7 @@ extern "C" int darling_windows_pthread_mutex_destroy(void* mutex)
 	auto* value = PthreadMutexFromStorage(mutex);
 	if (value == nullptr) return 22;
 	delete value;
-	*reinterpret_cast<std::mutex**>(mutex) = nullptr;
+	*reinterpret_cast<DarlingPthreadMutex**>(mutex) = nullptr;
 	return 0;
 }
 
@@ -2858,10 +2875,10 @@ extern "C" int darling_windows_pthread_mutex_unlock(void* mutex)
 }
 
 namespace {
-std::condition_variable* PthreadConditionFromStorage(void* storage)
+std::condition_variable_any* PthreadConditionFromStorage(void* storage)
 {
 	if (storage == nullptr) return nullptr;
-	return *reinterpret_cast<std::condition_variable**>(storage);
+	return *reinterpret_cast<std::condition_variable_any**>(storage);
 }
 }
 
@@ -2869,9 +2886,9 @@ extern "C" int darling_windows_pthread_cond_init(void* condition, const void* at
 {
 	(void)attributes;
 	if (condition == nullptr) return 22;
-	*reinterpret_cast<std::condition_variable**>(condition) =
-		new (std::nothrow) std::condition_variable();
-	return *reinterpret_cast<std::condition_variable**>(condition) == nullptr ? 12 : 0;
+	*reinterpret_cast<std::condition_variable_any**>(condition) =
+		new (std::nothrow) std::condition_variable_any();
+	return *reinterpret_cast<std::condition_variable_any**>(condition) == nullptr ? 12 : 0;
 }
 
 extern "C" int darling_windows_pthread_cond_destroy(void* condition)
@@ -2879,7 +2896,7 @@ extern "C" int darling_windows_pthread_cond_destroy(void* condition)
 	auto* value = PthreadConditionFromStorage(condition);
 	if (value == nullptr) return 22;
 	delete value;
-	*reinterpret_cast<std::condition_variable**>(condition) = nullptr;
+	*reinterpret_cast<std::condition_variable_any**>(condition) = nullptr;
 	return 0;
 }
 

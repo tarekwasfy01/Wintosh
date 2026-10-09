@@ -1340,6 +1340,9 @@ int main()
 		darling_windows_pthread_cond_destroy(&cancellation_condition) == 0;
 	void* pthread_attributes = nullptr;
 	int pthread_detach_state = 0;
+	int pthread_inherit_sched = -1;
+	int pthread_scope = -1;
+	void* pthread_stack_address = nullptr;
 	std::size_t pthread_stack_size = 0;
 	std::size_t pthread_guard_size = 0;
 	std::uint64_t attribute_detached_thread = 0;
@@ -1348,6 +1351,12 @@ int main()
 		darling_windows_host_symbol("pthread_attr_destroy") != 0 &&
 		darling_windows_host_symbol("pthread_attr_setdetachstate") != 0 &&
 		darling_windows_host_symbol("pthread_attr_getdetachstate") != 0 &&
+		darling_windows_host_symbol("pthread_attr_setinheritsched") != 0 &&
+		darling_windows_host_symbol("pthread_attr_getinheritsched") != 0 &&
+		darling_windows_host_symbol("pthread_attr_setscope") != 0 &&
+		darling_windows_host_symbol("pthread_attr_getscope") != 0 &&
+		darling_windows_host_symbol("pthread_attr_setstackaddr") != 0 &&
+		darling_windows_host_symbol("pthread_attr_getstackaddr") != 0 &&
 		darling_windows_host_symbol("pthread_attr_setstacksize") != 0 &&
 		darling_windows_host_symbol("pthread_attr_getstacksize") != 0 &&
 		darling_windows_host_symbol("pthread_attr_setguardsize") != 0 &&
@@ -1355,6 +1364,22 @@ int main()
 		darling_windows_pthread_attr_init(&pthread_attributes) == 0 &&
 		darling_windows_pthread_attr_getdetachstate(&pthread_attributes,
 		&pthread_detach_state) == 0 && pthread_detach_state == 0 &&
+		darling_windows_pthread_attr_getinheritsched(&pthread_attributes,
+		&pthread_inherit_sched) == 0 && pthread_inherit_sched == 0 &&
+		darling_windows_pthread_attr_setinheritsched(&pthread_attributes, 1) == 0 &&
+		darling_windows_pthread_attr_getinheritsched(&pthread_attributes,
+		&pthread_inherit_sched) == 0 && pthread_inherit_sched == 1 &&
+		darling_windows_pthread_attr_getscope(&pthread_attributes,
+		&pthread_scope) == 0 && pthread_scope == 0 &&
+		darling_windows_pthread_attr_setscope(&pthread_attributes, 1) == 95 &&
+		darling_windows_pthread_attr_setscope(&pthread_attributes, 0) == 0 &&
+		darling_windows_pthread_attr_getstackaddr(&pthread_attributes,
+		&pthread_stack_address) == 0 && pthread_stack_address == nullptr &&
+		darling_windows_pthread_attr_setstackaddr(&pthread_attributes,
+		reinterpret_cast<void*>(static_cast<std::uintptr_t>(0x1000))) == 95 &&
+		darling_windows_pthread_attr_getstackaddr(&pthread_attributes,
+		&pthread_stack_address) == 0 &&
+		pthread_stack_address == reinterpret_cast<void*>(static_cast<std::uintptr_t>(0x1000)) &&
 		darling_windows_pthread_attr_setdetachstate(&pthread_attributes, 1) == 0 &&
 		darling_windows_pthread_attr_getdetachstate(&pthread_attributes,
 		&pthread_detach_state) == 0 && pthread_detach_state == 1 &&

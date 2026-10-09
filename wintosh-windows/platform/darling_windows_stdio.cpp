@@ -2439,6 +2439,9 @@ void RunPthreadTlsDestructors();
 
 struct DarlingPthreadAttributes final {
 	bool detached = false;
+	int inherit_sched = 0;
+	int scope = 0;
+	void* stack_address = nullptr;
 	std::size_t stack_size = 0;
 	std::size_t guard_size = 4096;
 };
@@ -2644,6 +2647,54 @@ extern "C" int darling_windows_pthread_attr_getdetachstate(const void* attribute
 	auto* value = PthreadAttributesFromStorage(attributes);
 	if (value == nullptr || state == nullptr) return 22;
 	*state = value->detached ? 1 : 0;
+	return 0;
+}
+
+extern "C" int darling_windows_pthread_attr_setinheritsched(void* attributes, int state)
+{
+	auto* value = PthreadAttributesFromStorage(attributes);
+	if (value == nullptr || (state != 0 && state != 1)) return 22;
+	value->inherit_sched = state;
+	return 0;
+}
+
+extern "C" int darling_windows_pthread_attr_getinheritsched(const void* attributes, int* state)
+{
+	auto* value = PthreadAttributesFromStorage(attributes);
+	if (value == nullptr || state == nullptr) return 22;
+	*state = value->inherit_sched;
+	return 0;
+}
+
+extern "C" int darling_windows_pthread_attr_setscope(void* attributes, int scope)
+{
+	auto* value = PthreadAttributesFromStorage(attributes);
+	if (value == nullptr || (scope != 0 && scope != 1)) return 22;
+	value->scope = scope;
+	return scope == 0 ? 0 : 95;
+}
+
+extern "C" int darling_windows_pthread_attr_getscope(const void* attributes, int* scope)
+{
+	auto* value = PthreadAttributesFromStorage(attributes);
+	if (value == nullptr || scope == nullptr) return 22;
+	*scope = value->scope;
+	return 0;
+}
+
+extern "C" int darling_windows_pthread_attr_setstackaddr(void* attributes, void* stack)
+{
+	auto* value = PthreadAttributesFromStorage(attributes);
+	if (value == nullptr) return 22;
+	value->stack_address = stack;
+	return 95;
+}
+
+extern "C" int darling_windows_pthread_attr_getstackaddr(const void* attributes, void** stack)
+{
+	auto* value = PthreadAttributesFromStorage(attributes);
+	if (value == nullptr || stack == nullptr) return 22;
+	*stack = value->stack_address;
 	return 0;
 }
 
@@ -5094,6 +5145,12 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 	if (std::strcmp(name, "pthread_attr_destroy") == 0 || std::strcmp(name, "_pthread_attr_destroy") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_attr_destroy);
 	if (std::strcmp(name, "pthread_attr_setdetachstate") == 0 || std::strcmp(name, "_pthread_attr_setdetachstate") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_attr_setdetachstate);
 	if (std::strcmp(name, "pthread_attr_getdetachstate") == 0 || std::strcmp(name, "_pthread_attr_getdetachstate") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_attr_getdetachstate);
+	if (std::strcmp(name, "pthread_attr_setinheritsched") == 0 || std::strcmp(name, "_pthread_attr_setinheritsched") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_attr_setinheritsched);
+	if (std::strcmp(name, "pthread_attr_getinheritsched") == 0 || std::strcmp(name, "_pthread_attr_getinheritsched") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_attr_getinheritsched);
+	if (std::strcmp(name, "pthread_attr_setscope") == 0 || std::strcmp(name, "_pthread_attr_setscope") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_attr_setscope);
+	if (std::strcmp(name, "pthread_attr_getscope") == 0 || std::strcmp(name, "_pthread_attr_getscope") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_attr_getscope);
+	if (std::strcmp(name, "pthread_attr_setstackaddr") == 0 || std::strcmp(name, "_pthread_attr_setstackaddr") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_attr_setstackaddr);
+	if (std::strcmp(name, "pthread_attr_getstackaddr") == 0 || std::strcmp(name, "_pthread_attr_getstackaddr") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_attr_getstackaddr);
 	if (std::strcmp(name, "pthread_attr_setstacksize") == 0 || std::strcmp(name, "_pthread_attr_setstacksize") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_attr_setstacksize);
 	if (std::strcmp(name, "pthread_attr_getstacksize") == 0 || std::strcmp(name, "_pthread_attr_getstacksize") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_attr_getstacksize);
 	if (std::strcmp(name, "pthread_attr_setguardsize") == 0 || std::strcmp(name, "_pthread_attr_setguardsize") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_attr_setguardsize);

@@ -22,6 +22,7 @@ namespace {
 constexpr std::uint16_t mach_ipc_version = 1;
 constexpr std::size_t mach_ipc_header_size = 32;
 constexpr std::size_t mach_ipc_max_payload = 4 * 1024 * 1024;
+constexpr DWORD rpc_max_frame = 4 * 1024 * 1024;
 
 void AppendU16(std::vector<std::uint8_t>& bytes, std::uint16_t value)
 {
@@ -143,7 +144,7 @@ void ReadAll(HANDLE pipe, void* data, DWORD size)
 
 void WriteFrame(HANDLE pipe, const std::string& payload)
 {
-	if (payload.size() > 1024 * 1024) {
+	if (payload.size() > rpc_max_frame) {
 		throw std::length_error("RPC payload is too large");
 	}
 	const auto size = static_cast<DWORD>(payload.size());
@@ -157,7 +158,7 @@ std::string ReadFrame(HANDLE pipe)
 {
 	DWORD size = 0;
 	ReadAll(pipe, &size, sizeof(size));
-	if (size > 1024 * 1024) {
+	if (size > rpc_max_frame) {
 		throw std::length_error("RPC payload is too large");
 	}
 	std::string payload(size, '\0');

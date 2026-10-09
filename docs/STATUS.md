@@ -46,7 +46,10 @@ name-space remain open. The lifecycle smoke also proves
 An empty nonblocking receive now returns the explicit
 `MACH_RECEIVE_WOULD_BLOCK` result (`BROKER_MACH_EMPTY_RECEIVE=PASS`), rather
 than being conflated with malformed input. A blocking waiter/timeout and
-multi-client transport are still unimplemented.
+multi-client transport are still unimplemented. The named-pipe frame limit is
+now aligned with the envelope's 4 MiB bounded payload limit; a 2 MiB
+cross-process FIFO round trip passes as `BROKER_MACH_LARGE_PAYLOAD=PASS`.
+This remains inline transport, not Mach out-of-line memory.
 
 The platform path adapter now provides lexical `AbsolutePath` resolution and
 handle-based `CanonicalPath` resolution through Windows final-name lookup,

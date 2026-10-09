@@ -122,6 +122,31 @@ int wmain()
 			return 5;
 		}
 		std::cout << "BROKER_MACH_SEND_RECEIVE=PASS\n";
+		const darling::windows_host::MachIpcEnvelope large_send_request{
+			darling::windows_host::MachIpcOperation::Send, 105, token, 0,
+			std::vector<std::uint8_t>(2 * 1024 * 1024, 0x5a)};
+		const auto large_send_bytes = darling::windows_host::EncodeMachIpcEnvelope(large_send_request);
+		client.Write(std::string(large_send_bytes.begin(), large_send_bytes.end()));
+		const auto large_send_wire = client.Read();
+		const auto large_send_response = darling::windows_host::DecodeMachIpcEnvelope(
+			std::vector<std::uint8_t>(large_send_wire.begin(), large_send_wire.end()));
+		if (large_send_response.operation != darling::windows_host::MachIpcOperation::Send ||
+			large_send_response.request_id != 105 || large_send_response.port_token != token) {
+			std::cerr << "BROKER_MACH_LARGE_SEND=FAIL\n";
+			return 5;
+		}
+		const darling::windows_host::MachIpcEnvelope large_receive_request{
+			darling::windows_host::MachIpcOperation::Receive, 106, token, 0, {}};
+		const auto large_receive_bytes = darling::windows_host::EncodeMachIpcEnvelope(large_receive_request);
+		client.Write(std::string(large_receive_bytes.begin(), large_receive_bytes.end()));
+		const auto large_receive_wire = client.Read();
+		const auto large_receive_response = darling::windows_host::DecodeMachIpcEnvelope(
+			std::vector<std::uint8_t>(large_receive_wire.begin(), large_receive_wire.end()));
+		if (large_receive_response.payload != large_send_request.payload) {
+			std::cerr << "BROKER_MACH_LARGE_RECEIVE=FAIL\n";
+			return 5;
+		}
+		std::cout << "BROKER_MACH_LARGE_PAYLOAD=PASS\n";
 
 		const darling::windows_host::MachIpcEnvelope deallocate_request{
 			darling::windows_host::MachIpcOperation::Deallocate, 103, token, 0, {}};

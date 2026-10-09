@@ -6,9 +6,19 @@
 #include <limits>
 
 namespace {
-std::size_t AlignUp(std::size_t value, std::size_t alignment)
+bool AlignUp(std::size_t value, std::size_t alignment, std::size_t* result)
 {
-	return alignment == 0 ? value : (value + alignment - 1) / alignment * alignment;
+	if (result == nullptr || alignment == 0) return false;
+	const auto remainder = value % alignment;
+	if (remainder == 0) {
+		*result = value;
+		return true;
+	}
+	const auto increment = alignment - remainder;
+	if (value > (std::numeric_limits<std::size_t>::max)() - increment)
+		return false;
+	*result = value + increment;
+	return true;
 }
 
 const char* SkipQualifiers(const char* type)
@@ -174,7 +184,11 @@ extern "C" const char* darling_windows_NSGetSizeAndAlignment(
 				&field_size, &field_alignment);
 			if (next == nullptr) return nullptr;
 			if (terminator == '}') {
-				aggregate_size = AlignUp(aggregate_size, field_alignment) + field_size;
+				std::size_t aligned_size = 0;
+				if (!AlignUp(aggregate_size, field_alignment, &aligned_size) ||
+					aligned_size > (std::numeric_limits<std::size_t>::max)() - field_size)
+					return nullptr;
+				aggregate_size = aligned_size + field_size;
 				aggregate_alignment = (std::max)(aggregate_alignment, field_alignment);
 			} else {
 				union_size = (std::max)(union_size, field_size);
@@ -185,10 +199,10 @@ extern "C" const char* darling_windows_NSGetSizeAndAlignment(
 		if (*cursor != terminator) return nullptr;
 		if (terminator == '}') {
 			*alignment = aggregate_alignment;
-			*size = AlignUp(aggregate_size, aggregate_alignment);
+			if (!AlignUp(aggregate_size, aggregate_alignment, size)) return nullptr;
 		} else {
 			*alignment = union_alignment;
-			*size = AlignUp(union_size, union_alignment);
+			if (!AlignUp(union_size, union_alignment, size)) return nullptr;
 		}
 		return cursor + 1;
 	}

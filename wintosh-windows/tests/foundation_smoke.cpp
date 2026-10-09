@@ -66,8 +66,10 @@ int main()
 	const bool invalid_ok = darling_windows_NSGetSizeAndAlignment("!", &size, &alignment) == nullptr;
 	const bool array_overflow_ok = darling_windows_NSGetSizeAndAlignment(
 		"[999999999999999999999999999999999999i]", &size, &alignment) == nullptr;
+	const bool aggregate_overflow_ok = darling_windows_NSGetSizeAndAlignment(
+		"{Overflow=[999999999999999999999999999999999999i]}", &size, &alignment) == nullptr;
 	const bool ok = int_ok && pointer_ok && block_ok && named_object_ok && struct_pointer_ok && darwin_long_ok && darwin_long_double_ok && complex_ok && array_ok && struct_ok && named_struct_ok && union_ok &&
-		resolver_ok && invalid_ok && array_overflow_ok;
+		resolver_ok && invalid_ok && array_overflow_ok && aggregate_overflow_ok;
 	std::cout << "FOUNDATION_TYPE_ENCODING_ABI=" << (ok ? "PASS" : "FAIL") << "\n";
 	return ok ? 0 : 1;
 }

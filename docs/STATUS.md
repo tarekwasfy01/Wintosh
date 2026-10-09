@@ -597,6 +597,11 @@ array-count rejection while valid scalar, pointer, array, struct, union, and
 qualified encodings remain passing; exact Apple bit-field packing and private
 type encodings remain outside this minimal parser.
 
+Struct and union alignment rounding is now checked for `size_t` overflow as
+well, so malformed aggregates cannot wrap during field padding or final size
+alignment. The Foundation smoke gate covers both array-count and aggregate
+overflow rejection; valid aggregate layout behavior remains unchanged.
+
 The runtime README now records the actual Mach-O execution boundary: the
 Windows x86_64 runner can enter compatible x86_64 images after mapping,
 relocations, bindings, initializers, and protection setup, while i386 and

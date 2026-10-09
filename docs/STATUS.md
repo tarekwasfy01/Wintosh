@@ -495,9 +495,10 @@ implementation still does not provide asynchronous cancellation.
 
 The condition-variable waits now poll deferred cancellation in bounded
 intervals, so a waiting pthread can observe `pthread_cancel` without requiring
-an unrelated signal. This adds practical cancellation-point coverage while
-leaving POSIX mutex reacquisition, cleanup-handler ordering, and exact timed
-wait interruption semantics open.
+an unrelated signal. The host smoke also verifies mutex reacquisition before
+the cleanup callback runs. Exact Darwin cancellation-point ordering,
+exception-free ABI behavior, and timed-wait interruption semantics remain
+open.
 
 Blocking pthread mutex and read/write-lock acquisition now uses the same
 bounded cancellation-point polling, while uncontended acquisition remains a

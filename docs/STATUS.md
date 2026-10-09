@@ -476,6 +476,9 @@ It also verifies deferred delivery: a blocked SIGTERM is queued, then
 delivered after unblocking, with the configured handler mask active during the
 callback and the handler invoked exactly once.
 
+The deferred path now also honors `SA_RESETHAND`, matching the existing direct
+delivery path by resetting the installed plain handler after its first call.
+
 The VM read bridge now records returned local buffers and makes
 `mach_vm_deallocate` release those buffers in the current Windows process,
 even when the read targeted a different PID. This closes the previous

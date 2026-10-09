@@ -94,6 +94,8 @@ void DeliverUnblocked() noexcept
 			if ((action.flags & 0x0010) == 0) // SA_NODEFER
 				blocked_signals |= bit;
 			handler(signal_number);
+			if ((action.flags & 0x0004) != 0) // SA_RESETHAND
+				installed_actions[static_cast<std::size_t>(signal_number)].handler = SIG_DFL;
 			blocked_signals = previous_mask;
 			DeliverUnblocked();
 		} else {

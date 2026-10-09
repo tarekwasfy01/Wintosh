@@ -114,14 +114,14 @@ The x86-64 `thread_get_state` flavor is now implemented with the verified
 Darwin 21-word register layout and count 42. Windows `CONTEXT` registers are
 copied for the current thread or for a briefly suspended foreign thread;
 foreign threads are resumed on every exit path. x86-64 FPU-state reads now
-copy the Windows `XSAVE_FORMAT` into the exact 512-byte Darwin float-state
+copy the Windows `XSAVE_FORMAT` into the exact 524-byte Darwin float-state
 layout. A matching foreign-thread FPU write path is present, but Windows
 currently rejects the Darwin block during `SetThreadContext`; writeback is
 therefore not runtime-verified yet. The AVX read adapter now uses an
 `InitializeContext`-allocated XState buffer and is verified against a live
 foreign thread when the host exposes AVX, otherwise it fails closed with
 `KERN_NOT_SUPPORTED`. The AVX512 read path now uses the same allocated XState
-context and exact 2432-byte Darwin layout, failing closed when K-mask, ZMMH,
+context and exact 2444-byte Darwin layout, failing closed when K-mask, ZMMH,
 or ZMM features are unavailable. ARM flavors remain open.
 
 The matching x86-64 `thread_set_state` path now writes integer/control

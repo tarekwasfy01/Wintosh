@@ -198,14 +198,14 @@ extern "C" darling_kern_return_t darling_windows_thread_get_state(
 			(features & XSTATE_MASK_AVX) != 0 && legacy != nullptr && avx != nullptr &&
 			(flavor == darling_x86_avx_state64_flavor || ((features & XSTATE_MASK_AVX512) == XSTATE_MASK_AVX512 && kmask != nullptr && zmmh != nullptr && zmm != nullptr));
 		if (supported) {
-			static_assert(sizeof(XSAVE_FORMAT) == darling_x86_float_state64_count * sizeof(std::uint32_t));
-			std::memcpy(state, legacy, sizeof(XSAVE_FORMAT));
-			std::memcpy(static_cast<std::uint8_t*>(state) + sizeof(XSAVE_FORMAT) + 64, avx, 16 * 16);
+			std::memset(state, 0, darling_x86_avx512_state64_count * sizeof(std::uint32_t));
+			std::memcpy(static_cast<std::uint8_t*>(state) + 8, legacy, sizeof(XSAVE_FORMAT));
+			std::memcpy(static_cast<std::uint8_t*>(state) + 588, avx, 16 * 16);
 			if (flavor == darling_x86_avx512_state64_flavor) {
 				auto* output = static_cast<std::uint8_t*>(state);
-				std::memcpy(output + 832, kmask, 64);
-				std::memcpy(output + 896, zmmh, 512);
-				std::memcpy(output + 1408, zmm, 1024);
+				std::memcpy(output + 844, kmask, 64);
+				std::memcpy(output + 908, zmmh, 512);
+				std::memcpy(output + 1420, zmm, 1024);
 			}
 		}
 		ResumeThread(xstate_handle); CloseHandle(xstate_handle);
@@ -232,8 +232,8 @@ extern "C" darling_kern_return_t darling_windows_thread_get_state(
 		suspended = true;
 	}
 	if (flavor == darling_x86_float_state64_flavor) {
-		static_assert(sizeof(context.FltSave) == darling_x86_float_state64_count * sizeof(std::uint32_t));
-		std::memcpy(state, &context.FltSave, sizeof(context.FltSave));
+		std::memset(state, 0, darling_x86_float_state64_count * sizeof(std::uint32_t));
+		std::memcpy(static_cast<std::uint8_t*>(state) + 8, &context.FltSave, sizeof(context.FltSave));
 		*count = darling_x86_float_state64_count;
 		if (suspended) ResumeThread(handle);
 		if (owned) CloseHandle(handle);
@@ -253,9 +253,9 @@ extern "C" darling_kern_return_t darling_windows_thread_get_state(
 			if (owned) CloseHandle(handle);
 			return 4;
 		}
-		static_assert(sizeof(context.FltSave) == darling_x86_float_state64_count * sizeof(std::uint32_t));
-		std::memcpy(state, legacy, sizeof(context.FltSave));
-		std::memcpy(static_cast<std::uint8_t*>(state) + sizeof(context.FltSave) + 64, avx, 16 * 16);
+		std::memset(state, 0, darling_x86_avx_state64_count * sizeof(std::uint32_t));
+		std::memcpy(static_cast<std::uint8_t*>(state) + 8, legacy, sizeof(context.FltSave));
+		std::memcpy(static_cast<std::uint8_t*>(state) + 588, avx, 16 * 16);
 		*count = darling_x86_avx_state64_count;
 		if (suspended) ResumeThread(handle);
 		if (owned) CloseHandle(handle);
@@ -300,9 +300,8 @@ extern "C" darling_kern_return_t darling_windows_thread_set_state(
 		const BOOL applied = SetThreadContext(handle, &context); ResumeThread(handle); CloseHandle(handle); return applied ? 0 : 4;
 	}
 	if (flavor == darling_x86_float_state64_flavor) {
-		static_assert(sizeof(context.FltSave) == darling_x86_float_state64_count * sizeof(std::uint32_t));
 		const auto* source = static_cast<const darling_x86_float_state64*>(state);
-		std::memcpy(&context.FltSave, source, sizeof(context.FltSave));
+		std::memcpy(&context.FltSave, static_cast<const std::uint8_t*>(state) + 8, sizeof(context.FltSave));
 		const BOOL applied = SetThreadContext(handle, &context);
 		ResumeThread(handle); CloseHandle(handle);
 		return applied ? 0 : 4;

@@ -94,8 +94,8 @@ Windows adapter backed by C++20 `std::barrier`. The host smoke synchronizes two
 real threads through two successive barrier phases; the serial-thread return
 value is now returned by the last arriving participant as `-1`. Default
 barrier attributes are verified and process-shared barriers explicitly return
-`ENOTSUP`; cancellation while blocked and malformed lifecycle calls remain
-open.
+`ENOTSUP`; invalid lifecycle inputs are covered, while cancellation while
+blocked remains open.
 Mach port reference mutation now rejects signed-delta underflow and unsigned
 overflow, including the `INT32_MIN` edge case, while preserving the existing
 process-local queue behavior.

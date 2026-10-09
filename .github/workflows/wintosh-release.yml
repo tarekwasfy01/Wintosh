@@ -33,6 +33,10 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v4
 
+      - name: Run license and provenance preflight
+        shell: pwsh
+        run: .\tools\Check-LicensePreflight.ps1
+
       - name: Activate MSVC toolchain
         uses: ilammy/msvc-dev-cmd@v1
         with:

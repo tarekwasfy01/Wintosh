@@ -115,6 +115,41 @@ int main()
 	}
 	worker_stop.store(true, std::memory_order_release);
 	worker.join();
+	HANDLE pipe_read = nullptr;
+	HANDLE pipe_write = nullptr;
+	SECURITY_ATTRIBUTES pipe_attributes{};
+	pipe_attributes.nLength = sizeof(pipe_attributes);
+	pipe_attributes.bInheritHandle = FALSE;
+	if (!CreatePipe(&pipe_read, &pipe_write, &pipe_attributes, 0)) return 1;
+	std::atomic<bool> io_started = false;
+	std::atomic<bool> io_finished = false;
+	std::atomic<DWORD> io_error = ERROR_SUCCESS;
+	std::thread io_worker([&] {
+		io_started.store(true, std::memory_order_release);
+		char byte = 0;
+		DWORD read = 0;
+		const BOOL result = ReadFile(pipe_read, &byte, 1, &read, nullptr);
+		io_error.store(result ? ERROR_SUCCESS : GetLastError(), std::memory_order_release);
+		io_finished.store(true, std::memory_order_release);
+	});
+	while (!io_started.load(std::memory_order_acquire)) std::this_thread::yield();
+	std::this_thread::sleep_for(std::chrono::milliseconds(10));
+	const auto io_thread = static_cast<darling_mach_port_name_t>(GetThreadId(io_worker.native_handle()));
+	const bool io_abort_requested = darling_windows_thread_abort(io_thread) == 0;
+	for (int attempt = 0; attempt != 100 && !io_finished.load(std::memory_order_acquire); ++attempt)
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+	const bool io_abort_ok = io_abort_requested && io_finished.load(std::memory_order_acquire) &&
+		io_error.load(std::memory_order_acquire) == ERROR_OPERATION_ABORTED;
+	if (!io_abort_ok) {
+		CancelSynchronousIo(io_worker.native_handle());
+		CloseHandle(pipe_write);
+		io_worker.join();
+		CloseHandle(pipe_read);
+		return 1;
+	}
+	CloseHandle(pipe_write);
+	io_worker.join();
+	CloseHandle(pipe_read);
 	darling_x86_exception_state64 exception_state{};
 	std::uint32_t exception_count = darling_x86_exception_state64_count;
 	if (darling_windows_thread_get_state(thread, darling_x86_exception_state64_flavor,

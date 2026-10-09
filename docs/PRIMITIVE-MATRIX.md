@@ -110,8 +110,8 @@ Windows suspend counter, with an adapter-local count that rejects resume
 underflow. Self-suspension is rejected deliberately because it would deadlock
 the host bridge. `thread_abort` now queues a non-destructive
 Windows APC, and `CancelSynchronousIo` for a synchronous Win32-I/O wait; the
-smoke test proves it wakes a foreign thread in an
-alertable `SleepEx` wait. It never
+smoke test now proves both an alertable `SleepEx` wakeup and cancellation of
+a blocked synchronous `ReadFile`. It never
 maps to `TerminateThread`. Non-alertable waits and exact Mach abort/
 suspend-count semantics remain open.
 

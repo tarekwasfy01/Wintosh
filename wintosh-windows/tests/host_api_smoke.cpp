@@ -1365,9 +1365,19 @@ int main()
 	const bool pthread_barrier_symbols_ok =
 		darling_windows_host_symbol("pthread_barrier_init") != 0 &&
 		darling_windows_host_symbol("pthread_barrier_wait") != 0 &&
-		darling_windows_host_symbol("pthread_barrier_destroy") != 0;
+		darling_windows_host_symbol("pthread_barrier_destroy") != 0 &&
+		darling_windows_host_symbol("pthread_barrierattr_init") != 0 &&
+		darling_windows_host_symbol("pthread_barrierattr_setpshared") != 0;
+	void* pthread_barrier_attributes = nullptr;
+	int pthread_barrier_shared = -1;
+	const bool pthread_barrier_attributes_ok =
+		darling_windows_pthread_barrierattr_init(&pthread_barrier_attributes) == 0 &&
+		darling_windows_pthread_barrierattr_getpshared(pthread_barrier_attributes,
+		&pthread_barrier_shared) == 0 && pthread_barrier_shared == 0 &&
+		darling_windows_pthread_barrierattr_setpshared(pthread_barrier_attributes, 1) == 95 &&
+		darling_windows_pthread_barrierattr_destroy(&pthread_barrier_attributes) == 0;
 	std::atomic<int> pthread_barrier_completed{0};
-	const bool pthread_barrier_initialized = pthread_barrier_symbols_ok &&
+	const bool pthread_barrier_initialized = pthread_barrier_symbols_ok && pthread_barrier_attributes_ok &&
 		darling_windows_pthread_barrier_init(&pthread_barrier_storage, nullptr, 2) == 0;
 	BarrierSmokeContext pthread_barrier_context{&pthread_barrier_storage,
 		&pthread_barrier_completed};

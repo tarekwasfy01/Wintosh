@@ -2795,6 +2795,16 @@ struct DarlingPthreadBarrier final {
 	std::barrier<> value;
 };
 
+struct DarlingPthreadBarrierAttributes final {
+	int pshared = 0;
+};
+
+DarlingPthreadBarrierAttributes* PthreadBarrierAttributesFromStorage(const void* storage)
+{
+	return storage == nullptr ? nullptr :
+		*reinterpret_cast<DarlingPthreadBarrierAttributes* const*>(storage);
+}
+
 DarlingPthreadBarrier* PthreadBarrierFromStorage(void* storage)
 {
 	return storage == nullptr ? nullptr :
@@ -3011,7 +3021,10 @@ extern "C" int darling_windows_pthread_spin_unlock(void* lock)
 extern "C" int darling_windows_pthread_barrier_init(void* barrier,
 	const void* attributes, unsigned count)
 {
-	if (barrier == nullptr || attributes != nullptr || count == 0) return 22;
+	if (barrier == nullptr || count == 0) return 22;
+	const auto* barrier_attributes = PthreadBarrierAttributesFromStorage(attributes);
+	if (attributes != nullptr && barrier_attributes == nullptr) return 22;
+	if (barrier_attributes != nullptr && barrier_attributes->pshared != 0) return 95;
 	*reinterpret_cast<DarlingPthreadBarrier**>(barrier) =
 		new (std::nothrow) DarlingPthreadBarrier(count);
 	return *reinterpret_cast<DarlingPthreadBarrier**>(barrier) == nullptr ? 12 : 0;
@@ -3031,6 +3044,40 @@ extern "C" int darling_windows_pthread_barrier_wait(void* barrier)
 	auto* value = PthreadBarrierFromStorage(barrier);
 	if (value == nullptr) return 22;
 	value->value.arrive_and_wait();
+	return 0;
+}
+
+extern "C" int darling_windows_pthread_barrierattr_init(void* attributes)
+{
+	if (attributes == nullptr) return 22;
+	*reinterpret_cast<DarlingPthreadBarrierAttributes**>(attributes) =
+		new (std::nothrow) DarlingPthreadBarrierAttributes();
+	return *reinterpret_cast<DarlingPthreadBarrierAttributes**>(attributes) == nullptr ? 12 : 0;
+}
+
+extern "C" int darling_windows_pthread_barrierattr_destroy(void* attributes)
+{
+	auto* value = PthreadBarrierAttributesFromStorage(attributes);
+	if (value == nullptr) return 22;
+	delete value;
+	*reinterpret_cast<DarlingPthreadBarrierAttributes**>(attributes) = nullptr;
+	return 0;
+}
+
+extern "C" int darling_windows_pthread_barrierattr_getpshared(const void* attributes, int* shared)
+{
+	const auto* value = PthreadBarrierAttributesFromStorage(attributes);
+	if (value == nullptr || shared == nullptr) return 22;
+	*shared = value->pshared;
+	return 0;
+}
+
+extern "C" int darling_windows_pthread_barrierattr_setpshared(void* attributes, int shared)
+{
+	auto* value = PthreadBarrierAttributesFromStorage(attributes);
+	if (value == nullptr || (shared != 0 && shared != 1)) return 22;
+	if (shared != 0) return 95;
+	value->pshared = shared;
 	return 0;
 }
 
@@ -4827,6 +4874,10 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 	if (std::strcmp(name, "_pthread_barrier_init") == 0 || std::strcmp(name, "pthread_barrier_init") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_barrier_init);
 	if (std::strcmp(name, "_pthread_barrier_destroy") == 0 || std::strcmp(name, "pthread_barrier_destroy") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_barrier_destroy);
 	if (std::strcmp(name, "_pthread_barrier_wait") == 0 || std::strcmp(name, "pthread_barrier_wait") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_barrier_wait);
+	if (std::strcmp(name, "_pthread_barrierattr_init") == 0 || std::strcmp(name, "pthread_barrierattr_init") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_barrierattr_init);
+	if (std::strcmp(name, "_pthread_barrierattr_destroy") == 0 || std::strcmp(name, "pthread_barrierattr_destroy") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_barrierattr_destroy);
+	if (std::strcmp(name, "_pthread_barrierattr_getpshared") == 0 || std::strcmp(name, "pthread_barrierattr_getpshared") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_barrierattr_getpshared);
+	if (std::strcmp(name, "_pthread_barrierattr_setpshared") == 0 || std::strcmp(name, "pthread_barrierattr_setpshared") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_barrierattr_setpshared);
 	if (std::strcmp(name, "_pthread_mutexattr_init") == 0 || std::strcmp(name, "pthread_mutexattr_init") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_mutexattr_init);
 	if (std::strcmp(name, "_pthread_mutexattr_destroy") == 0 || std::strcmp(name, "pthread_mutexattr_destroy") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_mutexattr_destroy);
 	if (std::strcmp(name, "_pthread_mutexattr_settype") == 0 || std::strcmp(name, "pthread_mutexattr_settype") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_mutexattr_settype);

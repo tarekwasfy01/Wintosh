@@ -33,6 +33,23 @@ foreach ($sourceFile in $sourceFiles) {
 }
 Write-Output ("PROVENANCE_ROWS={0}" -f @($provenance).Count)
 Write-Output ("LICENSE_INVENTORY_ROWS={0}" -f @($inventory).Count)
+$statusCounts = @{}
+foreach ($row in $provenance) {
+    $status = [string]$row.license_status
+    if (-not $statusCounts.ContainsKey($status)) { $statusCounts[$status] = 0 }
+    $statusCounts[$status]++
+}
+foreach ($status in @('present', 'header-evidence', 'review-required')) {
+    $count = if ($statusCounts.ContainsKey($status)) { $statusCounts[$status] } else { 0 }
+    Write-Output ("STATUS_{0}={1}" -f $status.ToUpper().Replace('-', '_'), $count)
+}
+if (@($provenance).Count -ne 150 -or
+    $statusCounts['present'] -ne 2 -or
+    $statusCounts['header-evidence'] -ne 1 -or
+    $statusCounts['review-required'] -ne 147) {
+    Write-Output 'PROVENANCE_EXPECTATIONS=FAIL'
+    exit 1
+}
 Write-Output ("PORT_SOURCE_FILES={0}" -f $sourceFiles.Count)
 Write-Output ("PORT_SOURCE_FILES_WITHOUT_HEADER_NOTICE={0}" -f $missingNotices.Count)
 foreach ($file in $missingNotices) { Write-Output ("MISSING_HEADER_NOTICE {0}" -f $file) }

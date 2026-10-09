@@ -73,3 +73,6 @@ header files for a license, copyright, or GPL notice in their first 14 lines;
 the current result is 90 covered and 0 missing notices. This is a notice
 coverage check, not a substitute for component-by-component license review.
 The release workflow runs this preflight before configuring CMake.
+It also fails if the provenance CSV no longer reports the audited baseline of
+150 components: 2 `present`, 1 `header-evidence`, and 147
+`review-required` entries.

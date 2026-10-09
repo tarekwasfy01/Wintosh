@@ -608,6 +608,13 @@ returning a falsely valid NaN transform. The CoreGraphics smoke gate covers
 both fail-closed cases; full floating-point exception and platform-specific
 NaN propagation behavior remain outside this geometry adapter.
 
+The dyld smoke matrix now explicitly contrasts strong and weak undefined
+symbols: a strong missing provider export must raise the unresolved-import
+error, while a weak undefined symbol remains a zero binding. This strengthens
+the loader's fail-closed boundary without treating legitimate weak imports as
+fatal; real code-signature, shared-cache, and foreign-CPU execution remain
+outside the current loader.
+
 The runtime README now records the actual Mach-O execution boundary: the
 Windows x86_64 runner can enter compatible x86_64 images after mapping,
 relocations, bindings, initializers, and protection setup, while i386 and

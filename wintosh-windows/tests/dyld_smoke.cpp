@@ -688,6 +688,22 @@ int wmain()
 		}
 		std::cout << "DYLD_WEAK_UNDEFINED=PASS\n";
 		{
+			const auto strong_missing_image = root / "strong-missing-symbol-app";
+			WriteMachO(strong_missing_image, nullptr, false, true, false, false,
+				false, true, false, false, "_missingDarlingProviderSymbol");
+			bool rejected = false;
+			try {
+				(void)darling::windows_host::DylibGraph::BindImports(
+					strong_missing_image, {}, root);
+			} catch (const std::exception& error) {
+				rejected = std::string(error.what()).find("unresolved Mach-O import") !=
+					std::string::npos;
+			}
+			if (!rejected)
+				throw std::runtime_error("strong missing Mach-O import was not rejected");
+		}
+		std::cout << "DYLD_STRONG_UNDEFINED=PASS\n";
+		{
 			const auto reexport_target = root / "libTarget.dylib";
 			const auto reexport_image = root / "libReexport.dylib";
 			const auto reexport_app = root / "reexport-app";

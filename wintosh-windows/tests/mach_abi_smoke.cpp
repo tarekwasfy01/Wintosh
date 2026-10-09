@@ -568,22 +568,31 @@ int main()
 	if (ok) {
 		darling_mach_port_name_t notification_target = 0;
 		darling_mach_port_name_t notification_port = 0;
+		darling_mach_port_name_t replacement_notification_port = 0;
 		darling_mach_port_name_t previous_notification = 0xffffffffu;
 		ok = darling_windows_mach_port_allocate(task, &notification_target) == 0 &&
 			darling_windows_mach_port_allocate(task, &notification_port) == 0 &&
+			darling_windows_mach_port_allocate(task, &replacement_notification_port) == 0 &&
 			darling_windows_mach_port_request_notification(task, notification_target,
 			0x4e544659, notification_port, &previous_notification) == 0 &&
 			previous_notification == 0 &&
+			darling_windows_mach_port_request_notification(task, notification_target,
+			0x4e544659, replacement_notification_port, &previous_notification) == 0 &&
+			previous_notification == notification_port &&
 			darling_windows_mach_port_destroy(task, notification_target) == 0;
 		if (ok) {
 			darling_mach_msg_header notification_message{};
 			std::uint32_t notification_size = 0;
-			ok = darling_windows_mach_port_receive(notification_port, &notification_message,
+			ok = darling_windows_mach_port_receive(replacement_notification_port, &notification_message,
 				sizeof(notification_message), &notification_size, 100) == 0 &&
 				notification_size == sizeof(notification_message) &&
-				notification_message.msgh_reserved == 0x4e544659;
+				notification_message.msgh_reserved == 0x4e544659 &&
+				darling_windows_mach_port_receive(notification_port, &notification_message,
+					sizeof(notification_message), &notification_size, 1) == 268;
 		}
 		if (notification_port != 0) darling_windows_mach_port_destroy(task, notification_port);
+		if (replacement_notification_port != 0)
+			darling_windows_mach_port_destroy(task, replacement_notification_port);
 	}
 	std::cout << "MACH_C_ABI_SELF_DEALLOCATE=" << (ok ? "PASS" : "FAIL") << "\n";
 	return ok ? 0 : 1;

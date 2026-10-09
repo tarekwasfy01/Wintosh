@@ -527,6 +527,13 @@ round-trip, and resolver lookup. Retain/release ownership, non-pointer Ivar
 encodings, dynamic post-registration layout, and exact ABI alignment remain
 open.
 
+The framework ABI audit now confirms that all declared prefixed C entry points
+in the current CoreFoundation (90), Foundation (7), and CoreGraphics (58)
+headers have corresponding source definitions. This is declaration coverage
+only; it does not establish full Darwin behavior or framework compatibility.
+The exact method and remaining behavioral boundary are recorded in
+`docs/FRAMEWORK-ABI-COVERAGE.md`.
+
 The runtime README now records the actual Mach-O execution boundary: the
 Windows x86_64 runner can enter compatible x86_64 images after mapping,
 relocations, bindings, initializers, and protection setup, while i386 and

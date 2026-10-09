@@ -117,14 +117,16 @@ foreign threads are resumed on every exit path. x86-64 FPU-state reads now
 copy the Windows `XSAVE_FORMAT` into the exact 512-byte Darwin float-state
 layout. A matching foreign-thread FPU write path is present, but Windows
 currently rejects the Darwin block during `SetThreadContext`; writeback is
-therefore not runtime-verified yet. AVX and ARM flavors remain open.
+therefore not runtime-verified yet. An AVX read adapter is present but not
+runtime-verified because Windows XState context setup still needs a dedicated
+conversion path. ARM flavors remain open.
 
 The matching x86-64 `thread_set_state` path now writes integer/control
 registers for a foreign suspended Windows thread and always resumes it before
 returning. Self-targeted writes are rejected intentionally; no unsafe
 `TerminateThread`-style shortcut is used. FPU writeback remains an explicit
 Windows-context conversion issue; AVX, ARM, and full Mach exception-state
-flavors remain open.
+flavors remain open; AVX conversion is not runtime-verified.
 
 The x86-64 debug-state flavor is also mapped to Windows `CONTEXT` debug
 registers `Dr0` through `Dr7`; foreign-thread writes use the same

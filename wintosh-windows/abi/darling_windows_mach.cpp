@@ -150,8 +150,8 @@ extern "C" darling_kern_return_t darling_windows_thread_get_state(
 	std::uint32_t* count)
 {
 	if (thread == 0 || state == nullptr || count == nullptr ||
-		(flavor != darling_x86_thread_state64_flavor && flavor != darling_x86_float_state64_flavor && flavor != darling_x86_exception_state64_flavor && flavor != darling_x86_debug_state64_flavor) ||
-		*count < (flavor == darling_x86_thread_state64_flavor ? darling_x86_thread_state64_count : flavor == darling_x86_float_state64_flavor ? darling_x86_float_state64_count : flavor == darling_x86_exception_state64_flavor ? darling_x86_exception_state64_count : darling_x86_debug_state64_count))
+		(flavor != darling_x86_thread_state64_flavor && flavor != darling_x86_float_state64_flavor && flavor != darling_x86_avx_state64_flavor && flavor != darling_x86_exception_state64_flavor && flavor != darling_x86_debug_state64_flavor) ||
+		*count < (flavor == darling_x86_thread_state64_flavor ? darling_x86_thread_state64_count : flavor == darling_x86_float_state64_flavor ? darling_x86_float_state64_count : flavor == darling_x86_avx_state64_flavor ? darling_x86_avx_state64_count : flavor == darling_x86_exception_state64_flavor ? darling_x86_exception_state64_count : darling_x86_debug_state64_count))
 		return 4;
 	if (flavor == darling_x86_exception_state64_flavor) {
 		auto* result = static_cast<darling_x86_exception_state64*>(state);
@@ -175,7 +175,7 @@ extern "C" darling_kern_return_t darling_windows_thread_get_state(
 		return 0;
 	}
 	CONTEXT context{};
-	context.ContextFlags = flavor == darling_x86_float_state64_flavor ? CONTEXT_FLOATING_POINT : CONTEXT_CONTROL | CONTEXT_INTEGER;
+	context.ContextFlags = flavor == darling_x86_avx_state64_flavor ? CONTEXT_FULL | CONTEXT_XSTATE : flavor == darling_x86_float_state64_flavor ? CONTEXT_FLOATING_POINT : CONTEXT_CONTROL | CONTEXT_INTEGER;
 	HANDLE handle = nullptr;
 	bool suspended = false;
 	bool owned = false;
@@ -196,6 +196,28 @@ extern "C" darling_kern_return_t darling_windows_thread_get_state(
 		static_assert(sizeof(context.FltSave) == darling_x86_float_state64_count * sizeof(std::uint32_t));
 		std::memcpy(state, &context.FltSave, sizeof(context.FltSave));
 		*count = darling_x86_float_state64_count;
+		if (suspended) ResumeThread(handle);
+		if (owned) CloseHandle(handle);
+		return 0;
+	}
+	if (flavor == darling_x86_avx_state64_flavor) {
+		DWORD64 features = 0;
+		if (!GetXStateFeaturesMask(&context, &features) || (features & XSTATE_MASK_AVX) == 0) {
+			if (suspended) ResumeThread(handle);
+			if (owned) CloseHandle(handle);
+			return darling_kern_not_supported;
+		}
+		const auto* legacy = LocateXStateFeature(&context, XSTATE_LEGACY_SSE, nullptr);
+		const auto* avx = LocateXStateFeature(&context, XSTATE_AVX, nullptr);
+		if (legacy == nullptr || avx == nullptr) {
+			if (suspended) ResumeThread(handle);
+			if (owned) CloseHandle(handle);
+			return 4;
+		}
+		static_assert(sizeof(context.FltSave) == darling_x86_float_state64_count * sizeof(std::uint32_t));
+		std::memcpy(state, legacy, sizeof(context.FltSave));
+		std::memcpy(static_cast<std::uint8_t*>(state) + sizeof(context.FltSave) + 64, avx, 16 * 16);
+		*count = darling_x86_avx_state64_count;
 		if (suspended) ResumeThread(handle);
 		if (owned) CloseHandle(handle);
 		return 0;

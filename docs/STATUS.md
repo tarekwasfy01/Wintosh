@@ -628,6 +628,11 @@ deadlines with checked timespec validation. The host API smoke checks both
 resolver names; Windows sleep interruption and exact Darwin cancellation
 semantics remain outside this adapter.
 
+The host smoke now executes relative and absolute monotonic `clock_nanosleep`
+calls, verifies an already expired absolute deadline returns immediately, and
+checks invalid clock rejection. This proves the adapter's current deadline
+behavior rather than resolver presence alone.
+
 The same resolver family now covers `sleep_nocancel` and the common `__sleep`
 spelling in addition to the existing `sleep` entry point. These aliases retain
 the current whole-second Windows behavior and do not claim Darwin interruption

@@ -523,8 +523,27 @@ int main()
 		wall_resolution.tv_nsec == 100 && monotonic_resolution.tv_nsec == 1;
 	darling_timespec sleep_request{0, 1'000'000};
 	darling_timespec sleep_remaining{};
+	darling_timespec absolute_base{};
+	darling_windows_clock_gettime(6, &absolute_base);
+	const std::uint64_t absolute_deadline =
+		static_cast<std::uint64_t>(absolute_base.tv_sec) * 1'000'000'000ull +
+		static_cast<std::uint64_t>(absolute_base.tv_nsec) + 1'000'000ull;
+	darling_timespec absolute_request{
+		static_cast<std::int64_t>(absolute_deadline / 1'000'000'000ull),
+		static_cast<std::int64_t>(absolute_deadline % 1'000'000'000ull)};
+	darling_timespec absolute_remaining{};
+	darling_timespec past_request{0, 0};
+	const bool clock_nanosleep_ok =
+		darling_windows_host_symbol("clock_nanosleep") != 0 &&
+		darling_windows_host_symbol("clock_nanosleep_nocancel") != 0 &&
+		darling_windows_clock_nanosleep(6, 0, &sleep_request, &sleep_remaining) == 0 &&
+		sleep_remaining.tv_sec == 0 && sleep_remaining.tv_nsec == 0 &&
+		darling_windows_clock_nanosleep(6, 1, &absolute_request, &absolute_remaining) == 0 &&
+		absolute_remaining.tv_sec == 0 && absolute_remaining.tv_nsec == 0 &&
+		darling_windows_clock_nanosleep(6, 1, &past_request, nullptr) == 0 &&
+		darling_windows_clock_nanosleep(99, 0, &sleep_request, nullptr) == 22;
 	const bool sleep_ok = darling_windows_nanosleep(&sleep_request, &sleep_remaining) == 0 &&
-		sleep_remaining.tv_sec == 0 && sleep_remaining.tv_nsec == 0;
+		sleep_remaining.tv_sec == 0 && sleep_remaining.tv_nsec == 0 && clock_nanosleep_ok;
 	darling_timeval wall_time{};
 	const bool wall_time_ok = darling_windows_gettimeofday(&wall_time, nullptr) == 0 &&
 		wall_time.tv_sec > 0 && wall_time.tv_usec >= 0 && wall_time.tv_usec < 1'000'000 &&

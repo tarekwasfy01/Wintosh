@@ -91,8 +91,8 @@ unlock, destruction, and resolver coverage.
 The pthread barrier family now resolves `pthread_barrier_init`,
 `pthread_barrier_wait`, and `pthread_barrier_destroy` through an opaque
 Windows adapter backed by C++20 `std::barrier`. The host smoke synchronizes two
-real threads through one barrier phase; multi-phase reuse, the serial-thread
-return value, and barrier attributes remain partial.
+real threads through two successive barrier phases; the serial-thread return
+value and barrier attributes remain partial.
 Mach port reference mutation now rejects signed-delta underflow and unsigned
 overflow, including the `INT32_MIN` edge case, while preserving the existing
 process-local queue behavior.

@@ -1,6 +1,6 @@
 # Wintosh current status
 
-Status date: 2026-10-08
+Status date: 2026-10-09
 
 ## Evidence summary
 
@@ -24,6 +24,13 @@ passed after correcting the ObjC smoke's autorelease ownership. The Visual
 Studio aggregate build target can
 still stall during orchestration, so the reproducible fallback is to build
 the generated targets individually; this does not represent a test failure.
+
+The platform path adapter now provides lexical `AbsolutePath` resolution and
+handle-based `CanonicalPath` resolution through Windows final-name lookup,
+with an explicit absolute-path fallback when the host denies that query.
+Filesystem smoke coverage also exercises stat/lstat, timestamps, symlinks,
+hard links, vector I/O, locks, and filesystem enumeration. ACLs, xattrs,
+resource forks, mount namespaces, and full reparse-tag fidelity remain open.
 
 The CoreFoundation run-loop and signal-registry smoke tests are marked
 `RUN_SERIAL` in CTest because they intentionally exercise process-global

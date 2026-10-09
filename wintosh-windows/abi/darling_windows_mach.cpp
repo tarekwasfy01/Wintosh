@@ -41,6 +41,8 @@ std::unordered_map<darling_mach_port_name_t, std::unordered_set<darling_mach_por
 struct ExceptionPort final { darling_exception_mask_t mask; darling_mach_port_name_t port; darling_exception_behavior_t behavior; darling_exception_flavor_t flavor; };
 std::mutex exception_ports_mutex;
 std::unordered_map<darling_mach_port_name_t, std::vector<ExceptionPort>> exception_ports;
+std::mutex suspend_counts_mutex;
+std::unordered_map<darling_mach_port_name_t, std::uint32_t> suspend_counts;
 void* exception_handler_cookie = nullptr;
 std::mutex read_buffers_mutex;
 std::unordered_map<darling_mach_vm_address_t, SIZE_T> read_buffers;
@@ -132,17 +134,30 @@ extern "C" darling_kern_return_t darling_windows_thread_suspend(darling_mach_por
 	if (handle == nullptr) return 4;
 	const DWORD result = SuspendThread(handle);
 	CloseHandle(handle);
-	return result == static_cast<DWORD>(-1) ? 4 : 0;
+	if (result == static_cast<DWORD>(-1)) return 4;
+	std::lock_guard lock(suspend_counts_mutex);
+	++suspend_counts[thread];
+	return 0;
 }
 
 extern "C" darling_kern_return_t darling_windows_thread_resume(darling_mach_port_name_t thread)
 {
 	if (thread == 0 || thread == darling_windows_mach_thread_self()) return 4;
+	{
+		std::lock_guard lock(suspend_counts_mutex);
+		const auto found = suspend_counts.find(thread);
+		if (found == suspend_counts.end() || found->second == 0) return 4;
+	}
 	const HANDLE handle = OpenThread(THREAD_SUSPEND_RESUME, FALSE, thread);
 	if (handle == nullptr) return 4;
 	const DWORD result = ResumeThread(handle);
 	CloseHandle(handle);
-	return result == static_cast<DWORD>(-1) ? 4 : 0;
+	if (result == static_cast<DWORD>(-1)) return 4;
+	std::lock_guard lock(suspend_counts_mutex);
+	const auto found = suspend_counts.find(thread);
+	if (found != suspend_counts.end() && found->second != 0 && --found->second == 0)
+		suspend_counts.erase(found);
+	return 0;
 }
 
 extern "C" darling_kern_return_t darling_windows_thread_abort(darling_mach_port_name_t thread)

@@ -106,8 +106,9 @@ the result as non-default; time-constraint policy remains explicitly
 unsupported because Windows has no equivalent Mach deadline contract.
 
 `thread_suspend` and `thread_resume` now map foreign Mach thread names to the
-Windows suspend counter. Self-suspension is rejected deliberately because it
-would deadlock the host bridge. `thread_abort` now queues a non-destructive
+Windows suspend counter, with an adapter-local count that rejects resume
+underflow. Self-suspension is rejected deliberately because it would deadlock
+the host bridge. `thread_abort` now queues a non-destructive
 Windows APC, and the smoke test proves it wakes a foreign thread in an
 alertable `SleepEx` wait; it never
 maps to `TerminateThread`. Non-alertable waits and exact Mach abort/

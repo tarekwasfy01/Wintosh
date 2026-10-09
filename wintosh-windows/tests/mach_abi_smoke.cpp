@@ -56,6 +56,14 @@ int main()
 	});
 	while (!worker_ready.load(std::memory_order_acquire)) std::this_thread::yield();
 	const auto worker_thread = static_cast<darling_mach_port_name_t>(GetThreadId(worker.native_handle()));
+	if (darling_windows_thread_resume(worker_thread) == 0 ||
+		darling_windows_thread_suspend(worker_thread) != 0 ||
+		darling_windows_thread_resume(worker_thread) != 0 ||
+		darling_windows_thread_resume(worker_thread) == 0) {
+		worker_stop.store(true, std::memory_order_release);
+		worker.join();
+		return 1;
+	}
 	darling_x86_float_state64 worker_float_state{};
 	std::uint32_t worker_float_count = darling_x86_float_state64_count;
 	const auto worker_get = worker_thread == 0 ? 4 : darling_windows_thread_get_state(worker_thread,

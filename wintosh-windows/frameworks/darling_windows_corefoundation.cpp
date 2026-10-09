@@ -11,6 +11,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <mutex>
+#include <memory>
 #include <thread>
 #include <unordered_map>
 #include <sstream>
@@ -450,12 +451,15 @@ Object* ParseBinaryObject(const BinaryPlistContext& context, std::size_t index,
 	}
 	return nullptr;
 }
-struct RunLoop {
+struct RunLoopState {
 	std::mutex mutex;
 	std::condition_variable condition;
 	bool running = false;
 	bool stopped = false;
 	std::vector<std::pair<darling_windows_CFRunLoopBlock, void*>> blocks;
+};
+struct RunLoop {
+	std::shared_ptr<RunLoopState> state = std::make_shared<RunLoopState>();
 };
 // CoreFoundation associates the current run loop with the calling thread.
 // Keeping this object thread-local also prevents callbacks posted by one
@@ -1410,25 +1414,26 @@ extern "C" int darling_windows_CFRunLoopRunInMode(double seconds, bool return_af
 {
 	if (seconds < 0) return -1;
 	auto& loop = current_run_loop;
-	std::unique_lock lock(loop.mutex);
-	loop.running = true;
-	loop.stopped = false;
+	const auto state = loop.state;
+	std::unique_lock lock(state->mutex);
+	state->running = true;
+	state->stopped = false;
 	const auto duration = std::chrono::duration<double>(seconds);
-	loop.condition.wait_for(lock, duration, [&loop] { return loop.stopped || !loop.blocks.empty(); });
-	if (!loop.stopped && !loop.blocks.empty()) {
+	state->condition.wait_for(lock, duration, [&state] { return state->stopped || !state->blocks.empty(); });
+	if (!state->stopped && !state->blocks.empty()) {
 		std::vector<std::pair<darling_windows_CFRunLoopBlock, void*>> pending;
 		if (return_after_source) {
-			pending.push_back(loop.blocks.front());
-			loop.blocks.erase(loop.blocks.begin());
+			pending.push_back(state->blocks.front());
+			state->blocks.erase(state->blocks.begin());
 		} else {
-			pending = std::move(loop.blocks);
+			pending = std::move(state->blocks);
 		}
 		lock.unlock();
 		for (const auto& entry : pending) if (entry.first != nullptr) entry.first(entry.second);
 		lock.lock();
 	}
-	loop.running = false;
-	return loop.stopped || return_after_source ? 0 : 1;
+	state->running = false;
+	return state->stopped || return_after_source ? 0 : 1;
 }
 
 extern "C" void darling_windows_CFRunLoopStop(darling_windows_CFRunLoopRef value)
@@ -1436,18 +1441,18 @@ extern "C" void darling_windows_CFRunLoopStop(darling_windows_CFRunLoopRef value
 	if (value == nullptr) return;
 	auto* loop = static_cast<RunLoop*>(value);
 	{
-		std::lock_guard lock(loop->mutex);
-		loop->stopped = true;
+		std::lock_guard lock(loop->state->mutex);
+		loop->state->stopped = true;
 	}
-	loop->condition.notify_all();
+	loop->state->condition.notify_all();
 }
 
 extern "C" bool darling_windows_CFRunLoopIsRunning(darling_windows_CFRunLoopRef value)
 {
 	if (value == nullptr) return false;
 	auto* loop = static_cast<RunLoop*>(value);
-	std::lock_guard lock(loop->mutex);
-	return loop->running;
+	std::lock_guard lock(loop->state->mutex);
+	return loop->state->running;
 }
 
 extern "C" bool darling_windows_CFRunLoopPerformBlock(darling_windows_CFRunLoopRef value,
@@ -1456,16 +1461,16 @@ extern "C" bool darling_windows_CFRunLoopPerformBlock(darling_windows_CFRunLoopR
 	if (value == nullptr || block == nullptr) return false;
 	auto* loop = static_cast<RunLoop*>(value);
 	{
-		std::lock_guard lock(loop->mutex);
-		loop->blocks.emplace_back(block, context);
+		std::lock_guard lock(loop->state->mutex);
+		loop->state->blocks.emplace_back(block, context);
 	}
-	loop->condition.notify_all();
+	loop->state->condition.notify_all();
 	return true;
 }
 
 extern "C" void darling_windows_CFRunLoopWakeUp(darling_windows_CFRunLoopRef value)
 {
-	if (value != nullptr) static_cast<RunLoop*>(value)->condition.notify_all();
+	if (value != nullptr) static_cast<RunLoop*>(value)->state->condition.notify_all();
 }
 
 extern "C" bool darling_windows_CFRunLoopPerformOneShotTimer(
@@ -1474,9 +1479,14 @@ extern "C" bool darling_windows_CFRunLoopPerformOneShotTimer(
 {
 	if (value == nullptr || block == nullptr || seconds < 0) return false;
 	auto* loop = static_cast<RunLoop*>(value);
-	std::thread([loop, seconds, block, context] {
+	const auto state = loop->state;
+	std::thread([state, seconds, block, context] {
 		std::this_thread::sleep_for(std::chrono::duration<double>(seconds));
-		(void)darling_windows_CFRunLoopPerformBlock(loop, block, context);
+		{
+			std::lock_guard lock(state->mutex);
+			state->blocks.emplace_back(block, context);
+		}
+		state->condition.notify_all();
 	}).detach();
 	return true;
 }

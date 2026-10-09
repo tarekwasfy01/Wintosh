@@ -4319,3 +4319,11 @@ Win32 Foundation smokes build with zero warnings/errors and report
 `FOUNDATION_TYPE_ENCODING_ABI=PASS`. This is an independent Windows ABI
 adapter; the full Foundation/CoreFoundation object model, exact obscure
 encoding edge cases, and framework-level initialization remain open.
+
+The POSIX time resolver now covers the cancellation-safe Darwin aliases
+`clock_gettime_nocancel`, `clock_getres_nocancel`, `nanosleep_nocancel`,
+`gettimeofday_nocancel`, and `usleep_nocancel`, plus common double-underscore
+spellings. The host API smoke resolves the complete alias set and passes on
+the current Release build. These names reuse the existing clock and sleep
+adapters; true Darwin cancellation-point interruption, restart behavior, and
+thread-cancellation interaction remain open.

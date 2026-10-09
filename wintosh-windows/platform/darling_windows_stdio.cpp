@@ -4385,7 +4385,17 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 	if (std::strcmp(name, "_clock_gettime") == 0 || std::strcmp(name, "clock_gettime") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_clock_gettime);
 	}
+	if (std::strcmp(name, "_clock_gettime_nocancel") == 0 ||
+		std::strcmp(name, "__clock_gettime_nocancel") == 0 ||
+		std::strcmp(name, "clock_gettime_nocancel") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_clock_gettime);
+	}
 	if (std::strcmp(name, "_clock_getres") == 0 || std::strcmp(name, "clock_getres") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_clock_getres);
+	}
+	if (std::strcmp(name, "_clock_getres_nocancel") == 0 ||
+		std::strcmp(name, "__clock_getres_nocancel") == 0 ||
+		std::strcmp(name, "clock_getres_nocancel") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_clock_getres);
 	}
 	if (std::strcmp(name, "_mach_absolute_time") == 0 ||
@@ -4407,12 +4417,27 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 		std::strcmp(name, "nanosleep") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_nanosleep);
 	}
+	if (std::strcmp(name, "_nanosleep_nocancel") == 0 ||
+		std::strcmp(name, "__nanosleep_nocancel") == 0 ||
+		std::strcmp(name, "nanosleep_nocancel") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_nanosleep);
+	}
 	if (std::strcmp(name, "_gettimeofday") == 0 ||
 		std::strcmp(name, "gettimeofday") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_gettimeofday);
 	}
+	if (std::strcmp(name, "_gettimeofday_nocancel") == 0 ||
+		std::strcmp(name, "__gettimeofday_nocancel") == 0 ||
+		std::strcmp(name, "gettimeofday_nocancel") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_gettimeofday);
+	}
 	if (std::strcmp(name, "_usleep") == 0 ||
 		std::strcmp(name, "usleep") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_usleep);
+	}
+	if (std::strcmp(name, "_usleep_nocancel") == 0 ||
+		std::strcmp(name, "__usleep_nocancel") == 0 ||
+		std::strcmp(name, "usleep_nocancel") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_usleep);
 	}
 	if (std::strcmp(name, "_getenv") == 0 || std::strcmp(name, "getenv") == 0) {

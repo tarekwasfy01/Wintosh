@@ -946,7 +946,14 @@ int main()
 	const bool normalized_posix_time_symbols =
 		darling_windows_host_symbol("nanosleep") != 0 &&
 		darling_windows_host_symbol("gettimeofday") != 0 &&
-		darling_windows_host_symbol("usleep") != 0;
+		darling_windows_host_symbol("usleep") != 0 &&
+		darling_windows_host_symbol("clock_gettime_nocancel") != 0 &&
+		darling_windows_host_symbol("clock_getres_nocancel") != 0 &&
+		darling_windows_host_symbol("nanosleep_nocancel") != 0 &&
+		darling_windows_host_symbol("gettimeofday_nocancel") != 0 &&
+		darling_windows_host_symbol("usleep_nocancel") != 0 &&
+		darling_windows_host_symbol("__clock_gettime_nocancel") != 0 &&
+		darling_windows_host_symbol("__nanosleep_nocancel") != 0;
 	std::cout << "DARWIN_NORMALIZED_POSIX_TIME_SYMBOLS="
 		<< (normalized_posix_time_symbols ? "PASS" : "FAIL") << "\n";
 	const bool normalized_resource_symbols =

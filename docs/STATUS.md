@@ -615,6 +615,13 @@ the loader's fail-closed boundary without treating legitimate weak imports as
 fatal; real code-signature, shared-cache, and foreign-CPU execution remain
 outside the current loader.
 
+The POSIX time resolver now also accepts the Darwin cancellation-safe aliases
+`clock_gettime_nocancel`, `clock_getres_nocancel`, `nanosleep_nocancel`,
+`gettimeofday_nocancel`, and `usleep_nocancel`, including the common
+double-underscore spellings. They intentionally reuse the already verified
+Windows time adapters; cancellation-point interruption and exact Darwin restart
+semantics remain open.
+
 The runtime README now records the actual Mach-O execution boundary: the
 Windows x86_64 runner can enter compatible x86_64 images after mapping,
 relocations, bindings, initializers, and protection setup, while i386 and

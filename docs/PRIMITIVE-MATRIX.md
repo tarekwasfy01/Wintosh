@@ -159,6 +159,13 @@ These are family-level counts, not a percentage of Darling and not a claim
 that the verified rows compose into a working macOS runtime. The legal
 `licensing` row remains `partial` while the external-component audit is open.
 
+The verified `time` family includes the Darwin cancellation-safe resolver
+aliases `clock_gettime_nocancel`, `clock_getres_nocancel`, `nanosleep_nocancel`,
+`gettimeofday_nocancel`, and `usleep_nocancel`, including common
+double-underscore spellings. The aliases intentionally share the existing
+Windows implementations; they do not claim Darwin thread-cancellation or
+interruption semantics.
+
 ## Source boundaries
 
 Linux/WSL references are compatibility evidence and test material, not a new

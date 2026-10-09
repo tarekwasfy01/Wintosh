@@ -65,7 +65,8 @@ Handle-scoped names are removed when the thread is joined or detached, so the
 adapter does not retain stale pthread identity state.
 
 The pthread attribute adapter now also exposes the WSL/winpthreads
-`inheritsched`, `scope`, and `stackaddr` getters/setters. The values are
+`inheritsched`, `scope`, and `stackaddr` getters/setters plus the combined
+`stack` accessors. The values are
 validated and retained; system scope is accepted, alternate scope and a
 caller-supplied stack address return `ENOTSUP` because `CreateThread` owns the
 Windows stack, and the stored address is never used as an execution stack.

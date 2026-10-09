@@ -2700,6 +2700,26 @@ extern "C" int darling_windows_pthread_attr_getstackaddr(const void* attributes,
 	return 0;
 }
 
+extern "C" int darling_windows_pthread_attr_setstack(void* attributes, void* stack,
+	std::size_t size)
+{
+	auto* value = PthreadAttributesFromStorage(attributes);
+	if (value == nullptr || stack == nullptr || size < 64 * 1024) return 22;
+	value->stack_address = stack;
+	value->stack_size = size;
+	return 95;
+}
+
+extern "C" int darling_windows_pthread_attr_getstack(const void* attributes, void** stack,
+	std::size_t* size)
+{
+	auto* value = PthreadAttributesFromStorage(attributes);
+	if (value == nullptr || stack == nullptr || size == nullptr) return 22;
+	*stack = value->stack_address;
+	*size = value->stack_size == 0 ? 1024 * 1024 : value->stack_size;
+	return 0;
+}
+
 extern "C" int darling_windows_pthread_attr_setschedpolicy(void* attributes, int policy)
 {
 	auto* value = PthreadAttributesFromStorage(attributes);
@@ -5237,6 +5257,8 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 	if (std::strcmp(name, "pthread_attr_getscope") == 0 || std::strcmp(name, "_pthread_attr_getscope") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_attr_getscope);
 	if (std::strcmp(name, "pthread_attr_setstackaddr") == 0 || std::strcmp(name, "_pthread_attr_setstackaddr") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_attr_setstackaddr);
 	if (std::strcmp(name, "pthread_attr_getstackaddr") == 0 || std::strcmp(name, "_pthread_attr_getstackaddr") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_attr_getstackaddr);
+	if (std::strcmp(name, "pthread_attr_setstack") == 0 || std::strcmp(name, "_pthread_attr_setstack") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_attr_setstack);
+	if (std::strcmp(name, "pthread_attr_getstack") == 0 || std::strcmp(name, "_pthread_attr_getstack") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_attr_getstack);
 	if (std::strcmp(name, "pthread_attr_setschedpolicy") == 0 || std::strcmp(name, "_pthread_attr_setschedpolicy") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_attr_setschedpolicy);
 	if (std::strcmp(name, "pthread_attr_getschedpolicy") == 0 || std::strcmp(name, "_pthread_attr_getschedpolicy") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_attr_getschedpolicy);
 	if (std::strcmp(name, "pthread_attr_setschedparam") == 0 || std::strcmp(name, "_pthread_attr_setschedparam") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_attr_setschedparam);

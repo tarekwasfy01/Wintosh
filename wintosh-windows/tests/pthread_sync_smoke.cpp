@@ -1,6 +1,7 @@
 #include "darling_windows_stdio.h"
 
 #include <iostream>
+#include <atomic>
 #include <thread>
 
 int main()
@@ -35,7 +36,29 @@ int main()
 		((barrier_results[0] == -1 && barrier_results[1] == 0) ||
 		 (barrier_results[0] == 0 && barrier_results[1] == -1)) &&
 		darling_windows_pthread_barrier_destroy(&barrier) == 0;
-	if (!mutex_ok || !spin_ok || !rwlock_ok || !barrier_ok) return 1;
+	void* condition = nullptr;
+	void* condition_mutex = nullptr;
+	std::atomic_bool condition_ready{false};
+	const bool condition_initialized =
+		darling_windows_pthread_cond_init(&condition, nullptr) == 0 &&
+		darling_windows_pthread_mutex_init(&condition_mutex, nullptr) == 0 &&
+		darling_windows_pthread_mutex_lock(&condition_mutex) == 0;
+	std::thread condition_worker([&]() {
+		darling_windows_pthread_mutex_lock(&condition_mutex);
+	condition_ready.store(true, std::memory_order_release);
+		darling_windows_pthread_cond_signal(&condition);
+		darling_windows_pthread_mutex_unlock(&condition_mutex);
+	});
+	const bool condition_ok = condition_initialized &&
+		darling_windows_pthread_cond_wait(&condition, &condition_mutex) == 0 &&
+		condition_ready.load(std::memory_order_acquire) &&
+		darling_windows_pthread_mutex_unlock(&condition_mutex) == 0;
+	condition_worker.join();
+	const bool condition_cleanup_ok =
+		darling_windows_pthread_mutex_destroy(&condition_mutex) == 0 &&
+		darling_windows_pthread_cond_destroy(&condition) == 0;
+	if (!mutex_ok || !spin_ok || !rwlock_ok || !barrier_ok || !condition_ok ||
+		!condition_cleanup_ok) return 1;
 	std::cout << "DARWIN_PTHREAD_SYNC_SMOKE=PASS\n";
 	return 0;
 }

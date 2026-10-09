@@ -90,6 +90,7 @@ and acquire successfully after release.
 
 The focused `pthread_sync_smoke` independently runs five successful cycles for
 mutex, spinlock, reader/writer-lock, and reusable two-thread barrier behavior.
+It also verifies a normal two-thread condition-variable signal/wait lifecycle.
 This separates stable synchronization primitives from the larger host smoke;
 condition cancellation and full cleanup ordering remain a separate partial
 family.

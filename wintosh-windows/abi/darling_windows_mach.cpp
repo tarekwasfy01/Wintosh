@@ -5,6 +5,7 @@
 #include "darling_windows_mach.h"
 
 #include <windows.h>
+#include <intrin.h>
 
 #include <atomic>
 #include <algorithm>
@@ -332,10 +333,17 @@ extern "C" darling_kern_return_t darling_windows_thread_set_state(
 	darling_mach_port_name_t thread, std::uint32_t flavor, const void* state,
 	std::uint32_t count)
 {
-	if (thread == 0 || thread == darling_windows_mach_thread_self() ||
+	if (thread == 0 ||
 		(flavor != darling_x86_thread_state64_flavor && flavor != darling_x86_float_state64_flavor && flavor != darling_x86_debug_state64_flavor) || state == nullptr ||
 		count < (flavor == darling_x86_thread_state64_flavor ? darling_x86_thread_state64_count : flavor == darling_x86_float_state64_flavor ? darling_x86_float_state64_count : darling_x86_debug_state64_count))
 		return 4;
+	if (thread == darling_windows_mach_thread_self()) {
+		if (flavor != darling_x86_float_state64_flavor) return 4;
+		std::uint32_t mxcsr = 0;
+		std::memcpy(&mxcsr, reinterpret_cast<const std::uint8_t*>(state) + 32, sizeof(mxcsr));
+		_mm_setcsr(mxcsr);
+		return 0;
+	}
 	const HANDLE handle = OpenThread(THREAD_SUSPEND_RESUME | THREAD_SET_CONTEXT, FALSE, thread);
 	if (handle == nullptr) return 4;
 	if (SuspendThread(handle) == static_cast<DWORD>(-1)) {

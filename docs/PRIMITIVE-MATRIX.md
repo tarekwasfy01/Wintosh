@@ -120,10 +120,11 @@ Darwin 21-word register layout and count 42. Windows `CONTEXT` registers are
 copied for the current thread or for a briefly suspended foreign thread;
 foreign threads are resumed on every exit path. x86-64 FPU-state reads now
 copy the Windows `XSAVE_FORMAT` into the exact 524-byte Darwin float-state
-layout. A matching foreign-thread FPU write path is present, but Windows
-writeback now maps the Darwin `MXCSR` control word to Windows, but Windows
-still rejects the current foreign-thread write call; the remaining FPU
-registers and full XSAVE writeback are not yet mapped. The AVX read adapter now uses an
+layout. The current-thread FPU write path now maps Darwin's MXCSR control word
+through `_mm_setcsr` and is covered by a readback/restore smoke test. Foreign
+thread writeback still maps only the MXCSR control word and remains rejected by
+the host in the current path; the remaining FPU registers and full XSAVE
+writeback are not yet mapped. The AVX read adapter now uses an
 `InitializeContext`-allocated XState buffer and is verified against a live
 foreign thread when the host exposes AVX, otherwise it fails closed with
 `KERN_NOT_SUPPORTED`. The AVX512 read path now uses the same allocated XState

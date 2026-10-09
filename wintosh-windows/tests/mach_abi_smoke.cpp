@@ -44,6 +44,28 @@ int main()
 	if (darling_windows_thread_get_state(thread, darling_x86_float_state64_flavor,
 		&float_state, &float_count) != 0 || float_count != darling_x86_float_state64_count)
 		return 1;
+	std::uint32_t original_mxcsr = 0;
+	std::memcpy(&original_mxcsr, reinterpret_cast<const std::uint8_t*>(&float_state) + 32,
+		sizeof(original_mxcsr));
+	const auto changed_mxcsr = original_mxcsr ^ 0x8000u;
+	std::memcpy(reinterpret_cast<std::uint8_t*>(&float_state) + 32, &changed_mxcsr,
+		sizeof(changed_mxcsr));
+	if (darling_windows_thread_set_state(thread, darling_x86_float_state64_flavor,
+		&float_state, darling_x86_float_state64_count) != 0)
+		return 1;
+	darling_x86_float_state64 changed_float_state{};
+	float_count = darling_x86_float_state64_count;
+	std::uint32_t changed_readback = 0;
+	if (darling_windows_thread_get_state(thread, darling_x86_float_state64_flavor,
+		&changed_float_state, &float_count) != 0 ||
+		std::memcpy(&changed_readback, reinterpret_cast<const std::uint8_t*>(&changed_float_state) + 32,
+			sizeof(changed_readback)) == nullptr || changed_readback != changed_mxcsr)
+		return 1;
+	std::memcpy(reinterpret_cast<std::uint8_t*>(&float_state) + 32, &original_mxcsr,
+		sizeof(original_mxcsr));
+	if (darling_windows_thread_set_state(thread, darling_x86_float_state64_flavor,
+		&float_state, darling_x86_float_state64_count) != 0)
+		return 1;
 	std::atomic<bool> worker_ready = false;
 	std::atomic<bool> worker_stop = false;
 	std::atomic<bool> worker_apc_woken = false;

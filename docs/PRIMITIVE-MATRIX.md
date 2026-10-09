@@ -34,7 +34,8 @@ listener/client/accept/payload-I/O runs, including keepalive, Darwin
 `SO_NOSIGPIPE`, the `SO_REUSEPORT` mapping, descriptor duplication, and the
 nonblocking descriptor flag. It also transfers a payload through the Darwin
 `darling_msghdr` ABI using `sendmsg`/`recvmsg`. The larger host smoke still
-exercises additional exception-data and resolver combinations; those remain
+exercises additional exception-data and resolver combinations; the focused test
+also verifies IPv6 `inet_pton`/`inet_ntop`. Those remaining combinations stay
 separate coverage.
 
 The process row also covers the four-word Darwin signal-set constructors and

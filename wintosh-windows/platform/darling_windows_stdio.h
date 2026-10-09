@@ -480,6 +480,7 @@ extern "C" int darling_windows_sysctl(const int* mib, std::uint32_t mib_length,
 	void* old_value, std::size_t* old_length, const void* new_value,
 	std::size_t new_length);
 extern "C" int darling_windows_sched_yield();
+extern "C" int darling_windows_pthread_yield();
 extern "C" unsigned int darling_windows_sleep(unsigned int seconds);
 extern "C" std::uint32_t darling_windows_arc4random();
 extern "C" void darling_windows_arc4random_buf(void* buffer, std::size_t bytes);

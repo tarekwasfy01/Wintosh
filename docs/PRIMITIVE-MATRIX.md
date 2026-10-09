@@ -70,6 +70,9 @@ The matching `schedpolicy` and `schedparam` ABI is also present with default
 policy/priority storage; non-default scheduling requests return `ENOTSUP` until
 a Windows scheduling-policy mapping is implemented.
 
+The WSL/legacy winpthreads `pthread_yield` spelling now aliases the verified
+Windows `SwitchToThread`-backed `sched_yield` primitive.
+
 The Windows adapter also provides an explicit port-local LIFO cleanup-record
 stack through `darling_windows_pthread_cleanup_push` and
 `darling_windows_pthread_cleanup_pop`. Deferred cancellation drains the stack

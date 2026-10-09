@@ -559,7 +559,8 @@ int main()
 		darling_windows_sysctl(sysctl_machine_mib, 2, sysctl_mib_machine, &sysctl_mib_machine_size, nullptr, 0) == 0 &&
 		std::strlen(sysctl_mib_machine) > 0 &&
 		darling_windows_sysctl(nullptr, 0, nullptr, &sysctl_mib_machine_size, nullptr, 0) == -1;
-	const bool scheduling_ok = darling_windows_sched_yield() == 0 && darling_windows_sleep(0) == 0;
+	const bool scheduling_ok = darling_windows_sched_yield() == 0 &&
+		darling_windows_pthread_yield() == 0 && darling_windows_sleep(0) == 0;
 	std::uint8_t random_bytes[32]{};
 	darling_windows_arc4random_buf(random_bytes, sizeof(random_bytes));
 	const auto random_value = darling_windows_arc4random();
@@ -568,6 +569,7 @@ int main()
 			darling_windows_host_symbol("arc4random_buf") != 0 &&
 			darling_windows_host_symbol("getentropy") != 0 &&
 			darling_windows_host_symbol("sched_yield") != 0 &&
+			darling_windows_host_symbol("pthread_yield") != 0 &&
 			darling_windows_host_symbol("sleep") != 0 &&
 			darling_windows_host_symbol("raise") != 0) ? "PASS" : "FAIL") << "\n";
 	const bool random_ok = darling_windows_host_symbol("_arc4random") != 0 &&
@@ -576,6 +578,7 @@ int main()
 		darling_windows_host_symbol("arc4random_buf") != 0 &&
 		darling_windows_host_symbol("getentropy") != 0 &&
 		darling_windows_host_symbol("sched_yield") != 0 &&
+		darling_windows_host_symbol("pthread_yield") != 0 &&
 		darling_windows_host_symbol("sleep") != 0 &&
 		darling_windows_host_symbol("raise") != 0 &&
 		(random_value != 0 || random_bytes[0] != 0 || random_bytes[1] != 0 || random_bytes[2] != 0 || random_bytes[3] != 0);

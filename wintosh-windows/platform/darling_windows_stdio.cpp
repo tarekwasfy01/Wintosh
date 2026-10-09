@@ -5254,6 +5254,9 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 	if (std::strcmp(name, "_sched_yield") == 0 || std::strcmp(name, "sched_yield") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_sched_yield);
 	}
+	if (std::strcmp(name, "_pthread_yield") == 0 || std::strcmp(name, "pthread_yield") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_yield);
+	}
 	if (std::strcmp(name, "_sleep") == 0 || std::strcmp(name, "sleep") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_sleep);
 	}
@@ -6916,6 +6919,11 @@ extern "C" int darling_windows_sched_yield()
 {
 	(void)SwitchToThread();
 	return 0;
+}
+
+extern "C" int darling_windows_pthread_yield()
+{
+	return darling_windows_sched_yield();
 }
 
 extern "C" unsigned int darling_windows_sleep(unsigned int seconds)

@@ -3702,7 +3702,19 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 	if (std::strcmp(name, "_sigaction") == 0 || std::strcmp(name, "sigaction") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_sigaction);
 	}
+	if (std::strcmp(name, "__sigaction") == 0 ||
+		std::strcmp(name, "_sigaction_nocancel") == 0 ||
+		std::strcmp(name, "__sigaction_nocancel") == 0 ||
+		std::strcmp(name, "sigaction_nocancel") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_sigaction);
+	}
 	if (std::strcmp(name, "_sigprocmask") == 0 || std::strcmp(name, "sigprocmask") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_sigprocmask);
+	}
+	if (std::strcmp(name, "__sigprocmask") == 0 ||
+		std::strcmp(name, "_sigprocmask_nocancel") == 0 ||
+		std::strcmp(name, "__sigprocmask_nocancel") == 0 ||
+		std::strcmp(name, "sigprocmask_nocancel") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_sigprocmask);
 	}
 	if (std::strcmp(name, "_sigpending") == 0 || std::strcmp(name, "sigpending") == 0) {
@@ -3711,10 +3723,20 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 	if (std::strcmp(name, "_sigwait") == 0 || std::strcmp(name, "sigwait") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_sigwait);
 	}
+	if (std::strcmp(name, "_sigwait_nocancel") == 0 ||
+		std::strcmp(name, "__sigwait_nocancel") == 0 ||
+		std::strcmp(name, "sigwait_nocancel") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_sigwait);
+	}
 	if (std::strcmp(name, "_sigtimedwait") == 0 || std::strcmp(name, "sigtimedwait") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_sigtimedwait);
 	}
 	if (std::strcmp(name, "_sigwaitinfo") == 0 || std::strcmp(name, "sigwaitinfo") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_sigwaitinfo);
+	}
+	if (std::strcmp(name, "_sigwaitinfo_nocancel") == 0 ||
+		std::strcmp(name, "__sigwaitinfo_nocancel") == 0 ||
+		std::strcmp(name, "sigwaitinfo_nocancel") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_sigwaitinfo);
 	}
 	if (std::strcmp(name, "_sigqueue") == 0 || std::strcmp(name, "sigqueue") == 0) {

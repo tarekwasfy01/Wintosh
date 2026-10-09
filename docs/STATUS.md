@@ -643,3 +643,9 @@ Windows x86_64 runner can enter compatible x86_64 images after mapping,
 relocations, bindings, initializers, and protection setup, while i386 and
 ARM64 images remain rejected without a CPU translation layer. This is loader
 execution evidence, not proof of full unmodified macOS application support.
+
+The signal resolver now also covers common Darwin spellings for
+`sigaction_nocancel`, `sigprocmask_nocancel`, `sigwait_nocancel`, and
+`sigwaitinfo_nocancel`, plus the double-underscore `sigaction` form. They reuse
+the existing Windows signal adapter; native cross-process signal delivery,
+full masks, interruption, and cancellation semantics remain open.

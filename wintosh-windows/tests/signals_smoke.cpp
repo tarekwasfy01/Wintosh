@@ -68,7 +68,12 @@ int main()
 		darling_windows_host_symbol("sigwait") != 0 &&
 		darling_windows_host_symbol("sigtimedwait") != 0 &&
 		darling_windows_host_symbol("sigwaitinfo") != 0 &&
-		darling_windows_host_symbol("sigqueue") != 0;
+		darling_windows_host_symbol("sigqueue") != 0 &&
+		darling_windows_host_symbol("sigaction_nocancel") != 0 &&
+		darling_windows_host_symbol("sigprocmask_nocancel") != 0 &&
+		darling_windows_host_symbol("sigwait_nocancel") != 0 &&
+		darling_windows_host_symbol("sigwaitinfo_nocancel") != 0 &&
+		darling_windows_host_symbol("__sigaction") != 0;
 	std::cout << "DARWIN_NORMALIZED_SIGNAL_SYMBOLS="
 		<< (normalized_signal_symbols ? "PASS" : "FAIL") << "\n";
 	const bool setup_ok = sigaction_result == 0 && sigprocmask_result == 0 &&

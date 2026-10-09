@@ -75,7 +75,8 @@ int wmain(int argc, wchar_t** argv)
 					server.Write(AsString(darling::windows_host::EncodeMachIpcEnvelope(response)));
 					continue;
 				}
-				if (envelope.operation == darling::windows_host::MachIpcOperation::Deallocate) {
+				if (envelope.operation == darling::windows_host::MachIpcOperation::Deallocate ||
+					envelope.operation == darling::windows_host::MachIpcOperation::Destroy) {
 					if (allocated_ports.erase(envelope.port_token) == 0)
 						throw std::invalid_argument("unknown Mach IPC port token");
 					port_queues.erase(envelope.port_token);
@@ -88,7 +89,7 @@ int wmain(int argc, wchar_t** argv)
 						}
 					}
 					darling::windows_host::MachIpcEnvelope response{
-						darling::windows_host::MachIpcOperation::Deallocate,
+						envelope.operation,
 						envelope.request_id, envelope.port_token, 0, {}};
 					server.Write(AsString(darling::windows_host::EncodeMachIpcEnvelope(response)));
 					continue;

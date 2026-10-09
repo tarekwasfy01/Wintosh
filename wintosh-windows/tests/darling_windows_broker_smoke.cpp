@@ -203,6 +203,35 @@ int wmain()
 			return 5;
 		}
 		std::cout << "BROKER_MACH_LIFECYCLE=PASS\n";
+		const darling::windows_host::MachIpcEnvelope second_allocate_request{
+			darling::windows_host::MachIpcOperation::Allocate, 109, 0, 0, {}};
+		const auto second_allocate_bytes = darling::windows_host::EncodeMachIpcEnvelope(second_allocate_request);
+		client.Write(std::string(second_allocate_bytes.begin(), second_allocate_bytes.end()));
+		const auto second_allocate_wire = client.Read();
+		const auto second_allocate_response = darling::windows_host::DecodeMachIpcEnvelope(
+			std::vector<std::uint8_t>(second_allocate_wire.begin(), second_allocate_wire.end()));
+		const auto destroyed_token = second_allocate_response.port_token;
+		const darling::windows_host::MachIpcEnvelope destroy_request{
+			darling::windows_host::MachIpcOperation::Destroy, 110, destroyed_token, 0, {}};
+		const auto destroy_bytes = darling::windows_host::EncodeMachIpcEnvelope(destroy_request);
+		client.Write(std::string(destroy_bytes.begin(), destroy_bytes.end()));
+		const auto destroy_wire = client.Read();
+		const auto destroy_response = darling::windows_host::DecodeMachIpcEnvelope(
+			std::vector<std::uint8_t>(destroy_wire.begin(), destroy_wire.end()));
+		if (destroy_response.operation != darling::windows_host::MachIpcOperation::Destroy ||
+			destroy_response.port_token != destroyed_token) {
+			std::cerr << "BROKER_MACH_DESTROY=FAIL\n";
+			return 5;
+		}
+		const darling::windows_host::MachIpcEnvelope destroyed_send{
+			darling::windows_host::MachIpcOperation::Send, 111, destroyed_token, 0, {'X'}};
+		const auto destroyed_send_bytes = darling::windows_host::EncodeMachIpcEnvelope(destroyed_send);
+		client.Write(std::string(destroyed_send_bytes.begin(), destroyed_send_bytes.end()));
+		if (client.Read() != "INVALID_MACH_IPC_REQUEST") {
+			std::cerr << "BROKER_MACH_DESTROY_STALE=FAIL\n";
+			return 5;
+		}
+		std::cout << "BROKER_MACH_DESTROY=PASS\n";
 
 		client.Write("SHUTDOWN");
 		const auto shutdown = client.Read();

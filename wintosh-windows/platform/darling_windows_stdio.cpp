@@ -3133,10 +3133,53 @@ void RunPthreadTlsDestructors()
 }
 }
 
+struct DarlingPthreadRwlockAttributes final { int pshared = 0; };
+
+DarlingPthreadRwlockAttributes* PthreadRwlockAttributesFromStorage(const void* storage)
+{
+	return storage == nullptr ? nullptr :
+		*reinterpret_cast<DarlingPthreadRwlockAttributes* const*>(storage);
+}
+
+extern "C" int darling_windows_pthread_rwlockattr_init(void* attributes)
+{
+	if (attributes == nullptr) return 22;
+	*reinterpret_cast<DarlingPthreadRwlockAttributes**>(attributes) =
+		new (std::nothrow) DarlingPthreadRwlockAttributes();
+	return *reinterpret_cast<DarlingPthreadRwlockAttributes**>(attributes) == nullptr ? 12 : 0;
+}
+
+extern "C" int darling_windows_pthread_rwlockattr_destroy(void* attributes)
+{
+	auto* value = PthreadRwlockAttributesFromStorage(attributes);
+	if (value == nullptr) return 22;
+	delete value;
+	*reinterpret_cast<DarlingPthreadRwlockAttributes**>(attributes) = nullptr;
+	return 0;
+}
+
+extern "C" int darling_windows_pthread_rwlockattr_setpshared(void* attributes, int shared)
+{
+	auto* value = PthreadRwlockAttributesFromStorage(attributes);
+	if (value == nullptr || (shared != 0 && shared != 1)) return 22;
+	value->pshared = shared;
+	return shared == 0 ? 0 : 95;
+}
+
+extern "C" int darling_windows_pthread_rwlockattr_getpshared(const void* attributes, int* shared)
+{
+	auto* value = PthreadRwlockAttributesFromStorage(attributes);
+	if (value == nullptr || shared == nullptr) return 22;
+	*shared = value->pshared;
+	return 0;
+}
+
 extern "C" int darling_windows_pthread_rwlock_init(void* lock, const void* attributes)
 {
-	(void)attributes;
 	if (lock == nullptr) return 22;
+	const auto* attr = PthreadRwlockAttributesFromStorage(attributes);
+	if (attributes != nullptr && attr == nullptr) return 22;
+	if (attr != nullptr && attr->pshared != 0) return 95;
 	*reinterpret_cast<std::shared_mutex**>(lock) = new (std::nothrow) std::shared_mutex();
 	return *reinterpret_cast<std::shared_mutex**>(lock) == nullptr ? 12 : 0;
 }
@@ -4665,6 +4708,10 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 	if (std::strcmp(name, "_pthread_rwlock_init") == 0 || std::strcmp(name, "pthread_rwlock_init") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_rwlock_init);
 	}
+	if (std::strcmp(name, "_pthread_rwlockattr_init") == 0 || std::strcmp(name, "pthread_rwlockattr_init") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_rwlockattr_init);
+	if (std::strcmp(name, "_pthread_rwlockattr_destroy") == 0 || std::strcmp(name, "pthread_rwlockattr_destroy") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_rwlockattr_destroy);
+	if (std::strcmp(name, "_pthread_rwlockattr_setpshared") == 0 || std::strcmp(name, "pthread_rwlockattr_setpshared") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_rwlockattr_setpshared);
+	if (std::strcmp(name, "_pthread_rwlockattr_getpshared") == 0 || std::strcmp(name, "pthread_rwlockattr_getpshared") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_rwlockattr_getpshared);
 	if (std::strcmp(name, "_pthread_rwlock_destroy") == 0 || std::strcmp(name, "pthread_rwlock_destroy") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_rwlock_destroy);
 	}

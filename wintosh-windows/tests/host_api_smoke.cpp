@@ -1349,6 +1349,17 @@ int main()
 		darling_windows_pthread_rwlock_wrlock(&pthread_rwlock_storage) == 0 &&
 		darling_windows_pthread_rwlock_unlock(&pthread_rwlock_storage) == 0 &&
 		darling_windows_pthread_rwlock_destroy(&pthread_rwlock_storage) == 0;
+	void* pthread_rwlock_attributes = nullptr;
+	int pthread_rwlock_shared = -1;
+	const bool pthread_rwlock_attributes_ok =
+		darling_windows_host_symbol("pthread_rwlockattr_init") != 0 &&
+		darling_windows_host_symbol("pthread_rwlockattr_setpshared") != 0 &&
+		darling_windows_pthread_rwlockattr_init(&pthread_rwlock_attributes) == 0 &&
+		darling_windows_pthread_rwlockattr_getpshared(pthread_rwlock_attributes,
+		&pthread_rwlock_shared) == 0 && pthread_rwlock_shared == 0 &&
+		darling_windows_pthread_rwlockattr_setpshared(pthread_rwlock_attributes, 1) == 95 &&
+		darling_windows_pthread_rwlockattr_setpshared(pthread_rwlock_attributes, 0) == 0 &&
+		darling_windows_pthread_rwlockattr_destroy(&pthread_rwlock_attributes) == 0;
 	std::uint64_t pthread_key = 0;
 	const char pthread_tls_value[] = "tls-value";
 	const bool pthread_tls_ok =
@@ -1423,7 +1434,7 @@ int main()
 		darling_windows_pthread_cond_destroy(&timed_condition_storage) == 0;
 	std::cout << "DARWIN_PTHREAD_SELF_NAME_EQUAL="
 		          << (pthread_abi_ok && pthread_lifecycle_ok && pthread_cancellation_ok && pthread_lock_cancellation_ok && pthread_condition_cancellation_ok && pthread_attributes_ok && pthread_detach_ok &&
-			pthread_threadid_ok && pthread_mutex_attributes_ok && pthread_condition_attributes_ok && pthread_mutex_ok && pthread_rwlock_ok && pthread_tls_ok &&
+			pthread_threadid_ok && pthread_mutex_attributes_ok && pthread_condition_attributes_ok && pthread_mutex_ok && pthread_rwlock_attributes_ok && pthread_rwlock_ok && pthread_tls_ok &&
 			pthread_tls_destructor_ok && pthread_once_ok && pthread_condition_ok &&
 			pthread_timedwait_ok ? "PASS" : "FAIL") << "\n";
 	const bool normalized_terminal_environment_symbols =

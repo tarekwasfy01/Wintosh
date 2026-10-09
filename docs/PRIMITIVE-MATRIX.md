@@ -70,6 +70,8 @@ investigation because isolated runs can still terminate with exit 3.
 Condition-variable attributes now expose `init`, `destroy`, pshared, and clock
 accessors. Default clock/pshared values are verified; process-shared
 conditions and non-default clock execution return `ENOTSUP` explicitly.
+Read/write-lock attributes now expose default-only init/destroy/pshared accessors
+with resolver coverage; process-shared rwlocks return `ENOTSUP` explicitly.
 Mach port reference mutation now rejects signed-delta underflow and unsigned
 overflow, including the `INT32_MIN` edge case, while preserving the existing
 process-local queue behavior.

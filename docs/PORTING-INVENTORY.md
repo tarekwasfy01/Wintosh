@@ -4193,6 +4193,10 @@ clock resolver coverage. Default values pass; process-shared conditions and
 non-default clock selection fail explicitly with `ENOTSUP`, while true
 inter-process condition behavior and monotonic timed waits remain open.
 
+The pthread rwlock-attribute subfamily now has init/destroy and pshared
+resolver coverage. Default values pass; process-shared rwlocks fail explicitly
+with `ENOTSUP`, while inter-process rwlock behavior remains open.
+
 The same attribute object now carries protocol and robustness fields with
 resolver coverage and default-value checks. Enabling priority protocols or
 robust recovery fails explicitly with `ENOTSUP`; owner-death recovery and

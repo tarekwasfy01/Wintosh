@@ -523,6 +523,11 @@ attributes with pshared and clock accessors. The host smoke verifies default
 values and explicit `ENOTSUP` for process-shared conditions and non-default
 clock selection; monotonic-clock timed-wait semantics remain open.
 
+The read/write-lock attribute boundary now exposes default-only opaque objects
+with pshared accessors. The host smoke verifies default reads and explicit
+`ENOTSUP` for process-shared rwlocks; cross-process rwlock semantics remain
+open.
+
 The signal smoke now prints all setup return codes and symbol-group results on
 stdout. These values are consistently successful; an intermittent exit 3 can
 occur later in the signal-dispatch/wait sequence, so full signal runtime

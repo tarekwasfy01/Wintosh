@@ -470,6 +470,12 @@ table registration under one runtime lock. Identical source and destination
 locations are handled as a no-op, avoiding the previous split-load/store race;
 lock-free ARC ordering and full concurrent runtime semantics remain open.
 
+`objc_storeStrong` now performs the slot replacement under the runtime lock and
+releases the previous value after leaving it. This gives strong-slot updates a
+consistent relationship with the adapter's retain/release and weak-table
+operations; lock-free ARC ordering and compiler-specific ownership barriers
+remain open.
+
 The ARC bridge now exports `objc_storeStrong`: it retains the incoming object
 before replacing the slot and releases the previous value afterward. The
 Objective-C smoke gate covers set/clear and resolver lookup. Atomic memory

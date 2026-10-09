@@ -1571,8 +1571,12 @@ extern "C" void objc_storeStrong(id* location, id object)
 {
 	if (!location) return;
 	if (object) objc_retain(object);
-	const id previous = *location;
-	*location = object;
+	id previous = nullptr;
+	{
+		std::lock_guard lock(RuntimeMutex());
+		previous = *location;
+		*location = object;
+	}
 	if (previous) objc_release(previous);
 }
 

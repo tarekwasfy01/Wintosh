@@ -46,6 +46,7 @@ int wmain(int argc, wchar_t** argv)
 		std::unordered_set<std::uint64_t> allocated_ports;
 		std::unordered_map<std::uint64_t, std::deque<darling::windows_host::MachIpcEnvelope>> port_queues;
 		std::unordered_map<std::uint64_t, darling::windows_host::MachIpcSharedMemory> out_of_line_regions;
+		std::unordered_map<std::uint64_t, std::uint64_t> out_of_line_owners;
 		std::uint64_t next_out_of_line_token = 1;
 
 		for (;;) {
@@ -78,6 +79,14 @@ int wmain(int argc, wchar_t** argv)
 					if (allocated_ports.erase(envelope.port_token) == 0)
 						throw std::invalid_argument("unknown Mach IPC port token");
 					port_queues.erase(envelope.port_token);
+					for (auto it = out_of_line_owners.begin(); it != out_of_line_owners.end();) {
+						if (it->second == envelope.port_token) {
+							out_of_line_regions.erase(it->first);
+							it = out_of_line_owners.erase(it);
+						} else {
+							++it;
+						}
+					}
 					darling::windows_host::MachIpcEnvelope response{
 						darling::windows_host::MachIpcOperation::Deallocate,
 						envelope.request_id, envelope.port_token, 0, {}};
@@ -97,6 +106,7 @@ int wmain(int argc, wchar_t** argv)
 							name, queued.payload.size());
 						std::memcpy(region.Data(), queued.payload.data(), queued.payload.size());
 						out_of_line_regions.emplace(token, std::move(region));
+						out_of_line_owners.emplace(token, envelope.port_token);
 						queued.payload.clear();
 						queued.disposition_count = 0;
 						queued.out_of_line_token = token;

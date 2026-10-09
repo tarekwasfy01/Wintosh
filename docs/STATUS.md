@@ -465,6 +465,11 @@ last release has begun clearing the weak locations. This closes the basic
 load-versus-final-release race in the process-local adapter; full lock-free ARC
 ordering and object resurrection rules remain outside the implementation.
 
+`objc_copyWeak` now performs source read, destination replacement, and weak
+table registration under one runtime lock. Identical source and destination
+locations are handled as a no-op, avoiding the previous split-load/store race;
+lock-free ARC ordering and full concurrent runtime semantics remain open.
+
 The ARC bridge now exports `objc_storeStrong`: it retains the incoming object
 before replacing the slot and releases the previous value afterward. The
 Objective-C smoke gate covers set/clear and resolver lookup. Atomic memory

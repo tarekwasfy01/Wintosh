@@ -853,6 +853,8 @@ int main()
 		return 36;
 	if (objc_moveWeak(&moved_slot, &moved_slot) != object)
 		return 37;
+	if (objc_copyWeak(&moved_slot, &moved_slot) != object)
+		return 39;
 	id externally_initialized = object;
 	id externally_moved = nullptr;
 	if (objc_moveWeak(&externally_moved, &externally_initialized) != object ||

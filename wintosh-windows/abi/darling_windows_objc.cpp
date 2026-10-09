@@ -1738,7 +1738,23 @@ extern "C" void objc_destroyWeak(id* location)
 
 extern "C" id objc_copyWeak(id* destination, id* source)
 {
-	return objc_storeWeak(destination, objc_loadWeak(source));
+	if (!destination || !source)
+		return nullptr;
+	std::lock_guard lock(RuntimeMutex());
+	if (destination == source)
+		return *source;
+	if (*destination) {
+		const auto previous = WeakReferences.find(*destination);
+		if (previous != WeakReferences.end()) {
+			previous->second.erase(destination);
+			if (previous->second.empty())
+				WeakReferences.erase(previous);
+		}
+	}
+	*destination = *source;
+	if (*destination)
+		WeakReferences[*destination].insert(destination);
+	return *destination;
 }
 
 extern "C" id objc_moveWeak(id* destination, id* source)

@@ -3,6 +3,7 @@
  * GPL-3.0-only; see the bundled license and source manifests.
  */
 
+#define DARLING_WINDOWS_PTHREAD_COMPAT_MACROS 1
 #include "darling_windows_stdio.h"
 
 #include <windows.h>
@@ -34,8 +35,7 @@ namespace {
 	void* PthreadCancellationStart(void*)
 	{
 		cancellation_worker_started.store(true, std::memory_order_release);
-		darling_pthread_cleanup_record cleanup{};
-		darling_windows_pthread_cleanup_push(&cleanup, &CancellationCleanup, nullptr);
+		pthread_cleanup_push(&CancellationCleanup, nullptr);
 		int old_state = -1;
 		int old_type = -1;
 		if (darling_windows_pthread_setcancelstate(1, &old_state) != 0 ||
@@ -49,7 +49,7 @@ namespace {
 			if (darling_windows_pthread_setcancelstate(1, &old_state) != 0)
 				return nullptr;
 		}
-		darling_windows_pthread_cleanup_pop(&cleanup, 0);
+		pthread_cleanup_pop(0);
 		return nullptr;
 	}
 	struct CancellationLockContext final {

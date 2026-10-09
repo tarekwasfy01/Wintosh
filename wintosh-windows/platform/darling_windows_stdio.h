@@ -305,6 +305,19 @@ extern "C" void darling_windows_pthread_cleanup_push(
 	darling_pthread_cleanup_record* record, void (*routine)(void*), void* argument);
 extern "C" void darling_windows_pthread_cleanup_pop(
 	darling_pthread_cleanup_record* record, int execute);
+
+/* PureDarwin exposes these as matched macros. Keep this compatibility layer
+ * opt-in so the adapter does not override a consumer's pthread header. */
+#if defined(DARLING_WINDOWS_PTHREAD_COMPAT_MACROS) && \
+	!defined(pthread_cleanup_push) && !defined(pthread_cleanup_pop)
+#define pthread_cleanup_push(func, val) \
+	{ \
+		darling_pthread_cleanup_record __darling_cleanup_record{}; \
+		darling_windows_pthread_cleanup_push(&__darling_cleanup_record, (func), (val));
+#define pthread_cleanup_pop(execute) \
+		darling_windows_pthread_cleanup_pop(&__darling_cleanup_record, (execute)); \
+	}
+#endif
 extern "C" int darling_windows_pthread_threadid_np(std::uint64_t thread,
 	std::uint64_t* thread_id);
 extern "C" int darling_windows_pthread_attr_init(void* attributes);

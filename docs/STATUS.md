@@ -79,8 +79,9 @@ notification-port rights and delivery semantics remain open. Explicit
 `BROKER_MACH_NOTIFICATION_DESTROY=PASS`; broker reset followed by timeout is
 also covered by `BROKER_MACH_NOTIFICATION_RESET=PASS`.
 The local Mach C ABI additionally supports one port-death notification
-registration per local port, replacement reporting, and delivery on forced
-destruction; its smoke coverage is limited to that adapter contract, while
+registration per local port, replacement reporting, explicit unregister, and
+delivery on forced destruction; its smoke coverage is limited to that adapter
+contract, while
 full no-senders/dead-name rights and Darwin notification message layouts
 remain open.
 Malformed notification wait payloads are rejected and covered by

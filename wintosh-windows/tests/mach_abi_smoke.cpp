@@ -605,6 +605,12 @@ int main()
 			darling_windows_mach_port_request_notification(task, notification_target,
 			0x4e544659, replacement_notification_port, &previous_notification) == 0 &&
 			previous_notification == notification_port &&
+			darling_windows_mach_port_request_notification(task, notification_target,
+			0, 0, &previous_notification) == 0 &&
+			previous_notification == replacement_notification_port &&
+			darling_windows_mach_port_request_notification(task, notification_target,
+			0x4e544659, replacement_notification_port, &previous_notification) == 0 &&
+			previous_notification == 0 &&
 			darling_windows_mach_port_destroy(task, notification_target) == 0;
 		if (ok) {
 			darling_mach_msg_header notification_message{};

@@ -964,13 +964,17 @@ extern "C" darling_kern_return_t darling_windows_mach_port_request_notification(
 	darling_mach_port_name_t* previous)
 {
 	if (task == 0 || task != darling_windows_mach_task_self() || name == 0 ||
-		notify == 0 || previous == nullptr || FindPort(name) == nullptr ||
-		FindPort(notify) == nullptr)
+		previous == nullptr || FindPort(name) == nullptr ||
+		(notify != 0 && FindPort(notify) == nullptr))
 		return 4;
 	std::lock_guard lock(port_notifications_mutex);
 	const auto found = port_notifications.find(name);
 	*previous = found == port_notifications.end() ? 0 : found->second.notify;
-	port_notifications[name] = PortNotification{msgid, notify};
+	if (notify == 0) {
+		port_notifications.erase(name);
+	} else {
+		port_notifications[name] = PortNotification{msgid, notify};
+	}
 	return 0;
 }
 

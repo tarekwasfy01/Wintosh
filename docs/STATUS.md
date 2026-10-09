@@ -513,6 +513,11 @@ mutexes use the Windows adapter; the host smoke verifies recursive relocking,
 error-checking self-deadlock/trylock behavior, and foreign unlock rejection.
 Process-shared and robust mutex behavior remains open.
 
+Protocol and robustness mutex attributes now have resolver and default-value
+coverage. Non-default priority protocols and robust recovery are rejected with
+`ENOTSUP`; this exposes the ABI boundary without claiming owner-death recovery
+or priority inheritance.
+
 It also proves cancellation while a worker is inside `pthread_cond_wait`, then
 joins the canceled worker and destroys the condition and mutex normally.
 

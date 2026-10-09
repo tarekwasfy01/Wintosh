@@ -4188,6 +4188,11 @@ mutexes use distinct Windows backends, and the host smoke verifies recursive
 relocking plus error-checking self-deadlock, busy trylock, and foreign unlock
 rejection. Process-shared and robust mutex behavior remains open.
 
+The same attribute object now carries protocol and robustness fields with
+resolver coverage and default-value checks. Enabling priority protocols or
+robust recovery fails explicitly with `ENOTSUP`; owner-death recovery and
+priority inheritance are still not implemented.
+
 The pthread ABI layer now also covers `pthread_once` and invokes registered TLS
 destructors when a created Windows-backed pthread exits. x64 and Win32 host API
 smokes build successfully and report `DARWIN_PTHREAD_SELF_NAME_EQUAL=PASS`,

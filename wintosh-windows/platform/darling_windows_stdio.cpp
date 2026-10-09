@@ -2793,6 +2793,8 @@ DarlingPthreadMutex* PthreadMutexFromStorage(void* storage)
 struct DarlingPthreadMutexAttributes final {
 	int type = 0;
 	int pshared = 0;
+	int protocol = 0;
+	int robust = 0;
 };
 
 DarlingPthreadMutexAttributes* PthreadMutexAttributesFromStorage(const void* storage)
@@ -2851,12 +2853,44 @@ extern "C" int darling_windows_pthread_mutexattr_getpshared(const void* attribut
 	return 0;
 }
 
+extern "C" int darling_windows_pthread_mutexattr_setprotocol(void* attributes, int protocol)
+{
+	auto* value = PthreadMutexAttributesFromStorage(attributes);
+	if (value == nullptr || (protocol != 0 && protocol != 1 && protocol != 2)) return 22;
+	value->protocol = protocol;
+	return protocol == 0 ? 0 : 95;
+}
+
+extern "C" int darling_windows_pthread_mutexattr_getprotocol(const void* attributes, int* protocol)
+{
+	auto* value = PthreadMutexAttributesFromStorage(attributes);
+	if (value == nullptr || protocol == nullptr) return 22;
+	*protocol = value->protocol;
+	return 0;
+}
+
+extern "C" int darling_windows_pthread_mutexattr_setrobust(void* attributes, int robust)
+{
+	auto* value = PthreadMutexAttributesFromStorage(attributes);
+	if (value == nullptr || (robust != 0 && robust != 1)) return 22;
+	value->robust = robust;
+	return robust == 0 ? 0 : 95;
+}
+
+extern "C" int darling_windows_pthread_mutexattr_getrobust(const void* attributes, int* robust)
+{
+	auto* value = PthreadMutexAttributesFromStorage(attributes);
+	if (value == nullptr || robust == nullptr) return 22;
+	*robust = value->robust;
+	return 0;
+}
+
 extern "C" int darling_windows_pthread_mutex_init(void* mutex, const void* attributes)
 {
 	if (mutex == nullptr) return 22;
 	const auto* attr = PthreadMutexAttributesFromStorage(attributes);
 	if (attributes != nullptr && attr == nullptr) return 22;
-	if (attr != nullptr && attr->pshared != 0) return 95;
+	if (attr != nullptr && (attr->pshared != 0 || attr->protocol != 0 || attr->robust != 0)) return 95;
 	const int type = attr == nullptr ? 0 : attr->type;
 	*reinterpret_cast<DarlingPthreadMutex**>(mutex) =
 		new (std::nothrow) DarlingPthreadMutex(type);
@@ -4538,6 +4572,10 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 	if (std::strcmp(name, "_pthread_mutexattr_gettype") == 0 || std::strcmp(name, "pthread_mutexattr_gettype") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_mutexattr_gettype);
 	if (std::strcmp(name, "_pthread_mutexattr_setpshared") == 0 || std::strcmp(name, "pthread_mutexattr_setpshared") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_mutexattr_setpshared);
 	if (std::strcmp(name, "_pthread_mutexattr_getpshared") == 0 || std::strcmp(name, "pthread_mutexattr_getpshared") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_mutexattr_getpshared);
+	if (std::strcmp(name, "_pthread_mutexattr_setprotocol") == 0 || std::strcmp(name, "pthread_mutexattr_setprotocol") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_mutexattr_setprotocol);
+	if (std::strcmp(name, "_pthread_mutexattr_getprotocol") == 0 || std::strcmp(name, "pthread_mutexattr_getprotocol") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_mutexattr_getprotocol);
+	if (std::strcmp(name, "_pthread_mutexattr_setrobust") == 0 || std::strcmp(name, "pthread_mutexattr_setrobust") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_mutexattr_setrobust);
+	if (std::strcmp(name, "_pthread_mutexattr_getrobust") == 0 || std::strcmp(name, "pthread_mutexattr_getrobust") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_mutexattr_getrobust);
 	if (std::strcmp(name, "_pthread_cond_init") == 0 || std::strcmp(name, "pthread_cond_init") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_cond_init);
 	}

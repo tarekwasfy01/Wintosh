@@ -1140,6 +1140,8 @@ int main()
 	void* errorcheck_mutex_storage = nullptr;
 	int pthread_mutex_type = -1;
 	int pthread_mutex_shared = -1;
+	int pthread_mutex_protocol = -1;
+	int pthread_mutex_robust = -1;
 	const bool pthread_mutex_attributes_ok =
 		darling_windows_host_symbol("pthread_mutexattr_init") != 0 &&
 		darling_windows_host_symbol("pthread_mutexattr_destroy") != 0 &&
@@ -1148,6 +1150,12 @@ int main()
 		&pthread_mutex_type) == 0 && pthread_mutex_type == 0 &&
 		darling_windows_pthread_mutexattr_getpshared(pthread_mutex_attributes,
 		&pthread_mutex_shared) == 0 && pthread_mutex_shared == 0 &&
+		darling_windows_host_symbol("pthread_mutexattr_getprotocol") != 0 &&
+		darling_windows_host_symbol("pthread_mutexattr_getrobust") != 0 &&
+		darling_windows_pthread_mutexattr_getprotocol(pthread_mutex_attributes,
+		&pthread_mutex_protocol) == 0 && pthread_mutex_protocol == 0 &&
+		darling_windows_pthread_mutexattr_getrobust(pthread_mutex_attributes,
+		&pthread_mutex_robust) == 0 && pthread_mutex_robust == 0 &&
 		darling_windows_pthread_mutexattr_settype(pthread_mutex_attributes, 1) == 0 &&
 		darling_windows_pthread_mutex_init(&recursive_mutex_storage,
 		pthread_mutex_attributes) == 0 &&
@@ -1167,6 +1175,10 @@ int main()
 		darling_windows_pthread_mutexattr_setpshared(pthread_mutex_attributes, 1) == 95 &&
 		darling_windows_pthread_mutexattr_settype(pthread_mutex_attributes, 0) == 0 &&
 		darling_windows_pthread_mutexattr_setpshared(pthread_mutex_attributes, 0) == 0 &&
+		darling_windows_pthread_mutexattr_setprotocol(pthread_mutex_attributes, 1) == 95 &&
+		darling_windows_pthread_mutexattr_setrobust(pthread_mutex_attributes, 1) == 95 &&
+		darling_windows_pthread_mutexattr_setprotocol(pthread_mutex_attributes, 0) == 0 &&
+		darling_windows_pthread_mutexattr_setrobust(pthread_mutex_attributes, 0) == 0 &&
 		darling_windows_pthread_mutexattr_destroy(&pthread_mutex_attributes) == 0;
 	char pthread_payload[] = "thread-result";
 	std::uint64_t created_thread = 0;

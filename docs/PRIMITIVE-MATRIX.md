@@ -61,6 +61,9 @@ the host smoke verifies recursive relocking. Error-checking and process-shared
 execution modes return `ENOTSUP` explicitly; they are not silently treated as
 ordinary mutexes. Error-checking self-deadlock, busy `trylock`, and foreign
 unlock rejection are covered by the host smoke.
+Protocol and robustness attribute getters/setters are also resolved and retain
+their default values; enabling priority protocols or robust recovery returns
+`ENOTSUP` until those execution semantics are implemented.
 Mach port reference mutation now rejects signed-delta underflow and unsigned
 overflow, including the `INT32_MIN` edge case, while preserving the existing
 process-local queue behavior.

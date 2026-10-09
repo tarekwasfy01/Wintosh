@@ -489,8 +489,9 @@ not a safe Darwin-compatible implementation.
 
 Pending cancellation is now delivered immediately when a worker transitions
 from `PTHREAD_CANCEL_DISABLE` back to `PTHREAD_CANCEL_ENABLE`; the host worker
-smoke exercises that state transition. The implementation still does not
-provide cleanup-handler stacks or asynchronous cancellation.
+smoke exercises that state transition. The direct `pthread_testcancel` path
+now drains the registered cleanup stack before TLS destructors as well. The
+implementation still does not provide asynchronous cancellation.
 
 The condition-variable waits now poll deferred cancellation in bounded
 intervals, so a waiting pthread can observe `pthread_cancel` without requiring

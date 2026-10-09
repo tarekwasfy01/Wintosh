@@ -27,6 +27,7 @@ namespace {
 		return static_cast<char*>(argument) + 5;
 	}
 	std::atomic_bool cancellation_worker_started{false};
+	std::atomic_bool direct_testcancel_worker_started{false};
 	std::atomic<int> cancellation_cleanup_calls{0};
 	std::atomic<int> nested_cleanup_order{0};
 	void CancellationCleanup(void*)
@@ -67,6 +68,17 @@ namespace {
 			darling_windows_pthread_testcancel();
 			if (darling_windows_pthread_setcancelstate(1, &old_state) != 0)
 				return nullptr;
+		}
+		pthread_cleanup_pop(0);
+		return nullptr;
+	}
+	void* PthreadDirectTestCancelStart(void*)
+	{
+		pthread_cleanup_push(&CancellationCleanup, nullptr);
+		direct_testcancel_worker_started.store(true, std::memory_order_release);
+		for (;;) {
+			Sleep(1);
+			darling_windows_pthread_testcancel();
 		}
 		pthread_cleanup_pop(0);
 		return nullptr;
@@ -1250,6 +1262,21 @@ int main()
 		cancellation_cleanup_calls.load(std::memory_order_relaxed) == 1 &&
 		NestedCleanupSmoke() &&
 		darling_windows_pthread_setcanceltype(1, nullptr) == 22;
+	std::uint64_t direct_testcancel_thread = 0;
+	void* direct_testcancel_result = nullptr;
+	const bool direct_testcancel_cleanup_ok =
+		darling_windows_pthread_create(&direct_testcancel_thread, nullptr,
+		&PthreadDirectTestCancelStart, nullptr) == 0 &&
+		([&] {
+			for (int attempt = 0; attempt < 100 &&
+				!direct_testcancel_worker_started.load(std::memory_order_acquire); ++attempt)
+				Sleep(1);
+			return direct_testcancel_worker_started.load(std::memory_order_acquire);
+		}()) &&
+		darling_windows_pthread_cancel(direct_testcancel_thread) == 0 &&
+		darling_windows_pthread_join(direct_testcancel_thread, &direct_testcancel_result) == 0 &&
+		direct_testcancel_result == reinterpret_cast<void*>(static_cast<std::uintptr_t>(-1)) &&
+		cancellation_cleanup_calls.load(std::memory_order_relaxed) == 2;
 	void* cancellation_mutex = nullptr;
 	std::atomic_bool cancellation_lock_started{false};
 	CancellationLockContext cancellation_lock_context{&cancellation_mutex,
@@ -1538,7 +1565,7 @@ int main()
 		darling_windows_pthread_mutex_destroy(&timed_mutex_storage) == 0 &&
 		darling_windows_pthread_cond_destroy(&timed_condition_storage) == 0;
 	std::cout << "DARWIN_PTHREAD_SELF_NAME_EQUAL="
-		          << (pthread_abi_ok && pthread_lifecycle_ok && pthread_cancellation_ok && pthread_lock_cancellation_ok && pthread_condition_cancellation_ok && pthread_attributes_ok && pthread_detach_ok &&
+		          << (pthread_abi_ok && pthread_lifecycle_ok && pthread_cancellation_ok && direct_testcancel_cleanup_ok && pthread_lock_cancellation_ok && pthread_condition_cancellation_ok && pthread_attributes_ok && pthread_detach_ok &&
 			pthread_threadid_ok && pthread_mutex_attributes_ok && pthread_condition_attributes_ok && pthread_mutex_ok && pthread_mutex_timed_ok && pthread_spin_ok && pthread_barrier_ok && pthread_rwlock_attributes_ok && pthread_rwlock_ok && pthread_rwlock_try_ok && pthread_rwlock_timed_ok && pthread_tls_ok &&
 			pthread_tls_destructor_ok && pthread_once_ok && pthread_condition_ok &&
 			pthread_timedwait_ok ? "PASS" : "FAIL") << "\n";

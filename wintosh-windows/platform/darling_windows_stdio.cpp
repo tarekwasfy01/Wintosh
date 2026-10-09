@@ -2562,6 +2562,7 @@ extern "C" int darling_windows_pthread_testcancel()
 		current_pthread_start->cancel_enabled.load(std::memory_order_acquire) &&
 		current_pthread_start->cancel_deferred.load(std::memory_order_acquire) &&
 		current_pthread_start->cancel_requested.load(std::memory_order_acquire)) {
+		RunPthreadCleanupHandlers();
 		RunPthreadTlsDestructors();
 		throw DarlingPthreadCancelled{};
 	}

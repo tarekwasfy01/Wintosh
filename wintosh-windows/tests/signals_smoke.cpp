@@ -16,11 +16,18 @@ namespace {
 std::atomic<int> signal_count{0};
 std::atomic<int> siginfo_count{0};
 std::atomic<int> siginfo_mask_seen{0};
+std::atomic<int> deferred_count{0};
+std::atomic<int> deferred_mask_seen{0};
 
 void Handler(int signal_number)
 {
 	if (signal_number == SIGINT) {
 		signal_count.fetch_add(1, std::memory_order_relaxed);
+	}
+	if (signal_number == SIGTERM) {
+		deferred_count.fetch_add(1, std::memory_order_relaxed);
+		if (darling::windows_host::DarwinSignals::Blocked(SIGINT))
+			deferred_mask_seen.fetch_add(1, std::memory_order_relaxed);
 	}
 }
 
@@ -125,6 +132,20 @@ int main()
 		siginfo_mask_seen.load(std::memory_order_relaxed) != 1 ||
 		darling::windows_host::DarwinSignals::Blocked(SIGINT))
 		return 4;
+	darling_darwin_sigaction_record deferred_action{};
+	deferred_action.handler = &Handler;
+	deferred_action.mask.bits[0] = 1u << (SIGINT - 1);
+	darling_darwin_sigset blocked_term{};
+	darling_windows_sigemptyset(&blocked_term);
+	darling_windows_sigaddset(&blocked_term, SIGTERM);
+	if (darling_windows_sigaction(SIGTERM, &deferred_action, nullptr) != 0 ||
+		darling_windows_sigprocmask(1, &blocked_term, nullptr) != 0 ||
+		!darling::windows_host::DarwinSignals::Raise(SIGTERM) ||
+		deferred_count.load(std::memory_order_relaxed) != 0 ||
+		darling_windows_sigprocmask(2, &blocked_term, nullptr) != 0 ||
+		deferred_count.load(std::memory_order_relaxed) != 1 ||
+		deferred_mask_seen.load(std::memory_order_relaxed) != 1)
+		return 8;
 	darling_darwin_sigset wait_set{};
 	wait_set.bits[0] = 1u << (SIGINT - 1);
 	std::atomic<int> waited_signal{0};

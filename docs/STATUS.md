@@ -472,6 +472,10 @@ delivery, reentrancy races, and complete Darwin restart semantics remain open.
 The signal smoke now observes the configured `sigaction` mask from inside a
 `SA_SIGINFO` handler and verifies that the mask is restored after return.
 
+It also verifies deferred delivery: a blocked SIGTERM is queued, then
+delivered after unblocking, with the configured handler mask active during the
+callback and the handler invoked exactly once.
+
 The VM read bridge now records returned local buffers and makes
 `mach_vm_deallocate` release those buffers in the current Windows process,
 even when the read targeted a different PID. This closes the previous

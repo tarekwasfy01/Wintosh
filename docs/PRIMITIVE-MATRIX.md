@@ -107,8 +107,10 @@ unsupported because Windows has no equivalent Mach deadline contract.
 
 `thread_suspend` and `thread_resume` now map foreign Mach thread names to the
 Windows suspend counter. Self-suspension is rejected deliberately because it
-would deadlock the host bridge; `thread_abort` is not mapped to
-`TerminateThread` and remains unsupported.
+would deadlock the host bridge. `thread_abort` now queues a non-destructive
+Windows APC, which can wake a foreign thread in an alertable wait; it never
+maps to `TerminateThread`. Non-alertable waits and exact Mach abort/
+suspend-count semantics remain open.
 
 The x86-64 `thread_get_state` flavor is now implemented with the verified
 Darwin 21-word register layout and count 42. Windows `CONTEXT` registers are

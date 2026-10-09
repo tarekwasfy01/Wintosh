@@ -187,6 +187,7 @@ extern "C" darling_kern_return_t darling_windows_thread_policy_get(
 	std::uint32_t* count, bool* get_default);
 extern "C" darling_kern_return_t darling_windows_thread_suspend(darling_mach_port_name_t thread);
 extern "C" darling_kern_return_t darling_windows_thread_resume(darling_mach_port_name_t thread);
+extern "C" darling_kern_return_t darling_windows_thread_abort(darling_mach_port_name_t thread);
 extern "C" darling_kern_return_t darling_windows_thread_get_state(
 	darling_mach_port_name_t thread, std::uint32_t flavor, void* state,
 	std::uint32_t* count);

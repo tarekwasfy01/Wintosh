@@ -5273,6 +5273,7 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 	if (std::strcmp(name, "thread_policy_get") == 0 || std::strcmp(name, "_thread_policy_get") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_thread_policy_get);
 	if (std::strcmp(name, "thread_suspend") == 0 || std::strcmp(name, "_thread_suspend") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_thread_suspend);
 	if (std::strcmp(name, "thread_resume") == 0 || std::strcmp(name, "_thread_resume") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_thread_resume);
+	if (std::strcmp(name, "thread_abort") == 0 || std::strcmp(name, "_thread_abort") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_thread_abort);
 	if (std::strcmp(name, "thread_get_state") == 0 || std::strcmp(name, "_thread_get_state") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_thread_get_state);
 	if (std::strcmp(name, "thread_set_state") == 0 || std::strcmp(name, "_thread_set_state") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_thread_set_state);
 	if (std::strcmp(name, "thread_set_exception_ports") == 0 || std::strcmp(name, "_thread_set_exception_ports") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_thread_set_exception_ports);

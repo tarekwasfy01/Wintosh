@@ -28,6 +28,8 @@ int main()
 		return 1;
 	if (darling_windows_thread_suspend(thread) == 0 || darling_windows_thread_resume(thread) == 0)
 		return 1;
+	if (darling_windows_thread_abort(thread) == 0)
+		return 1;
 	darling_x86_thread_state64 state{};
 	std::uint32_t state_count = darling_x86_thread_state64_count;
 	if (darling_windows_thread_get_state(thread, darling_x86_thread_state64_flavor,

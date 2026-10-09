@@ -150,8 +150,8 @@ extern "C" darling_kern_return_t darling_windows_thread_get_state(
 	std::uint32_t* count)
 {
 	if (thread == 0 || state == nullptr || count == nullptr ||
-		(flavor != darling_x86_thread_state64_flavor && flavor != darling_x86_float_state64_flavor && flavor != darling_x86_avx_state64_flavor && flavor != darling_x86_exception_state64_flavor && flavor != darling_x86_debug_state64_flavor) ||
-		*count < (flavor == darling_x86_thread_state64_flavor ? darling_x86_thread_state64_count : flavor == darling_x86_float_state64_flavor ? darling_x86_float_state64_count : flavor == darling_x86_avx_state64_flavor ? darling_x86_avx_state64_count : flavor == darling_x86_exception_state64_flavor ? darling_x86_exception_state64_count : darling_x86_debug_state64_count))
+		(flavor != darling_x86_thread_state64_flavor && flavor != darling_x86_float_state64_flavor && flavor != darling_x86_avx_state64_flavor && flavor != darling_x86_avx512_state64_flavor && flavor != darling_x86_exception_state64_flavor && flavor != darling_x86_debug_state64_flavor) ||
+		*count < (flavor == darling_x86_thread_state64_flavor ? darling_x86_thread_state64_count : flavor == darling_x86_float_state64_flavor ? darling_x86_float_state64_count : flavor == darling_x86_avx_state64_flavor ? darling_x86_avx_state64_count : flavor == darling_x86_avx512_state64_flavor ? darling_x86_avx512_state64_count : flavor == darling_x86_exception_state64_flavor ? darling_x86_exception_state64_count : darling_x86_debug_state64_count))
 		return 4;
 	if (flavor == darling_x86_exception_state64_flavor) {
 		auto* result = static_cast<darling_x86_exception_state64*>(state);
@@ -174,7 +174,7 @@ extern "C" darling_kern_return_t darling_windows_thread_get_state(
 		*count = darling_x86_debug_state64_count;
 		return 0;
 	}
-	if (flavor == darling_x86_avx_state64_flavor) {
+	if (flavor == darling_x86_avx_state64_flavor || flavor == darling_x86_avx512_state64_flavor) {
 		if (thread == darling_windows_mach_thread_self()) return darling_kern_not_supported;
 		DWORD context_length = 0;
 		if (InitializeContext(nullptr, CONTEXT_FULL | CONTEXT_XSTATE, nullptr, &context_length) ||
@@ -191,20 +191,30 @@ extern "C" darling_kern_return_t darling_windows_thread_get_state(
 		DWORD64 features = 0;
 		const auto* legacy = LocateXStateFeature(xstate_context, XSTATE_LEGACY_SSE, nullptr);
 		const auto* avx = LocateXStateFeature(xstate_context, XSTATE_AVX, nullptr);
+		const auto* kmask = LocateXStateFeature(xstate_context, XSTATE_AVX512_KMASK, nullptr);
+		const auto* zmmh = LocateXStateFeature(xstate_context, XSTATE_AVX512_ZMM_H, nullptr);
+		const auto* zmm = LocateXStateFeature(xstate_context, XSTATE_AVX512_ZMM, nullptr);
 		const bool supported = GetXStateFeaturesMask(xstate_context, &features) &&
-			(features & XSTATE_MASK_AVX) != 0 && legacy != nullptr && avx != nullptr;
+			(features & XSTATE_MASK_AVX) != 0 && legacy != nullptr && avx != nullptr &&
+			(flavor == darling_x86_avx_state64_flavor || ((features & XSTATE_MASK_AVX512) == XSTATE_MASK_AVX512 && kmask != nullptr && zmmh != nullptr && zmm != nullptr));
 		if (supported) {
 			static_assert(sizeof(XSAVE_FORMAT) == darling_x86_float_state64_count * sizeof(std::uint32_t));
 			std::memcpy(state, legacy, sizeof(XSAVE_FORMAT));
 			std::memcpy(static_cast<std::uint8_t*>(state) + sizeof(XSAVE_FORMAT) + 64, avx, 16 * 16);
+			if (flavor == darling_x86_avx512_state64_flavor) {
+				auto* output = static_cast<std::uint8_t*>(state);
+				std::memcpy(output + 832, kmask, 64);
+				std::memcpy(output + 896, zmmh, 512);
+				std::memcpy(output + 1408, zmm, 1024);
+			}
 		}
 		ResumeThread(xstate_handle); CloseHandle(xstate_handle);
 		if (!supported) return darling_kern_not_supported;
-		*count = darling_x86_avx_state64_count;
+		*count = flavor == darling_x86_avx_state64_flavor ? darling_x86_avx_state64_count : darling_x86_avx512_state64_count;
 		return 0;
 	}
 	CONTEXT context{};
-	context.ContextFlags = flavor == darling_x86_avx_state64_flavor ? CONTEXT_FULL | CONTEXT_XSTATE : flavor == darling_x86_float_state64_flavor ? CONTEXT_FLOATING_POINT : CONTEXT_CONTROL | CONTEXT_INTEGER;
+		context.ContextFlags = (flavor == darling_x86_avx_state64_flavor || flavor == darling_x86_avx512_state64_flavor) ? CONTEXT_FULL | CONTEXT_XSTATE : flavor == darling_x86_float_state64_flavor ? CONTEXT_FLOATING_POINT : CONTEXT_CONTROL | CONTEXT_INTEGER;
 	HANDLE handle = nullptr;
 	bool suspended = false;
 	bool owned = false;

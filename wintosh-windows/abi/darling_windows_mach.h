@@ -54,6 +54,90 @@ constexpr std::uint32_t darling_thread_extended_policy = 1;
 constexpr std::uint32_t darling_thread_time_constraint_policy = 2;
 constexpr std::uint32_t darling_thread_precedence_policy = 3;
 constexpr darling_kern_return_t darling_kern_not_supported = 0x2c;
+constexpr std::uint32_t darling_thread_basic_info_flavor = 3;
+constexpr std::uint32_t darling_thread_identifier_info_flavor = 4;
+constexpr std::uint32_t darling_thread_extended_info_flavor = 5;
+constexpr std::uint32_t darling_thread_sched_timeshare_info_flavor = 10;
+constexpr std::uint32_t darling_thread_sched_rr_info_flavor = 11;
+constexpr std::uint32_t darling_thread_sched_fifo_info_flavor = 12;
+constexpr std::uint32_t darling_thread_basic_info_count = 8;
+constexpr std::uint32_t darling_thread_identifier_info_count = 6;
+constexpr std::uint32_t darling_thread_extended_info_count = 28;
+constexpr std::uint32_t darling_thread_sched_timeshare_info_count = 5;
+constexpr std::uint32_t darling_thread_sched_rr_info_count = 5;
+constexpr std::uint32_t darling_thread_sched_fifo_info_count = 4;
+constexpr std::uint32_t darling_x86_thread_state64_flavor = 4;
+constexpr std::uint32_t darling_x86_exception_state64_flavor = 6;
+constexpr std::uint32_t darling_x86_debug_state64_flavor = 11;
+constexpr std::uint32_t darling_x86_thread_state64_count = 42;
+constexpr std::uint32_t darling_x86_exception_state64_count = 4;
+constexpr std::uint32_t darling_x86_debug_state64_count = 16;
+struct darling_time_value final { std::int32_t seconds = 0; std::int32_t microseconds = 0; };
+struct darling_thread_basic_info final {
+	darling_time_value user_time;
+	darling_time_value system_time;
+	std::int32_t cpu_usage = 0;
+	std::int32_t policy = 0;
+	std::int32_t run_state = 1;
+	std::int32_t flags = 0;
+	std::int32_t suspend_count = 0;
+	std::int32_t sleep_time = 0;
+};
+struct darling_thread_identifier_info final {
+	std::uint64_t thread_id = 0;
+	std::uint64_t thread_handle = 0;
+	std::uint64_t dispatch_qaddr = 0;
+};
+struct darling_thread_extended_info final {
+	std::uint64_t user_time = 0;
+	std::uint64_t system_time = 0;
+	std::int32_t cpu_usage = 0;
+	std::int32_t policy = 0;
+	std::int32_t run_state = 1;
+	std::int32_t flags = 0;
+	std::int32_t sleep_time = 0;
+	std::int32_t current_priority = 0;
+	std::int32_t priority = 0;
+	std::int32_t max_priority = 0;
+	char name[64]{};
+};
+struct darling_thread_sched_timeshare_info final {
+	std::int32_t max_priority = 0;
+	std::int32_t base_priority = 0;
+	std::int32_t current_priority = 0;
+	std::int32_t depressed = 0;
+	std::int32_t depress_priority = 0;
+};
+struct darling_thread_sched_rr_info final {
+	std::int32_t max_priority = 0;
+	std::int32_t base_priority = 0;
+	std::int32_t quantum = 0;
+	std::int32_t depressed = 0;
+	std::int32_t depress_priority = 0;
+};
+struct darling_thread_sched_fifo_info final {
+	std::int32_t max_priority = 0;
+	std::int32_t base_priority = 0;
+	std::int32_t depressed = 0;
+	std::int32_t depress_priority = 0;
+};
+struct darling_x86_thread_state64 final {
+	std::uint64_t rax = 0, rbx = 0, rcx = 0, rdx = 0;
+	std::uint64_t rdi = 0, rsi = 0, rbp = 0, rsp = 0;
+	std::uint64_t r8 = 0, r9 = 0, r10 = 0, r11 = 0;
+	std::uint64_t r12 = 0, r13 = 0, r14 = 0, r15 = 0;
+	std::uint64_t rip = 0, rflags = 0, cs = 0, fs = 0, gs = 0;
+};
+struct darling_x86_exception_state64 final {
+	std::uint16_t trapno = 0;
+	std::uint16_t cpu = 0;
+	std::uint32_t error = 0;
+	std::uint64_t faultvaddr = 0;
+};
+struct darling_x86_debug_state64 final {
+	std::uint64_t dr0 = 0, dr1 = 0, dr2 = 0, dr3 = 0;
+	std::uint64_t dr4 = 0, dr5 = 0, dr6 = 0, dr7 = 0;
+};
 struct darling_thread_extended_policy_info final { std::int32_t timeshare = 1; };
 struct darling_thread_precedence_policy_info final { std::int32_t importance = 0; };
 struct darling_thread_time_constraint_policy_info final {
@@ -65,6 +149,20 @@ struct darling_thread_time_constraint_policy_info final {
 extern "C" darling_kern_return_t darling_windows_thread_policy_set(
 	darling_mach_port_name_t thread, std::uint32_t flavor, const void* policy,
 	std::uint32_t count);
+extern "C" darling_kern_return_t darling_windows_thread_policy_get(
+	darling_mach_port_name_t thread, std::uint32_t flavor, void* policy,
+	std::uint32_t* count, bool* get_default);
+extern "C" darling_kern_return_t darling_windows_thread_suspend(darling_mach_port_name_t thread);
+extern "C" darling_kern_return_t darling_windows_thread_resume(darling_mach_port_name_t thread);
+extern "C" darling_kern_return_t darling_windows_thread_get_state(
+	darling_mach_port_name_t thread, std::uint32_t flavor, void* state,
+	std::uint32_t* count);
+extern "C" darling_kern_return_t darling_windows_thread_set_state(
+	darling_mach_port_name_t thread, std::uint32_t flavor, const void* state,
+	std::uint32_t count);
+extern "C" darling_kern_return_t darling_windows_thread_info(
+	darling_mach_port_name_t thread, std::uint32_t flavor, void* info,
+	std::uint32_t* count);
 extern "C" darling_kern_return_t darling_windows_host_page_size(
 	darling_mach_port_name_t host, std::uint32_t* size);
 extern "C" darling_kern_return_t darling_windows_mach_vm_allocate(

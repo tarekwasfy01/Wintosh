@@ -81,6 +81,58 @@ policy deliberately returns `KERN_NOT_SUPPORTED`. The Mach smoke covers both
 the working precedence path and the explicit unsupported boundary; this is not
 Darwin real-time scheduling equivalence.
 
+The inspection-oriented thread-info flavors are now available as well:
+`THREAD_BASIC_INFO` returns Windows thread user/system CPU time in the exact
+Darwin `time_value_t` shape, and `THREAD_IDENTIFIER_INFO` returns the native
+Windows thread identifier as the stable adapter identity. The implementation
+validates the caller-provided natural-word count and rejects unsupported
+flavors instead of fabricating Darwin data. `THREAD_EXTENDED_INFO` additionally
+returns nanosecond-scaled Windows CPU times and current Windows priority; the
+Darwin thread name and scheduler telemetry remain defaulted. The
+scheduler-specific info flavors remain open. Layouts and flavor/count values
+were checked against Apple's published XNU `mach/thread_info.h`; Wintosh does
+not copy that header into the repository.
+
+The legacy scheduler-info flavors `THREAD_SCHED_TIMESHARE_INFO`,
+`THREAD_SCHED_RR_INFO`, and `THREAD_SCHED_FIFO_INFO` now accept their exact
+Darwin-sized result buffers and expose the current Windows thread priority.
+Windows has no equivalent Darwin depression state or Mach quantum here, so
+those fields remain zero and this is an inspection adapter, not a scheduler
+emulation. Their layouts and counts are taken from Apple's `mach/policy.h`.
+
+The matching `thread_policy_get` read path is now resolved for extended and
+precedence policies. It reports the current Windows priority mapping and marks
+the result as non-default; time-constraint policy remains explicitly
+unsupported because Windows has no equivalent Mach deadline contract.
+
+`thread_suspend` and `thread_resume` now map foreign Mach thread names to the
+Windows suspend counter. Self-suspension is rejected deliberately because it
+would deadlock the host bridge; `thread_abort` is not mapped to
+`TerminateThread` and remains unsupported.
+
+The x86-64 `thread_get_state` flavor is now implemented with the verified
+Darwin 21-word register layout and count 42. Windows `CONTEXT` registers are
+copied for the current thread or for a briefly suspended foreign thread;
+foreign threads are resumed on every exit path. FPU, AVX, debug, ARM, and
+`thread_set_state` flavors remain open.
+
+The matching x86-64 `thread_set_state` path now writes integer/control
+registers for a foreign suspended Windows thread and always resumes it before
+returning. Self-targeted writes are rejected intentionally; no unsafe
+`TerminateThread`-style shortcut is used. Floating-point, AVX, debug, ARM,
+and full Mach exception-state flavors remain open.
+
+The x86-64 debug-state flavor is also mapped to Windows `CONTEXT` debug
+registers `Dr0` through `Dr7`; foreign-thread writes use the same
+suspend/resume guard as integer state. FPU and AVX state remain separate and
+are not represented by zero-filled substitutes.
+
+The x86-64 exception-state read flavor is also exposed with the exact
+four-word Darwin layout. Windows can provide the current processor number, but
+there is no active Mach trap record at an ordinary inspection point, so trap,
+error, and fault-address fields remain zero; exception-state writes remain
+unsupported.
+
 The WSL/legacy winpthreads `pthread_yield` spelling now aliases the verified
 Windows `SwitchToThread`-backed `sched_yield` primitive.
 

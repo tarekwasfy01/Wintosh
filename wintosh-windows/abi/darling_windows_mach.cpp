@@ -94,6 +94,243 @@ extern "C" darling_kern_return_t darling_windows_thread_policy_set(
 	return applied ? 0 : 4;
 }
 
+extern "C" darling_kern_return_t darling_windows_thread_policy_get(
+	darling_mach_port_name_t thread, std::uint32_t flavor, void* policy,
+	std::uint32_t* count, bool* get_default)
+{
+	if (thread == 0 || policy == nullptr || count == nullptr || *count < 1)
+		return 4;
+	if (flavor == darling_thread_time_constraint_policy)
+		return darling_kern_not_supported;
+	if (flavor != darling_thread_extended_policy && flavor != darling_thread_precedence_policy)
+		return darling_kern_not_supported;
+	HANDLE handle = thread == darling_windows_mach_thread_self() ?
+		GetCurrentThread() : OpenThread(THREAD_QUERY_LIMITED_INFORMATION, FALSE, thread);
+	if (handle == nullptr) return 4;
+	const auto priority = GetThreadPriority(handle);
+	if (flavor == darling_thread_extended_policy) {
+		auto* result = static_cast<darling_thread_extended_policy_info*>(policy);
+		result->timeshare = priority <= THREAD_PRIORITY_NORMAL ? 1 : 0;
+	} else {
+		auto* result = static_cast<darling_thread_precedence_policy_info*>(policy);
+		result->importance = priority - THREAD_PRIORITY_NORMAL;
+	}
+	*count = 1;
+	if (get_default != nullptr) *get_default = false;
+	if (handle != GetCurrentThread()) CloseHandle(handle);
+	return 0;
+}
+
+extern "C" darling_kern_return_t darling_windows_thread_suspend(darling_mach_port_name_t thread)
+{
+	if (thread == 0 || thread == darling_windows_mach_thread_self()) return 4;
+	const HANDLE handle = OpenThread(THREAD_SUSPEND_RESUME, FALSE, thread);
+	if (handle == nullptr) return 4;
+	const DWORD result = SuspendThread(handle);
+	CloseHandle(handle);
+	return result == static_cast<DWORD>(-1) ? 4 : 0;
+}
+
+extern "C" darling_kern_return_t darling_windows_thread_resume(darling_mach_port_name_t thread)
+{
+	if (thread == 0 || thread == darling_windows_mach_thread_self()) return 4;
+	const HANDLE handle = OpenThread(THREAD_SUSPEND_RESUME, FALSE, thread);
+	if (handle == nullptr) return 4;
+	const DWORD result = ResumeThread(handle);
+	CloseHandle(handle);
+	return result == static_cast<DWORD>(-1) ? 4 : 0;
+}
+
+extern "C" darling_kern_return_t darling_windows_thread_get_state(
+	darling_mach_port_name_t thread, std::uint32_t flavor, void* state,
+	std::uint32_t* count)
+{
+	if (thread == 0 || state == nullptr || count == nullptr ||
+		(flavor != darling_x86_thread_state64_flavor && flavor != darling_x86_exception_state64_flavor && flavor != darling_x86_debug_state64_flavor) ||
+		*count < (flavor == darling_x86_thread_state64_flavor ? darling_x86_thread_state64_count : flavor == darling_x86_exception_state64_flavor ? darling_x86_exception_state64_count : darling_x86_debug_state64_count))
+		return 4;
+	if (flavor == darling_x86_exception_state64_flavor) {
+		auto* result = static_cast<darling_x86_exception_state64*>(state);
+		result->cpu = static_cast<std::uint16_t>(GetCurrentProcessorNumber());
+		*count = darling_x86_exception_state64_count;
+		return 0;
+	}
+	if (flavor == darling_x86_debug_state64_flavor) {
+		HANDLE debug_handle = thread == darling_windows_mach_thread_self() ? GetCurrentThread() : OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT, FALSE, thread);
+		if (debug_handle == nullptr) return 4;
+		const bool owned_debug = debug_handle != GetCurrentThread();
+		if (owned_debug && SuspendThread(debug_handle) == static_cast<DWORD>(-1)) { CloseHandle(debug_handle); return 4; }
+		CONTEXT debug_context{}; debug_context.ContextFlags = CONTEXT_DEBUG_REGISTERS;
+		const BOOL ok = GetThreadContext(debug_handle, &debug_context);
+		if (owned_debug) ResumeThread(debug_handle); if (owned_debug) CloseHandle(debug_handle);
+		if (!ok) return 4;
+		auto* result = static_cast<darling_x86_debug_state64*>(state);
+		result->dr0 = debug_context.Dr0; result->dr1 = debug_context.Dr1; result->dr2 = debug_context.Dr2; result->dr3 = debug_context.Dr3;
+		result->dr6 = debug_context.Dr6; result->dr7 = debug_context.Dr7;
+		*count = darling_x86_debug_state64_count;
+		return 0;
+	}
+	CONTEXT context{};
+	context.ContextFlags = CONTEXT_CONTROL | CONTEXT_INTEGER;
+	HANDLE handle = nullptr;
+	bool suspended = false;
+	bool owned = false;
+	if (thread == darling_windows_mach_thread_self()) {
+		RtlCaptureContext(&context);
+	} else {
+		handle = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT, FALSE, thread);
+		if (handle == nullptr) return 4;
+		owned = true;
+		if (SuspendThread(handle) == static_cast<DWORD>(-1) || !GetThreadContext(handle, &context)) {
+			ResumeThread(handle);
+			CloseHandle(handle);
+			return 4;
+		}
+		suspended = true;
+	}
+	auto* result = static_cast<darling_x86_thread_state64*>(state);
+	result->rax = context.Rax; result->rbx = context.Rbx; result->rcx = context.Rcx; result->rdx = context.Rdx;
+	result->rdi = context.Rdi; result->rsi = context.Rsi; result->rbp = context.Rbp; result->rsp = context.Rsp;
+	result->r8 = context.R8; result->r9 = context.R9; result->r10 = context.R10; result->r11 = context.R11;
+	result->r12 = context.R12; result->r13 = context.R13; result->r14 = context.R14; result->r15 = context.R15;
+	result->rip = context.Rip; result->rflags = context.EFlags; result->cs = context.SegCs;
+	result->fs = context.SegFs; result->gs = context.SegGs;
+	*count = darling_x86_thread_state64_count;
+	if (suspended) ResumeThread(handle);
+	if (owned) CloseHandle(handle);
+	return 0;
+}
+
+extern "C" darling_kern_return_t darling_windows_thread_set_state(
+	darling_mach_port_name_t thread, std::uint32_t flavor, const void* state,
+	std::uint32_t count)
+{
+	if (thread == 0 || thread == darling_windows_mach_thread_self() ||
+		(flavor != darling_x86_thread_state64_flavor && flavor != darling_x86_debug_state64_flavor) || state == nullptr ||
+		count < (flavor == darling_x86_thread_state64_flavor ? darling_x86_thread_state64_count : darling_x86_debug_state64_count))
+		return 4;
+	if (flavor == darling_x86_debug_state64_flavor && count < darling_x86_debug_state64_count) return 4;
+	const HANDLE handle = OpenThread(THREAD_SUSPEND_RESUME | THREAD_SET_CONTEXT, FALSE, thread);
+	if (handle == nullptr) return 4;
+	if (SuspendThread(handle) == static_cast<DWORD>(-1)) {
+		CloseHandle(handle);
+		return 4;
+	}
+	CONTEXT context{};
+	context.ContextFlags = flavor == darling_x86_debug_state64_flavor ? CONTEXT_DEBUG_REGISTERS : CONTEXT_CONTROL | CONTEXT_INTEGER;
+	if (!GetThreadContext(handle, &context)) {
+		ResumeThread(handle); CloseHandle(handle); return 4;
+	}
+	if (flavor == darling_x86_debug_state64_flavor) {
+		const auto* source = static_cast<const darling_x86_debug_state64*>(state);
+		context.Dr0 = source->dr0; context.Dr1 = source->dr1; context.Dr2 = source->dr2; context.Dr3 = source->dr3;
+		context.Dr6 = source->dr6; context.Dr7 = source->dr7;
+		const BOOL applied = SetThreadContext(handle, &context); ResumeThread(handle); CloseHandle(handle); return applied ? 0 : 4;
+	}
+	const auto* source = static_cast<const darling_x86_thread_state64*>(state);
+	context.Rax = source->rax; context.Rbx = source->rbx; context.Rcx = source->rcx; context.Rdx = source->rdx;
+	context.Rdi = source->rdi; context.Rsi = source->rsi; context.Rbp = source->rbp; context.Rsp = source->rsp;
+	context.R8 = source->r8; context.R9 = source->r9; context.R10 = source->r10; context.R11 = source->r11;
+	context.R12 = source->r12; context.R13 = source->r13; context.R14 = source->r14; context.R15 = source->r15;
+	context.Rip = source->rip; context.EFlags = static_cast<DWORD>(source->rflags);
+	context.SegCs = static_cast<WORD>(source->cs); context.SegFs = static_cast<WORD>(source->fs);
+	context.SegGs = static_cast<WORD>(source->gs);
+	const BOOL applied = SetThreadContext(handle, &context);
+	ResumeThread(handle);
+	CloseHandle(handle);
+	return applied ? 0 : 4;
+}
+
+namespace {
+bool OpenThreadForQuery(darling_mach_port_name_t thread, HANDLE& handle, bool& owned)
+{
+	owned = false;
+	if (thread == 0) return false;
+	if (thread == darling_windows_mach_thread_self()) {
+		handle = GetCurrentThread();
+		return true;
+	}
+	handle = OpenThread(THREAD_QUERY_LIMITED_INFORMATION, FALSE, thread);
+	owned = handle != nullptr;
+	return handle != nullptr;
+}
+
+darling_time_value FileTimeToDarling(const FILETIME& value)
+{
+	ULARGE_INTEGER ticks{};
+	ticks.LowPart = value.dwLowDateTime;
+	ticks.HighPart = value.dwHighDateTime;
+	const auto micros = ticks.QuadPart / 10;
+	return {static_cast<std::int32_t>(micros / 1000000),
+		static_cast<std::int32_t>(micros % 1000000)};
+}
+}
+
+extern "C" darling_kern_return_t darling_windows_thread_info(
+	darling_mach_port_name_t thread, std::uint32_t flavor, void* info,
+	std::uint32_t* count)
+{
+	if (info == nullptr || count == nullptr) return 4;
+	const auto required = flavor == darling_thread_basic_info_flavor ?
+		darling_thread_basic_info_count : flavor == darling_thread_identifier_info_flavor ?
+		darling_thread_identifier_info_count : flavor == darling_thread_extended_info_flavor ?
+		darling_thread_extended_info_count : flavor == darling_thread_sched_timeshare_info_flavor ?
+		darling_thread_sched_timeshare_info_count : flavor == darling_thread_sched_rr_info_flavor ?
+		darling_thread_sched_rr_info_count : flavor == darling_thread_sched_fifo_info_flavor ?
+		darling_thread_sched_fifo_info_count : 0;
+	if (required == 0 || *count < required) return 4;
+	HANDLE handle = nullptr;
+	bool owned = false;
+	if (!OpenThreadForQuery(thread, handle, owned)) return 4;
+	if (flavor == darling_thread_identifier_info_flavor) {
+		auto* result = static_cast<darling_thread_identifier_info*>(info);
+		result->thread_id = static_cast<std::uint64_t>(thread);
+		result->thread_handle = static_cast<std::uint64_t>(thread);
+		result->dispatch_qaddr = 0;
+	} else {
+		FILETIME creation{}, exit{}, kernel{}, user{};
+		if (!GetThreadTimes(handle, &creation, &exit, &kernel, &user)) {
+			if (owned) CloseHandle(handle);
+			return 4;
+		}
+		if (flavor == darling_thread_sched_timeshare_info_flavor || flavor == darling_thread_sched_rr_info_flavor ||
+			flavor == darling_thread_sched_fifo_info_flavor) {
+			const auto priority = GetThreadPriority(handle);
+			if (flavor == darling_thread_sched_timeshare_info_flavor) {
+				auto* result = static_cast<darling_thread_sched_timeshare_info*>(info);
+				result->max_priority = THREAD_PRIORITY_HIGHEST;
+				result->base_priority = priority;
+				result->current_priority = priority;
+			} else if (flavor == darling_thread_sched_rr_info_flavor) {
+				auto* result = static_cast<darling_thread_sched_rr_info*>(info);
+				result->max_priority = THREAD_PRIORITY_HIGHEST;
+				result->base_priority = priority;
+			} else {
+				auto* result = static_cast<darling_thread_sched_fifo_info*>(info);
+				result->max_priority = THREAD_PRIORITY_HIGHEST;
+				result->base_priority = priority;
+			}
+		} else if (flavor == darling_thread_extended_info_flavor) {
+			auto* result = static_cast<darling_thread_extended_info*>(info);
+			ULARGE_INTEGER user_ticks{}, kernel_ticks{};
+			user_ticks.LowPart = user.dwLowDateTime; user_ticks.HighPart = user.dwHighDateTime;
+			kernel_ticks.LowPart = kernel.dwLowDateTime; kernel_ticks.HighPart = kernel.dwHighDateTime;
+			result->user_time = user_ticks.QuadPart * 100;
+			result->system_time = kernel_ticks.QuadPart * 100;
+			result->current_priority = GetThreadPriority(handle);
+			result->priority = result->current_priority;
+			result->max_priority = THREAD_PRIORITY_HIGHEST;
+		} else {
+			auto* result = static_cast<darling_thread_basic_info*>(info);
+			result->user_time = FileTimeToDarling(user);
+			result->system_time = FileTimeToDarling(kernel);
+		}
+	}
+	*count = required;
+	if (owned) CloseHandle(handle);
+	return 0;
+}
+
 extern "C" darling_kern_return_t darling_windows_host_page_size(
 	darling_mach_port_name_t host, std::uint32_t* size)
 {

@@ -18,6 +18,71 @@ int main()
 		&precedence, 1) != 0 || darling_windows_thread_policy_set(thread,
 		darling_thread_time_constraint_policy, &time_constraint, 4) != darling_kern_not_supported)
 		return 1;
+	darling_thread_precedence_policy_info precedence_read{};
+	std::uint32_t precedence_count = 1;
+	bool precedence_default = true;
+	if (darling_windows_thread_policy_get(thread, darling_thread_precedence_policy,
+		&precedence_read, &precedence_count, &precedence_default) != 0 ||
+		precedence_count != 1 || precedence_default)
+		return 1;
+	if (darling_windows_thread_suspend(thread) == 0 || darling_windows_thread_resume(thread) == 0)
+		return 1;
+	darling_x86_thread_state64 state{};
+	std::uint32_t state_count = darling_x86_thread_state64_count;
+	if (darling_windows_thread_get_state(thread, darling_x86_thread_state64_flavor,
+		&state, &state_count) != 0 || state_count != darling_x86_thread_state64_count ||
+		state.rip == 0 || state.rsp == 0)
+		return 1;
+	if (darling_windows_thread_set_state(thread, darling_x86_thread_state64_flavor,
+		&state, darling_x86_thread_state64_count) == 0)
+		return 1;
+	darling_x86_exception_state64 exception_state{};
+	std::uint32_t exception_count = darling_x86_exception_state64_count;
+	if (darling_windows_thread_get_state(thread, darling_x86_exception_state64_flavor,
+		&exception_state, &exception_count) != 0 ||
+		exception_count != darling_x86_exception_state64_count)
+		return 1;
+	darling_x86_debug_state64 debug_state{};
+	std::uint32_t debug_count = darling_x86_debug_state64_count;
+	if (darling_windows_thread_get_state(thread, darling_x86_debug_state64_flavor,
+		&debug_state, &debug_count) != 0 || debug_count != darling_x86_debug_state64_count ||
+		darling_windows_thread_set_state(thread, darling_x86_debug_state64_flavor,
+		&debug_state, darling_x86_debug_state64_count) == 0)
+		return 1;
+	darling_thread_basic_info basic{};
+	std::uint32_t basic_count = darling_thread_basic_info_count;
+	if (darling_windows_thread_info(thread, darling_thread_basic_info_flavor, &basic,
+		&basic_count) != 0 || basic_count != darling_thread_basic_info_count ||
+		basic.user_time.seconds < 0 || basic.system_time.seconds < 0)
+		return 1;
+	darling_thread_identifier_info identifier{};
+	std::uint32_t identifier_count = darling_thread_identifier_info_count;
+	if (darling_windows_thread_info(thread, darling_thread_identifier_info_flavor,
+		&identifier, &identifier_count) != 0 || identifier.thread_id == 0 ||
+		identifier_count != darling_thread_identifier_info_count)
+		return 1;
+	darling_thread_extended_info extended{};
+	std::uint32_t extended_count = darling_thread_extended_info_count;
+	if (darling_windows_thread_info(thread, darling_thread_extended_info_flavor,
+		&extended, &extended_count) != 0 || extended_count != darling_thread_extended_info_count ||
+		extended.max_priority != THREAD_PRIORITY_HIGHEST)
+		return 1;
+	darling_thread_sched_timeshare_info timeshare{};
+	std::uint32_t timeshare_count = darling_thread_sched_timeshare_info_count;
+	if (darling_windows_thread_info(thread, darling_thread_sched_timeshare_info_flavor,
+		&timeshare, &timeshare_count) != 0 || timeshare_count != darling_thread_sched_timeshare_info_count ||
+		timeshare.depressed != 0)
+		return 1;
+	darling_thread_sched_rr_info rr{};
+	std::uint32_t rr_count = darling_thread_sched_rr_info_count;
+	if (darling_windows_thread_info(thread, darling_thread_sched_rr_info_flavor, &rr,
+		&rr_count) != 0 || rr_count != darling_thread_sched_rr_info_count)
+		return 1;
+	darling_thread_sched_fifo_info fifo{};
+	std::uint32_t fifo_count = darling_thread_sched_fifo_info_count;
+	if (darling_windows_thread_info(thread, darling_thread_sched_fifo_info_flavor, &fifo,
+		&fifo_count) != 0 || fifo_count != darling_thread_sched_fifo_info_count)
+		return 1;
 	const auto host = darling_windows_mach_host_self();
 	std::uint32_t page_size = 0;
 	darling_mach_vm_address_t vm_address = 0;

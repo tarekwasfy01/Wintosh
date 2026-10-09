@@ -87,6 +87,12 @@ with resolver coverage; process-shared rwlocks return `ENOTSUP` explicitly.
 The immediate `tryrdlock`/`trywrlock` primitives are now resolved and tested:
 shared readers can coexist, writers report `EBUSY` while readers hold the lock,
 and acquire successfully after release.
+
+The focused `pthread_sync_smoke` independently runs five successful cycles for
+mutex, spinlock, reader/writer-lock, and reusable two-thread barrier behavior.
+This separates stable synchronization primitives from the larger host smoke;
+condition cancellation and full cleanup ordering remain a separate partial
+family.
 Absolute-deadline `timedrdlock` and `timedwrlock` entry points now poll with
 cancellation points and return `ETIMEDOUT` for expired deadlines; the host
 smoke verifies the expired-reader case.

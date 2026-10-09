@@ -5278,6 +5278,7 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 	if (std::strcmp(name, "thread_set_exception_ports") == 0 || std::strcmp(name, "_thread_set_exception_ports") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_thread_set_exception_ports);
 	if (std::strcmp(name, "thread_get_exception_ports") == 0 || std::strcmp(name, "_thread_get_exception_ports") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_thread_get_exception_ports);
 	if (std::strcmp(name, "thread_swap_exception_ports") == 0 || std::strcmp(name, "_thread_swap_exception_ports") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_thread_swap_exception_ports);
+	if (std::strcmp(name, "thread_get_exception_ports_info") == 0 || std::strcmp(name, "_thread_get_exception_ports_info") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_thread_get_exception_ports_info);
 	if (std::strcmp(name, "thread_info") == 0 || std::strcmp(name, "_thread_info") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_thread_info);
 	if (std::strcmp(name, "mach_host_self") == 0 || std::strcmp(name, "_mach_host_self") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_mach_host_self);
 	if (std::strcmp(name, "host_page_size") == 0 || std::strcmp(name, "_host_page_size") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_host_page_size);

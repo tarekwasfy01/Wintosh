@@ -133,9 +133,10 @@ mask, handler port, behavior, and state flavor for the current Wintosh
 thread-name namespace. This is registration state only: Windows exception
 dispatch is not yet routed into Mach messages, but `thread_swap_exception_ports`
 now performs validated replacement and returns the previous registrations.
-The Windows-facing `thread_get_exception_ports_info` handler-info layout is
-not public in the bundled SDK and therefore remains intentionally unguessed;
-dispatch and that info variant remain open.
+`thread_get_exception_ports_info` now uses the verified two-word XNU
+`ipc_info_port_t` layout and returns matching registered handler ports. The
+receiver object is zero because the adapter has no kernel Mach task object;
+actual Windows exception dispatch remains open.
 
 The x86-64 exception-state read flavor is also exposed with the exact
 four-word Darwin layout. Windows can provide the current processor number, but

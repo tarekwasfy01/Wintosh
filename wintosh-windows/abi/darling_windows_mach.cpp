@@ -305,6 +305,31 @@ extern "C" darling_kern_return_t darling_windows_thread_swap_exception_ports(
 	return 0;
 }
 
+extern "C" darling_kern_return_t darling_windows_thread_get_exception_ports_info(
+	darling_mach_port_name_t port, darling_exception_mask_t mask,
+	darling_exception_mask_t* masks, std::uint32_t* masks_count,
+	darling_exception_handler_info* handlers_info,
+	darling_exception_behavior_t* behaviors, darling_exception_flavor_t* flavors)
+{
+	if (port == 0 || mask == 0 || masks == nullptr || masks_count == nullptr ||
+		handlers_info == nullptr || behaviors == nullptr || flavors == nullptr || *masks_count == 0)
+		return 4;
+	std::lock_guard lock(exception_ports_mutex);
+	const auto capacity = *masks_count;
+	std::uint32_t written = 0;
+	for (const auto& [thread, entries] : exception_ports) {
+		(void)thread;
+		for (const auto& entry : entries) {
+			if (entry.port != port || (entry.mask & mask) == 0 || written == capacity) continue;
+			masks[written] = entry.mask;
+			handlers_info[written] = {entry.port, 0};
+			behaviors[written] = entry.behavior; flavors[written] = entry.flavor; ++written;
+		}
+	}
+	*masks_count = written;
+	return 0;
+}
+
 namespace {
 bool OpenThreadForQuery(darling_mach_port_name_t thread, HANDLE& handle, bool& owned)
 {

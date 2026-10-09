@@ -101,6 +101,13 @@ int main()
 		&returned_mask, &swapped_count, &returned_handler, &returned_behavior, &returned_flavor) != 0 ||
 		swapped_count != 1 || returned_handler != host || returned_behavior != 2 || returned_flavor != 4)
 		return 1;
+	darling_exception_handler_info handler_info{};
+	std::uint32_t handler_info_count = 1;
+	if (darling_windows_thread_get_exception_ports_info(0x1234, exception_mask,
+		&returned_mask, &handler_info_count, &handler_info, &returned_behavior,
+		&returned_flavor) != 0 || handler_info_count != 1 ||
+		handler_info.port_object != 0x1234 || handler_info.receiver_object != 0)
+		return 1;
 	std::uint32_t page_size = 0;
 	darling_mach_vm_address_t vm_address = 0;
 	darling_mach_vm_address_t vm_copy_address = 0;

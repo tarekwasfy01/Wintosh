@@ -2877,6 +2877,12 @@ extern "C" int darling_windows_pthread_threadid_np(std::uint64_t thread,
 	return 0;
 }
 
+extern "C" std::uint64_t darling_windows_pthread_mach_thread_np(std::uint64_t thread)
+{
+	std::uint64_t thread_id = 0;
+	return darling_windows_pthread_threadid_np(thread, &thread_id) == 0 ? thread_id : 0;
+}
+
 namespace {
 struct DarlingPthreadMutex final {
 	explicit DarlingPthreadMutex(int requested_type)
@@ -5069,6 +5075,10 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 	if (std::strcmp(name, "_pthread_threadid_np") == 0 ||
 		std::strcmp(name, "pthread_threadid_np") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_threadid_np);
+	}
+	if (std::strcmp(name, "_pthread_mach_thread_np") == 0 ||
+		std::strcmp(name, "pthread_mach_thread_np") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_mach_thread_np);
 	}
 	if (std::strcmp(name, "_pthread_mutex_init") == 0 || std::strcmp(name, "pthread_mutex_init") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_mutex_init);

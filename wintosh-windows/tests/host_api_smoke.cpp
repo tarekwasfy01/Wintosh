@@ -1426,8 +1426,10 @@ int main()
 	std::uint64_t thread_id = 0;
 	const bool pthread_threadid_ok =
 		darling_windows_host_symbol("pthread_threadid_np") != 0 &&
+		darling_windows_host_symbol("pthread_mach_thread_np") != 0 &&
 		darling_windows_pthread_threadid_np(0, &thread_id) == 0 &&
 		thread_id == pthread_self &&
+		darling_windows_pthread_mach_thread_np(0) == pthread_self &&
 		darling_windows_pthread_threadid_np(pthread_self + 1, &thread_id) == 22 &&
 		([&] {
 			std::uint64_t foreign_thread = 0;

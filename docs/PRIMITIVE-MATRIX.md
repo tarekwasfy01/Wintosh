@@ -58,6 +58,9 @@ the parent after join; unknown handles and invalid buffers remain `EINVAL`.
 `pthread_threadid_np` likewise resolves a live managed pthread handle to its
 native Windows thread ID; invalid or no-longer-managed handles remain
 `EINVAL`.
+Darling's `pthread_mach_thread_np` is exposed as the value-returning companion
+for callers such as CoreAudio that pass the thread into Mach policy APIs; it
+returns the same native ID and `0` for an invalid handle.
 Handle-scoped names are removed when the thread is joined or detached, so the
 adapter does not retain stale pthread identity state.
 

@@ -320,6 +320,7 @@ extern "C" void darling_windows_pthread_cleanup_pop(
 #endif
 extern "C" int darling_windows_pthread_threadid_np(std::uint64_t thread,
 	std::uint64_t* thread_id);
+extern "C" std::uint64_t darling_windows_pthread_mach_thread_np(std::uint64_t thread);
 extern "C" int darling_windows_pthread_attr_init(void* attributes);
 extern "C" int darling_windows_pthread_attr_destroy(void* attributes);
 extern "C" int darling_windows_pthread_attr_setdetachstate(void* attributes, int state);

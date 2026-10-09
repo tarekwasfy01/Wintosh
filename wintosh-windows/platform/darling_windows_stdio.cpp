@@ -2830,6 +2830,7 @@ struct DarlingPthreadMutexAttributes final {
 	int pshared = 0;
 	int protocol = 0;
 	int robust = 0;
+	int priority_ceiling = 0;
 };
 struct DarlingPthreadConditionAttributes final {
 	int pshared = 0;
@@ -2922,6 +2923,23 @@ extern "C" int darling_windows_pthread_mutexattr_getrobust(const void* attribute
 	if (value == nullptr || robust == nullptr) return 22;
 	*robust = value->robust;
 	return 0;
+}
+
+extern "C" int darling_windows_pthread_mutexattr_getprioceiling(
+	const void* attributes, int* ceiling)
+{
+	const auto* value = PthreadMutexAttributesFromStorage(attributes);
+	if (value == nullptr || ceiling == nullptr) return 22;
+	*ceiling = value->priority_ceiling;
+	return 0;
+}
+
+extern "C" int darling_windows_pthread_mutexattr_setprioceiling(void* attributes,
+	int ceiling)
+{
+	auto* value = PthreadMutexAttributesFromStorage(attributes);
+	if (value == nullptr || ceiling < 0) return 22;
+	return 95;
 }
 
 extern "C" int darling_windows_pthread_mutex_init(void* mutex, const void* attributes)
@@ -4923,6 +4941,8 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 	if (std::strcmp(name, "_pthread_mutexattr_getprotocol") == 0 || std::strcmp(name, "pthread_mutexattr_getprotocol") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_mutexattr_getprotocol);
 	if (std::strcmp(name, "_pthread_mutexattr_setrobust") == 0 || std::strcmp(name, "pthread_mutexattr_setrobust") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_mutexattr_setrobust);
 	if (std::strcmp(name, "_pthread_mutexattr_getrobust") == 0 || std::strcmp(name, "pthread_mutexattr_getrobust") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_mutexattr_getrobust);
+	if (std::strcmp(name, "_pthread_mutexattr_getprioceiling") == 0 || std::strcmp(name, "pthread_mutexattr_getprioceiling") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_mutexattr_getprioceiling);
+	if (std::strcmp(name, "_pthread_mutexattr_setprioceiling") == 0 || std::strcmp(name, "pthread_mutexattr_setprioceiling") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_mutexattr_setprioceiling);
 	if (std::strcmp(name, "_pthread_cond_init") == 0 || std::strcmp(name, "pthread_cond_init") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_cond_init);
 	}

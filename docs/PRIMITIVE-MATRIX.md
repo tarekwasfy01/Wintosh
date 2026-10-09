@@ -93,6 +93,11 @@ mutex backend against an absolute Darwin timespec and returns `ETIMEDOUT` for an
 expired deadline; the host smoke verifies the resolver and expired-lock path.
 Wall-clock adjustment equivalence and cancellation while blocked remain open.
 
+Mutex priority-ceiling attributes now resolve through
+`pthread_mutexattr_getprioceiling` and `pthread_mutexattr_setprioceiling`.
+The default ceiling is readable, while enabling a non-default ceiling returns
+`ENOTSUP` until Windows priority-inheritance semantics are implemented.
+
 The pthread barrier family now resolves `pthread_barrier_init`,
 `pthread_barrier_wait`, and `pthread_barrier_destroy` through an opaque
 Windows adapter backed by a mutex/condition generation barrier. The host smoke

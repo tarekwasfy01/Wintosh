@@ -356,6 +356,8 @@ extern "C" int darling_windows_pthread_mutexattr_setprotocol(void* attributes, i
 extern "C" int darling_windows_pthread_mutexattr_getprotocol(const void* attributes, int* protocol);
 extern "C" int darling_windows_pthread_mutexattr_setrobust(void* attributes, int robust);
 extern "C" int darling_windows_pthread_mutexattr_getrobust(const void* attributes, int* robust);
+extern "C" int darling_windows_pthread_mutexattr_getprioceiling(const void* attributes, int* ceiling);
+extern "C" int darling_windows_pthread_mutexattr_setprioceiling(void* attributes, int ceiling);
 extern "C" int darling_windows_pthread_cond_init(void* condition, const void* attributes);
 extern "C" int darling_windows_pthread_cond_destroy(void* condition);
 extern "C" int darling_windows_pthread_condattr_init(void* attributes);

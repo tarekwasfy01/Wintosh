@@ -595,6 +595,10 @@ int main()
 		ok = darling_windows_mach_port_allocate(task, &notification_target) == 0 &&
 			darling_windows_mach_port_allocate(task, &notification_port) == 0 &&
 			darling_windows_mach_port_allocate(task, &replacement_notification_port) == 0 &&
+			darling_windows_mach_port_request_notification(task + 1, notification_target,
+			0x4e544659, notification_port, &previous_notification) == 4 &&
+			darling_windows_mach_port_request_notification(task, notification_target,
+			0x4e544659, 0xffffffffu, &previous_notification) == 4 &&
 			darling_windows_mach_port_request_notification(task, notification_target,
 			0x4e544659, notification_port, &previous_notification) == 0 &&
 			previous_notification == 0 &&

@@ -38,8 +38,10 @@ The broker now consumes the same envelope over a Windows named pipe for the
 first real cross-process operation: `Allocate` creates a broker-owned port
 token and `Deallocate` releases it. The separate-process smoke test passes
 `BROKER_MACH_ALLOCATE` and clean broker shutdown. Cross-process message
-delivery (`Send`/`Receive`), rights/dispositions, notifications, waiters,
-MIG, out-of-line memory, and a Mach-compatible name-space remain open.
+delivery (`Send`/`Receive`) now has a bounded broker FIFO for allocated tokens,
+covered by `BROKER_MACH_SEND_RECEIVE=PASS`. Rights/dispositions,
+notifications, waiters, MIG, out-of-line memory, and a Mach-compatible
+name-space remain open.
 
 The platform path adapter now provides lexical `AbsolutePath` resolution and
 handle-based `CanonicalPath` resolution through Windows final-name lookup,

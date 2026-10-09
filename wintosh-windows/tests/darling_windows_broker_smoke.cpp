@@ -84,6 +84,35 @@ int wmain()
 			std::cerr << "BROKER_MACH_ALLOCATE=FAIL\n";
 			return 5;
 		}
+		const auto token = allocate_response.port_token;
+		const darling::windows_host::MachIpcEnvelope send_request{
+			darling::windows_host::MachIpcOperation::Send, 101, token, 0,
+			{'B', 'R', 'O', 'K', 'E', 'R'}};
+		const auto send_bytes = darling::windows_host::EncodeMachIpcEnvelope(send_request);
+		client.Write(std::string(send_bytes.begin(), send_bytes.end()));
+		const auto send_wire = client.Read();
+		const auto send_response = darling::windows_host::DecodeMachIpcEnvelope(
+			std::vector<std::uint8_t>(send_wire.begin(), send_wire.end()));
+		if (send_response.operation != darling::windows_host::MachIpcOperation::Send ||
+			send_response.request_id != 101 || send_response.port_token != token) {
+			std::cerr << "BROKER_MACH_SEND=FAIL\n";
+			return 5;
+		}
+
+		const darling::windows_host::MachIpcEnvelope receive_request{
+			darling::windows_host::MachIpcOperation::Receive, 102, token, 0, {}};
+		const auto receive_bytes = darling::windows_host::EncodeMachIpcEnvelope(receive_request);
+		client.Write(std::string(receive_bytes.begin(), receive_bytes.end()));
+		const auto receive_wire = client.Read();
+		const auto receive_response = darling::windows_host::DecodeMachIpcEnvelope(
+			std::vector<std::uint8_t>(receive_wire.begin(), receive_wire.end()));
+		if (receive_response.operation != darling::windows_host::MachIpcOperation::Receive ||
+			receive_response.request_id != 102 || receive_response.port_token != token ||
+			receive_response.payload != send_request.payload) {
+			std::cerr << "BROKER_MACH_RECEIVE=FAIL\n";
+			return 5;
+		}
+		std::cout << "BROKER_MACH_SEND_RECEIVE=PASS\n";
 
 		client.Write("SHUTDOWN");
 		const auto shutdown = client.Read();

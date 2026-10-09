@@ -9,6 +9,8 @@
 #include "darling_windows_runtime.h"
 
 #include <iostream>
+#include <deque>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -41,6 +43,7 @@ int wmain(int argc, wchar_t** argv)
 		server.WaitForClient();
 		std::uint64_t next_port_token = 1;
 		std::unordered_set<std::uint64_t> allocated_ports;
+		std::unordered_map<std::uint64_t, std::deque<std::vector<std::uint8_t>>> port_queues;
 
 		for (;;) {
 			const auto request = server.Read();
@@ -61,6 +64,7 @@ int wmain(int argc, wchar_t** argv)
 				if (envelope.operation == darling::windows_host::MachIpcOperation::Allocate) {
 					const auto token = next_port_token++;
 					allocated_ports.insert(token);
+					port_queues.emplace(token, std::deque<std::vector<std::uint8_t>>{});
 					darling::windows_host::MachIpcEnvelope response{
 						darling::windows_host::MachIpcOperation::Allocate,
 						envelope.request_id, token, 0, {}};
@@ -70,9 +74,34 @@ int wmain(int argc, wchar_t** argv)
 				if (envelope.operation == darling::windows_host::MachIpcOperation::Deallocate) {
 					if (allocated_ports.erase(envelope.port_token) == 0)
 						throw std::invalid_argument("unknown Mach IPC port token");
+					port_queues.erase(envelope.port_token);
 					darling::windows_host::MachIpcEnvelope response{
 						darling::windows_host::MachIpcOperation::Deallocate,
 						envelope.request_id, envelope.port_token, 0, {}};
+					server.Write(AsString(darling::windows_host::EncodeMachIpcEnvelope(response)));
+					continue;
+				}
+				if (envelope.operation == darling::windows_host::MachIpcOperation::Send) {
+					if (!allocated_ports.contains(envelope.port_token))
+						throw std::invalid_argument("unknown Mach IPC port token");
+					port_queues.at(envelope.port_token).push_back(envelope.payload);
+					darling::windows_host::MachIpcEnvelope response{
+						darling::windows_host::MachIpcOperation::Send,
+						envelope.request_id, envelope.port_token, 0, {}};
+					server.Write(AsString(darling::windows_host::EncodeMachIpcEnvelope(response)));
+					continue;
+				}
+				if (envelope.operation == darling::windows_host::MachIpcOperation::Receive) {
+					if (!allocated_ports.contains(envelope.port_token))
+						throw std::invalid_argument("unknown Mach IPC port token");
+					auto& queue = port_queues.at(envelope.port_token);
+					if (queue.empty())
+						throw std::runtime_error("Mach IPC receive would block");
+					auto payload = std::move(queue.front());
+					queue.pop_front();
+					darling::windows_host::MachIpcEnvelope response{
+						darling::windows_host::MachIpcOperation::Receive,
+						envelope.request_id, envelope.port_token, 0, std::move(payload)};
 					server.Write(AsString(darling::windows_host::EncodeMachIpcEnvelope(response)));
 					continue;
 				}

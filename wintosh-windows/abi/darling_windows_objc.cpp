@@ -2207,19 +2207,31 @@ extern "C" DarlingObjcAppleBlock* darling_objc_apple_block_create1(
 extern "C" DarlingObjcAppleBlock* darling_objc_apple_block_copy(
 	DarlingObjcAppleBlock* block)
 {
-	if (block)
-		block->retain_count.fetch_add(1, std::memory_order_relaxed);
+	if (!block)
+		return nullptr;
+	std::lock_guard lock(AppleBlockRuntimeMutex());
+	if (!ManagedAppleBlocks().contains(block))
+		return nullptr;
+	block->retain_count.fetch_add(1, std::memory_order_relaxed);
 	return block;
 }
 
 extern "C" void darling_objc_apple_block_release(DarlingObjcAppleBlock* block)
 {
-	if (block && block->retain_count.fetch_sub(1,
-		std::memory_order_acq_rel) == 1) {
+	if (!block)
+		return;
+	bool destroy = false;
+	{
 		std::lock_guard lock(AppleBlockRuntimeMutex());
-		ManagedAppleBlocks().erase(block);
-		delete block;
+		if (!ManagedAppleBlocks().contains(block))
+			return;
+		if (block->retain_count.fetch_sub(1, std::memory_order_acq_rel) == 1) {
+			ManagedAppleBlocks().erase(block);
+			destroy = true;
+		}
 	}
+	if (destroy)
+		delete block;
 }
 
 extern "C" id darling_objc_apple_block_invoke1(DarlingObjcAppleBlock* block,

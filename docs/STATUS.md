@@ -453,6 +453,11 @@ even when the read targeted a different PID. This closes the previous
 remote-OOL deallocation mismatch; complete Darwin VM object lifetime and
 cross-task ownership semantics remain open.
 
+Managed Apple-block copy and release now share the block-runtime registry lock;
+a copy cannot resurrect a block after its final release removes it from the
+registry. External compiler block layouts and full BlocksRuntime callback and
+copy-helper semantics remain outside this adapter.
+
 The weak-reference bridge now also implements `objc_moveWeak`: it removes any
 previous destination registration, transfers the tracked weak location, clears
 the source, and treats identical source and destination locations as a no-op.

@@ -115,6 +115,11 @@ int main()
 		<< (normalized_signal_symbols ? "PASS" : "FAIL") << "\n";
 	const bool setup_ok = sigaction_result == 0 && sigprocmask_result == 0 &&
 		sigpending_result == 0 && signal_symbols && normalized_signal_symbols;
+	std::cout << "SIGNAL_SETUP sigaction=" << sigaction_result
+		<< " sigprocmask=" << sigprocmask_result
+		<< " sigpending=" << sigpending_result
+		<< " legacy_symbols=" << (signal_symbols ? 1 : 0)
+		<< " normalized_symbols=" << (normalized_signal_symbols ? 1 : 0) << "\n";
 	if (!setup_ok) {
 		std::cerr << "SIGNAL_SMOKE_ERROR=setup sigaction=" << sigaction_result
 			<< " sigprocmask=" << sigprocmask_result

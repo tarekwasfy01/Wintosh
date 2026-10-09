@@ -64,6 +64,9 @@ unlock rejection are covered by the host smoke.
 Protocol and robustness attribute getters/setters are also resolved and retain
 their default values; enabling priority protocols or robust recovery returns
 `ENOTSUP` until those execution semantics are implemented.
+The signal smoke exposes setup diagnostics separately; symbol and setup
+coverage pass, while downstream signal-dispatch/wait stability remains under
+investigation because isolated runs can still terminate with exit 3.
 Mach port reference mutation now rejects signed-delta underflow and unsigned
 overflow, including the `INT32_MIN` edge case, while preserving the existing
 process-local queue behavior.

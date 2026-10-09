@@ -518,6 +518,11 @@ coverage. Non-default priority protocols and robust recovery are rejected with
 `ENOTSUP`; this exposes the ABI boundary without claiming owner-death recovery
 or priority inheritance.
 
+The signal smoke now prints all setup return codes and symbol-group results on
+stdout. These values are consistently successful; an intermittent exit 3 can
+occur later in the signal-dispatch/wait sequence, so full signal runtime
+stability remains unclaimed until that downstream termination path is isolated.
+
 It also proves cancellation while a worker is inside `pthread_cond_wait`, then
 joins the canceled worker and destroys the condition and mutex normally.
 

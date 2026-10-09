@@ -4193,6 +4193,11 @@ resolver coverage and default-value checks. Enabling priority protocols or
 robust recovery fails explicitly with `ENOTSUP`; owner-death recovery and
 priority inheritance are still not implemented.
 
+Signal-smoke setup diagnostics now show successful `sigaction`, `sigprocmask`,
+`sigpending`, legacy-symbol, and normalized-symbol checks. An intermittent
+exit 3 occurs only after that setup boundary, so downstream dispatch/wait
+stability remains open and is not counted as a full signal pass.
+
 The pthread ABI layer now also covers `pthread_once` and invokes registered TLS
 destructors when a created Windows-backed pthread exits. x64 and Win32 host API
 smokes build successfully and report `DARWIN_PTHREAD_SELF_NAME_EQUAL=PASS`,

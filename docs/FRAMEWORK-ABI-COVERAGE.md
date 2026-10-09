@@ -21,6 +21,12 @@ that the declared bridge entry points have implementations; it does not prove
 that every argument convention, callback, ownership rule, Unicode behavior,
 framework class, or application-level API is compatible with macOS.
 
+Re-run the audit from the repository root with:
+
+```powershell
+.\tools\Check-FrameworkAbiCoverage.ps1
+```
+
 ## Remaining behavioral boundary
 
 The bridge remains a deliberately small C-ABI adapter. CoreFoundation

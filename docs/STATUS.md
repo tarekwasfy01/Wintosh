@@ -548,6 +548,12 @@ timer cannot dereference that wrapper after its owner thread exits; cancellation
 timer ownership, modes, sources, observers, and native CFRunLoop scheduling
 semantics remain open.
 
+`class_respondsToSelector` now checks the metaclass method chain for ordinary
+class objects while retaining instance-method behavior for explicit metaclass
+handles. The Objective-C smoke gate covers class-object, metaclass, instance,
+and missing-selector queries; method-cache invalidation, swizzling races, and
+the complete Apple metaclass ABI remain open.
+
 The runtime README now records the actual Mach-O execution boundary: the
 Windows x86_64 runner can enter compatible x86_64 images after mapping,
 relocations, bindings, initializers, and protection setup, while i386 and

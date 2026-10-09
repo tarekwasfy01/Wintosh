@@ -218,7 +218,10 @@ int main()
 		return 20;
 
 	if (objc_getClass("DarlingRuntimeSmokeClass") != cls ||
-		!class_respondsToSelector(cls, selector))
+		!class_respondsToSelector(cls, selector) ||
+		!class_respondsToSelector(cls, class_probe_selector) ||
+		!class_respondsToSelector(meta, class_probe_selector) ||
+		class_respondsToSelector(cls, sel_registerName("missingRuntimeSelector")))
 		return 11;
 	Method method = class_getInstanceMethod(cls, selector);
 	if (!method || method_getImplementation(method) != reinterpret_cast<IMP>(&RuntimeMethod) ||

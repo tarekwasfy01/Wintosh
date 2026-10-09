@@ -1223,9 +1223,16 @@ extern "C" bool class_respondsToSelector(Class cls, SEL selector)
 	if (!cls || !selector)
 		return false;
 	std::lock_guard lock(RuntimeMutex());
-	for (Class current = cls; current; current = current->superclass)
+	for (Class current = cls; current; current = current->superclass) {
 		if (current->methods.find(selector) != current->methods.end())
 			return true;
+		// Class objects dispatch through their metaclass. The adapter mirrors
+		// class methods into that table; explicit metaclass handles retain the
+		// ordinary instance-method lookup above.
+		if (!cls->is_metaclass && current->metaclass &&
+			current->metaclass->methods.find(selector) != current->metaclass->methods.end())
+			return true;
+	}
 	return false;
 }
 

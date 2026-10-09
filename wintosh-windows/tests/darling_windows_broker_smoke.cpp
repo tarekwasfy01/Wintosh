@@ -6,6 +6,7 @@
 #include "darwin_windows_process.h"
 #include "darling_windows_runtime.h"
 
+#include <algorithm>
 #include <filesystem>
 #include <iostream>
 
@@ -147,6 +148,41 @@ int wmain()
 			return 5;
 		}
 		std::cout << "BROKER_MACH_LARGE_PAYLOAD=PASS\n";
+		const darling::windows_host::MachIpcEnvelope ool_send_request{
+			darling::windows_host::MachIpcOperation::Send, 107, token, 1,
+			{'O', 'O', 'L', '-', 'D', 'A', 'T', 'A'}};
+		const auto ool_send_bytes = darling::windows_host::EncodeMachIpcEnvelope(ool_send_request);
+		client.Write(std::string(ool_send_bytes.begin(), ool_send_bytes.end()));
+		const auto ool_send_wire = client.Read();
+		const auto ool_send_response = darling::windows_host::DecodeMachIpcEnvelope(
+			std::vector<std::uint8_t>(ool_send_wire.begin(), ool_send_wire.end()));
+		if (ool_send_response.out_of_line_token == 0 ||
+			ool_send_response.out_of_line_size != ool_send_request.payload.size()) {
+			std::cerr << "BROKER_MACH_OOL_SEND=FAIL\n";
+			return 5;
+		}
+		const auto ool_name = L"Local\\wintosh-mach-ool-" +
+			std::to_wstring(ool_send_response.out_of_line_token);
+		auto ool_region = darling::windows_host::MachIpcSharedMemory::Open(
+			ool_name, ool_send_response.out_of_line_size);
+		const auto* ool_data = static_cast<const std::uint8_t*>(ool_region.Data());
+		if (!std::equal(ool_data, ool_data + ool_region.Size(), ool_send_request.payload.begin())) {
+			std::cerr << "BROKER_MACH_OOL_CONTENT=FAIL\n";
+			return 5;
+		}
+		const darling::windows_host::MachIpcEnvelope ool_receive_request{
+			darling::windows_host::MachIpcOperation::Receive, 108, token, 0, {}};
+		const auto ool_receive_bytes = darling::windows_host::EncodeMachIpcEnvelope(ool_receive_request);
+		client.Write(std::string(ool_receive_bytes.begin(), ool_receive_bytes.end()));
+		const auto ool_receive_wire = client.Read();
+		const auto ool_receive_response = darling::windows_host::DecodeMachIpcEnvelope(
+			std::vector<std::uint8_t>(ool_receive_wire.begin(), ool_receive_wire.end()));
+		if (ool_receive_response.out_of_line_token != ool_send_response.out_of_line_token ||
+			ool_receive_response.out_of_line_size != ool_send_response.out_of_line_size) {
+			std::cerr << "BROKER_MACH_OOL_RECEIVE=FAIL\n";
+			return 5;
+		}
+		std::cout << "BROKER_MACH_OOL=PASS\n";
 
 		const darling::windows_host::MachIpcEnvelope deallocate_request{
 			darling::windows_host::MachIpcOperation::Deallocate, 103, token, 0, {}};

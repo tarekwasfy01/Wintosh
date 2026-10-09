@@ -58,7 +58,11 @@ the runtime smoke verifies a second mapped view with
 `MACH_IPC_SHARED_MEMORY=PASS`. It is the Windows primitive for a future
 out-of-line descriptor. The version-1 envelope now carries an explicit
 out-of-line token and size trailer, validated on encode/decode; broker-side
-mapping allocation and disposition transfer are the next integration step.
+mapping allocation and descriptor transfer now work for one bounded
+disposition: `BROKER_MACH_OOL=PASS` creates a named mapping on `Send`, and
+the receiver opens and verifies it after `Receive`. This is a Windows shared
+mapping approximation, not yet Mach handle passing, protection transfer, or
+full OOL lifetime/disposition semantics.
 
 The platform path adapter now provides lexical `AbsolutePath` resolution and
 handle-based `CanonicalPath` resolution through Windows final-name lookup,

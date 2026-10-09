@@ -10,6 +10,7 @@
 
 #include <iostream>
 #include <deque>
+#include <cstring>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -43,7 +44,9 @@ int wmain(int argc, wchar_t** argv)
 		server.WaitForClient();
 		std::uint64_t next_port_token = 1;
 		std::unordered_set<std::uint64_t> allocated_ports;
-		std::unordered_map<std::uint64_t, std::deque<std::vector<std::uint8_t>>> port_queues;
+		std::unordered_map<std::uint64_t, std::deque<darling::windows_host::MachIpcEnvelope>> port_queues;
+		std::unordered_map<std::uint64_t, darling::windows_host::MachIpcSharedMemory> out_of_line_regions;
+		std::uint64_t next_out_of_line_token = 1;
 
 		for (;;) {
 			const auto request = server.Read();
@@ -64,7 +67,7 @@ int wmain(int argc, wchar_t** argv)
 				if (envelope.operation == darling::windows_host::MachIpcOperation::Allocate) {
 					const auto token = next_port_token++;
 					allocated_ports.insert(token);
-					port_queues.emplace(token, std::deque<std::vector<std::uint8_t>>{});
+					port_queues.emplace(token, std::deque<darling::windows_host::MachIpcEnvelope>{});
 					darling::windows_host::MachIpcEnvelope response{
 						darling::windows_host::MachIpcOperation::Allocate,
 						envelope.request_id, token, 0, {}};
@@ -84,10 +87,26 @@ int wmain(int argc, wchar_t** argv)
 				if (envelope.operation == darling::windows_host::MachIpcOperation::Send) {
 					if (!allocated_ports.contains(envelope.port_token))
 						throw std::invalid_argument("unknown Mach IPC port token");
-					port_queues.at(envelope.port_token).push_back(envelope.payload);
+					auto queued = envelope;
+					if (queued.disposition_count > 0) {
+						if (queued.disposition_count != 1 || queued.payload.empty())
+							throw std::invalid_argument("unsupported Mach IPC disposition");
+						const auto token = next_out_of_line_token++;
+						const auto name = L"Local\\wintosh-mach-ool-" + std::to_wstring(token);
+						auto region = darling::windows_host::MachIpcSharedMemory::Create(
+							name, queued.payload.size());
+						std::memcpy(region.Data(), queued.payload.data(), queued.payload.size());
+						out_of_line_regions.emplace(token, std::move(region));
+						queued.payload.clear();
+						queued.disposition_count = 0;
+						queued.out_of_line_token = token;
+						queued.out_of_line_size = static_cast<std::uint32_t>(envelope.payload.size());
+					}
+					port_queues.at(envelope.port_token).push_back(std::move(queued));
 					darling::windows_host::MachIpcEnvelope response{
 						darling::windows_host::MachIpcOperation::Send,
-						envelope.request_id, envelope.port_token, 0, {}};
+						envelope.request_id, envelope.port_token, 0, {},
+						queued.out_of_line_token, queued.out_of_line_size};
 					server.Write(AsString(darling::windows_host::EncodeMachIpcEnvelope(response)));
 					continue;
 				}
@@ -97,11 +116,13 @@ int wmain(int argc, wchar_t** argv)
 					auto& queue = port_queues.at(envelope.port_token);
 					if (queue.empty())
 						throw std::runtime_error("Mach IPC receive would block");
-					auto payload = std::move(queue.front());
+					auto message = std::move(queue.front());
 					queue.pop_front();
 					darling::windows_host::MachIpcEnvelope response{
 						darling::windows_host::MachIpcOperation::Receive,
-						envelope.request_id, envelope.port_token, 0, std::move(payload)};
+						envelope.request_id, envelope.port_token, message.disposition_count,
+						std::move(message.payload), message.out_of_line_token,
+						message.out_of_line_size};
 					server.Write(AsString(darling::windows_host::EncodeMachIpcEnvelope(response)));
 					continue;
 				}

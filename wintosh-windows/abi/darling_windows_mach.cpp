@@ -41,6 +41,7 @@ std::unordered_map<darling_mach_port_name_t, std::unordered_set<darling_mach_por
 struct ExceptionPort final { darling_exception_mask_t mask; darling_mach_port_name_t port; darling_exception_behavior_t behavior; darling_exception_flavor_t flavor; };
 std::mutex exception_ports_mutex;
 std::unordered_map<darling_mach_port_name_t, std::vector<ExceptionPort>> exception_ports;
+void* exception_handler_cookie = nullptr;
 std::mutex read_buffers_mutex;
 std::unordered_map<darling_mach_vm_address_t, SIZE_T> read_buffers;
 
@@ -327,6 +328,63 @@ extern "C" darling_kern_return_t darling_windows_thread_get_exception_ports_info
 		}
 	}
 	*masks_count = written;
+	return 0;
+}
+
+extern "C" darling_kern_return_t darling_windows_dispatch_mach_exception(
+	std::uint32_t exception_type, std::uint64_t code0, std::uint64_t code1)
+{
+	const auto thread = darling_windows_mach_thread_self();
+	const auto mask = exception_type < 32 ? (static_cast<darling_exception_mask_t>(1) << exception_type) : 0;
+	if (mask == 0) return 4;
+	std::vector<ExceptionPort> targets;
+	{
+		std::lock_guard lock(exception_ports_mutex);
+		const auto found = exception_ports.find(thread);
+		if (found == exception_ports.end()) return 4;
+		for (const auto& entry : found->second)
+			if ((entry.mask & mask) != 0) targets.push_back(entry);
+	}
+	if (targets.empty()) return 4;
+	darling_mach_exception_message message{};
+	message.header.msgh_size = sizeof(message);
+	message.header.msgh_remote_port = targets.front().port;
+	message.exception_type = exception_type;
+	message.code0 = code0; message.code1 = code1; message.thread = thread;
+	message.behavior = targets.front().behavior; message.flavor = targets.front().flavor;
+	return darling_windows_mach_port_send(targets.front().port, &message, sizeof(message));
+}
+
+namespace {
+LONG CALLBACK DarlingVectoredExceptionHandler(PEXCEPTION_POINTERS exception)
+{
+	if (exception == nullptr || exception->ExceptionRecord == nullptr) return EXCEPTION_CONTINUE_SEARCH;
+	std::uint32_t type = 0;
+	switch (exception->ExceptionRecord->ExceptionCode) {
+	case EXCEPTION_ACCESS_VIOLATION: type = 1; break;
+	case EXCEPTION_ILLEGAL_INSTRUCTION: type = 2; break;
+	case EXCEPTION_INT_DIVIDE_BY_ZERO: type = 3; break;
+	default: return EXCEPTION_CONTINUE_SEARCH;
+	}
+	const auto address = reinterpret_cast<std::uint64_t>(exception->ExceptionRecord->ExceptionAddress);
+	const auto code = exception->ExceptionRecord->NumberParameters != 0 ?
+		exception->ExceptionRecord->ExceptionInformation[0] : 0;
+	(void)darling_windows_dispatch_mach_exception(type, code, address);
+	return EXCEPTION_CONTINUE_SEARCH;
+}
+}
+
+extern "C" darling_kern_return_t darling_windows_set_exception_dispatch_enabled(bool enabled)
+{
+	if (enabled) {
+		if (exception_handler_cookie != nullptr) return 0;
+		exception_handler_cookie = AddVectoredExceptionHandler(1, DarlingVectoredExceptionHandler);
+		return exception_handler_cookie == nullptr ? 4 : 0;
+	}
+	if (exception_handler_cookie != nullptr) {
+		RemoveVectoredExceptionHandler(exception_handler_cookie);
+		exception_handler_cookie = nullptr;
+	}
 	return 0;
 }
 

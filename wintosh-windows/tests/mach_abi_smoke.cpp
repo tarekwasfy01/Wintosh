@@ -108,6 +108,26 @@ int main()
 		&returned_flavor) != 0 || handler_info_count != 1 ||
 		handler_info.port_object != 0x1234 || handler_info.receiver_object != 0)
 		return 1;
+	if (darling_windows_set_exception_dispatch_enabled(true) != 0 ||
+		darling_windows_set_exception_dispatch_enabled(true) != 0 ||
+		darling_windows_set_exception_dispatch_enabled(false) != 0)
+		return 1;
+	darling_mach_port_name_t dispatch_port = 0;
+	const auto dispatch_alloc = darling_windows_mach_port_allocate(task, &dispatch_port);
+	const auto dispatch_mask = static_cast<darling_exception_mask_t>(1u << 1);
+	const auto dispatch_register = dispatch_alloc == 0 ? darling_windows_thread_set_exception_ports(thread, dispatch_mask, dispatch_port, 1, 6) : 4;
+	const auto dispatch_send = dispatch_register == 0 ? darling_windows_dispatch_mach_exception(1, 0xfeed, 0xbeef) : 4;
+	if (dispatch_alloc != 0 || dispatch_register != 0 || dispatch_send != 0)
+		return 1;
+	darling_mach_exception_message dispatch_message{};
+	std::uint32_t dispatch_size = 0;
+	if (darling_windows_mach_port_receive(dispatch_port, &dispatch_message,
+		sizeof(dispatch_message), &dispatch_size, 100) != 0 ||
+		dispatch_size != sizeof(dispatch_message) || dispatch_message.exception_type != 1 ||
+		dispatch_message.code0 != 0xfeed || dispatch_message.code1 != 0xbeef ||
+		dispatch_message.thread != thread)
+		return 1;
+	darling_windows_mach_port_destroy(task, dispatch_port);
 	std::uint32_t page_size = 0;
 	darling_mach_vm_address_t vm_address = 0;
 	darling_mach_vm_address_t vm_copy_address = 0;

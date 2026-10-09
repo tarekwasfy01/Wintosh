@@ -136,7 +136,20 @@ now performs validated replacement and returns the previous registrations.
 `thread_get_exception_ports_info` now uses the verified two-word XNU
 `ipc_info_port_t` layout and returns matching registered handler ports. The
 receiver object is zero because the adapter has no kernel Mach task object;
-actual Windows exception dispatch remains open.
+the explicit dispatch bridge now serializes matching exceptions to a Wintosh port.
+
+An explicit `darling_windows_dispatch_mach_exception` bridge now serializes
+the current thread's exception type and two codes to the first matching
+registered Wintosh port. It is deliberately opt-in rather than a global VEH;
+this gives callers a deterministic bridge without intercepting unrelated
+Windows faults. The opt-in VEH hook maps access violations, illegal instructions,
+and integer divide-by-zero to the minimal Darwin exception types and always
+returns `EXCEPTION_CONTINUE_SEARCH`, so it never swallows the host fault.
+Behavior-specific Mach replies and real Mach receiver objects remain open.
+
+The opt-in entry point `darling_windows_set_exception_dispatch_enabled` maps
+access violations, illegal instructions, and integer divide-by-zero to the
+minimal Darwin exception types before queuing the message.
 
 The x86-64 exception-state read flavor is also exposed with the exact
 four-word Darwin layout. Windows can provide the current processor number, but

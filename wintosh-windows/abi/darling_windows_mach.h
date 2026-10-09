@@ -145,6 +145,15 @@ struct darling_exception_handler_info final {
 	std::uint32_t port_object = 0;
 	std::uint32_t receiver_object = 0;
 };
+struct darling_mach_exception_message final {
+	darling_mach_msg_header header;
+	std::uint32_t exception_type = 0;
+	std::uint64_t code0 = 0;
+	std::uint64_t code1 = 0;
+	darling_mach_port_name_t thread = 0;
+	darling_exception_behavior_t behavior = 0;
+	darling_exception_flavor_t flavor = 0;
+};
 struct darling_thread_extended_policy_info final { std::int32_t timeshare = 1; };
 struct darling_thread_precedence_policy_info final { std::int32_t importance = 0; };
 struct darling_thread_time_constraint_policy_info final {
@@ -187,6 +196,9 @@ extern "C" darling_kern_return_t darling_windows_thread_get_exception_ports_info
 	darling_exception_mask_t* masks, std::uint32_t* masks_count,
 	darling_exception_handler_info* handlers_info,
 	darling_exception_behavior_t* behaviors, darling_exception_flavor_t* flavors);
+extern "C" darling_kern_return_t darling_windows_dispatch_mach_exception(
+	std::uint32_t exception_type, std::uint64_t code0, std::uint64_t code1);
+extern "C" darling_kern_return_t darling_windows_set_exception_dispatch_enabled(bool enabled);
 extern "C" darling_kern_return_t darling_windows_thread_info(
 	darling_mach_port_name_t thread, std::uint32_t flavor, void* info,
 	std::uint32_t* count);

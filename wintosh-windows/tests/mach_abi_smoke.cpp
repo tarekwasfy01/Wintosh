@@ -59,6 +59,20 @@ int main()
 		worker.join();
 		return 1;
 	}
+	darling_x86_avx_state64 worker_avx_state{};
+	std::uint32_t worker_avx_count = darling_x86_avx_state64_count;
+	const auto worker_avx = darling_windows_thread_get_state(worker_thread,
+		darling_x86_avx_state64_flavor, &worker_avx_state, &worker_avx_count);
+	if (worker_avx != 0 && worker_avx != darling_kern_not_supported) {
+		worker_stop.store(true, std::memory_order_release);
+		worker.join();
+		return 1;
+	}
+	if (worker_avx == 0 && worker_avx_count != darling_x86_avx_state64_count) {
+		worker_stop.store(true, std::memory_order_release);
+		worker.join();
+		return 1;
+	}
 	worker_stop.store(true, std::memory_order_release);
 	worker.join();
 	darling_x86_exception_state64 exception_state{};

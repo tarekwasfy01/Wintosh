@@ -174,6 +174,35 @@ extern "C" darling_kern_return_t darling_windows_thread_get_state(
 		*count = darling_x86_debug_state64_count;
 		return 0;
 	}
+	if (flavor == darling_x86_avx_state64_flavor) {
+		if (thread == darling_windows_mach_thread_self()) return darling_kern_not_supported;
+		DWORD context_length = 0;
+		if (InitializeContext(nullptr, CONTEXT_FULL | CONTEXT_XSTATE, nullptr, &context_length) ||
+			context_length == 0) return 4;
+		std::vector<std::uint8_t> context_storage(context_length);
+		PCONTEXT xstate_context = nullptr;
+		if (!InitializeContext(context_storage.data(), CONTEXT_FULL | CONTEXT_XSTATE,
+			&xstate_context, &context_length) || xstate_context == nullptr) return 4;
+		const HANDLE xstate_handle = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT, FALSE, thread);
+		if (xstate_handle == nullptr) return 4;
+		if (SuspendThread(xstate_handle) == static_cast<DWORD>(-1) || !GetThreadContext(xstate_handle, xstate_context)) {
+			ResumeThread(xstate_handle); CloseHandle(xstate_handle); return 4;
+		}
+		DWORD64 features = 0;
+		const auto* legacy = LocateXStateFeature(xstate_context, XSTATE_LEGACY_SSE, nullptr);
+		const auto* avx = LocateXStateFeature(xstate_context, XSTATE_AVX, nullptr);
+		const bool supported = GetXStateFeaturesMask(xstate_context, &features) &&
+			(features & XSTATE_MASK_AVX) != 0 && legacy != nullptr && avx != nullptr;
+		if (supported) {
+			static_assert(sizeof(XSAVE_FORMAT) == darling_x86_float_state64_count * sizeof(std::uint32_t));
+			std::memcpy(state, legacy, sizeof(XSAVE_FORMAT));
+			std::memcpy(static_cast<std::uint8_t*>(state) + sizeof(XSAVE_FORMAT) + 64, avx, 16 * 16);
+		}
+		ResumeThread(xstate_handle); CloseHandle(xstate_handle);
+		if (!supported) return darling_kern_not_supported;
+		*count = darling_x86_avx_state64_count;
+		return 0;
+	}
 	CONTEXT context{};
 	context.ContextFlags = flavor == darling_x86_avx_state64_flavor ? CONTEXT_FULL | CONTEXT_XSTATE : flavor == darling_x86_float_state64_flavor ? CONTEXT_FLOATING_POINT : CONTEXT_CONTROL | CONTEXT_INTEGER;
 	HANDLE handle = nullptr;

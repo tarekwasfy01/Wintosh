@@ -72,6 +72,9 @@ accessors. Default clock/pshared values are verified; process-shared
 conditions and non-default clock execution return `ENOTSUP` explicitly.
 Read/write-lock attributes now expose default-only init/destroy/pshared accessors
 with resolver coverage; process-shared rwlocks return `ENOTSUP` explicitly.
+The immediate `tryrdlock`/`trywrlock` primitives are now resolved and tested:
+shared readers can coexist, writers report `EBUSY` while readers hold the lock,
+and acquire successfully after release.
 Mach port reference mutation now rejects signed-delta underflow and unsigned
 overflow, including the `INT32_MIN` edge case, while preserving the existing
 process-local queue behavior.

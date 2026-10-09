@@ -527,6 +527,9 @@ The read/write-lock attribute boundary now exposes default-only opaque objects
 with pshared accessors. The host smoke verifies default reads and explicit
 `ENOTSUP` for process-shared rwlocks; cross-process rwlock semantics remain
 open.
+Immediate `pthread_rwlock_tryrdlock` and `pthread_rwlock_trywrlock` entry
+points are also covered; the host smoke verifies reader coexistence, writer
+`EBUSY`, and writer acquisition after release.
 
 The signal smoke now prints all setup return codes and symbol-group results on
 stdout. The installed signal actions and handlers are protected by a shared

@@ -364,6 +364,8 @@ extern "C" int darling_windows_pthread_rwlockattr_setpshared(void* attributes, i
 extern "C" int darling_windows_pthread_rwlockattr_getpshared(const void* attributes, int* shared);
 extern "C" int darling_windows_pthread_rwlock_rdlock(void* lock);
 extern "C" int darling_windows_pthread_rwlock_wrlock(void* lock);
+extern "C" int darling_windows_pthread_rwlock_tryrdlock(void* lock);
+extern "C" int darling_windows_pthread_rwlock_trywrlock(void* lock);
 extern "C" int darling_windows_pthread_rwlock_unlock(void* lock);
 extern "C" int darling_windows_pthread_key_create(std::uint64_t* key,
 	void (*destructor)(void*));

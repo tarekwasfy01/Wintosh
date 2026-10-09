@@ -3220,6 +3220,26 @@ extern "C" int darling_windows_pthread_rwlock_wrlock(void* lock)
 	return 0;
 }
 
+extern "C" int darling_windows_pthread_rwlock_tryrdlock(void* lock)
+{
+	auto* value = PthreadRwlockFromStorage(lock);
+	if (value == nullptr) return 22;
+	darling_windows_pthread_testcancel();
+	if (!value->try_lock_shared()) return 16;
+	darling_rwlock_read_modes[lock] = true;
+	return 0;
+}
+
+extern "C" int darling_windows_pthread_rwlock_trywrlock(void* lock)
+{
+	auto* value = PthreadRwlockFromStorage(lock);
+	if (value == nullptr) return 22;
+	darling_windows_pthread_testcancel();
+	if (!value->try_lock()) return 16;
+	darling_rwlock_read_modes[lock] = false;
+	return 0;
+}
+
 extern "C" int darling_windows_pthread_rwlock_unlock(void* lock)
 {
 	auto* value = PthreadRwlockFromStorage(lock);
@@ -4721,6 +4741,8 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 	if (std::strcmp(name, "_pthread_rwlock_wrlock") == 0 || std::strcmp(name, "pthread_rwlock_wrlock") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_rwlock_wrlock);
 	}
+	if (std::strcmp(name, "_pthread_rwlock_tryrdlock") == 0 || std::strcmp(name, "pthread_rwlock_tryrdlock") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_rwlock_tryrdlock);
+	if (std::strcmp(name, "_pthread_rwlock_trywrlock") == 0 || std::strcmp(name, "pthread_rwlock_trywrlock") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_rwlock_trywrlock);
 	if (std::strcmp(name, "_pthread_rwlock_unlock") == 0 || std::strcmp(name, "pthread_rwlock_unlock") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_rwlock_unlock);
 	}

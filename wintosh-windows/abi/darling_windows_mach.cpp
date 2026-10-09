@@ -7,6 +7,7 @@
 #include <windows.h>
 
 #include <atomic>
+#include <algorithm>
 #include <chrono>
 #include <condition_variable>
 #include <cstring>
@@ -61,6 +62,36 @@ extern "C" darling_mach_port_name_t darling_windows_mach_thread_self()
 extern "C" darling_mach_port_name_t darling_windows_mach_host_self()
 {
 	return 1;
+}
+
+extern "C" darling_kern_return_t darling_windows_thread_policy_set(
+	darling_mach_port_name_t thread, std::uint32_t flavor, const void* policy,
+	std::uint32_t count)
+{
+	if (thread == 0 || policy == nullptr) return 4;
+	HANDLE handle = thread == darling_windows_mach_thread_self() ?
+		GetCurrentThread() : OpenThread(THREAD_SET_INFORMATION, FALSE, thread);
+	if (handle == nullptr) return 4;
+	int priority = THREAD_PRIORITY_NORMAL;
+	if (flavor == darling_thread_extended_policy) {
+		if (count < 1) { if (handle != GetCurrentThread()) CloseHandle(handle); return 4; }
+		const auto* value = static_cast<const darling_thread_extended_policy_info*>(policy);
+		priority = value->timeshare ? THREAD_PRIORITY_NORMAL : THREAD_PRIORITY_ABOVE_NORMAL;
+	} else if (flavor == darling_thread_precedence_policy) {
+		if (count < 1) { if (handle != GetCurrentThread()) CloseHandle(handle); return 4; }
+		const auto* value = static_cast<const darling_thread_precedence_policy_info*>(policy);
+		priority = (std::max)(THREAD_PRIORITY_LOWEST,
+			(std::min)(THREAD_PRIORITY_HIGHEST, THREAD_PRIORITY_NORMAL + value->importance));
+	} else if (flavor == darling_thread_time_constraint_policy) {
+		if (handle != GetCurrentThread()) CloseHandle(handle);
+		return darling_kern_not_supported;
+	} else {
+		if (handle != GetCurrentThread()) CloseHandle(handle);
+		return darling_kern_not_supported;
+	}
+	const BOOL applied = SetThreadPriority(handle, priority);
+	if (handle != GetCurrentThread()) CloseHandle(handle);
+	return applied ? 0 : 4;
 }
 
 extern "C" darling_kern_return_t darling_windows_host_page_size(

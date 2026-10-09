@@ -74,6 +74,13 @@ The matching `schedpolicy` and `schedparam` ABI is also present with default
 policy/priority storage; non-default scheduling requests return `ENOTSUP` until
 a Windows scheduling-policy mapping is implemented.
 
+The CoreAudio-facing Mach thread-policy boundary now resolves
+`thread_policy_set`: extended policy maps to normal Windows timeslice priority,
+precedence policy maps/clamps to `SetThreadPriority`, and time-constraint
+policy deliberately returns `KERN_NOT_SUPPORTED`. The Mach smoke covers both
+the working precedence path and the explicit unsupported boundary; this is not
+Darwin real-time scheduling equivalence.
+
 The WSL/legacy winpthreads `pthread_yield` spelling now aliases the verified
 Windows `SwitchToThread`-backed `sched_yield` primitive.
 

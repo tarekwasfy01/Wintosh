@@ -12,6 +12,12 @@ int main()
 {
 	const auto task = darling_windows_mach_task_self();
 	const auto thread = darling_windows_mach_thread_self();
+	darling_thread_precedence_policy_info precedence{};
+	darling_thread_time_constraint_policy_info time_constraint{};
+	if (darling_windows_thread_policy_set(thread, darling_thread_precedence_policy,
+		&precedence, 1) != 0 || darling_windows_thread_policy_set(thread,
+		darling_thread_time_constraint_policy, &time_constraint, 4) != darling_kern_not_supported)
+		return 1;
 	const auto host = darling_windows_mach_host_self();
 	std::uint32_t page_size = 0;
 	darling_mach_vm_address_t vm_address = 0;

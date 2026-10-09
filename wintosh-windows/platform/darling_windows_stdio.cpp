@@ -5269,6 +5269,7 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 	if (std::strcmp(name, "pthread_attr_getguardsize") == 0 || std::strcmp(name, "_pthread_attr_getguardsize") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_attr_getguardsize);
 	if (std::strcmp(name, "mach_task_self") == 0 || std::strcmp(name, "_mach_task_self") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_mach_task_self);
 	if (std::strcmp(name, "mach_thread_self") == 0 || std::strcmp(name, "_mach_thread_self") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_mach_thread_self);
+	if (std::strcmp(name, "thread_policy_set") == 0 || std::strcmp(name, "_thread_policy_set") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_thread_policy_set);
 	if (std::strcmp(name, "mach_host_self") == 0 || std::strcmp(name, "_mach_host_self") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_mach_host_self);
 	if (std::strcmp(name, "host_page_size") == 0 || std::strcmp(name, "_host_page_size") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_host_page_size);
 	if (std::strcmp(name, "mach_vm_allocate") == 0 || std::strcmp(name, "_mach_vm_allocate") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_mach_vm_allocate);

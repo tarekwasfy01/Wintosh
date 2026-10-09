@@ -50,6 +50,21 @@ constexpr darling_kern_return_t darling_mach_send_queue_full = 0x10004002;
 extern "C" darling_mach_port_name_t darling_windows_mach_task_self();
 extern "C" darling_mach_port_name_t darling_windows_mach_thread_self();
 extern "C" darling_mach_port_name_t darling_windows_mach_host_self();
+constexpr std::uint32_t darling_thread_extended_policy = 1;
+constexpr std::uint32_t darling_thread_time_constraint_policy = 2;
+constexpr std::uint32_t darling_thread_precedence_policy = 3;
+constexpr darling_kern_return_t darling_kern_not_supported = 0x2c;
+struct darling_thread_extended_policy_info final { std::int32_t timeshare = 1; };
+struct darling_thread_precedence_policy_info final { std::int32_t importance = 0; };
+struct darling_thread_time_constraint_policy_info final {
+	std::uint32_t period = 0;
+	std::uint32_t computation = 0;
+	std::uint32_t constraint = 0;
+	std::int32_t preemptible = 1;
+};
+extern "C" darling_kern_return_t darling_windows_thread_policy_set(
+	darling_mach_port_name_t thread, std::uint32_t flavor, const void* policy,
+	std::uint32_t count);
 extern "C" darling_kern_return_t darling_windows_host_page_size(
 	darling_mach_port_name_t host, std::uint32_t* size);
 extern "C" darling_kern_return_t darling_windows_mach_vm_allocate(

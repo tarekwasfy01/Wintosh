@@ -337,6 +337,16 @@ int wmain()
 			term_status != (143 << 8)) {
 			throw std::runtime_error("SIGTERM emulation result mismatch");
 		}
+		int term_info_pid = 0;
+		darling_siginfo term_info{};
+		if (darling_windows_posix_spawn(&term_info_pid,
+			"C:\\Windows\\System32\\cmd.exe", nullptr, nullptr,
+			term_arguments, nullptr) != 0 || term_info_pid <= 0 ||
+			darling_windows_kill(term_info_pid, 15) != 0 ||
+			darling_windows_waitid(1, term_info_pid, &term_info, 4) != 0 ||
+			term_info.si_code != 2 || term_info.si_status != 15) {
+			throw std::runtime_error("SIGTERM waitid detail mismatch");
+		}
 		const char* kill_arguments[] = {"cmd.exe", "/d", "/c",
 			"ping -n 30 127.0.0.1 > nul", nullptr};
 		int kill_pid = 0;

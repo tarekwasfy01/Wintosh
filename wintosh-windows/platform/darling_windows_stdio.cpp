@@ -6096,7 +6096,7 @@ extern "C" int darling_windows_kill(int process_id, int signal_number)
 		{
 			std::lock_guard lock(child_resource_mutex);
 			if (darling_child_processes.find(process_id) != darling_child_processes.end())
-				darling_child_termination_signals[process_id] = darwin_sigkill;
+				darling_child_termination_signals[process_id] = signal_number;
 		}
 		return 0;
 	}

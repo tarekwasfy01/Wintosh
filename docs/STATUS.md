@@ -568,6 +568,13 @@ required because the normal `waitid` reap path delegates to `wait4`. Kernel
 orphan/zombie ownership, stopped/continued states, and full Darwin wait
 concurrency semantics remain outside the Windows registry model.
 
+The individual `kill` bridge now preserves the requested signal number in the
+child termination registry; previously an individual SIGTERM was incorrectly
+remembered as SIGKILL. The process-syscall smoke test now verifies
+`waitid(P_PID)` reports `CLD_KILLED` with `si_status=15` for the emulated
+SIGTERM path. This remains controlled `TerminateProcess` emulation, not native
+Unix signal delivery or arbitrary signal-handler execution in another process.
+
 The runtime README now records the actual Mach-O execution boundary: the
 Windows x86_64 runner can enter compatible x86_64 images after mapping,
 relocations, bindings, initializers, and protection setup, while i386 and

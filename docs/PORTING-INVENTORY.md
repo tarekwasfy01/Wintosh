@@ -4185,8 +4185,8 @@ every cancellation point and asynchronous cancellation remain open.
 The pthread mutex-attribute subfamily now exposes opaque attributes with type
 and process-sharing accessors and resolver coverage. Normal and recursive
 mutexes use distinct Windows backends, and the host smoke verifies recursive
-relocking. Error-checking and process-shared execution modes return explicit
-`ENOTSUP`; native robust and inter-process mutex behavior remains open.
+relocking plus error-checking self-deadlock, busy trylock, and foreign unlock
+rejection. Process-shared and robust mutex behavior remains open.
 
 The pthread ABI layer now also covers `pthread_once` and invokes registered TLS
 destructors when a created Windows-backed pthread exits. x64 and Win32 host API

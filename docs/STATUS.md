@@ -508,10 +508,10 @@ The host API smoke now proves the mutex case with a worker blocked behind a
 held mutex, cancellation, canceled join, and orderly mutex cleanup.
 
 The pthread mutex-attribute boundary now exposes attribute objects with type
-and process-sharing getters/setters. Normal and recursive mutexes use distinct
-Windows backends, and the host smoke verifies recursive relocking. Unsupported
-error-checking and process-shared execution modes fail closed with `ENOTSUP`;
-robust/shared mutex behavior remains open.
+and process-sharing getters/setters. Normal, recursive, and error-checking
+mutexes use the Windows adapter; the host smoke verifies recursive relocking,
+error-checking self-deadlock/trylock behavior, and foreign unlock rejection.
+Process-shared and robust mutex behavior remains open.
 
 It also proves cancellation while a worker is inside `pthread_cond_wait`, then
 joins the canceled worker and destroys the condition and mutex normally.

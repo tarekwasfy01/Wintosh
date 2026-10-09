@@ -59,7 +59,8 @@ The mutex-attribute subfamily now has `init`, `destroy`, `gettype`, `settype`,
 recursive mutexes are backed by distinct Windows synchronization objects and
 the host smoke verifies recursive relocking. Error-checking and process-shared
 execution modes return `ENOTSUP` explicitly; they are not silently treated as
-ordinary mutexes.
+ordinary mutexes. Error-checking self-deadlock, busy `trylock`, and foreign
+unlock rejection are covered by the host smoke.
 Mach port reference mutation now rejects signed-delta underflow and unsigned
 overflow, including the `INT32_MIN` edge case, while preserving the existing
 process-local queue behavior.

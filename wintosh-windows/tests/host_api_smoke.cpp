@@ -1137,6 +1137,7 @@ int main()
 		std::strcmp(pthread_name, "darling-smoke") == 0;
 	void* pthread_mutex_attributes = nullptr;
 	void* recursive_mutex_storage = nullptr;
+	void* errorcheck_mutex_storage = nullptr;
 	int pthread_mutex_type = -1;
 	int pthread_mutex_shared = -1;
 	const bool pthread_mutex_attributes_ok =
@@ -1155,6 +1156,14 @@ int main()
 		darling_windows_pthread_mutex_unlock(&recursive_mutex_storage) == 0 &&
 		darling_windows_pthread_mutex_unlock(&recursive_mutex_storage) == 0 &&
 		darling_windows_pthread_mutex_destroy(&recursive_mutex_storage) == 0 &&
+		darling_windows_pthread_mutexattr_settype(pthread_mutex_attributes, 2) == 0 &&
+		darling_windows_pthread_mutex_init(&errorcheck_mutex_storage,
+		pthread_mutex_attributes) == 0 &&
+		darling_windows_pthread_mutex_lock(&errorcheck_mutex_storage) == 0 &&
+		darling_windows_pthread_mutex_lock(&errorcheck_mutex_storage) == 35 &&
+		darling_windows_pthread_mutex_trylock(&errorcheck_mutex_storage) == 16 &&
+		darling_windows_pthread_mutex_unlock(&errorcheck_mutex_storage) == 0 &&
+		darling_windows_pthread_mutex_destroy(&errorcheck_mutex_storage) == 0 &&
 		darling_windows_pthread_mutexattr_setpshared(pthread_mutex_attributes, 1) == 95 &&
 		darling_windows_pthread_mutexattr_settype(pthread_mutex_attributes, 0) == 0 &&
 		darling_windows_pthread_mutexattr_setpshared(pthread_mutex_attributes, 0) == 0 &&

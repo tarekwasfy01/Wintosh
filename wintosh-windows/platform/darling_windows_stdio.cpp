@@ -2748,12 +2748,38 @@ struct DarlingPthreadMutex final {
 	explicit DarlingPthreadMutex(int requested_type)
 		: type(requested_type), recursive(requested_type == 1) {}
 
-	bool try_lock() { return recursive ? recursive_mutex.try_lock() : mutex.try_lock(); }
-	void lock() { recursive ? recursive_mutex.lock() : mutex.lock(); }
-	void unlock() { recursive ? recursive_mutex.unlock() : mutex.unlock(); }
+	int lock_result()
+	{
+		if (type == 2 && owner.load(std::memory_order_acquire) == GetCurrentThreadId())
+			return 35;
+		if (recursive) recursive_mutex.lock(); else mutex.lock();
+		if (type == 2) owner.store(GetCurrentThreadId(), std::memory_order_release);
+		return 0;
+	}
+	int try_lock_result()
+	{
+		if (type == 2 && owner.load(std::memory_order_acquire) == GetCurrentThreadId())
+			return 16;
+		const bool acquired = recursive ? recursive_mutex.try_lock() : mutex.try_lock();
+		if (!acquired) return 16;
+		if (type == 2) owner.store(GetCurrentThreadId(), std::memory_order_release);
+		return 0;
+	}
+	bool try_lock() { return try_lock_result() == 0; }
+	void lock() { (void)lock_result(); }
+	int unlock_result()
+	{
+		if (type == 2 && owner.load(std::memory_order_acquire) != GetCurrentThreadId())
+			return 1;
+		if (recursive) recursive_mutex.unlock(); else mutex.unlock();
+		if (type == 2) owner.store(0, std::memory_order_release);
+		return 0;
+	}
+	void unlock() { (void)unlock_result(); }
 
 	int type = 0;
 	bool recursive = false;
+	std::atomic<DWORD> owner{0};
 	std::mutex mutex;
 	std::recursive_mutex recursive_mutex;
 };
@@ -2798,7 +2824,7 @@ extern "C" int darling_windows_pthread_mutexattr_settype(void* attributes, int t
 	auto* value = PthreadMutexAttributesFromStorage(attributes);
 	if (value == nullptr || (type != 0 && type != 1 && type != 2)) return 22;
 	value->type = type;
-	return type == 2 ? 95 : 0;
+	return 0;
 }
 
 extern "C" int darling_windows_pthread_mutexattr_gettype(const void* attributes, int* type)
@@ -2832,7 +2858,6 @@ extern "C" int darling_windows_pthread_mutex_init(void* mutex, const void* attri
 	if (attributes != nullptr && attr == nullptr) return 22;
 	if (attr != nullptr && attr->pshared != 0) return 95;
 	const int type = attr == nullptr ? 0 : attr->type;
-	if (type == 2) return 95;
 	*reinterpret_cast<DarlingPthreadMutex**>(mutex) =
 		new (std::nothrow) DarlingPthreadMutex(type);
 	return *reinterpret_cast<DarlingPthreadMutex**>(mutex) == nullptr ? 12 : 0;
@@ -2852,6 +2877,11 @@ extern "C" int darling_windows_pthread_mutex_lock(void* mutex)
 	auto* value = PthreadMutexFromStorage(mutex);
 	if (value == nullptr) return 22;
 	darling_windows_pthread_testcancel();
+	if (value->type == 2) {
+		const auto result = value->lock_result();
+		if (result != 0) return result;
+		return 0;
+	}
 	while (!value->try_lock()) {
 		Sleep(1);
 		darling_windows_pthread_testcancel();
@@ -2863,15 +2893,14 @@ extern "C" int darling_windows_pthread_mutex_trylock(void* mutex)
 {
 	auto* value = PthreadMutexFromStorage(mutex);
 	if (value == nullptr) return 22;
-	return value->try_lock() ? 0 : 16;
+	return value->try_lock_result();
 }
 
 extern "C" int darling_windows_pthread_mutex_unlock(void* mutex)
 {
 	auto* value = PthreadMutexFromStorage(mutex);
 	if (value == nullptr) return 22;
-	value->unlock();
-	return 0;
+	return value->unlock_result();
 }
 
 namespace {

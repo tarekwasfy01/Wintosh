@@ -32,6 +32,7 @@ std::string AsString(const std::vector<std::uint8_t>& value)
 int wmain(int argc, wchar_t** argv)
 {
 	try {
+		constexpr std::size_t max_port_queue_depth = 1024;
 		if (argc != 3) {
 			std::wcerr << L"usage: darling_windows_broker <prefix> <pipe-name>\n";
 			return 2;
@@ -97,6 +98,8 @@ int wmain(int argc, wchar_t** argv)
 				if (envelope.operation == darling::windows_host::MachIpcOperation::Send) {
 					if (!allocated_ports.contains(envelope.port_token))
 						throw std::invalid_argument("unknown Mach IPC port token");
+					if (port_queues.at(envelope.port_token).size() >= max_port_queue_depth)
+						throw std::runtime_error("Mach IPC send queue is full");
 					auto queued = envelope;
 					if (queued.disposition_count > 0) {
 						if (queued.disposition_count != 1 || queued.payload.empty())
@@ -141,6 +144,8 @@ int wmain(int argc, wchar_t** argv)
 			} catch (const std::runtime_error& error) {
 				if (std::string(error.what()) == "Mach IPC receive would block") {
 					server.Write("MACH_RECEIVE_WOULD_BLOCK");
+				} else if (std::string(error.what()) == "Mach IPC send queue is full") {
+					server.Write("MACH_SEND_QUEUE_FULL");
 				} else {
 					server.Write("INVALID_MACH_IPC_REQUEST");
 				}

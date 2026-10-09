@@ -488,6 +488,11 @@ joins it, and verifies `PTHREAD_CANCELED`; asynchronous cancellation is
 explicitly rejected because forcibly terminating arbitrary Windows threads is
 not a safe Darwin-compatible implementation.
 
+Pending cancellation is now delivered immediately when a worker transitions
+from `PTHREAD_CANCEL_DISABLE` back to `PTHREAD_CANCEL_ENABLE`; the host worker
+smoke exercises that state transition. The implementation still does not
+provide cleanup-handler stacks or asynchronous cancellation.
+
 The VM read bridge now records returned local buffers and makes
 `mach_vm_deallocate` release those buffers in the current Windows process,
 even when the read targeted a different PID. This closes the previous

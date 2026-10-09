@@ -31,13 +31,18 @@ namespace {
 		cancellation_worker_started.store(true, std::memory_order_release);
 		int old_state = -1;
 		int old_type = -1;
-		if (darling_windows_pthread_setcancelstate(0, &old_state) != 0 ||
+		if (darling_windows_pthread_setcancelstate(1, &old_state) != 0 ||
 			darling_windows_pthread_setcanceltype(0, &old_type) != 0)
 			return nullptr;
-		for (;;) {
-			darling_windows_pthread_testcancel();
+		for (int attempt = 0; attempt < 500; ++attempt) {
 			Sleep(1);
+			if (darling_windows_pthread_setcancelstate(0, &old_state) != 0)
+				return nullptr;
+			darling_windows_pthread_testcancel();
+			if (darling_windows_pthread_setcancelstate(1, &old_state) != 0)
+				return nullptr;
 		}
+		return nullptr;
 	}
 	volatile long pthread_attr_detached_calls = 0;
 	void* PthreadAttrDetachedStart(void*)

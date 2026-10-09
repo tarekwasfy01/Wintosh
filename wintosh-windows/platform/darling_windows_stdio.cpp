@@ -2506,6 +2506,11 @@ extern "C" int darling_windows_pthread_setcancelstate(int state, int* old_state)
 	const bool was_enabled = current_pthread_start->cancel_enabled.exchange(
 		state == 0, std::memory_order_acq_rel);
 	if (old_state != nullptr) *old_state = was_enabled ? 0 : 1;
+	if (state == 0 && current_pthread_start->cancel_deferred.load(std::memory_order_acquire) &&
+		current_pthread_start->cancel_requested.load(std::memory_order_acquire)) {
+		RunPthreadTlsDestructors();
+		throw DarlingPthreadCancelled{};
+	}
 	return 0;
 }
 

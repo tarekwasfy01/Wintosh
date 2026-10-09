@@ -4993,6 +4993,16 @@ extern "C" int darling_windows_waitid(int id_type, int id,
 		return 0;
 	}
 	int status = 0;
+	int observed_termination_signal = requested_termination_signal;
+	if (selected_id < 0) {
+		HANDLE observed_process = nullptr;
+		int observed_pid = selected_id;
+		if (OpenAnyDarlingChild(nohang, selected_id == -1 ? -1 : -selected_id,
+			observed_pid, observed_process) && observed_process != nullptr) {
+			observed_termination_signal = DarlingChildTerminationSignal(observed_pid);
+			CloseHandle(observed_process);
+		}
+	}
 	const int result = darling_windows_wait4(selected_id, &status,
 		nohang ? wait_nohang : 0, nullptr);
 	if (result < 0)
@@ -5006,11 +5016,11 @@ extern "C" int darling_windows_waitid(int id_type, int id,
 		std::memset(info, 0, sizeof(*info));
 		info->si_signo = sigchld;
 		info->si_errno = 0;
-		info->si_code = requested_termination_signal != 0 ? 2 : child_exited;
+		info->si_code = observed_termination_signal != 0 ? 2 : child_exited;
 		info->si_pid = result;
 		info->si_uid = static_cast<std::uint32_t>(darling_windows_getuid());
-		info->si_status = requested_termination_signal != 0 ?
-			requested_termination_signal : (status >> 8) & 0xff;
+		info->si_status = observed_termination_signal != 0 ?
+			observed_termination_signal : (status >> 8) & 0xff;
 	}
 	return 0;
 }

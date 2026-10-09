@@ -583,6 +583,13 @@ PID, so group/all observations preserve the emulated SIGTERM/SIGKILL detail.
 Normal Darwin group wait ordering, concurrent kernel ownership, and stopped or
 continued-child events remain open.
 
+The normal (reaping) `waitid` path now previews the ready registered handle for
+`P_ALL`/`P_PGID` before delegating to the serialized `wait4` path, preserving
+the selected child's emulated SIGTERM/SIGKILL reason after the registry entry
+is consumed. The preview is only metadata capture; `wait4` remains the single
+reaping operation. Exact kernel selection ordering and stopped/continued event
+semantics remain open.
+
 The runtime README now records the actual Mach-O execution boundary: the
 Windows x86_64 runner can enter compatible x86_64 images after mapping,
 relocations, bindings, initializers, and protection setup, while i386 and

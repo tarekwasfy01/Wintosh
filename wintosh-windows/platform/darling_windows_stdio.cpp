@@ -2969,6 +2969,24 @@ extern "C" int darling_windows_pthread_mutex_trylock(void* mutex)
 	return value->try_lock_result();
 }
 
+extern "C" int darling_windows_pthread_mutex_timedlock(void* mutex,
+	const darling_timespec* deadline)
+{
+	auto* value = PthreadMutexFromStorage(mutex);
+	if (value == nullptr || deadline == nullptr || deadline->tv_nsec < 0 ||
+		deadline->tv_nsec >= 1000000000) return 22;
+	const auto deadline_duration = std::chrono::seconds(deadline->tv_sec) +
+		std::chrono::nanoseconds(deadline->tv_nsec);
+	for (;;) {
+		const int result = value->try_lock_result();
+		if (result == 0) return 0;
+		if (std::chrono::system_clock::now().time_since_epoch() >= deadline_duration)
+			return 110;
+		darling_windows_pthread_testcancel();
+		Sleep(1);
+	}
+}
+
 extern "C" int darling_windows_pthread_mutex_unlock(void* mutex)
 {
 	auto* value = PthreadMutexFromStorage(mutex);
@@ -4876,6 +4894,9 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 	}
 	if (std::strcmp(name, "_pthread_mutex_trylock") == 0 || std::strcmp(name, "pthread_mutex_trylock") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_mutex_trylock);
+	}
+	if (std::strcmp(name, "_pthread_mutex_timedlock") == 0 || std::strcmp(name, "pthread_mutex_timedlock") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_mutex_timedlock);
 	}
 	if (std::strcmp(name, "_pthread_mutex_unlock") == 0 || std::strcmp(name, "pthread_mutex_unlock") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_mutex_unlock);

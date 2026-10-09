@@ -88,6 +88,11 @@ cancellation while spinning. Process-shared spinlocks remain `ENOTSUP`; the
 host smoke verifies initialization, exclusive acquisition, busy `trylock`,
 unlock, destruction, and resolver coverage.
 
+The mutex family also resolves `pthread_mutex_timedlock`. It polls the existing
+mutex backend against an absolute Darwin timespec and returns `ETIMEDOUT` for an
+expired deadline; the host smoke verifies the resolver and expired-lock path.
+Wall-clock adjustment equivalence and cancellation while blocked remain open.
+
 The pthread barrier family now resolves `pthread_barrier_init`,
 `pthread_barrier_wait`, and `pthread_barrier_destroy` through an opaque
 Windows adapter backed by a mutex/condition generation barrier. The host smoke

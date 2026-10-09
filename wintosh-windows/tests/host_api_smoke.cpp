@@ -1353,6 +1353,16 @@ int main()
 		darling_windows_pthread_mutex_trylock(&pthread_mutex_storage) == 16 &&
 		darling_windows_pthread_mutex_unlock(&pthread_mutex_storage) == 0 &&
 		darling_windows_pthread_mutex_destroy(&pthread_mutex_storage) == 0;
+	void* pthread_timed_mutex_storage = nullptr;
+	darling_timespec pthread_mutex_past_deadline{0, 0};
+	const bool pthread_mutex_timed_ok =
+		darling_windows_host_symbol("pthread_mutex_timedlock") != 0 &&
+		darling_windows_pthread_mutex_init(&pthread_timed_mutex_storage, nullptr) == 0 &&
+		darling_windows_pthread_mutex_lock(&pthread_timed_mutex_storage) == 0 &&
+		darling_windows_pthread_mutex_timedlock(&pthread_timed_mutex_storage,
+		&pthread_mutex_past_deadline) == 110 &&
+		darling_windows_pthread_mutex_unlock(&pthread_timed_mutex_storage) == 0 &&
+		darling_windows_pthread_mutex_destroy(&pthread_timed_mutex_storage) == 0;
 	void* pthread_spin_storage = nullptr;
 	const bool pthread_spin_ok =
 		darling_windows_host_symbol("pthread_spin_init") != 0 &&
@@ -1523,7 +1533,7 @@ int main()
 		darling_windows_pthread_cond_destroy(&timed_condition_storage) == 0;
 	std::cout << "DARWIN_PTHREAD_SELF_NAME_EQUAL="
 		          << (pthread_abi_ok && pthread_lifecycle_ok && pthread_cancellation_ok && pthread_lock_cancellation_ok && pthread_condition_cancellation_ok && pthread_attributes_ok && pthread_detach_ok &&
-			pthread_threadid_ok && pthread_mutex_attributes_ok && pthread_condition_attributes_ok && pthread_mutex_ok && pthread_spin_ok && pthread_barrier_ok && pthread_rwlock_attributes_ok && pthread_rwlock_ok && pthread_rwlock_try_ok && pthread_rwlock_timed_ok && pthread_tls_ok &&
+			pthread_threadid_ok && pthread_mutex_attributes_ok && pthread_condition_attributes_ok && pthread_mutex_ok && pthread_mutex_timed_ok && pthread_spin_ok && pthread_barrier_ok && pthread_rwlock_attributes_ok && pthread_rwlock_ok && pthread_rwlock_try_ok && pthread_rwlock_timed_ok && pthread_tls_ok &&
 			pthread_tls_destructor_ok && pthread_once_ok && pthread_condition_ok &&
 			pthread_timedwait_ok ? "PASS" : "FAIL") << "\n";
 	const bool normalized_terminal_environment_symbols =

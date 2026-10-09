@@ -64,9 +64,9 @@ unlock rejection are covered by the host smoke.
 Protocol and robustness attribute getters/setters are also resolved and retain
 their default values; enabling priority protocols or robust recovery returns
 `ENOTSUP` until those execution semantics are implemented.
-The signal smoke exposes setup diagnostics separately; symbol and setup
-coverage pass, while downstream signal-dispatch/wait stability remains under
-investigation because isolated runs can still terminate with exit 3.
+The signal smoke exposes setup diagnostics separately, and the action/handler
+state is synchronized while callbacks remain reentrant outside the lock. Ten
+consecutive isolated runs complete with `DARWIN_SYSCALL_SIGNAL=PASS`.
 Condition-variable attributes now expose `init`, `destroy`, pshared, and clock
 accessors. Default clock/pshared values are verified; process-shared
 conditions and non-default clock execution return `ENOTSUP` explicitly.

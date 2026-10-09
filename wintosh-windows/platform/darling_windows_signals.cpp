@@ -26,6 +26,7 @@ thread_local std::uint64_t pending_signals = 0;
 std::array<DarwinSignals::Handler, 64> installed_handlers{};
 std::array<darling_darwin_sigaction_record, 64> installed_actions{};
 bool actions_initialized = false;
+std::mutex action_mutex;
 std::mutex sigwait_mutex;
 std::condition_variable sigwait_condition;
 std::uint64_t sigwait_mask = 0;
@@ -86,8 +87,13 @@ void DeliverUnblocked() noexcept
 			continue;
 		pending_signals &= ~bit;
 		InitializeActions();
-		const auto& action = installed_actions[static_cast<std::size_t>(signal_number)];
-		const auto handler = installed_handlers[static_cast<std::size_t>(signal_number)];
+		darling_darwin_sigaction_record action{};
+		DarwinSignals::Handler handler = SIG_DFL;
+		{
+			std::lock_guard lock(action_mutex);
+			action = installed_actions[static_cast<std::size_t>(signal_number)];
+			handler = installed_handlers[static_cast<std::size_t>(signal_number)];
+		}
 		if (handler != nullptr && handler != SIG_DFL && handler != SIG_IGN) {
 			const auto previous_mask = blocked_signals;
 			blocked_signals |= SetToBits(action.mask);
@@ -95,6 +101,7 @@ void DeliverUnblocked() noexcept
 				blocked_signals |= bit;
 			handler(signal_number);
 			if ((action.flags & 0x0004) != 0) // SA_RESETHAND
+				std::lock_guard lock(action_mutex);
 				installed_actions[static_cast<std::size_t>(signal_number)].handler = SIG_DFL;
 			blocked_signals = previous_mask;
 			DeliverUnblocked();
@@ -109,6 +116,7 @@ void DeliverUnblocked() noexcept
 DarwinSignals::Handler DarwinSignals::Install(int signal_number,
 	Handler handler) noexcept
 {
+	std::lock_guard lock(action_mutex);
 	InitializeActions();
 	DarwinSignals::Handler previous = SIG_DFL;
 	if (signal_number > 0 && signal_number < 64)
@@ -142,15 +150,21 @@ bool DarwinSignals::Raise(int signal_number) noexcept
 		return true;
 	}
 	InitializeActions();
-	const auto& action = installed_actions[static_cast<std::size_t>(signal_number)];
-	const auto handler = action.handler;
+	darling_darwin_sigaction_record action{};
+	DarwinSignals::Handler handler = SIG_DFL;
+	{
+		std::lock_guard lock(action_mutex);
+		action = installed_actions[static_cast<std::size_t>(signal_number)];
+		handler = installed_handlers[static_cast<std::size_t>(signal_number)];
+	}
 	if ((action.flags & 0x0040) != 0 && action.sigaction_handler != nullptr) {
 		const auto previous_mask = blocked_signals;
 		blocked_signals |= SetToBits(action.mask);
 		if ((action.flags & 0x0010) == 0) // SA_NODEFER
 			blocked_signals |= bit;
 		if ((action.flags & 0x0004) != 0) // SA_RESETHAND
-			installed_actions[static_cast<std::size_t>(signal_number)].sigaction_handler = nullptr;
+				std::lock_guard lock(action_mutex);
+				installed_actions[static_cast<std::size_t>(signal_number)].sigaction_handler = nullptr;
 		action.sigaction_handler(signal_number, nullptr, nullptr);
 		blocked_signals = previous_mask;
 		DeliverUnblocked();
@@ -162,6 +176,7 @@ bool DarwinSignals::Raise(int signal_number) noexcept
 		if ((action.flags & 0x0010) == 0) // SA_NODEFER
 			blocked_signals |= bit;
 		if ((action.flags & 0x0004) != 0) // SA_RESETHAND
+			std::lock_guard lock(action_mutex);
 			installed_actions[static_cast<std::size_t>(signal_number)].handler = SIG_DFL;
 		handler(signal_number);
 		blocked_signals = previous_mask;
@@ -173,6 +188,7 @@ bool DarwinSignals::Raise(int signal_number) noexcept
 
 DarwinSignals::Handler DarwinSignals::Reset(int signal_number) noexcept
 {
+	std::lock_guard lock(action_mutex);
 	const auto previous = std::signal(signal_number, SIG_DFL);
 	if (signal_number > 0 && signal_number < 64 && previous != SIG_ERR) {
 		InitializeActions();
@@ -232,21 +248,24 @@ extern "C" int darling_windows_sigaction(int signal_number,
 		(action != nullptr && (action->flags & ~0x007f) != 0)) {
 		return -1;
 	}
-	InitializeActions();
-	auto& current = installed_actions[static_cast<std::size_t>(signal_number)];
-	if (old_action != nullptr)
-		*old_action = current;
+	{
+		std::lock_guard lock(action_mutex);
+		InitializeActions();
+		if (old_action != nullptr)
+			*old_action = installed_actions[static_cast<std::size_t>(signal_number)];
+	}
 	if (action != nullptr) {
 		if ((action->mask.bits[2] | action->mask.bits[3]) != 0)
 			return -1;
-		const auto mask = SetToBits(action->mask);
-		current = *action;
+		{
+			std::lock_guard lock(action_mutex);
+			installed_actions[static_cast<std::size_t>(signal_number)] = *action;
+		}
 		if ((action->flags & 0x0040) != 0) {
 			(void)std::signal(signal_number, SIG_IGN);
 		} else {
 			(void)DarwinSignals::Install(signal_number, action->handler);
 		}
-		(void)mask;
 	}
 	return 0;
 }

@@ -529,9 +529,9 @@ with pshared accessors. The host smoke verifies default reads and explicit
 open.
 
 The signal smoke now prints all setup return codes and symbol-group results on
-stdout. These values are consistently successful; an intermittent exit 3 can
-occur later in the signal-dispatch/wait sequence, so full signal runtime
-stability remains unclaimed until that downstream termination path is isolated.
+stdout. The installed signal actions and handlers are protected by a shared
+state mutex while callbacks execute outside that lock; ten consecutive
+isolated runs now complete with `DARWIN_SYSCALL_SIGNAL=PASS`.
 
 It also proves cancellation while a worker is inside `pthread_cond_wait`, then
 joins the canceled worker and destroys the condition and mutex normally.

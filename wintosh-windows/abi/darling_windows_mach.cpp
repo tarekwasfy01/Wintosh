@@ -1212,7 +1212,7 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 {
 	(void)notify;
 	if (message == nullptr) return 4;
-	if ((option & ~(darling_mach_send_msg | darling_mach_receive_msg)) != 0 ||
+	if ((option & ~(darling_mach_send_msg | darling_mach_receive_msg | darling_mach_send_timeout | darling_mach_receive_timeout)) != 0 ||
 		option == 0) return 4;
 	if ((option & darling_mach_send_msg) != 0) {
 		if (send_size < sizeof(darling_mach_msg_header) ||
@@ -1225,8 +1225,10 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 		if (receive_size < sizeof(darling_mach_msg_header) || receive_name == 0)
 			return 4;
 		std::uint32_t actual_size = 0;
+		const auto receive_timeout = (option & darling_mach_receive_timeout) != 0 ?
+			timeout_ms : (std::numeric_limits<std::uint32_t>::max)();
 		const auto result = darling_windows_mach_port_receive(receive_name, message,
-			receive_size, &actual_size, timeout_ms);
+			receive_size, &actual_size, receive_timeout);
 		if (result != 0) return result;
 		message->msgh_size = actual_size;
 	}

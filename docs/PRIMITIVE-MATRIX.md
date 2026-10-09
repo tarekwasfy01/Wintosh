@@ -399,6 +399,12 @@ interruption or cancellation behavior.
 The same row covers the `sleep_nocancel` and `__sleep` resolver spellings;
 these use the existing whole-second sleep adapter.
 
+## Mach message options
+
+The Mach message adapter accepts Darwin send/receive timeout option bits.
+Receive timeouts apply only with `MACH_RCV_TIMEOUT`; without that bit the
+adapter waits indefinitely. Unsupported option bits still fail closed.
+
 ## Source boundaries
 
 Linux/WSL references are compatibility evidence and test material, not a new

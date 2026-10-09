@@ -469,7 +469,7 @@ int main()
 		message.msgh_size = sizeof(message),
 		darling_windows_mach_msg(&message, darling_mach_send_msg,
 			sizeof(message), 0, 0, 0, 0) == 0) &&
-		darling_windows_mach_msg(&message, darling_mach_receive_msg,
+		darling_windows_mach_msg(&message, darling_mach_receive_msg | darling_mach_receive_timeout,
 		sizeof(message), sizeof(message), allocated, 100, 0) == 0 &&
 		darling_windows_mach_msg(&message, 0x8000, 0, 0, 0, 0, 0) == 4 &&
 		(message.msgh_remote_port = allocated,

@@ -71,26 +71,40 @@ int wmain()
 			return 4;
 		}
 
+		const darling::windows_host::MachIpcEnvelope allocate_request{
+			darling::windows_host::MachIpcOperation::Allocate, 100, 0, 0, {}};
+		const auto allocate_bytes = darling::windows_host::EncodeMachIpcEnvelope(allocate_request);
+		client.Write(std::string(allocate_bytes.begin(), allocate_bytes.end()));
+		const auto allocate_wire = client.Read();
+		const auto allocate_response = darling::windows_host::DecodeMachIpcEnvelope(
+			std::vector<std::uint8_t>(allocate_wire.begin(), allocate_wire.end()));
+		std::cout << "BROKER_MACH_ALLOCATE=" << allocate_response.port_token << "\n";
+		if (allocate_response.operation != darling::windows_host::MachIpcOperation::Allocate ||
+			allocate_response.request_id != 100 || allocate_response.port_token == 0) {
+			std::cerr << "BROKER_MACH_ALLOCATE=FAIL\n";
+			return 5;
+		}
+
 		client.Write("SHUTDOWN");
 		const auto shutdown = client.Read();
 		std::cout << "BROKER_SHUTDOWN=" << shutdown << "\n";
 		if (shutdown != "BYE") {
 			std::cerr << "BROKER_EXIT=FAIL\n";
-			return 5;
+			return 6;
 		}
 		client.Write("ACK");
 		if (child.Wait(10000) != WAIT_OBJECT_0 || child.ExitCode() != 0) {
 			std::cerr << "BROKER_EXIT=FAIL\n";
-			return 5;
+			return 6;
 		}
 
 		std::error_code cleanup_error;
 		std::filesystem::remove_all(root, cleanup_error);
 		std::cout << "BROKER_EXIT=0\n";
 		std::cout << "BROKER_CLEANUP=" << (cleanup_error ? "FAIL" : "PASS") << "\n";
-		return cleanup_error ? 6 : 0;
+		return cleanup_error ? 7 : 0;
 	} catch (const std::exception& error) {
 		std::cerr << "BROKER_SMOKE_ERROR=" << error.what() << "\n";
-		return 7;
+		return 8;
 	}
 }

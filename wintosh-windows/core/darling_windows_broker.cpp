@@ -9,6 +9,22 @@
 #include "darling_windows_runtime.h"
 
 #include <iostream>
+#include <unordered_set>
+#include <vector>
+
+namespace {
+
+std::vector<std::uint8_t> AsBytes(const std::string& value)
+{
+	return {value.begin(), value.end()};
+}
+
+std::string AsString(const std::vector<std::uint8_t>& value)
+{
+	return {value.begin(), value.end()};
+}
+
+} // namespace
 
 int wmain(int argc, wchar_t** argv)
 {
@@ -23,6 +39,8 @@ int wmain(int argc, wchar_t** argv)
 		// synchronize with a live broker even when prefix creation is slow.
 		const auto prefix = darling::windows_host::Prefix::Create(argv[1]);
 		server.WaitForClient();
+		std::uint64_t next_port_token = 1;
+		std::unordered_set<std::uint64_t> allocated_ports;
 
 		for (;;) {
 			const auto request = server.Read();
@@ -37,7 +55,31 @@ int wmain(int argc, wchar_t** argv)
 				}
 				return 0;
 			}
-			server.Write("UNKNOWN_REQUEST");
+			try {
+				const auto envelope = darling::windows_host::DecodeMachIpcEnvelope(
+					AsBytes(request));
+				if (envelope.operation == darling::windows_host::MachIpcOperation::Allocate) {
+					const auto token = next_port_token++;
+					allocated_ports.insert(token);
+					darling::windows_host::MachIpcEnvelope response{
+						darling::windows_host::MachIpcOperation::Allocate,
+						envelope.request_id, token, 0, {}};
+					server.Write(AsString(darling::windows_host::EncodeMachIpcEnvelope(response)));
+					continue;
+				}
+				if (envelope.operation == darling::windows_host::MachIpcOperation::Deallocate) {
+					if (allocated_ports.erase(envelope.port_token) == 0)
+						throw std::invalid_argument("unknown Mach IPC port token");
+					darling::windows_host::MachIpcEnvelope response{
+						darling::windows_host::MachIpcOperation::Deallocate,
+						envelope.request_id, envelope.port_token, 0, {}};
+					server.Write(AsString(darling::windows_host::EncodeMachIpcEnvelope(response)));
+					continue;
+				}
+				server.Write("UNSUPPORTED_MACH_IPC_OPERATION");
+			} catch (const std::exception&) {
+				server.Write("INVALID_MACH_IPC_REQUEST");
+			}
 		}
 	} catch (const std::exception& error) {
 		std::cerr << "darling_windows_broker: " << error.what() << "\n";

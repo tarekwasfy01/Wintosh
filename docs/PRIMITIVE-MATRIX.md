@@ -52,6 +52,10 @@ The pthread family now includes a verified deferred-cancellation path using
 `pthread_cancel`, `pthread_setcancelstate`, `pthread_setcanceltype`, and
 `pthread_testcancel`. Async cancellation is intentionally not claimed.
 
+Thread naming now keeps names by pthread handle as well as for the calling
+thread. The host smoke verifies setting a worker name and reading it back from
+the parent after join; unknown handles and invalid buffers remain `EINVAL`.
+
 The Windows adapter also provides an explicit port-local LIFO cleanup-record
 stack through `darling_windows_pthread_cleanup_push` and
 `darling_windows_pthread_cleanup_pop`. Deferred cancellation drains the stack

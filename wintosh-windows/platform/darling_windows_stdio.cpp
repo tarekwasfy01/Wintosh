@@ -2433,6 +2433,8 @@ extern "C" int darling_windows_fchmod(int descriptor, int mode)
 
 namespace {
 thread_local std::string darling_pthread_name;
+std::mutex darling_pthread_name_mutex;
+std::unordered_map<std::uint64_t, std::string> darling_pthread_names;
 void RunPthreadTlsDestructors();
 
 struct DarlingPthreadAttributes final {
@@ -2576,6 +2578,10 @@ extern "C" int darling_windows_pthread_setname_np(const char* name)
 		return 22;
 	}
 	darling_pthread_name.assign(name);
+	{
+		std::lock_guard lock(darling_pthread_name_mutex);
+		darling_pthread_names[darling_windows_pthread_self()] = darling_pthread_name;
+	}
 	return 0;
 }
 
@@ -2583,11 +2589,27 @@ extern "C" int darling_windows_pthread_getname_np(std::uint64_t thread,
 	char* buffer, std::size_t size)
 {
 	if (buffer == nullptr || size == 0 || thread != darling_windows_pthread_self()) {
-		darling::windows_host::DarwinErrno::Set(22);
-		return 22;
+		if (buffer == nullptr || size == 0) {
+			darling::windows_host::DarwinErrno::Set(22);
+			return 22;
+		}
 	}
-	const std::size_t copied = (std::min)(size - 1, darling_pthread_name.size());
-	std::memcpy(buffer, darling_pthread_name.data(), copied);
+	std::string name;
+	{
+		std::lock_guard lock(darling_pthread_name_mutex);
+		auto found = darling_pthread_names.find(thread);
+		if (found == darling_pthread_names.end()) {
+			if (thread != darling_windows_pthread_self()) {
+				darling::windows_host::DarwinErrno::Set(22);
+				return 22;
+			}
+			name = darling_pthread_name;
+		} else {
+			name = found->second;
+		}
+	}
+	const std::size_t copied = (std::min)(size - 1, name.size());
+	std::memcpy(buffer, name.data(), copied);
 	buffer[copied] = '\0';
 	return 0;
 }

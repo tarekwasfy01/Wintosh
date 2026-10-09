@@ -26,6 +26,11 @@ namespace {
 	{
 		return static_cast<char*>(argument) + 5;
 	}
+	void* PthreadNamedStart(void*)
+	{
+		darling_windows_pthread_setname_np("darling-worker");
+		return nullptr;
+	}
 	std::atomic_bool cancellation_worker_started{false};
 	std::atomic_bool direct_testcancel_worker_started{false};
 	std::atomic<int> cancellation_cleanup_calls{0};
@@ -1164,6 +1169,12 @@ int main()
 		darling_windows_pthread_getname_np(pthread_self, pthread_name,
 		sizeof(pthread_name)) == 0 &&
 		std::strcmp(pthread_name, "darling-smoke") == 0;
+	std::uint64_t named_thread = 0;
+	const bool pthread_cross_thread_name_ok =
+		darling_windows_pthread_create(&named_thread, nullptr, &PthreadNamedStart, nullptr) == 0 &&
+		darling_windows_pthread_join(named_thread, nullptr) == 0 &&
+		darling_windows_pthread_getname_np(named_thread, pthread_name, sizeof(pthread_name)) == 0 &&
+		std::strcmp(pthread_name, "darling-worker") == 0;
 	void* pthread_mutex_attributes = nullptr;
 	void* recursive_mutex_storage = nullptr;
 	void* errorcheck_mutex_storage = nullptr;
@@ -1565,7 +1576,7 @@ int main()
 		darling_windows_pthread_mutex_destroy(&timed_mutex_storage) == 0 &&
 		darling_windows_pthread_cond_destroy(&timed_condition_storage) == 0;
 	std::cout << "DARWIN_PTHREAD_SELF_NAME_EQUAL="
-		          << (pthread_abi_ok && pthread_lifecycle_ok && pthread_cancellation_ok && direct_testcancel_cleanup_ok && pthread_lock_cancellation_ok && pthread_condition_cancellation_ok && pthread_attributes_ok && pthread_detach_ok &&
+		          << (pthread_abi_ok && pthread_cross_thread_name_ok && pthread_lifecycle_ok && pthread_cancellation_ok && direct_testcancel_cleanup_ok && pthread_lock_cancellation_ok && pthread_condition_cancellation_ok && pthread_attributes_ok && pthread_detach_ok &&
 			pthread_threadid_ok && pthread_mutex_attributes_ok && pthread_condition_attributes_ok && pthread_mutex_ok && pthread_mutex_timed_ok && pthread_spin_ok && pthread_barrier_ok && pthread_rwlock_attributes_ok && pthread_rwlock_ok && pthread_rwlock_try_ok && pthread_rwlock_timed_ok && pthread_tls_ok &&
 			pthread_tls_destructor_ok && pthread_once_ok && pthread_condition_ok &&
 			pthread_timedwait_ok ? "PASS" : "FAIL") << "\n";

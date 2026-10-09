@@ -2778,6 +2778,7 @@ struct DarlingPthreadMutex final {
 	void unlock() { (void)unlock_result(); }
 
 	int type = 0;
+	int priority_ceiling = 0;
 	bool recursive = false;
 	std::atomic<DWORD> owner{0};
 	std::mutex mutex;
@@ -3028,6 +3029,21 @@ extern "C" int darling_windows_pthread_mutex_unlock(void* mutex)
 	auto* value = PthreadMutexFromStorage(mutex);
 	if (value == nullptr) return 22;
 	return value->unlock_result();
+}
+
+extern "C" int darling_windows_pthread_mutex_getprioceiling(void* mutex, int* ceiling)
+{
+	auto* value = PthreadMutexFromStorage(mutex);
+	if (value == nullptr || ceiling == nullptr) return 22;
+	*ceiling = value->priority_ceiling;
+	return 0;
+}
+
+extern "C" int darling_windows_pthread_mutex_setprioceiling(void* mutex, int ceiling)
+{
+	auto* value = PthreadMutexFromStorage(mutex);
+	if (value == nullptr || ceiling < 0) return 22;
+	return 95;
 }
 
 extern "C" int darling_windows_pthread_spin_init(void* lock, int process_shared)
@@ -4938,6 +4954,8 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 	if (std::strcmp(name, "_pthread_mutex_unlock") == 0 || std::strcmp(name, "pthread_mutex_unlock") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_mutex_unlock);
 	}
+	if (std::strcmp(name, "_pthread_mutex_getprioceiling") == 0 || std::strcmp(name, "pthread_mutex_getprioceiling") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_mutex_getprioceiling);
+	if (std::strcmp(name, "_pthread_mutex_setprioceiling") == 0 || std::strcmp(name, "pthread_mutex_setprioceiling") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_mutex_setprioceiling);
 	if (std::strcmp(name, "_pthread_spin_init") == 0 || std::strcmp(name, "pthread_spin_init") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_spin_init);
 	if (std::strcmp(name, "_pthread_spin_destroy") == 0 || std::strcmp(name, "pthread_spin_destroy") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_spin_destroy);
 	if (std::strcmp(name, "_pthread_spin_lock") == 0 || std::strcmp(name, "pthread_spin_lock") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_spin_lock);

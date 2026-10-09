@@ -334,6 +334,8 @@ extern "C" int darling_windows_pthread_mutex_lock(void* mutex);
 extern "C" int darling_windows_pthread_mutex_trylock(void* mutex);
 extern "C" int darling_windows_pthread_mutex_timedlock(void* mutex, const darling_timespec* deadline);
 extern "C" int darling_windows_pthread_mutex_unlock(void* mutex);
+extern "C" int darling_windows_pthread_mutex_getprioceiling(void* mutex, int* ceiling);
+extern "C" int darling_windows_pthread_mutex_setprioceiling(void* mutex, int ceiling);
 extern "C" int darling_windows_pthread_spin_init(void* lock, int process_shared);
 extern "C" int darling_windows_pthread_spin_destroy(void* lock);
 extern "C" int darling_windows_pthread_spin_lock(void* lock);

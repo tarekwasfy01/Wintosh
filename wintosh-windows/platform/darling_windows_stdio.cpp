@@ -2807,6 +2807,12 @@ DarlingPthreadBarrierAttributes* PthreadBarrierAttributesFromStorage(const void*
 		*reinterpret_cast<DarlingPthreadBarrierAttributes* const*>(storage);
 }
 
+DarlingPthreadBarrierAttributes* PthreadBarrierAttributesFromValue(const void* value)
+{
+	return const_cast<DarlingPthreadBarrierAttributes*>(
+		static_cast<const DarlingPthreadBarrierAttributes*>(value));
+}
+
 DarlingPthreadBarrier* PthreadBarrierFromStorage(void* storage)
 {
 	return storage == nullptr ? nullptr :
@@ -2837,10 +2843,22 @@ struct DarlingPthreadConditionAttributes final {
 	int clock_id = 0;
 };
 
+DarlingPthreadConditionAttributes* PthreadConditionAttributesFromValue(const void* value)
+{
+	return const_cast<DarlingPthreadConditionAttributes*>(
+		static_cast<const DarlingPthreadConditionAttributes*>(value));
+}
+
 DarlingPthreadMutexAttributes* PthreadMutexAttributesFromStorage(const void* storage)
 {
 	return storage == nullptr ? nullptr :
 		*reinterpret_cast<DarlingPthreadMutexAttributes* const*>(storage);
+}
+
+DarlingPthreadMutexAttributes* PthreadMutexAttributesFromValue(const void* value)
+{
+	return const_cast<DarlingPthreadMutexAttributes*>(
+		static_cast<const DarlingPthreadMutexAttributes*>(value));
 }
 }
 
@@ -2863,7 +2881,7 @@ extern "C" int darling_windows_pthread_mutexattr_destroy(void* attributes)
 
 extern "C" int darling_windows_pthread_mutexattr_settype(void* attributes, int type)
 {
-	auto* value = PthreadMutexAttributesFromStorage(attributes);
+	auto* value = PthreadMutexAttributesFromValue(attributes);
 	if (value == nullptr || (type != 0 && type != 1 && type != 2)) return 22;
 	value->type = type;
 	return 0;
@@ -2871,7 +2889,7 @@ extern "C" int darling_windows_pthread_mutexattr_settype(void* attributes, int t
 
 extern "C" int darling_windows_pthread_mutexattr_gettype(const void* attributes, int* type)
 {
-	auto* value = PthreadMutexAttributesFromStorage(attributes);
+	auto* value = PthreadMutexAttributesFromValue(attributes);
 	if (value == nullptr || type == nullptr) return 22;
 	*type = value->type;
 	return 0;
@@ -2879,7 +2897,7 @@ extern "C" int darling_windows_pthread_mutexattr_gettype(const void* attributes,
 
 extern "C" int darling_windows_pthread_mutexattr_setpshared(void* attributes, int shared)
 {
-	auto* value = PthreadMutexAttributesFromStorage(attributes);
+	auto* value = PthreadMutexAttributesFromValue(attributes);
 	if (value == nullptr || (shared != 0 && shared != 1)) return 22;
 	value->pshared = shared;
 	return shared == 0 ? 0 : 95;
@@ -2887,7 +2905,7 @@ extern "C" int darling_windows_pthread_mutexattr_setpshared(void* attributes, in
 
 extern "C" int darling_windows_pthread_mutexattr_getpshared(const void* attributes, int* shared)
 {
-	auto* value = PthreadMutexAttributesFromStorage(attributes);
+	auto* value = PthreadMutexAttributesFromValue(attributes);
 	if (value == nullptr || shared == nullptr) return 22;
 	*shared = value->pshared;
 	return 0;
@@ -2895,7 +2913,7 @@ extern "C" int darling_windows_pthread_mutexattr_getpshared(const void* attribut
 
 extern "C" int darling_windows_pthread_mutexattr_setprotocol(void* attributes, int protocol)
 {
-	auto* value = PthreadMutexAttributesFromStorage(attributes);
+	auto* value = PthreadMutexAttributesFromValue(attributes);
 	if (value == nullptr || (protocol != 0 && protocol != 1 && protocol != 2)) return 22;
 	value->protocol = protocol;
 	return protocol == 0 ? 0 : 95;
@@ -2903,7 +2921,7 @@ extern "C" int darling_windows_pthread_mutexattr_setprotocol(void* attributes, i
 
 extern "C" int darling_windows_pthread_mutexattr_getprotocol(const void* attributes, int* protocol)
 {
-	auto* value = PthreadMutexAttributesFromStorage(attributes);
+	auto* value = PthreadMutexAttributesFromValue(attributes);
 	if (value == nullptr || protocol == nullptr) return 22;
 	*protocol = value->protocol;
 	return 0;
@@ -2911,7 +2929,7 @@ extern "C" int darling_windows_pthread_mutexattr_getprotocol(const void* attribu
 
 extern "C" int darling_windows_pthread_mutexattr_setrobust(void* attributes, int robust)
 {
-	auto* value = PthreadMutexAttributesFromStorage(attributes);
+	auto* value = PthreadMutexAttributesFromValue(attributes);
 	if (value == nullptr || (robust != 0 && robust != 1)) return 22;
 	value->robust = robust;
 	return robust == 0 ? 0 : 95;
@@ -2919,7 +2937,7 @@ extern "C" int darling_windows_pthread_mutexattr_setrobust(void* attributes, int
 
 extern "C" int darling_windows_pthread_mutexattr_getrobust(const void* attributes, int* robust)
 {
-	auto* value = PthreadMutexAttributesFromStorage(attributes);
+	auto* value = PthreadMutexAttributesFromValue(attributes);
 	if (value == nullptr || robust == nullptr) return 22;
 	*robust = value->robust;
 	return 0;
@@ -2928,7 +2946,7 @@ extern "C" int darling_windows_pthread_mutexattr_getrobust(const void* attribute
 extern "C" int darling_windows_pthread_mutexattr_getprioceiling(
 	const void* attributes, int* ceiling)
 {
-	const auto* value = PthreadMutexAttributesFromStorage(attributes);
+	const auto* value = PthreadMutexAttributesFromValue(attributes);
 	if (value == nullptr || ceiling == nullptr) return 22;
 	*ceiling = value->priority_ceiling;
 	return 0;
@@ -2937,7 +2955,7 @@ extern "C" int darling_windows_pthread_mutexattr_getprioceiling(
 extern "C" int darling_windows_pthread_mutexattr_setprioceiling(void* attributes,
 	int ceiling)
 {
-	auto* value = PthreadMutexAttributesFromStorage(attributes);
+	auto* value = PthreadMutexAttributesFromValue(attributes);
 	if (value == nullptr || ceiling < 0) return 22;
 	return 95;
 }
@@ -2945,7 +2963,7 @@ extern "C" int darling_windows_pthread_mutexattr_setprioceiling(void* attributes
 extern "C" int darling_windows_pthread_mutex_init(void* mutex, const void* attributes)
 {
 	if (mutex == nullptr) return 22;
-	const auto* attr = PthreadMutexAttributesFromStorage(attributes);
+	const auto* attr = PthreadMutexAttributesFromValue(attributes);
 	if (attributes != nullptr && attr == nullptr) return 22;
 	if (attr != nullptr && (attr->pshared != 0 || attr->protocol != 0 || attr->robust != 0)) return 95;
 	const int type = attr == nullptr ? 0 : attr->type;
@@ -3060,7 +3078,7 @@ extern "C" int darling_windows_pthread_barrier_init(void* barrier,
 	const void* attributes, unsigned count)
 {
 	if (barrier == nullptr || count == 0) return 22;
-	const auto* barrier_attributes = PthreadBarrierAttributesFromStorage(attributes);
+	const auto* barrier_attributes = PthreadBarrierAttributesFromValue(attributes);
 	if (attributes != nullptr && barrier_attributes == nullptr) return 22;
 	if (barrier_attributes != nullptr && barrier_attributes->pshared != 0) return 95;
 	*reinterpret_cast<DarlingPthreadBarrier**>(barrier) =
@@ -3116,7 +3134,7 @@ extern "C" int darling_windows_pthread_barrierattr_destroy(void* attributes)
 
 extern "C" int darling_windows_pthread_barrierattr_getpshared(const void* attributes, int* shared)
 {
-	const auto* value = PthreadBarrierAttributesFromStorage(attributes);
+	const auto* value = PthreadBarrierAttributesFromValue(attributes);
 	if (value == nullptr || shared == nullptr) return 22;
 	*shared = value->pshared;
 	return 0;
@@ -3124,7 +3142,7 @@ extern "C" int darling_windows_pthread_barrierattr_getpshared(const void* attrib
 
 extern "C" int darling_windows_pthread_barrierattr_setpshared(void* attributes, int shared)
 {
-	auto* value = PthreadBarrierAttributesFromStorage(attributes);
+	auto* value = PthreadBarrierAttributesFromValue(attributes);
 	if (value == nullptr || (shared != 0 && shared != 1)) return 22;
 	if (shared != 0) return 95;
 	value->pshared = shared;
@@ -3142,8 +3160,7 @@ std::condition_variable_any* PthreadConditionFromStorage(void* storage)
 extern "C" int darling_windows_pthread_cond_init(void* condition, const void* attributes)
 {
 	if (condition == nullptr) return 22;
-	const auto* attr = attributes == nullptr ? nullptr :
-		*reinterpret_cast<const DarlingPthreadConditionAttributes* const*>(attributes);
+	const auto* attr = PthreadConditionAttributesFromValue(attributes);
 	if (attributes != nullptr && attr == nullptr) return 22;
 	if (attr != nullptr && attr->pshared != 0) return 95;
 	*reinterpret_cast<std::condition_variable_any**>(condition) =
@@ -3171,8 +3188,7 @@ extern "C" int darling_windows_pthread_condattr_destroy(void* attributes)
 
 extern "C" int darling_windows_pthread_condattr_setpshared(void* attributes, int shared)
 {
-	auto* value = attributes == nullptr ? nullptr :
-		*reinterpret_cast<DarlingPthreadConditionAttributes**>(attributes);
+	auto* value = PthreadConditionAttributesFromValue(attributes);
 	if (value == nullptr || (shared != 0 && shared != 1)) return 22;
 	value->pshared = shared;
 	return shared == 0 ? 0 : 95;
@@ -3180,8 +3196,7 @@ extern "C" int darling_windows_pthread_condattr_setpshared(void* attributes, int
 
 extern "C" int darling_windows_pthread_condattr_getpshared(const void* attributes, int* shared)
 {
-	auto* value = attributes == nullptr ? nullptr :
-		*reinterpret_cast<const DarlingPthreadConditionAttributes* const*>(attributes);
+	auto* value = PthreadConditionAttributesFromValue(attributes);
 	if (value == nullptr || shared == nullptr) return 22;
 	*shared = value->pshared;
 	return 0;
@@ -3189,8 +3204,7 @@ extern "C" int darling_windows_pthread_condattr_getpshared(const void* attribute
 
 extern "C" int darling_windows_pthread_condattr_setclock(void* attributes, int clock_id)
 {
-	auto* value = attributes == nullptr ? nullptr :
-		*reinterpret_cast<DarlingPthreadConditionAttributes**>(attributes);
+	auto* value = PthreadConditionAttributesFromValue(attributes);
 	if (value == nullptr || (clock_id != 0 && clock_id != 1)) return 22;
 	value->clock_id = clock_id;
 	return clock_id == 0 ? 0 : 95;
@@ -3198,8 +3212,7 @@ extern "C" int darling_windows_pthread_condattr_setclock(void* attributes, int c
 
 extern "C" int darling_windows_pthread_condattr_getclock(const void* attributes, int* clock_id)
 {
-	auto* value = attributes == nullptr ? nullptr :
-		*reinterpret_cast<const DarlingPthreadConditionAttributes* const*>(attributes);
+	auto* value = PthreadConditionAttributesFromValue(attributes);
 	if (value == nullptr || clock_id == nullptr) return 22;
 	*clock_id = value->clock_id;
 	return 0;
@@ -3331,6 +3344,12 @@ DarlingPthreadRwlockAttributes* PthreadRwlockAttributesFromStorage(const void* s
 		*reinterpret_cast<DarlingPthreadRwlockAttributes* const*>(storage);
 }
 
+DarlingPthreadRwlockAttributes* PthreadRwlockAttributesFromValue(const void* value)
+{
+	return const_cast<DarlingPthreadRwlockAttributes*>(
+		static_cast<const DarlingPthreadRwlockAttributes*>(value));
+}
+
 extern "C" int darling_windows_pthread_rwlockattr_init(void* attributes)
 {
 	if (attributes == nullptr) return 22;
@@ -3350,7 +3369,7 @@ extern "C" int darling_windows_pthread_rwlockattr_destroy(void* attributes)
 
 extern "C" int darling_windows_pthread_rwlockattr_setpshared(void* attributes, int shared)
 {
-	auto* value = PthreadRwlockAttributesFromStorage(attributes);
+	auto* value = PthreadRwlockAttributesFromValue(attributes);
 	if (value == nullptr || (shared != 0 && shared != 1)) return 22;
 	value->pshared = shared;
 	return shared == 0 ? 0 : 95;
@@ -3358,7 +3377,7 @@ extern "C" int darling_windows_pthread_rwlockattr_setpshared(void* attributes, i
 
 extern "C" int darling_windows_pthread_rwlockattr_getpshared(const void* attributes, int* shared)
 {
-	auto* value = PthreadRwlockAttributesFromStorage(attributes);
+	auto* value = PthreadRwlockAttributesFromValue(attributes);
 	if (value == nullptr || shared == nullptr) return 22;
 	*shared = value->pshared;
 	return 0;
@@ -3367,7 +3386,7 @@ extern "C" int darling_windows_pthread_rwlockattr_getpshared(const void* attribu
 extern "C" int darling_windows_pthread_rwlock_init(void* lock, const void* attributes)
 {
 	if (lock == nullptr) return 22;
-	const auto* attr = PthreadRwlockAttributesFromStorage(attributes);
+	const auto* attr = PthreadRwlockAttributesFromValue(attributes);
 	if (attributes != nullptr && attr == nullptr) return 22;
 	if (attr != nullptr && attr->pshared != 0) return 95;
 	*reinterpret_cast<std::shared_mutex**>(lock) = new (std::nothrow) std::shared_mutex();

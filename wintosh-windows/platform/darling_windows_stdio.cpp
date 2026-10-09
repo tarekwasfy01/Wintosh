@@ -2784,6 +2784,16 @@ struct DarlingPthreadMutex final {
 	std::recursive_mutex recursive_mutex;
 };
 
+struct DarlingPthreadSpinlock final {
+	std::atomic_flag held = ATOMIC_FLAG_INIT;
+};
+
+DarlingPthreadSpinlock* PthreadSpinlockFromStorage(void* storage)
+{
+	return storage == nullptr ? nullptr :
+		*reinterpret_cast<DarlingPthreadSpinlock**>(storage);
+}
+
 DarlingPthreadMutex* PthreadMutexFromStorage(void* storage)
 {
 	if (storage == nullptr) return nullptr;
@@ -2939,6 +2949,50 @@ extern "C" int darling_windows_pthread_mutex_unlock(void* mutex)
 	auto* value = PthreadMutexFromStorage(mutex);
 	if (value == nullptr) return 22;
 	return value->unlock_result();
+}
+
+extern "C" int darling_windows_pthread_spin_init(void* lock, int process_shared)
+{
+	if (lock == nullptr || (process_shared != 0 && process_shared != 1)) return 22;
+	if (process_shared != 0) return 95;
+	*reinterpret_cast<DarlingPthreadSpinlock**>(lock) =
+		new (std::nothrow) DarlingPthreadSpinlock();
+	return *reinterpret_cast<DarlingPthreadSpinlock**>(lock) == nullptr ? 12 : 0;
+}
+
+extern "C" int darling_windows_pthread_spin_destroy(void* lock)
+{
+	auto* value = PthreadSpinlockFromStorage(lock);
+	if (value == nullptr) return 22;
+	delete value;
+	*reinterpret_cast<DarlingPthreadSpinlock**>(lock) = nullptr;
+	return 0;
+}
+
+extern "C" int darling_windows_pthread_spin_lock(void* lock)
+{
+	auto* value = PthreadSpinlockFromStorage(lock);
+	if (value == nullptr) return 22;
+	while (value->held.test_and_set(std::memory_order_acquire)) {
+		darling_windows_pthread_testcancel();
+		YieldProcessor();
+	}
+	return 0;
+}
+
+extern "C" int darling_windows_pthread_spin_trylock(void* lock)
+{
+	auto* value = PthreadSpinlockFromStorage(lock);
+	if (value == nullptr) return 22;
+	return value->held.test_and_set(std::memory_order_acquire) ? 16 : 0;
+}
+
+extern "C" int darling_windows_pthread_spin_unlock(void* lock)
+{
+	auto* value = PthreadSpinlockFromStorage(lock);
+	if (value == nullptr) return 22;
+	value->held.clear(std::memory_order_release);
+	return 0;
 }
 
 namespace {
@@ -4726,6 +4780,11 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 	if (std::strcmp(name, "_pthread_mutex_unlock") == 0 || std::strcmp(name, "pthread_mutex_unlock") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_mutex_unlock);
 	}
+	if (std::strcmp(name, "_pthread_spin_init") == 0 || std::strcmp(name, "pthread_spin_init") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_spin_init);
+	if (std::strcmp(name, "_pthread_spin_destroy") == 0 || std::strcmp(name, "pthread_spin_destroy") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_spin_destroy);
+	if (std::strcmp(name, "_pthread_spin_lock") == 0 || std::strcmp(name, "pthread_spin_lock") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_spin_lock);
+	if (std::strcmp(name, "_pthread_spin_trylock") == 0 || std::strcmp(name, "pthread_spin_trylock") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_spin_trylock);
+	if (std::strcmp(name, "_pthread_spin_unlock") == 0 || std::strcmp(name, "pthread_spin_unlock") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_spin_unlock);
 	if (std::strcmp(name, "_pthread_mutexattr_init") == 0 || std::strcmp(name, "pthread_mutexattr_init") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_mutexattr_init);
 	if (std::strcmp(name, "_pthread_mutexattr_destroy") == 0 || std::strcmp(name, "pthread_mutexattr_destroy") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_mutexattr_destroy);
 	if (std::strcmp(name, "_pthread_mutexattr_settype") == 0 || std::strcmp(name, "pthread_mutexattr_settype") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_mutexattr_settype);

@@ -78,6 +78,14 @@ and acquire successfully after release.
 Absolute-deadline `timedrdlock` and `timedwrlock` entry points now poll with
 cancellation points and return `ETIMEDOUT` for expired deadlines; the host
 smoke verifies the expired-reader case.
+
+The pthread spin-lock family now resolves `pthread_spin_init`,
+`pthread_spin_destroy`, `pthread_spin_lock`, `pthread_spin_trylock`, and
+`pthread_spin_unlock`. The Windows adapter uses an acquire/release
+`atomic_flag`, yields with `YieldProcessor` while contended, and checks deferred
+cancellation while spinning. Process-shared spinlocks remain `ENOTSUP`; the
+host smoke verifies initialization, exclusive acquisition, busy `trylock`,
+unlock, destruction, and resolver coverage.
 Mach port reference mutation now rejects signed-delta underflow and unsigned
 overflow, including the `INT32_MIN` edge case, while preserving the existing
 process-local queue behavior.

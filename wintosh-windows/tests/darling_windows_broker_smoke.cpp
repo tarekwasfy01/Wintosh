@@ -325,6 +325,16 @@ int wmain()
 			std::cerr << "BROKER_MACH_NOTIFICATION_RESET=FAIL\n";
 			return 5;
 		}
+		const darling::windows_host::MachIpcEnvelope invalid_notification_wait{
+			darling::windows_host::MachIpcOperation::NotificationWait, 2037,
+			notification_token, 0, {1}};
+		const auto invalid_notification_wait_bytes = darling::windows_host::EncodeMachIpcEnvelope(
+			invalid_notification_wait);
+		client.Write(std::string(invalid_notification_wait_bytes.begin(), invalid_notification_wait_bytes.end()));
+		if (client.Read() != "INVALID_MACH_IPC_REQUEST") {
+			std::cerr << "BROKER_MACH_NOTIFICATION_VALIDATION=FAIL\n";
+			return 5;
+		}
 		std::cout << "BROKER_MACH_NOTIFICATION=PASS\n";
 		const darling::windows_host::MachIpcEnvelope notification_destroy{
 			darling::windows_host::MachIpcOperation::NotificationDestroy, 2034, notification_token, 0, {}};

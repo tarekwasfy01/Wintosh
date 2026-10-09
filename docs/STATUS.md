@@ -78,6 +78,8 @@ notification-port rights and delivery semantics remain open. Explicit
 `NotificationDestroy` cleanup and stale-token rejection are covered by
 `BROKER_MACH_NOTIFICATION_DESTROY=PASS`; broker reset followed by timeout is
 also covered by `BROKER_MACH_NOTIFICATION_RESET=PASS`.
+Malformed notification wait payloads are rejected and covered by
+`BROKER_MACH_NOTIFICATION_VALIDATION=PASS`.
 The broker also accepts the explicit `Destroy` operation, releasing the
 port and rejecting later use (`BROKER_MACH_DESTROY=PASS`).
 Each port FIFO is bounded to 1024 queued messages and reports

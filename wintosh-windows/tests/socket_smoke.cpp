@@ -71,11 +71,26 @@ int main()
 		darling_windows_read(peer, received, sizeof(payload) - 1) ==
 		static_cast<int>(sizeof(payload) - 1) &&
 		std::memcmp(received, payload, sizeof(payload) - 1) == 0;
+	const char message_payload[] = "msg-smoke";
+	char message_received[sizeof(message_payload)]{};
+	darling_iovec send_iov{const_cast<char*>(message_payload), sizeof(message_payload) - 1};
+	darling_iovec recv_iov{message_received, sizeof(message_payload) - 1};
+	darling_msghdr send_message{};
+	send_message.msg_iov = &send_iov;
+	send_message.msg_iovlen = 1;
+	darling_msghdr recv_message{};
+	recv_message.msg_iov = &recv_iov;
+	recv_message.msg_iovlen = 1;
+	const bool message_ok = darling_windows_sendmsg(client, &send_message, 0) ==
+		static_cast<int>(sizeof(message_payload) - 1) &&
+		darling_windows_recvmsg(peer, &recv_message, 0) ==
+		static_cast<int>(sizeof(message_payload) - 1) &&
+		std::memcmp(message_received, message_payload, sizeof(message_payload) - 1) == 0;
 	darling_windows_close(peer);
 	if (duplicate >= 0) darling_windows_close(duplicate);
 	darling_windows_close(client);
 	darling_windows_close(listener);
-	if (!io_ok || !options_ok || !duplicate_ok) return 6;
+	if (!io_ok || !message_ok || !options_ok || !duplicate_ok) return 6;
 	std::cout << "DARWIN_SOCKET_SMOKE=PASS\n";
 	return 0;
 }

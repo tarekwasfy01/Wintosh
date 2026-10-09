@@ -36,6 +36,11 @@ int main()
 	if (darling_windows_thread_set_state(thread, darling_x86_thread_state64_flavor,
 		&state, darling_x86_thread_state64_count) == 0)
 		return 1;
+	darling_x86_float_state64 float_state{};
+	std::uint32_t float_count = darling_x86_float_state64_count;
+	if (darling_windows_thread_get_state(thread, darling_x86_float_state64_flavor,
+		&float_state, &float_count) != 0 || float_count != darling_x86_float_state64_count)
+		return 1;
 	darling_x86_exception_state64 exception_state{};
 	std::uint32_t exception_count = darling_x86_exception_state64_count;
 	if (darling_windows_thread_get_state(thread, darling_x86_exception_state64_flavor,

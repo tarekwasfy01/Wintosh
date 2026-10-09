@@ -70,9 +70,11 @@ constexpr std::uint32_t darling_thread_sched_timeshare_info_count = 5;
 constexpr std::uint32_t darling_thread_sched_rr_info_count = 5;
 constexpr std::uint32_t darling_thread_sched_fifo_info_count = 4;
 constexpr std::uint32_t darling_x86_thread_state64_flavor = 4;
+constexpr std::uint32_t darling_x86_float_state64_flavor = 5;
 constexpr std::uint32_t darling_x86_exception_state64_flavor = 6;
 constexpr std::uint32_t darling_x86_debug_state64_flavor = 11;
 constexpr std::uint32_t darling_x86_thread_state64_count = 42;
+constexpr std::uint32_t darling_x86_float_state64_count = 128;
 constexpr std::uint32_t darling_x86_exception_state64_count = 4;
 constexpr std::uint32_t darling_x86_debug_state64_count = 16;
 struct darling_time_value final { std::int32_t seconds = 0; std::int32_t microseconds = 0; };
@@ -136,6 +138,9 @@ struct darling_x86_exception_state64 final {
 	std::uint16_t cpu = 0;
 	std::uint32_t error = 0;
 	std::uint64_t faultvaddr = 0;
+};
+struct darling_x86_float_state64 final {
+	std::uint32_t words[darling_x86_float_state64_count]{};
 };
 struct darling_x86_debug_state64 final {
 	std::uint64_t dr0 = 0, dr1 = 0, dr2 = 0, dr3 = 0;

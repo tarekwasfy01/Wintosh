@@ -150,8 +150,8 @@ extern "C" darling_kern_return_t darling_windows_thread_get_state(
 	std::uint32_t* count)
 {
 	if (thread == 0 || state == nullptr || count == nullptr ||
-		(flavor != darling_x86_thread_state64_flavor && flavor != darling_x86_exception_state64_flavor && flavor != darling_x86_debug_state64_flavor) ||
-		*count < (flavor == darling_x86_thread_state64_flavor ? darling_x86_thread_state64_count : flavor == darling_x86_exception_state64_flavor ? darling_x86_exception_state64_count : darling_x86_debug_state64_count))
+		(flavor != darling_x86_thread_state64_flavor && flavor != darling_x86_float_state64_flavor && flavor != darling_x86_exception_state64_flavor && flavor != darling_x86_debug_state64_flavor) ||
+		*count < (flavor == darling_x86_thread_state64_flavor ? darling_x86_thread_state64_count : flavor == darling_x86_float_state64_flavor ? darling_x86_float_state64_count : flavor == darling_x86_exception_state64_flavor ? darling_x86_exception_state64_count : darling_x86_debug_state64_count))
 		return 4;
 	if (flavor == darling_x86_exception_state64_flavor) {
 		auto* result = static_cast<darling_x86_exception_state64*>(state);
@@ -175,7 +175,7 @@ extern "C" darling_kern_return_t darling_windows_thread_get_state(
 		return 0;
 	}
 	CONTEXT context{};
-	context.ContextFlags = CONTEXT_CONTROL | CONTEXT_INTEGER;
+	context.ContextFlags = flavor == darling_x86_float_state64_flavor ? CONTEXT_FLOATING_POINT : CONTEXT_CONTROL | CONTEXT_INTEGER;
 	HANDLE handle = nullptr;
 	bool suspended = false;
 	bool owned = false;
@@ -191,6 +191,14 @@ extern "C" darling_kern_return_t darling_windows_thread_get_state(
 			return 4;
 		}
 		suspended = true;
+	}
+	if (flavor == darling_x86_float_state64_flavor) {
+		static_assert(sizeof(context.FltSave) == darling_x86_float_state64_count * sizeof(std::uint32_t));
+		std::memcpy(state, &context.FltSave, sizeof(context.FltSave));
+		*count = darling_x86_float_state64_count;
+		if (suspended) ResumeThread(handle);
+		if (owned) CloseHandle(handle);
+		return 0;
 	}
 	auto* result = static_cast<darling_x86_thread_state64*>(state);
 	result->rax = context.Rax; result->rbx = context.Rbx; result->rcx = context.Rcx; result->rdx = context.Rdx;

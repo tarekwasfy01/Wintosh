@@ -113,13 +113,14 @@ would deadlock the host bridge; `thread_abort` is not mapped to
 The x86-64 `thread_get_state` flavor is now implemented with the verified
 Darwin 21-word register layout and count 42. Windows `CONTEXT` registers are
 copied for the current thread or for a briefly suspended foreign thread;
-foreign threads are resumed on every exit path. FPU, AVX, debug, ARM, and
-`thread_set_state` flavors remain open.
+foreign threads are resumed on every exit path. x86-64 FPU-state reads now
+copy the Windows `XSAVE_FORMAT` into the exact 512-byte Darwin float-state
+layout; AVX, ARM, and `thread_set_state` flavors remain open.
 
 The matching x86-64 `thread_set_state` path now writes integer/control
 registers for a foreign suspended Windows thread and always resumes it before
 returning. Self-targeted writes are rejected intentionally; no unsafe
-`TerminateThread`-style shortcut is used. Floating-point, AVX, debug, ARM,
+`TerminateThread`-style shortcut is used. Floating-point writes, AVX, ARM,
 and full Mach exception-state flavors remain open.
 
 The x86-64 debug-state flavor is also mapped to Windows `CONTEXT` debug

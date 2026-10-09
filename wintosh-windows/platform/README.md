@@ -11,3 +11,11 @@ resolution. Some sandboxed or protected directories reject the final-name
 query even when the path can be opened; in that case the adapter explicitly
 falls back to `AbsolutePath`. This fallback is recorded in the primitive
 matrix and is not a claim of complete Darwin `realpath` or mount semantics.
+
+The filesystem/syscall layer also covers Windows-backed `stat`/`lstat`,
+nanosecond timestamp conversion, `utimensat`/`futimens`, permissions,
+`pread`/`pwrite` and vector I/O, `fsync`/`fdatasync`, advisory locks,
+descriptor duplication, symlink/readlink/realpath, hard links, directory
+creation/removal, `getfsstat`, and directory enumeration. The smoke coverage
+still does not establish Darwin ACLs, xattrs, resource forks, mount namespaces,
+or every reparse-point type.

@@ -1384,7 +1384,17 @@ int main()
 		darling_windows_host_symbol("pthread_threadid_np") != 0 &&
 		darling_windows_pthread_threadid_np(0, &thread_id) == 0 &&
 		thread_id == pthread_self &&
-		darling_windows_pthread_threadid_np(pthread_self + 1, &thread_id) == 22;
+		darling_windows_pthread_threadid_np(pthread_self + 1, &thread_id) == 22 &&
+		([&] {
+			std::uint64_t foreign_thread = 0;
+			const bool created = darling_windows_pthread_create(&foreign_thread, nullptr,
+				&PthreadSmokeStart, pthread_payload) == 0;
+			const bool resolved = created &&
+				darling_windows_pthread_threadid_np(foreign_thread, &thread_id) == 0 &&
+				thread_id != 0 && thread_id != pthread_self;
+			if (created) darling_windows_pthread_join(foreign_thread, nullptr);
+			return resolved;
+		}());
 	void* pthread_mutex_storage = nullptr;
 	const bool pthread_mutex_ok =
 		darling_windows_host_symbol("pthread_mutex_init") != 0 &&

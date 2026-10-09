@@ -2758,11 +2758,27 @@ extern "C" int darling_windows_pthread_detach(std::uint64_t thread)
 extern "C" int darling_windows_pthread_threadid_np(std::uint64_t thread,
 	std::uint64_t* thread_id)
 {
-	if (thread_id == nullptr || (thread != 0 && thread != darling_windows_pthread_self())) {
+	if (thread_id == nullptr) {
 		darling::windows_host::DarwinErrno::Set(22);
 		return 22;
 	}
-	*thread_id = darling_windows_pthread_self();
+	if (thread == 0) {
+		*thread_id = darling_windows_pthread_self();
+		return 0;
+	}
+	{
+		std::lock_guard lock(darling_pthread_mutex);
+		if (darling_pthreads.find(thread) == darling_pthreads.end()) {
+			darling::windows_host::DarwinErrno::Set(22);
+			return 22;
+		}
+	}
+	const auto native_id = GetThreadId(reinterpret_cast<HANDLE>(static_cast<std::uintptr_t>(thread)));
+	if (native_id == 0) {
+		darling::windows_host::DarwinErrno::Set(22);
+		return 22;
+	}
+	*thread_id = native_id;
 	return 0;
 }
 

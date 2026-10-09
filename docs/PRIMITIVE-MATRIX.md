@@ -55,6 +55,9 @@ The pthread family now includes a verified deferred-cancellation path using
 Thread naming now keeps names by pthread handle as well as for the calling
 thread. The host smoke verifies setting a worker name and reading it back from
 the parent after join; unknown handles and invalid buffers remain `EINVAL`.
+`pthread_threadid_np` likewise resolves a live managed pthread handle to its
+native Windows thread ID; invalid or no-longer-managed handles remain
+`EINVAL`.
 
 The Windows adapter also provides an explicit port-local LIFO cleanup-record
 stack through `darling_windows_pthread_cleanup_push` and

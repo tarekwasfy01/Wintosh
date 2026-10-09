@@ -1241,7 +1241,7 @@ int main()
 		&pthread_condition_shared) == 0 && pthread_condition_shared == 0 &&
 		darling_windows_pthread_condattr_getclock(pthread_condition_attributes,
 		&pthread_condition_clock) == 0 && pthread_condition_clock == 0 &&
-		darling_windows_pthread_condattr_setclock(pthread_condition_attributes, 1) == 95 &&
+		darling_windows_pthread_condattr_setclock(pthread_condition_attributes, 1) == 0 &&
 		darling_windows_pthread_condattr_setpshared(pthread_condition_attributes, 1) == 95 &&
 		darling_windows_pthread_condattr_setclock(pthread_condition_attributes, 0) == 0 &&
 		darling_windows_pthread_condattr_setpshared(pthread_condition_attributes, 0) == 0 &&
@@ -1635,11 +1635,33 @@ int main()
 		darling_windows_pthread_mutex_unlock(&timed_mutex_storage) == 0 &&
 		darling_windows_pthread_mutex_destroy(&timed_mutex_storage) == 0 &&
 		darling_windows_pthread_cond_destroy(&timed_condition_storage) == 0;
+	void* monotonic_condition_attributes = nullptr;
+	void* monotonic_condition_storage = nullptr;
+	void* monotonic_mutex_storage = nullptr;
+	const auto monotonic_now = std::chrono::steady_clock::now().time_since_epoch() +
+		std::chrono::milliseconds(1);
+	const auto monotonic_seconds = std::chrono::duration_cast<std::chrono::seconds>(monotonic_now);
+	const auto monotonic_nanos = std::chrono::duration_cast<std::chrono::nanoseconds>(
+		monotonic_now - monotonic_seconds);
+	darling_timespec monotonic_deadline{monotonic_seconds.count(), monotonic_nanos.count()};
+	const bool pthread_monotonic_condition_ok =
+		darling_windows_pthread_condattr_init(&monotonic_condition_attributes) == 0 &&
+		darling_windows_pthread_condattr_setclock(monotonic_condition_attributes, 1) == 0 &&
+		darling_windows_pthread_cond_init(&monotonic_condition_storage,
+		monotonic_condition_attributes) == 0 &&
+		darling_windows_pthread_mutex_init(&monotonic_mutex_storage, nullptr) == 0 &&
+		darling_windows_pthread_mutex_lock(&monotonic_mutex_storage) == 0 &&
+		darling_windows_pthread_cond_timedwait(&monotonic_condition_storage,
+		&monotonic_mutex_storage, &monotonic_deadline) == 110 &&
+		darling_windows_pthread_mutex_unlock(&monotonic_mutex_storage) == 0 &&
+		darling_windows_pthread_mutex_destroy(&monotonic_mutex_storage) == 0 &&
+		darling_windows_pthread_cond_destroy(&monotonic_condition_storage) == 0 &&
+		darling_windows_pthread_condattr_destroy(&monotonic_condition_attributes) == 0;
 	std::cout << "DARWIN_PTHREAD_SELF_NAME_EQUAL="
 		          << (pthread_abi_ok && pthread_cross_thread_name_ok && pthread_lifecycle_ok && pthread_cancellation_ok && direct_testcancel_cleanup_ok && pthread_lock_cancellation_ok && pthread_condition_cancellation_ok && pthread_attributes_ok && pthread_detach_ok &&
 			pthread_threadid_ok && pthread_mutex_attributes_ok && pthread_condition_attributes_ok && pthread_mutex_ok && pthread_mutex_timed_ok && pthread_spin_ok && pthread_barrier_ok && pthread_rwlock_attributes_ok && pthread_rwlock_ok && pthread_rwlock_try_ok && pthread_rwlock_timed_ok && pthread_tls_ok &&
 			pthread_tls_destructor_ok && pthread_once_ok && pthread_condition_ok &&
-			pthread_timedwait_ok ? "PASS" : "FAIL") << "\n";
+			pthread_timedwait_ok && pthread_monotonic_condition_ok ? "PASS" : "FAIL") << "\n";
 	const bool normalized_terminal_environment_symbols =
 		darling_windows_host_symbol("getenv") != 0 &&
 		darling_windows_host_symbol("setenv") != 0 &&

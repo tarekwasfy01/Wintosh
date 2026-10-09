@@ -3311,6 +3311,14 @@ std::condition_variable_any* PthreadConditionFromStorage(void* storage)
 	if (storage == nullptr) return nullptr;
 	return *reinterpret_cast<std::condition_variable_any**>(storage);
 }
+std::mutex darling_condition_clock_mutex;
+std::unordered_map<const void*, int> darling_condition_clocks;
+int PthreadConditionClock(const void* storage)
+{
+	std::lock_guard lock(darling_condition_clock_mutex);
+	auto found = darling_condition_clocks.find(storage);
+	return found == darling_condition_clocks.end() ? 0 : found->second;
+}
 }
 
 extern "C" int darling_windows_pthread_cond_init(void* condition, const void* attributes)
@@ -3321,7 +3329,12 @@ extern "C" int darling_windows_pthread_cond_init(void* condition, const void* at
 	if (attr != nullptr && attr->pshared != 0) return 95;
 	*reinterpret_cast<std::condition_variable_any**>(condition) =
 		new (std::nothrow) std::condition_variable_any();
-	return *reinterpret_cast<std::condition_variable_any**>(condition) == nullptr ? 12 : 0;
+	if (*reinterpret_cast<std::condition_variable_any**>(condition) == nullptr) return 12;
+	{
+		std::lock_guard lock(darling_condition_clock_mutex);
+		darling_condition_clocks[condition] = attr == nullptr ? 0 : attr->clock_id;
+	}
+	return 0;
 }
 
 extern "C" int darling_windows_pthread_condattr_init(void* attributes)
@@ -3363,7 +3376,7 @@ extern "C" int darling_windows_pthread_condattr_setclock(void* attributes, int c
 	auto* value = PthreadConditionAttributesFromValue(attributes);
 	if (value == nullptr || (clock_id != 0 && clock_id != 1)) return 22;
 	value->clock_id = clock_id;
-	return clock_id == 0 ? 0 : 95;
+	return 0;
 }
 
 extern "C" int darling_windows_pthread_condattr_getclock(const void* attributes, int* clock_id)
@@ -3380,6 +3393,10 @@ extern "C" int darling_windows_pthread_cond_destroy(void* condition)
 	if (value == nullptr) return 22;
 	delete value;
 	*reinterpret_cast<std::condition_variable_any**>(condition) = nullptr;
+	{
+		std::lock_guard lock(darling_condition_clock_mutex);
+		darling_condition_clocks.erase(condition);
+	}
 	return 0;
 }
 
@@ -3411,7 +3428,9 @@ extern "C" int darling_windows_pthread_cond_timedwait(void* condition, void* mut
 	auto* mutex_value = PthreadMutexFromStorage(mutex);
 	if (condition_value == nullptr || mutex_value == nullptr || deadline == nullptr ||
 		deadline->tv_nsec < 0 || deadline->tv_nsec >= 1000000000) return 22;
-	const auto now = std::chrono::system_clock::now().time_since_epoch();
+	const auto now = PthreadConditionClock(condition) == 1 ?
+		std::chrono::steady_clock::now().time_since_epoch() :
+		std::chrono::system_clock::now().time_since_epoch();
 	const auto deadline_duration = std::chrono::seconds(deadline->tv_sec) +
 		std::chrono::nanoseconds(deadline->tv_nsec);
 	const auto remaining = deadline_duration - now;
@@ -3444,7 +3463,9 @@ extern "C" int darling_windows_pthread_cond_timedwait_relative_np(void* conditio
 {
 	if (relative == nullptr || relative->tv_sec < 0 || relative->tv_nsec < 0 ||
 		relative->tv_nsec >= 1000000000) return 22;
-	const auto now = std::chrono::system_clock::now().time_since_epoch();
+	const auto now = PthreadConditionClock(condition) == 1 ?
+		std::chrono::steady_clock::now().time_since_epoch() :
+		std::chrono::system_clock::now().time_since_epoch();
 	const auto relative_duration = std::chrono::seconds(relative->tv_sec) +
 		std::chrono::nanoseconds(relative->tv_nsec);
 	const auto absolute = now + relative_duration;

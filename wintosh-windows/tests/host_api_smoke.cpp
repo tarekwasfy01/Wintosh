@@ -1342,6 +1342,9 @@ int main()
 	int pthread_detach_state = 0;
 	int pthread_inherit_sched = -1;
 	int pthread_scope = -1;
+	int pthread_sched_policy = -1;
+	darling_pthread_sched_param pthread_sched_param{};
+	darling_pthread_sched_param requested_sched_param{1};
 	void* pthread_stack_address = nullptr;
 	std::size_t pthread_stack_size = 0;
 	std::size_t pthread_guard_size = 0;
@@ -1357,6 +1360,10 @@ int main()
 		darling_windows_host_symbol("pthread_attr_getscope") != 0 &&
 		darling_windows_host_symbol("pthread_attr_setstackaddr") != 0 &&
 		darling_windows_host_symbol("pthread_attr_getstackaddr") != 0 &&
+		darling_windows_host_symbol("pthread_attr_setschedpolicy") != 0 &&
+		darling_windows_host_symbol("pthread_attr_getschedpolicy") != 0 &&
+		darling_windows_host_symbol("pthread_attr_setschedparam") != 0 &&
+		darling_windows_host_symbol("pthread_attr_getschedparam") != 0 &&
 		darling_windows_host_symbol("pthread_attr_setstacksize") != 0 &&
 		darling_windows_host_symbol("pthread_attr_getstacksize") != 0 &&
 		darling_windows_host_symbol("pthread_attr_setguardsize") != 0 &&
@@ -1371,6 +1378,14 @@ int main()
 		&pthread_inherit_sched) == 0 && pthread_inherit_sched == 1 &&
 		darling_windows_pthread_attr_getscope(&pthread_attributes,
 		&pthread_scope) == 0 && pthread_scope == 0 &&
+		darling_windows_pthread_attr_getschedpolicy(&pthread_attributes,
+		&pthread_sched_policy) == 0 && pthread_sched_policy == 0 &&
+		darling_windows_pthread_attr_setschedpolicy(&pthread_attributes, 1) == 95 &&
+		darling_windows_pthread_attr_setschedpolicy(&pthread_attributes, 0) == 0 &&
+		darling_windows_pthread_attr_getschedparam(&pthread_attributes,
+		&pthread_sched_param) == 0 && pthread_sched_param.sched_priority == 0 &&
+		darling_windows_pthread_attr_setschedparam(&pthread_attributes,
+		&requested_sched_param) == 95 &&
 		darling_windows_pthread_attr_setscope(&pthread_attributes, 1) == 95 &&
 		darling_windows_pthread_attr_setscope(&pthread_attributes, 0) == 0 &&
 		darling_windows_pthread_attr_getstackaddr(&pthread_attributes,

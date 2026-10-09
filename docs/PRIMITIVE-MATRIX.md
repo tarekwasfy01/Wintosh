@@ -66,6 +66,9 @@ The pthread attribute adapter now also exposes the WSL/winpthreads
 validated and retained; system scope is accepted, alternate scope and a
 caller-supplied stack address return `ENOTSUP` because `CreateThread` owns the
 Windows stack, and the stored address is never used as an execution stack.
+The matching `schedpolicy` and `schedparam` ABI is also present with default
+policy/priority storage; non-default scheduling requests return `ENOTSUP` until
+a Windows scheduling-policy mapping is implemented.
 
 The Windows adapter also provides an explicit port-local LIFO cleanup-record
 stack through `darling_windows_pthread_cleanup_push` and

@@ -330,6 +330,15 @@ extern "C" int darling_windows_pthread_attr_setscope(void* attributes, int scope
 extern "C" int darling_windows_pthread_attr_getscope(const void* attributes, int* scope);
 extern "C" int darling_windows_pthread_attr_setstackaddr(void* attributes, void* stack);
 extern "C" int darling_windows_pthread_attr_getstackaddr(const void* attributes, void** stack);
+struct darling_pthread_sched_param final {
+	int sched_priority = 0;
+};
+extern "C" int darling_windows_pthread_attr_setschedpolicy(void* attributes, int policy);
+extern "C" int darling_windows_pthread_attr_getschedpolicy(const void* attributes, int* policy);
+extern "C" int darling_windows_pthread_attr_setschedparam(void* attributes,
+	const darling_pthread_sched_param* param);
+extern "C" int darling_windows_pthread_attr_getschedparam(const void* attributes,
+	darling_pthread_sched_param* param);
 extern "C" int darling_windows_pthread_attr_setstacksize(void* attributes, std::size_t size);
 extern "C" int darling_windows_pthread_attr_getstacksize(const void* attributes, std::size_t* size);
 extern "C" int darling_windows_pthread_attr_setguardsize(void* attributes, std::size_t size);

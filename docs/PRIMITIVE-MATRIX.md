@@ -30,10 +30,10 @@ the process-local Mach C ABI including basic VM and port-type operations. This
 matrix does not claim that ordinary macOS applications run yet.
 
 The focused `socket_smoke` independently verifies five consecutive TCP
-listener/client/accept/payload-I/O runs. The larger host smoke still exercises
-additional socket options, duplication, exception data, and resolver paths;
-those remain separate coverage rather than being inferred from the focused
-test.
+listener/client/accept/payload-I/O runs, including keepalive, Darwin
+`SO_NOSIGPIPE`, the `SO_REUSEPORT` mapping, descriptor duplication, and the
+nonblocking descriptor flag. The larger host smoke still exercises additional
+exception-data and resolver combinations; those remain separate coverage.
 
 The process row also covers the four-word Darwin signal-set constructors and
 membership operations, verified by `signals_smoke`; this does not establish

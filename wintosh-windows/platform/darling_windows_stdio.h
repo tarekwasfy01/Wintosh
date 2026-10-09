@@ -345,6 +345,12 @@ extern "C" int darling_windows_pthread_mutexattr_setrobust(void* attributes, int
 extern "C" int darling_windows_pthread_mutexattr_getrobust(const void* attributes, int* robust);
 extern "C" int darling_windows_pthread_cond_init(void* condition, const void* attributes);
 extern "C" int darling_windows_pthread_cond_destroy(void* condition);
+extern "C" int darling_windows_pthread_condattr_init(void* attributes);
+extern "C" int darling_windows_pthread_condattr_destroy(void* attributes);
+extern "C" int darling_windows_pthread_condattr_setpshared(void* attributes, int shared);
+extern "C" int darling_windows_pthread_condattr_getpshared(const void* attributes, int* shared);
+extern "C" int darling_windows_pthread_condattr_setclock(void* attributes, int clock_id);
+extern "C" int darling_windows_pthread_condattr_getclock(const void* attributes, int* clock_id);
 extern "C" int darling_windows_pthread_cond_wait(void* condition, void* mutex);
 extern "C" int darling_windows_pthread_cond_timedwait(void* condition, void* mutex,
 	const darling_timespec* deadline);

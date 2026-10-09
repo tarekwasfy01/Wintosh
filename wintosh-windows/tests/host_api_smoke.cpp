@@ -1180,6 +1180,22 @@ int main()
 		darling_windows_pthread_mutexattr_setprotocol(pthread_mutex_attributes, 0) == 0 &&
 		darling_windows_pthread_mutexattr_setrobust(pthread_mutex_attributes, 0) == 0 &&
 		darling_windows_pthread_mutexattr_destroy(&pthread_mutex_attributes) == 0;
+	void* pthread_condition_attributes = nullptr;
+	int pthread_condition_shared = -1;
+	int pthread_condition_clock = -1;
+	const bool pthread_condition_attributes_ok =
+		darling_windows_host_symbol("pthread_condattr_init") != 0 &&
+		darling_windows_host_symbol("pthread_condattr_setclock") != 0 &&
+		darling_windows_pthread_condattr_init(&pthread_condition_attributes) == 0 &&
+		darling_windows_pthread_condattr_getpshared(pthread_condition_attributes,
+		&pthread_condition_shared) == 0 && pthread_condition_shared == 0 &&
+		darling_windows_pthread_condattr_getclock(pthread_condition_attributes,
+		&pthread_condition_clock) == 0 && pthread_condition_clock == 0 &&
+		darling_windows_pthread_condattr_setclock(pthread_condition_attributes, 1) == 95 &&
+		darling_windows_pthread_condattr_setpshared(pthread_condition_attributes, 1) == 95 &&
+		darling_windows_pthread_condattr_setclock(pthread_condition_attributes, 0) == 0 &&
+		darling_windows_pthread_condattr_setpshared(pthread_condition_attributes, 0) == 0 &&
+		darling_windows_pthread_condattr_destroy(&pthread_condition_attributes) == 0;
 	char pthread_payload[] = "thread-result";
 	std::uint64_t created_thread = 0;
 	void* joined_result = nullptr;
@@ -1407,7 +1423,7 @@ int main()
 		darling_windows_pthread_cond_destroy(&timed_condition_storage) == 0;
 	std::cout << "DARWIN_PTHREAD_SELF_NAME_EQUAL="
 		          << (pthread_abi_ok && pthread_lifecycle_ok && pthread_cancellation_ok && pthread_lock_cancellation_ok && pthread_condition_cancellation_ok && pthread_attributes_ok && pthread_detach_ok &&
-			pthread_threadid_ok && pthread_mutex_attributes_ok && pthread_mutex_ok && pthread_rwlock_ok && pthread_tls_ok &&
+			pthread_threadid_ok && pthread_mutex_attributes_ok && pthread_condition_attributes_ok && pthread_mutex_ok && pthread_rwlock_ok && pthread_tls_ok &&
 			pthread_tls_destructor_ok && pthread_once_ok && pthread_condition_ok &&
 			pthread_timedwait_ok ? "PASS" : "FAIL") << "\n";
 	const bool normalized_terminal_environment_symbols =

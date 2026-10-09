@@ -4188,6 +4188,11 @@ mutexes use distinct Windows backends, and the host smoke verifies recursive
 relocking plus error-checking self-deadlock, busy trylock, and foreign unlock
 rejection. Process-shared and robust mutex behavior remains open.
 
+The pthread condition-attribute subfamily now has init/destroy, pshared, and
+clock resolver coverage. Default values pass; process-shared conditions and
+non-default clock selection fail explicitly with `ENOTSUP`, while true
+inter-process condition behavior and monotonic timed waits remain open.
+
 The same attribute object now carries protocol and robustness fields with
 resolver coverage and default-value checks. Enabling priority protocols or
 robust recovery fails explicitly with `ENOTSUP`; owner-death recovery and

@@ -67,6 +67,9 @@ their default values; enabling priority protocols or robust recovery returns
 The signal smoke exposes setup diagnostics separately; symbol and setup
 coverage pass, while downstream signal-dispatch/wait stability remains under
 investigation because isolated runs can still terminate with exit 3.
+Condition-variable attributes now expose `init`, `destroy`, pshared, and clock
+accessors. Default clock/pshared values are verified; process-shared
+conditions and non-default clock execution return `ENOTSUP` explicitly.
 Mach port reference mutation now rejects signed-delta underflow and unsigned
 overflow, including the `INT32_MIN` edge case, while preserving the existing
 process-local queue behavior.

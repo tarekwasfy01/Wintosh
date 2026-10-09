@@ -2796,6 +2796,10 @@ struct DarlingPthreadMutexAttributes final {
 	int protocol = 0;
 	int robust = 0;
 };
+struct DarlingPthreadConditionAttributes final {
+	int pshared = 0;
+	int clock_id = 0;
+};
 
 DarlingPthreadMutexAttributes* PthreadMutexAttributesFromStorage(const void* storage)
 {
@@ -2947,11 +2951,68 @@ std::condition_variable_any* PthreadConditionFromStorage(void* storage)
 
 extern "C" int darling_windows_pthread_cond_init(void* condition, const void* attributes)
 {
-	(void)attributes;
 	if (condition == nullptr) return 22;
+	const auto* attr = attributes == nullptr ? nullptr :
+		*reinterpret_cast<const DarlingPthreadConditionAttributes* const*>(attributes);
+	if (attributes != nullptr && attr == nullptr) return 22;
+	if (attr != nullptr && attr->pshared != 0) return 95;
 	*reinterpret_cast<std::condition_variable_any**>(condition) =
 		new (std::nothrow) std::condition_variable_any();
 	return *reinterpret_cast<std::condition_variable_any**>(condition) == nullptr ? 12 : 0;
+}
+
+extern "C" int darling_windows_pthread_condattr_init(void* attributes)
+{
+	if (attributes == nullptr) return 22;
+	*reinterpret_cast<DarlingPthreadConditionAttributes**>(attributes) =
+		new (std::nothrow) DarlingPthreadConditionAttributes();
+	return *reinterpret_cast<DarlingPthreadConditionAttributes**>(attributes) == nullptr ? 12 : 0;
+}
+
+extern "C" int darling_windows_pthread_condattr_destroy(void* attributes)
+{
+	auto* value = attributes == nullptr ? nullptr :
+		*reinterpret_cast<DarlingPthreadConditionAttributes**>(attributes);
+	if (value == nullptr) return 22;
+	delete value;
+	*reinterpret_cast<DarlingPthreadConditionAttributes**>(attributes) = nullptr;
+	return 0;
+}
+
+extern "C" int darling_windows_pthread_condattr_setpshared(void* attributes, int shared)
+{
+	auto* value = attributes == nullptr ? nullptr :
+		*reinterpret_cast<DarlingPthreadConditionAttributes**>(attributes);
+	if (value == nullptr || (shared != 0 && shared != 1)) return 22;
+	value->pshared = shared;
+	return shared == 0 ? 0 : 95;
+}
+
+extern "C" int darling_windows_pthread_condattr_getpshared(const void* attributes, int* shared)
+{
+	auto* value = attributes == nullptr ? nullptr :
+		*reinterpret_cast<const DarlingPthreadConditionAttributes* const*>(attributes);
+	if (value == nullptr || shared == nullptr) return 22;
+	*shared = value->pshared;
+	return 0;
+}
+
+extern "C" int darling_windows_pthread_condattr_setclock(void* attributes, int clock_id)
+{
+	auto* value = attributes == nullptr ? nullptr :
+		*reinterpret_cast<DarlingPthreadConditionAttributes**>(attributes);
+	if (value == nullptr || (clock_id != 0 && clock_id != 1)) return 22;
+	value->clock_id = clock_id;
+	return clock_id == 0 ? 0 : 95;
+}
+
+extern "C" int darling_windows_pthread_condattr_getclock(const void* attributes, int* clock_id)
+{
+	auto* value = attributes == nullptr ? nullptr :
+		*reinterpret_cast<const DarlingPthreadConditionAttributes* const*>(attributes);
+	if (value == nullptr || clock_id == nullptr) return 22;
+	*clock_id = value->clock_id;
+	return 0;
 }
 
 extern "C" int darling_windows_pthread_cond_destroy(void* condition)
@@ -4579,6 +4640,12 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 	if (std::strcmp(name, "_pthread_cond_init") == 0 || std::strcmp(name, "pthread_cond_init") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_cond_init);
 	}
+	if (std::strcmp(name, "_pthread_condattr_init") == 0 || std::strcmp(name, "pthread_condattr_init") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_condattr_init);
+	if (std::strcmp(name, "_pthread_condattr_destroy") == 0 || std::strcmp(name, "pthread_condattr_destroy") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_condattr_destroy);
+	if (std::strcmp(name, "_pthread_condattr_setpshared") == 0 || std::strcmp(name, "pthread_condattr_setpshared") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_condattr_setpshared);
+	if (std::strcmp(name, "_pthread_condattr_getpshared") == 0 || std::strcmp(name, "pthread_condattr_getpshared") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_condattr_getpshared);
+	if (std::strcmp(name, "_pthread_condattr_setclock") == 0 || std::strcmp(name, "pthread_condattr_setclock") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_condattr_setclock);
+	if (std::strcmp(name, "_pthread_condattr_getclock") == 0 || std::strcmp(name, "pthread_condattr_getclock") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_condattr_getclock);
 	if (std::strcmp(name, "_pthread_cond_destroy") == 0 || std::strcmp(name, "pthread_cond_destroy") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_cond_destroy);
 	}

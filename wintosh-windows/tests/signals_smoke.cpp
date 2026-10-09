@@ -47,7 +47,9 @@ int main()
 		darling_windows_host_symbol("sigfillset") != 0 &&
 		darling_windows_host_symbol("sigaddset") != 0 &&
 		darling_windows_host_symbol("sigdelset") != 0 &&
-		darling_windows_host_symbol("sigismember") != 0;
+		darling_windows_host_symbol("sigismember") != 0 &&
+		darling_windows_host_symbol("__sigemptyset") != 0 &&
+		darling_windows_host_symbol("__sigismember") != 0;
 	if (!sigset_primitives) {
 		std::cerr << "SIGNAL_SMOKE_ERROR=sigset primitives failed\n";
 		return 1;

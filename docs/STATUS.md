@@ -454,6 +454,10 @@ population, resolver lookup, and invalid-number rejection. This is still a
 process-local adapter; native cross-process delivery, complete kernel masks,
 and exact Darwin signal-set ABI edge cases remain open.
 
+The signal-set resolver also accepts the common double-underscore spellings
+`__sigemptyset`, `__sigfillset`, `__sigaddset`, `__sigdelset`, and
+`__sigismember`; the signal smoke checks representative lookup entries.
+
 The VM read bridge now records returned local buffers and makes
 `mach_vm_deallocate` release those buffers in the current Windows process,
 even when the read targeted a different PID. This closes the previous

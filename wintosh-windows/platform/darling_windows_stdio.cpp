@@ -3702,15 +3702,15 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 	if (std::strcmp(name, "_sigaction") == 0 || std::strcmp(name, "sigaction") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_sigaction);
 	}
-	if (std::strcmp(name, "_sigemptyset") == 0 || std::strcmp(name, "sigemptyset") == 0)
+	if (std::strcmp(name, "_sigemptyset") == 0 || std::strcmp(name, "__sigemptyset") == 0 || std::strcmp(name, "sigemptyset") == 0)
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_sigemptyset);
-	if (std::strcmp(name, "_sigfillset") == 0 || std::strcmp(name, "sigfillset") == 0)
+	if (std::strcmp(name, "_sigfillset") == 0 || std::strcmp(name, "__sigfillset") == 0 || std::strcmp(name, "sigfillset") == 0)
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_sigfillset);
-	if (std::strcmp(name, "_sigaddset") == 0 || std::strcmp(name, "sigaddset") == 0)
+	if (std::strcmp(name, "_sigaddset") == 0 || std::strcmp(name, "__sigaddset") == 0 || std::strcmp(name, "sigaddset") == 0)
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_sigaddset);
-	if (std::strcmp(name, "_sigdelset") == 0 || std::strcmp(name, "sigdelset") == 0)
+	if (std::strcmp(name, "_sigdelset") == 0 || std::strcmp(name, "__sigdelset") == 0 || std::strcmp(name, "sigdelset") == 0)
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_sigdelset);
-	if (std::strcmp(name, "_sigismember") == 0 || std::strcmp(name, "sigismember") == 0)
+	if (std::strcmp(name, "_sigismember") == 0 || std::strcmp(name, "__sigismember") == 0 || std::strcmp(name, "sigismember") == 0)
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_sigismember);
 	if (std::strcmp(name, "__sigaction") == 0 ||
 		std::strcmp(name, "_sigaction_nocancel") == 0 ||

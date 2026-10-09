@@ -1540,12 +1540,13 @@ extern "C" id objc_retain(id object)
 
 extern "C" void objc_release(id object)
 {
-	if (!object || object->retain_count.fetch_sub(1,
-		std::memory_order_acq_rel) != 1)
+	if (!object)
 		return;
 	std::vector<id> associated;
 	{
 		std::lock_guard lock(RuntimeMutex());
+		if (object->retain_count.fetch_sub(1, std::memory_order_acq_rel) != 1)
+			return;
 		const auto weak = WeakReferences.find(object);
 		if (weak != WeakReferences.end()) {
 			for (id* location : weak->second)

@@ -459,6 +459,12 @@ slot contains an object but was not previously present in the weak table. This
 keeps later object destruction able to zero the moved destination rather than
 leaving an externally initialized slot stale.
 
+The final `objc_release` transition now runs under the same runtime lock as
+Weak-table access, so `objc_loadWeakRetained` cannot retain an object after its
+last release has begun clearing the weak locations. This closes the basic
+load-versus-final-release race in the process-local adapter; full lock-free ARC
+ordering and object resurrection rules remain outside the implementation.
+
 The ARC bridge now exports `objc_storeStrong`: it retains the incoming object
 before replacing the slot and releases the previous value afterward. The
 Objective-C smoke gate covers set/clear and resolver lookup. Atomic memory

@@ -1,9 +1,11 @@
 # Cross-process Mach IPC design
 
 This document defines the next Windows implementation boundary for Mach IPC.
-It is a design contract, not a claim that the feature is implemented yet.
-The current `darling_windows_mach.cpp` adapter remains process-local; the
-existing named-pipe broker currently exposes only bootstrap RPC.
+It is a design contract and separates implemented Stage-1 behavior from the
+remaining Darwin semantics. The current `darling_windows_mach.cpp` adapter
+remains process-local; the named-pipe broker now implements bounded envelopes,
+queues, notifications, OOL shared mappings, reconnect persistence, and timeout
+receive behavior.
 
 ## Transport boundary
 
@@ -15,12 +17,41 @@ payload type and a versioned envelope:
 | field | width | meaning |
 |---|---:|---|
 | magic | 4 | `WIPC` |
-| version | 2 | protocol version, initially `1` |
+| version | 2 | protocol version with optional session token |
 | operation | 2 | allocate/send/receive/deallocate/destroy |
 | request id | 8 | client correlation value |
 | port token | 8 | broker-issued opaque port name |
 | disposition count | 4 | number of right descriptors |
 | payload size | 4 | byte length of the message body |
+
+Version 2 appends a session token to the envelope. `SessionOpen` is handled
+per named-pipe worker and returns a nonzero opaque session token. Existing
+zero-token requests remain a deliberate migration mode; they are not yet
+authenticated and do not confer Darwin-style rights ownership.
+Nonzero tokens are checked against the connection that opened the session;
+the broker rejects a token replayed on another connection. The handshake may
+also carry a four-byte client PID, which is recorded for future process-handle
+duplication; the empty-payload legacy form remains supported. Port ownership
+and explicit right transfer are still separate steps.
+PID-bearing opens are accepted only when the broker can open the process with
+the planned duplication/query rights. OOL Receive now uses that PID to
+duplicate the mapping handle into the target process and returns its native
+value in the version-2 envelope; security policy and full Mach VM lifetime
+semantics remain incomplete.
+`CapabilityTransfer` now moves ownership of a session-owned port to another
+active session identified by an eight-byte target-session payload; the source
+loses access and the target can use and destroy the port. This is a bounded
+broker capability approximation, not full Mach right/disposition transfer.
+Ports allocated with a nonzero session token are now session-owned: lifecycle,
+send, and receive operations must present the same token. Zero-token ports
+remain legacy shared objects during migration; notification ownership is
+recorded and OOL regions inherit their owning port's session metadata, but
+dedicated enforcement and true Windows handle transfer are still pending.
+On connection loss, tracked session-owned ports, notifications, and OOL
+regions are reclaimed while the legacy token-0 namespace persists. This is
+broker teardown, not yet full Mach port-death or kernel VM semantics. The
+broker smoke also waits for transport teardown and rejects a later transfer
+to the stale session.
 
 All multi-byte fields are little-endian and all lengths are bounded before
 allocation. The broker must reject truncated frames, unknown versions,
@@ -29,9 +60,17 @@ message limit.
 
 ## Port and right model
 
-Port names are opaque per broker session; a Windows process must not treat a
+Port names are opaque within the broker; a Windows process must not treat a
 token as a kernel handle or reuse it after deallocation. The broker stores
-receive queues and reference counts, while clients hold capability tokens.
+receive queues and capability-token state, while clients hold opaque tokens.
+Queues are bounded at 1024 messages and one OOL descriptor is supported as a
+Windows shared-mapping approximation.
+The current Stage-1 implementation deliberately uses broker-wide tokens for
+the cross-client transport proof; session identity and capability ownership
+remain a separate unimplemented layer.
+Tokens are now generated from the Windows C++ random-device source rather than
+an incrementing counter, so the trivial next-token guessing primitive is gone.
+This is token unpredictability only, not authentication or ownership.
 Send-right transfer is represented by a broker-issued capability descriptor,
 never by a raw Windows `HANDLE`. A descriptor is consumed exactly once on a
 successful transfer and is invalidated on session teardown.
@@ -41,8 +80,11 @@ successful transfer and is invalidated on session teardown.
 Receive supports bounded timeout, cancellation by request ID, and an explicit
 `MACH_RCV_TOO_LARGE`-style response containing the required size without
 consuming the message. Queue shutdown returns a stable port-dead result.
-Broker disconnect invalidates session-owned send and receive rights and
-removes all session memberships from port sets.
+Broker reconnect preserves the shared namespace, and the current broker uses a
+joinable worker per accepted connection. The smoke gate proves a two-client
+send/receive through one shared port token. Workers preserve the shared state
+mutex and serialize writes through their own connection; session ownership is
+still not equivalent to Darwin rights.
 
 ## Security and provenance
 
@@ -56,8 +98,17 @@ code remains subject to the repository's documented GPL boundary.
 
 ## Current gaps
 
-The following are still unimplemented: broker-backed port allocation and
-lookup, cross-process send/receive, rights dispositions, port-set waiters,
-notifications, cancellation, MIG descriptors, out-of-line memory, and full
-Mach error-code parity. Until those gates are implemented and tested, the
-project must continue to describe Mach IPC as process-local only.
+The following are still unimplemented or approximated: authenticated
+session ownership and explicit capability transfer, per-task
+rights/disposition transfer, true
+Windows handle passing, OOL protection/lifetime semantics, request
+cancellation, MIG descriptors, and full Mach error-code parity. The current
+broker gates prove bounded transport primitives, not an unmodified Darling
+Mach runtime or arbitrary macOS application execution.
+
+## Worker-pool implementation contract
+
+The worker pool, controlled shutdown/join, and two-client blocked-wait wakeup
+test are now in place with the existing shared state. Remaining worker
+hardening is authenticated session ownership. The accept loop owns listening instances; `BrokerState` owns ports,
+queues, OOL mappings, notifications, counters, and the state mutex.

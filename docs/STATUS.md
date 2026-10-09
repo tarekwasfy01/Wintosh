@@ -60,8 +60,9 @@ out-of-line descriptor. The version-1 envelope now carries an explicit
 out-of-line token and size trailer, validated on encode/decode; broker-side
 mapping allocation and descriptor transfer now work for one bounded
 disposition: `BROKER_MACH_OOL=PASS` creates a named mapping on `Send`, and
-the receiver opens and verifies it after `Receive`. This is a Windows shared
-mapping approximation, not yet Mach handle passing, protection transfer, or
+the receiver opens and verifies it after `Receive`. PID-bearing receives now
+also duplicate a native mapping handle into the target process. This remains
+a Windows shared-mapping approximation, not full Mach protection transfer or
 full OOL lifetime/disposition semantics. The broker now associates OOL
 regions with their owning port and releases them on `Deallocate`.
 Envelope decoding also rejects partially specified or oversized OOL
@@ -188,6 +189,14 @@ native loader path on x64 Windows:
 These are native adapter and synthetic Mach-O gates. They do not prove that an
 unmodified third-party macOS executable or the full Darling server runs.
 
+## Current-batch provenance audit
+
+The current Mach ABI, broker, and smoke-test files retain their existing
+GPL-3.0-compatible headers; the broker uses the explicit GNU GPL v3 wording.
+This batch adds no copied external source.  Darling and PureDarwin remain
+references recorded in the matrix, while the separate component-license audit
+still reports 150 external components with 147 review-required cases.
+
 ## What this means
 
 Wintosh is a documented native Windows compatibility experiment with real
@@ -206,3 +215,196 @@ or the Darling userland execute on Windows.
 5. Implement Foundation/CoreFoundation families incrementally.
 6. Prove a guest/runtime boundary with a real Darling server or a documented
    WSL/emulated-Linux backend.
+
+## Broker reconnect boundary (2026-10-09)
+
+The broker no longer terminates its Mach namespace when the current named-pipe
+client disconnects.  It recreates the listening pipe instance and accepts a
+subsequent client while retaining allocated port tokens, queued messages,
+out-of-line shared-memory regions, and notification objects.  This closes the
+previous single-connection lifetime hole; it is deliberately a sequential
+reconnect path, not yet a concurrent multi-client dispatcher.
+
+Current verification:
+
+| Gate | Result | Evidence |
+|---|---|---|
+| Broker Release rebuild | pass | `wintosh_broker` and `wintosh_darling_windows_broker_smoke` built in `build-windows-current` |
+| Broker smoke | pass | CTest `darling_windows_broker_smoke`, 1/1 |
+| Reconnect smoke | pass | broker smoke explicitly destroys the first client, reconnects, verifies `PING/PONG`, then shuts down |
+| Full configured Release suite | pass | CTest Release suite, 38/38 |
+
+The broker now also accepts a four-byte millisecond timeout on `Receive` and
+waits on a condition variable until a message arrives, the port is destroyed,
+or the timeout expires.  An empty payload preserves the nonblocking probe.
+The smoke gate covers the timeout-expiry path.
+Receive timeout payloads are validated even when a message is already queued;
+malformed timeout requests cannot bypass validation by taking the fast path.
+Receive requests also reject nonzero disposition and OOL descriptor fields;
+descriptor fields are now directionally validated in the broker envelope.
+Send requests likewise reject stale OOL fields unless they carry the supported
+single-disposition OOL payload path.
+Notification control operations reject unexpected payloads and descriptors;
+only `NotificationWait` accepts the documented timeout payload.
+Port `Deallocate` and `Destroy` requests apply the same empty-envelope rule;
+administrative lifecycle operations cannot smuggle message descriptors.
+
+Broker notification objects are now shared independently of the state-map
+lock, and `NotificationWait` releases that lock while waiting.  This removes
+the notification wait as a serialization bottleneck for the planned worker
+pool; the broker still uses a single connection loop, so concurrent client
+execution is not yet proven.
+
+The broker now accepts each connection on a worker while the main loop creates
+the next listening instance.  The broker smoke gate proves two simultaneous
+clients: one allocates a port, the second sends through that shared token, and
+the first receives the payload.  Shutdown now sets a shared flag, wakes the
+accept loop through an internal pipe request, and joins all workers before
+returning.  This proves concurrent bounded broker transport, not yet full
+session-owned Mach rights.
+The same broker smoke also proves a blocked notification wait on one client is
+woken by a signal sent from a second client.
+
+The current cross-client test intentionally uses a broker-wide token to prove
+transport only.  Tokens are not yet authenticated or session-scoped, so this
+must not be described as Darwin send-right ownership; the next capability
+batch must add session identity, explicit transfer, stale-session rejection,
+and teardown tests without weakening the existing shared-port transport gate.
+
+### Opaque broker capability tokens
+
+The broker no longer allocates port, notification, or out-of-line mapping
+tokens from predictable counters. Each token is generated as a nonzero
+64-bit opaque value and collision-checked against the corresponding live
+namespace before publication. The broker smoke remains green, including
+cross-client send/receive, notification wakeup, OOL handoff, reconnect, and
+controlled shutdown. This hardens token guessing only; it does not yet bind a
+token to an authenticated client session, provide explicit right transfer, or
+revoke a disconnected client's rights. Those are the next capability-family
+items.
+
+### Versioned session-handshake foundation
+
+The WIPC envelope is now version 2 and carries an optional session token.
+Each broker connection worker supports `SessionOpen` and returns a distinct
+nonzero opaque session ID; the broker smoke verifies this path. Existing
+zero-token envelopes remain accepted as a compatibility mode so the current
+primitive families can migrate incrementally. Nonzero session IDs are now
+checked against their originating connection and replay on a second
+connection is rejected by the broker smoke. Port and notification ownership
+are now enforced for nonzero session tokens, while OOL mappings only inherit
+ownership metadata through their port. Explicit capability transfer and full
+teardown revocation semantics remain the next implementation batch.
+
+Session-owned port allocation is now implemented as the first resource-level
+step: a port allocated with a nonzero session token records that owner, and
+Send, Receive, Deallocate, and Destroy reject a missing or foreign session
+token. The smoke creates and destroys one authenticated port and keeps the
+legacy shared-port transport proof separate. Notification owners are now
+recorded for session-created objects and OOL mappings inherit their owning
+ port's session metadata. The broker smoke now rejects a foreign session's
+ notification signal and allows the owner to destroy it. Complete OOL
+ handle-transfer semantics remain pending.
+
+Session teardown is now implemented for the tracked resource families: when a
+named-pipe connection disappears, the broker removes that session's ports,
+queues, notifications, and OOL mappings and wakes broker waiters. Legacy
+token-0 resources remain persistent across reconnects by design. A dedicated
+stale-session reconnect rejection is now covered by the broker smoke after
+the transport observes the disconnect. Full kernel-equivalent OOL transfer
+remains future work.
+
+The broker now implements and tests `CapabilityTransfer`: an authenticated
+source session transfers a session-owned port to another active session, after
+which the target can send and destroy it. The source no longer owns that port.
+This covers broker-level ownership transfer only; Mach right dispositions,
+OOL mapping ownership transfer is now covered by the broker smoke as well;
+true Windows handle passing, Mach right dispositions, and kernel rights
+semantics remain separate gaps. `SessionOpen` also accepts an optional
+four-byte client PID; the primary broker smoke exercises this form. It is the
+identity prerequisite for future `DuplicateHandle` work, not handle passing
+itself.
+The broker now validates PID-bearing sessions with `OpenProcess` using the
+future duplication/query access mask and rejects inaccessible PIDs; the smoke
+covers both a valid current PID and an invalid PID. The broker now duplicates
+an OOL mapping handle into a PID-registered target process on Receive and
+returns the native handle value in the version-2 envelope; the smoke verifies
+and closes that handle after a capability transfer. This is the first real
+Windows handle-passing primitive, not yet full Mach VM lifetime semantics.
+
+Remaining broker gaps are concurrent client workers, a cross-client wakeup
+test for a blocked receiver, complete Mach rights/dispositions, true kernel
+handle passing, and real unmodified Darling/Mach-O application execution.
+
+The local C Mach ABI now validates the four supported basic right dispositions
+(`MOVE_RECEIVE`, `COPY_SEND`, `MOVE_SEND`, and `MAKE_SEND`) and rejects unknown
+dispositions or unknown source names, while retaining the task/thread/host
+pseudo-names used by the adapter.  `mach_abi_smoke` covers both accepted and
+rejected cases.  This is validation and reference accounting only; it is not
+yet Darwin's full per-task right namespace or transfer semantics.
+
+The local ABI now keeps separate receive- and send-reference counters. Right
+dispositions update the corresponding counter, `mach_port_type` reports the
+available right bits, and `mach_port_get_refs`/`mach_port_mod_refs` select the
+requested right. The smoke covers the split accounting; per-task namespaces
+and full kernel transfer rules remain open.
+
+Port- and port-set-management calls now reject task names other than the
+current Windows process, and `mach_abi_smoke` covers the foreign-task failure
+path. This is a process-bound adapter guard, not yet Darwin's full per-task
+port-name namespace.
+
+For local ports, `MOVE_RECEIVE` and `MOVE_SEND` now consume the corresponding
+right on a real local source port while adding it to the destination; pseudo
+task/thread/host sources remain borrowed adapter rights. This narrows the
+disposition gap, but does not create Darwin's per-task name space.
+
+When a local move consumes the final right of a source port, the adapter now
+closes and removes that source name from all port sets and wakes waiters; the
+Mach smoke covers the stale-source result. This is local adapter lifetime
+behavior, not yet the kernel's full per-task port-death machinery.
+
+Local port destruction now marks the backing queue closed, wakes blocked
+receivers, removes the name from port sets, and rejects later sends or
+receives.  The pseudo task/thread/host names retain their borrowed no-op
+deallocation behavior.  This closes the local lifetime race; cross-process
+broker rights are still separate and incomplete.
+
+The local `mach_msg` bridge now rejects unknown option bits, zero options, and
+send frames whose declared `msgh_size` does not match `send_size`.  Negative
+cases are covered by `mach_abi_smoke`; this remains a bounded adapter and does
+not implement complex descriptors, vouchers, audit trailers, or MIG.
+
+Receive now checks the destination capacity before dequeuing.  A
+`MACH_MSG_TOO_LARGE` result therefore preserves the message for a later retry,
+which is covered by the Mach ABI smoke test.
+
+The local C ABI now applies the same 1024-message queue bound as the broker and
+returns `darling_mach_send_queue_full` instead of allowing unbounded growth;
+the Mach ABI smoke gate fills the queue and verifies the overflow path.
+
+Local inline Mach messages are also bounded at 4 MiB before allocation, matching
+the versioned broker envelope limit; an oversized send returns the existing
+`MACH_MSG_TOO_LARGE` adapter status.
+
+Port-set receive no longer sleeps in a fixed one-millisecond polling loop:
+local sends and port destruction signal a shared condition variable, so set
+waiters wake promptly while preserving the requested deadline.
+Set-member removal and set destruction signal the same wait path, closing the
+remaining local port-set lifecycle wakeup gap.
+`mach_abi_smoke` now also runs a real cross-thread set-wakeup check: a blocked
+set receiver is released by a later member send before its 500-ms deadline.
+
+Local `mach_port_deallocate` now decrements one reference and removes the port
+only when the last reference is released.  The smoke gate verifies the
+intermediate reference count; `mach_port_destroy` still shares the adapter's
+current deallocation path and needs a separate forced-destroy implementation.
+The same smoke gate now also verifies that the final deallocation removes the
+name and rejects a subsequent send.
+`mach_port_get_refs` and `mach_port_mod_refs` now reject unknown right kinds;
+the adapter's Receive-/Send-right constants are the only accepted selectors.
+
+Broker OOL receive now releases the broker's owning mapping handle at transfer
+time while an already-open receiver mapping remains valid.  This bounds broker
+retention after delivery; true Mach VM protection and cross-process descriptor
+rights are still not implemented.

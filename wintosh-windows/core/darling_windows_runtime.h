@@ -35,7 +35,9 @@ enum class MachIpcOperation : std::uint16_t {
 	NotificationSignal = 7,
 	NotificationReset = 8,
 	NotificationWait = 9,
-	NotificationDestroy = 10
+	NotificationDestroy = 10,
+	SessionOpen = 11,
+	CapabilityTransfer = 12
 };
 
 struct MachIpcEnvelope final {
@@ -46,6 +48,10 @@ struct MachIpcEnvelope final {
 	std::vector<std::uint8_t> payload;
 	std::uint64_t out_of_line_token = 0;
 	std::uint32_t out_of_line_size = 0;
+	// Zero is the legacy, unauthenticated envelope mode.  SessionOpen returns
+	// a nonzero value for the capability-aware migration path.
+	std::uint64_t session_token = 0;
+	std::uint64_t out_of_line_handle = 0;
 };
 
 [[nodiscard]] std::vector<std::uint8_t> EncodeMachIpcEnvelope(
@@ -65,6 +71,7 @@ public:
 
 	[[nodiscard]] void* Data() const noexcept { return m_view; }
 	[[nodiscard]] std::size_t Size() const noexcept { return m_size; }
+	[[nodiscard]] HANDLE NativeHandle() const noexcept { return m_mapping; }
 
 private:
 	MachIpcSharedMemory(HANDLE mapping, void* view, std::size_t size) noexcept :

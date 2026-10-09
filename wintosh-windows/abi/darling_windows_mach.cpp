@@ -21,13 +21,20 @@
 
 namespace {
 std::atomic<darling_mach_port_name_t> next_port{0x100};
+constexpr std::size_t max_port_queue_depth = 1024;
+constexpr std::size_t max_inline_message_size = 4 * 1024 * 1024;
 struct PortQueue final {
 	std::mutex mutex;
 	std::condition_variable condition;
 	std::deque<std::vector<std::uint8_t>> messages;
 	std::uint32_t refs = 1;
+	std::uint32_t receive_refs = 1;
+	std::uint32_t send_refs = 0;
+	bool closed = false;
 };
 std::mutex ports_mutex;
+std::mutex ports_wait_mutex;
+std::condition_variable ports_condition;
 std::unordered_map<darling_mach_port_name_t, std::shared_ptr<PortQueue>> ports;
 std::unordered_map<darling_mach_port_name_t, std::unordered_set<darling_mach_port_name_t>> port_sets;
 
@@ -161,22 +168,45 @@ extern "C" darling_kern_return_t darling_windows_mach_vm_copy(
 extern "C" darling_kern_return_t darling_windows_mach_port_deallocate(
 	darling_mach_port_name_t task, darling_mach_port_name_t name)
 {
-	if (task == 0 || name == 0) return 4; // KERN_INVALID_ARGUMENT
+	if (task == 0 || task != darling_windows_mach_task_self() || name == 0) return 4; // KERN_INVALID_ARGUMENT
+	if (name == darling_windows_mach_task_self() ||
+		name == darling_windows_mach_thread_self() ||
+		name == darling_windows_mach_host_self())
+		return 0;
+	std::shared_ptr<PortQueue> port;
 	{
 		std::lock_guard lock(ports_mutex);
-		ports.erase(name);
+		const auto found = ports.find(name);
+		if (found == ports.end()) return 3;
+		port = found->second;
+		{
+			std::lock_guard port_lock(port->mutex);
+			if (port->refs == 0) return 3;
+			if (port->send_refs != 0) --port->send_refs;
+			else if (port->receive_refs != 0) --port->receive_refs;
+			else return 3;
+			port->refs = port->receive_refs + port->send_refs;
+			if (port->refs != 0) return 0;
+		}
+		ports.erase(found);
 		for (auto& [set_name, members] : port_sets) {
 			(void)set_name;
 			members.erase(name);
 		}
 	}
+	{
+		std::lock_guard lock(port->mutex);
+		port->closed = true;
+	}
+	port->condition.notify_all();
+	ports_condition.notify_all();
 	return 0; // Host tokens are borrowed pseudo-rights; nothing to close here.
 }
 
 extern "C" darling_kern_return_t darling_windows_mach_port_allocate(
 	darling_mach_port_name_t task, darling_mach_port_name_t* name)
 {
-	if (task == 0 || name == nullptr) return 4;
+	if (task == 0 || task != darling_windows_mach_task_self() || name == nullptr) return 4;
 	*name = next_port.fetch_add(1, std::memory_order_relaxed);
 	if (*name == 0) return 3;
 	{
@@ -189,6 +219,18 @@ extern "C" darling_kern_return_t darling_windows_mach_port_allocate(
 extern "C" darling_kern_return_t darling_windows_mach_port_destroy(
 	darling_mach_port_name_t task, darling_mach_port_name_t name)
 {
+	if (task == 0 || task != darling_windows_mach_task_self() || name == 0) return 4;
+	if (name == darling_windows_mach_task_self() ||
+		name == darling_windows_mach_thread_self() ||
+		name == darling_windows_mach_host_self()) return 0;
+	const auto port = FindPort(name);
+	if (port == nullptr) return 3;
+	{
+		std::lock_guard lock(port->mutex);
+		port->receive_refs = 1;
+		port->send_refs = 0;
+		port->refs = 1;
+	}
 	return darling_windows_mach_port_deallocate(task, name);
 }
 
@@ -196,13 +238,66 @@ extern "C" darling_kern_return_t darling_windows_mach_port_insert_right(
 	darling_mach_port_name_t task, darling_mach_port_name_t name,
 	darling_mach_port_name_t right, std::uint32_t disposition)
 {
-	if (task == 0 || name == 0 || right == 0 || disposition == 0) return 4;
+	if (task == 0 || task != darling_windows_mach_task_self() || name == 0 || right == 0 || disposition == 0) return 4;
+	if (disposition != darling_mach_move_receive &&
+		disposition != darling_mach_copy_send &&
+		disposition != darling_mach_move_send &&
+		disposition != darling_mach_make_send)
+		return 4;
+	if (FindPort(right) == nullptr && right != darling_windows_mach_task_self() &&
+		right != darling_windows_mach_thread_self() &&
+		right != darling_windows_mach_host_self()) return 3;
 	const auto port = FindPort(name);
 	if (port == nullptr) return 3;
+	const auto source = FindPort(right);
 	{
-		std::lock_guard lock(port->mutex);
+		if (source == nullptr || disposition == darling_mach_copy_send ||
+			disposition == darling_mach_make_send) {
+			std::lock_guard lock(port->mutex);
+			if (port->refs == (std::numeric_limits<std::uint32_t>::max)()) return 3;
+			if (disposition == darling_mach_move_receive)
+				++port->receive_refs;
+			else
+				++port->send_refs;
+			port->refs = port->receive_refs + port->send_refs;
+			return 0;
+		}
+		if (source == port) return 0;
+		bool source_exhausted = false;
+		std::unique_lock source_lock(source->mutex, std::defer_lock);
+		std::unique_lock destination_lock(port->mutex, std::defer_lock);
+		std::lock(source_lock, destination_lock);
 		if (port->refs == (std::numeric_limits<std::uint32_t>::max)()) return 3;
-		++port->refs;
+		if (disposition == darling_mach_move_receive) {
+			if (source->receive_refs == 0) return 3;
+			--source->receive_refs;
+			++port->receive_refs;
+		} else {
+			if (source->send_refs == 0) return 3;
+			--source->send_refs;
+			++port->send_refs;
+		}
+		source->refs = source->receive_refs + source->send_refs;
+		port->refs = port->receive_refs + port->send_refs;
+		source_exhausted = source->refs == 0;
+		if (source_exhausted) source->closed = true;
+		source_lock.unlock();
+		destination_lock.unlock();
+		if (source_exhausted) {
+			std::lock_guard ports_lock(ports_mutex);
+			const auto found = ports.find(right);
+			if (found != ports.end() && found->second == source) {
+				ports.erase(found);
+				for (auto& [set_name, members] : port_sets) {
+					(void)set_name;
+					members.erase(right);
+				}
+			}
+		}
+		if (source_exhausted) {
+			source->condition.notify_all();
+			ports_condition.notify_all();
+		}
 	}
 	return 0;
 }
@@ -211,16 +306,23 @@ extern "C" darling_kern_return_t darling_windows_mach_port_mod_refs(
 	darling_mach_port_name_t task, darling_mach_port_name_t name,
 	std::uint32_t right, std::int32_t delta)
 {
-	if (task == 0 || name == 0 || right == 0 || delta == 0) return 4;
+	if (task == 0 || task != darling_windows_mach_task_self() || name == 0 || right == 0 || delta == 0) return 4;
+	if (right != darling_mach_port_type_receive && right != darling_mach_port_type_send)
+		return 4;
 	const auto port = FindPort(name);
 	if (port == nullptr) return 3;
 	std::lock_guard lock(port->mutex);
-	const auto current = static_cast<std::int64_t>(port->refs);
+	const auto current = static_cast<std::int64_t>(
+		right == darling_mach_port_type_receive ? port->receive_refs : port->send_refs);
 	const auto change = static_cast<std::int64_t>(delta);
 	const auto updated = current + change;
 	if (updated < 0 || updated > static_cast<std::int64_t>(
 		(std::numeric_limits<std::uint32_t>::max)())) return 4;
-	port->refs = static_cast<std::uint32_t>(updated);
+	if (right == darling_mach_port_type_receive)
+		port->receive_refs = static_cast<std::uint32_t>(updated);
+	else
+		port->send_refs = static_cast<std::uint32_t>(updated);
+	port->refs = port->receive_refs + port->send_refs;
 	return 0;
 }
 
@@ -228,11 +330,13 @@ extern "C" darling_kern_return_t darling_windows_mach_port_get_refs(
 	darling_mach_port_name_t task, darling_mach_port_name_t name,
 	std::uint32_t right, std::uint32_t* refs)
 {
-	if (task == 0 || name == 0 || right == 0 || refs == nullptr) return 4;
+	if (task == 0 || task != darling_windows_mach_task_self() || name == 0 || right == 0 || refs == nullptr) return 4;
+	if (right != darling_mach_port_type_receive && right != darling_mach_port_type_send)
+		return 4;
 	const auto port = FindPort(name);
 	if (port == nullptr) return 3;
 	std::lock_guard lock(port->mutex);
-	*refs = port->refs;
+	*refs = right == darling_mach_port_type_receive ? port->receive_refs : port->send_refs;
 	return 0;
 }
 
@@ -240,20 +344,22 @@ extern "C" darling_kern_return_t darling_windows_mach_port_type(
 	darling_mach_port_name_t task, darling_mach_port_name_t name,
 	std::uint32_t* type)
 {
-	if (task == 0 || name == 0 || type == nullptr) return 4;
+	if (task == 0 || task != darling_windows_mach_task_self() || name == 0 || type == nullptr) return 4;
 	const auto port = FindPort(name);
 	if (port == nullptr) {
 		*type = darling_mach_port_type_none;
 		return 3;
 	}
-	*type = darling_mach_port_type_receive;
+	std::lock_guard lock(port->mutex);
+	*type = (port->receive_refs != 0 ? darling_mach_port_type_receive : 0) |
+		(port->send_refs != 0 ? darling_mach_port_type_send : 0);
 	return 0;
 }
 
 extern "C" darling_kern_return_t darling_windows_mach_port_set_allocate(
 	darling_mach_port_name_t task, darling_mach_port_name_t* set)
 {
-	if (task == 0 || set == nullptr) return 4;
+	if (task == 0 || task != darling_windows_mach_task_self() || set == nullptr) return 4;
 	*set = next_port.fetch_add(1, std::memory_order_relaxed);
 	if (*set == 0) return 3;
 	std::lock_guard lock(ports_mutex);
@@ -265,7 +371,7 @@ extern "C" darling_kern_return_t darling_windows_mach_port_move_member(
 	darling_mach_port_name_t task, darling_mach_port_name_t member,
 	darling_mach_port_name_t set)
 {
-	if (task == 0 || member == 0 || set == 0) return 4;
+	if (task == 0 || task != darling_windows_mach_task_self() || member == 0 || set == 0) return 4;
 	std::lock_guard lock(ports_mutex);
 	if (ports.find(member) == ports.end()) return 3;
 	auto found = port_sets.find(set);
@@ -278,19 +384,23 @@ extern "C" darling_kern_return_t darling_windows_mach_port_remove_member(
 	darling_mach_port_name_t task, darling_mach_port_name_t member,
 	darling_mach_port_name_t set)
 {
-	if (task == 0 || member == 0 || set == 0) return 4;
+	if (task == 0 || task != darling_windows_mach_task_self() || member == 0 || set == 0) return 4;
 	std::lock_guard lock(ports_mutex);
 	auto found = port_sets.find(set);
 	if (found == port_sets.end()) return 3;
-	return found->second.erase(member) == 1 ? 0 : 3;
+	const auto removed = found->second.erase(member) == 1;
+	if (removed) ports_condition.notify_all();
+	return removed ? 0 : 3;
 }
 
 extern "C" darling_kern_return_t darling_windows_mach_port_set_destroy(
 	darling_mach_port_name_t task, darling_mach_port_name_t set)
 {
-	if (task == 0 || set == 0) return 4;
+	if (task == 0 || task != darling_windows_mach_task_self() || set == 0) return 4;
 	std::lock_guard lock(ports_mutex);
-	return port_sets.erase(set) == 1 ? 0 : 3;
+	const auto removed = port_sets.erase(set) == 1;
+	if (removed) ports_condition.notify_all();
+	return removed ? 0 : 3;
 }
 
 extern "C" darling_kern_return_t darling_windows_mach_port_receive(
@@ -318,7 +428,8 @@ extern "C" darling_kern_return_t darling_windows_mach_port_set_receive(
 			if (result == 0 || result == 0x10004003) return result;
 		}
 		if (std::chrono::steady_clock::now() >= deadline) return 268;
-		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		std::unique_lock wait_lock(ports_wait_mutex);
+		ports_condition.wait_until(wait_lock, deadline);
 	}
 }
 
@@ -326,15 +437,20 @@ extern "C" darling_kern_return_t darling_windows_mach_port_send(
 	darling_mach_port_name_t name, const void* data, std::uint32_t size)
 {
 	if (data == nullptr && size != 0) return 4;
+	if (size > max_inline_message_size) return 0x10004003; // MACH_MSG_TOO_LARGE
 	const auto port = FindPort(name);
 	if (port == nullptr) return 3;
 	std::vector<std::uint8_t> message(size);
 	if (size != 0) std::memcpy(message.data(), data, size);
 	{
 		std::lock_guard lock(port->mutex);
+		if (port->closed) return 3;
+		if (port->messages.size() >= max_port_queue_depth)
+			return darling_mach_send_queue_full;
 		port->messages.push_back(std::move(message));
 	}
 	port->condition.notify_one();
+	ports_condition.notify_all();
 	return 0;
 }
 
@@ -347,10 +463,13 @@ extern "C" darling_kern_return_t darling_windows_mach_port_receive(
 	if (port == nullptr) return 3;
 	std::unique_lock lock(port->mutex);
 	if (!port->condition.wait_for(lock, std::chrono::milliseconds(timeout_ms),
-		[&] { return !port->messages.empty(); })) return 268; // MACH_RCV_TIMED_OUT
+		[&] { return port->closed || !port->messages.empty(); }))
+		return 268; // MACH_RCV_TIMED_OUT
+	if (port->closed) return 3;
+	const auto& queued_message = port->messages.front();
+	if (queued_message.size() > capacity) return 0x10004003; // MACH_MSG_TOO_LARGE
 	auto message = std::move(port->messages.front());
 	port->messages.pop_front();
-	if (message.size() > capacity) return 0x10004003; // MACH_MSG_TOO_LARGE
 	std::memcpy(data, message.data(), message.size());
 	*size = static_cast<std::uint32_t>(message.size());
 	return 0;
@@ -364,9 +483,11 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 {
 	(void)notify;
 	if (message == nullptr) return 4;
+	if ((option & ~(darling_mach_send_msg | darling_mach_receive_msg)) != 0 ||
+		option == 0) return 4;
 	if ((option & darling_mach_send_msg) != 0) {
 		if (send_size < sizeof(darling_mach_msg_header) ||
-			message->msgh_remote_port == 0) return 4;
+			message->msgh_remote_port == 0 || message->msgh_size != send_size) return 4;
 		const auto result = darling_windows_mach_port_send(message->msgh_remote_port,
 			message, send_size);
 		if (result != 0) return result;

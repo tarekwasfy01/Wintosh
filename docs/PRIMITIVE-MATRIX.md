@@ -34,6 +34,19 @@ process-local queue behavior.
 Port release also removes stale membership from every process-local port set;
 cross-process Mach IPC and the full kernel notification/disposition model
 remain outside this adapter.
+The local port-set receiver now uses condition-variable wakeups for sends,
+member removal, and set/port destruction, with a cross-thread smoke proof.
+The local C ABI now tracks receive and send references separately and exposes
+the corresponding type bits; this is still an adapter-level namespace rather
+than Darwin's per-task kernel right table.
+The named-pipe broker separately covers bounded inline/OOL transport and
+reconnect persistence; it is still sequential per client rather than a
+concurrent Mach dispatcher.
+The local ABI distinguishes reference-decrementing `mach_port_deallocate`
+from forced `mach_port_destroy`; this is a tested adapter rule, not proof of
+Darwin's per-task right tables or interprocess right transfer. `get_refs` and
+`mod_refs` now reject unknown right selectors while accepting the adapter's
+Receive-/Send-right values.
 
 The framework layer now also has a deliberately small CoreFoundation ABI
 adapter for retain/release, UTF-8 strings with limited mutable operations, byte data, arrays, integer

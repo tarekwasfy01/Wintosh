@@ -19,7 +19,7 @@
 namespace darling::windows_host {
 
 namespace {
-constexpr std::uint16_t mach_ipc_version = 1;
+constexpr std::uint16_t mach_ipc_version = 2;
 constexpr std::size_t mach_ipc_header_size = 32;
 constexpr std::size_t mach_ipc_max_payload = 4 * 1024 * 1024;
 constexpr DWORD rpc_max_frame = 4 * 1024 * 1024;
@@ -81,6 +81,8 @@ std::vector<std::uint8_t> EncodeMachIpcEnvelope(const MachIpcEnvelope& envelope)
 	bytes.insert(bytes.end(), envelope.payload.begin(), envelope.payload.end());
 	AppendU64(bytes, envelope.out_of_line_token);
 	AppendU32(bytes, envelope.out_of_line_size);
+	AppendU64(bytes, envelope.session_token);
+	AppendU64(bytes, envelope.out_of_line_handle);
 	return bytes;
 }
 
@@ -93,7 +95,7 @@ MachIpcEnvelope DecodeMachIpcEnvelope(const std::vector<std::uint8_t>& bytes)
 	if (ReadU16(bytes, offset) != mach_ipc_version)
 		throw std::invalid_argument("unsupported Mach IPC envelope version");
 	const auto operation = ReadU16(bytes, offset);
-	if (operation < 1 || operation > 10)
+	if (operation < 1 || operation > 12)
 		throw std::invalid_argument("unknown Mach IPC operation");
 	MachIpcEnvelope result;
 	result.operation = static_cast<MachIpcOperation>(operation);
@@ -101,13 +103,15 @@ MachIpcEnvelope DecodeMachIpcEnvelope(const std::vector<std::uint8_t>& bytes)
 	result.port_token = ReadU64(bytes, offset);
 	result.disposition_count = ReadU32(bytes, offset);
 	const auto payload_size = ReadU32(bytes, offset);
-	if (payload_size > mach_ipc_max_payload || offset + payload_size + 12 != bytes.size())
+	if (payload_size > mach_ipc_max_payload || offset + payload_size + 28 != bytes.size())
 		throw std::invalid_argument("invalid Mach IPC payload size");
 	result.payload.assign(bytes.begin() + static_cast<std::ptrdiff_t>(offset), bytes.end());
 	offset += payload_size;
 	result.payload.resize(payload_size);
 	result.out_of_line_token = ReadU64(bytes, offset);
 	result.out_of_line_size = ReadU32(bytes, offset);
+	result.session_token = ReadU64(bytes, offset);
+	result.out_of_line_handle = ReadU64(bytes, offset);
 	if ((result.out_of_line_token == 0) != (result.out_of_line_size == 0) ||
 		result.out_of_line_size > mach_ipc_max_payload)
 		throw std::invalid_argument("invalid Mach IPC out-of-line descriptor");

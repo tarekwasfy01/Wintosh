@@ -3578,6 +3578,17 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 	if (std::strcmp(name, "_class_getInstanceMethod") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&class_getInstanceMethod);
 	}
+	if (std::strcmp(name, "_class_getInstanceSize") == 0 ||
+		std::strcmp(name, "class_getInstanceSize") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&class_getInstanceSize);
+	}
+	if (std::strcmp(name, "_class_addIvar") == 0 || std::strcmp(name, "class_addIvar") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&class_addIvar);
+	}
+	if (std::strcmp(name, "_class_replaceMethod") == 0 ||
+		std::strcmp(name, "class_replaceMethod") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&class_replaceMethod);
+	}
 	if (std::strcmp(name, "_class_getClassMethod") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&class_getClassMethod);
 	}
@@ -3586,6 +3597,12 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 	}
 	if (std::strcmp(name, "_object_getClassName") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&object_getClassName);
+	}
+	if (std::strcmp(name, "_object_getIvar") == 0 || std::strcmp(name, "object_getIvar") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&object_getIvar);
+	}
+	if (std::strcmp(name, "_object_setIvar") == 0 || std::strcmp(name, "object_setIvar") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&object_setIvar);
 	}
 	if (std::strcmp(name, "_object_isClass") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&object_isClass);
@@ -3598,6 +3615,10 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 	}
 	if (std::strcmp(name, "_method_getImplementation") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&method_getImplementation);
+	}
+	if (std::strcmp(name, "_method_setImplementation") == 0 ||
+		std::strcmp(name, "method_setImplementation") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&method_setImplementation);
 	}
 	if (std::strcmp(name, "_method_getTypeEncoding") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&method_getTypeEncoding);
@@ -3649,6 +3670,14 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 	}
 	if (std::strcmp(name, "_objc_retain") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&objc_retain);
+	}
+	if (std::strcmp(name, "_objc_storeStrong") == 0 ||
+		std::strcmp(name, "objc_storeStrong") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&objc_storeStrong);
+	}
+	if (std::strcmp(name, "_objc_loadWeakRetained") == 0 ||
+		std::strcmp(name, "objc_loadWeakRetained") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&objc_loadWeakRetained);
 	}
 	if (std::strcmp(name, "_objc_release") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&objc_release);
@@ -4264,12 +4293,16 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 	if (std::strcmp(name, "mach_vm_deallocate") == 0 || std::strcmp(name, "_mach_vm_deallocate") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_mach_vm_deallocate);
 	if (std::strcmp(name, "mach_vm_protect") == 0 || std::strcmp(name, "_mach_vm_protect") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_mach_vm_protect);
 	if (std::strcmp(name, "mach_vm_read_overwrite") == 0 || std::strcmp(name, "_mach_vm_read_overwrite") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_mach_vm_read_overwrite);
+	if (std::strcmp(name, "mach_vm_read") == 0 || std::strcmp(name, "_mach_vm_read") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_mach_vm_read);
 	if (std::strcmp(name, "mach_vm_write") == 0 || std::strcmp(name, "_mach_vm_write") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_mach_vm_write);
 	if (std::strcmp(name, "mach_vm_copy") == 0 || std::strcmp(name, "_mach_vm_copy") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_mach_vm_copy);
+	if (std::strcmp(name, "mach_vm_region") == 0 || std::strcmp(name, "_mach_vm_region") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_mach_vm_region);
+	if (std::strcmp(name, "mach_vm_region_recurse") == 0 || std::strcmp(name, "_mach_vm_region_recurse") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_mach_vm_region_recurse);
 	if (std::strcmp(name, "mach_port_deallocate") == 0 || std::strcmp(name, "_mach_port_deallocate") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_mach_port_deallocate);
 	if (std::strcmp(name, "mach_port_destroy") == 0 || std::strcmp(name, "_mach_port_destroy") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_mach_port_destroy);
 	if (std::strcmp(name, "mach_port_allocate") == 0 || std::strcmp(name, "_mach_port_allocate") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_mach_port_allocate);
 	if (std::strcmp(name, "mach_port_insert_right") == 0 || std::strcmp(name, "_mach_port_insert_right") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_mach_port_insert_right);
+	if (std::strcmp(name, "mach_port_extract_right") == 0 || std::strcmp(name, "_mach_port_extract_right") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_mach_port_extract_right);
 	if (std::strcmp(name, "mach_port_mod_refs") == 0 || std::strcmp(name, "_mach_port_mod_refs") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_mach_port_mod_refs);
 	if (std::strcmp(name, "mach_port_get_refs") == 0 || std::strcmp(name, "_mach_port_get_refs") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_mach_port_get_refs);
 	if (std::strcmp(name, "mach_port_type") == 0 || std::strcmp(name, "_mach_port_type") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_mach_port_type);

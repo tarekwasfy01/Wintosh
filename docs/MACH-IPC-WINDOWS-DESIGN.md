@@ -36,8 +36,16 @@ and explicit right transfer are still separate steps.
 PID-bearing opens are accepted only when the broker can open the process with
 the planned duplication/query rights. OOL Receive now uses that PID to
 duplicate the mapping handle into the target process and returns its native
-value in the version-2 envelope; security policy and full Mach VM lifetime
-semantics remain incomplete.
+value in the version-2 envelope; the local ABI also implements
+`mach_port_extract_right` for the supported move/copy/make dispositions.
+Security policy, complete client-side handle adoption, and full Mach VM
+lifetime semantics remain incomplete.
+
+The adjacent Mach VM adapter also exposes a `mach_vm_region` basic-info path
+backed by `VirtualQueryEx`; it reports the containing Windows region and a
+conservative Darwin protection mask for the supported basic flavor. Named
+submaps, shared regions, inheritance metadata, and other Darwin flavors are
+not represented.
 `CapabilityTransfer` now moves ownership of a session-owned port to another
 active session identified by an eight-byte target-session payload; the source
 loses access and the target can use and destroy the port. This is a bounded

@@ -84,12 +84,16 @@ void objc_registerClassPair(Class cls);
 
 const char* class_getName(Class cls);
 Class class_getSuperclass(Class cls);
+std::size_t class_getInstanceSize(Class cls);
+bool class_addIvar(Class cls, const char* name, std::size_t size,
+	std::uint8_t alignment, const char* types);
 Method class_getInstanceMethod(Class cls, SEL selector);
 Method class_getClassMethod(Class cls, SEL selector);
 bool class_respondsToSelector(Class cls, SEL selector);
 Method* class_copyMethodList(Class cls, unsigned int* out_count);
 SEL method_getName(Method method);
 IMP method_getImplementation(Method method);
+IMP method_setImplementation(Method method, IMP implementation);
 const char* method_getTypeEncoding(Method method);
 Ivar class_getInstanceVariable(Class cls, const char* name);
 const char* ivar_getName(Ivar ivar);
@@ -105,6 +109,8 @@ objc_property_t* class_copyPropertyList(Class cls, unsigned int* out_count);
 Protocol* class_copyProtocolList(Class cls, unsigned int* out_count);
 bool class_addMethod(Class cls, SEL selector, IMP implementation,
 	const char* types);
+IMP class_replaceMethod(Class cls, SEL selector, IMP implementation,
+	const char* types);
 bool class_addClassMethod(Class cls, SEL selector, IMP implementation,
 	const char* types);
 IMP class_getMethodImplementation(Class cls, SEL selector);
@@ -112,10 +118,13 @@ const char* class_getMethodTypeEncoding(Class cls, SEL selector);
 
 id class_createInstance(Class cls, std::size_t extra_bytes);
 Class object_getClass(id object);
+id object_getIvar(id object, Ivar ivar);
+void object_setIvar(id object, Ivar ivar, id value);
 const char* object_getClassName(id object);
 bool object_isClass(id object);
 id objc_retain(id object);
 void objc_release(id object);
+void objc_storeStrong(id* location, id object);
 id objc_autorelease(id object);
 id objc_retainAutoreleasedReturnValue(id object);
 id objc_getAssociatedObject(id object, const void* key);
@@ -127,6 +136,7 @@ void objc_autoreleasePoolPop(void* token);
 id objc_initWeak(id* location, id object);
 id objc_storeWeak(id* location, id object);
 id objc_loadWeak(id* location);
+id objc_loadWeakRetained(id* location);
 void objc_destroyWeak(id* location);
 id objc_copyWeak(id* destination, id* source);
 id objc_moveWeak(id* destination, id* source);

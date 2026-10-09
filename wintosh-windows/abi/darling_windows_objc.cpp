@@ -10,6 +10,7 @@
 
 #include <windows.h>
 
+#include <algorithm>
 #include <atomic>
 #include <cstdlib>
 #include <cstring>
@@ -40,6 +41,8 @@ struct objc_method final {
 	SEL selector{};
 	IMP implementation{};
 	std::string types;
+	Class owner_class{};
+	bool class_method{};
 };
 
 struct objc_class final {
@@ -415,12 +418,15 @@ std::vector<std::unique_ptr<objc_method>>& MethodViewStorage()
 	return storage;
 }
 
-Method MakeMethodView(SEL selector, const objc_class::Method& method)
+Method MakeMethodView(Class owner, SEL selector, const objc_class::Method& method,
+	bool class_method)
 {
 	MethodViewStorage().push_back(std::make_unique<objc_method>());
 	MethodViewStorage().back()->selector = selector;
 	MethodViewStorage().back()->implementation = method.implementation;
 	MethodViewStorage().back()->types = method.types;
+	MethodViewStorage().back()->owner_class = owner;
+	MethodViewStorage().back()->class_method = class_method;
 	return MethodViewStorage().back().get();
 }
 
@@ -1132,6 +1138,58 @@ extern "C" Class class_getSuperclass(Class cls)
 	return cls ? cls->superclass : nullptr;
 }
 
+namespace {
+std::size_t IvarStorageSize(const std::string& encoding) noexcept
+{
+	if (encoding.empty()) return sizeof(void*);
+	switch (encoding.front()) {
+	case 'c': case 'C': case 'B': return 1;
+	case 's': case 'S': return 2;
+	case 'i': case 'I': case 'f': return 4;
+	case 'q': case 'Q': case 'l': case 'L': case 'd': return 8;
+	case '@': case '#': case ':': case '^': case '*': return sizeof(void*);
+	default: return sizeof(void*);
+	}
+}
+}
+
+extern "C" std::size_t class_getInstanceSize(Class cls)
+{
+	if (!cls) return 0;
+	std::lock_guard lock(RuntimeMutex());
+	std::size_t size = sizeof(objc_object);
+	for (Class current = cls; current; current = current->superclass) {
+		for (const auto& [name, ivar] : current->ivars) {
+			(void)name;
+			if (ivar->offset >= 0)
+				size = (std::max)(size, static_cast<std::size_t>(ivar->offset) +
+					IvarStorageSize(ivar->types));
+		}
+	}
+	return size;
+}
+
+extern "C" bool class_addIvar(Class cls, const char* name, std::size_t size,
+	std::uint8_t alignment, const char* types)
+{
+	if (!cls || !name || name[0] == '\0' || !types || size == 0 ||
+		alignment > 63 ||
+		cls->registered)
+		return false;
+	const std::size_t requested_alignment = alignment == 0 ? 1 : (std::size_t{1} << alignment);
+	const std::size_t current = class_getInstanceSize(cls);
+	const std::size_t offset = (current + requested_alignment - 1) &
+		~(requested_alignment - 1);
+	auto ivar = std::make_unique<objc_ivar>();
+	ivar->name = name;
+	ivar->types = types;
+	ivar->offset = static_cast<std::ptrdiff_t>(offset);
+	std::lock_guard lock(RuntimeMutex());
+	if (cls->ivars.find(name) != cls->ivars.end()) return false;
+	cls->ivars.emplace(name, std::move(ivar));
+	return true;
+}
+
 extern "C" Method class_getInstanceMethod(Class cls, SEL selector)
 {
 	if (!cls || !selector)
@@ -1140,7 +1198,7 @@ extern "C" Method class_getInstanceMethod(Class cls, SEL selector)
 	for (Class current = cls; current; current = current->superclass) {
 		auto method = current->methods.find(selector);
 		if (method != current->methods.end())
-			return MakeMethodView(selector, method->second);
+			return MakeMethodView(current, selector, method->second, false);
 	}
 	return nullptr;
 }
@@ -1154,7 +1212,8 @@ extern "C" Method class_getClassMethod(Class cls, SEL selector)
 		const auto& method_map = current->is_metaclass ? current->methods : current->class_methods;
 		auto method = method_map.find(selector);
 		if (method != method_map.end())
-			return MakeMethodView(selector, method->second);
+			return MakeMethodView(current->is_metaclass ? current->owner_class : current,
+				selector, method->second, current->is_metaclass);
 	}
 	return nullptr;
 }
@@ -1187,7 +1246,7 @@ extern "C" Method* class_copyMethodList(Class cls, unsigned int* out_count)
 		return nullptr;
 	unsigned int index = 0;
 	for (const auto& entry : cls->methods)
-		result[index++] = MakeMethodView(entry.first, entry.second);
+		result[index++] = MakeMethodView(cls, entry.first, entry.second, false);
 	return result;
 }
 
@@ -1199,6 +1258,26 @@ extern "C" SEL method_getName(Method method)
 extern "C" IMP method_getImplementation(Method method)
 {
 	return method ? method->implementation : nullptr;
+}
+
+extern "C" IMP method_setImplementation(Method method, IMP implementation)
+{
+	if (!method || !implementation || !method->owner_class)
+		return nullptr;
+	std::lock_guard lock(RuntimeMutex());
+	auto& methods = method->class_method ? method->owner_class->class_methods :
+		method->owner_class->methods;
+	auto found = methods.find(method->selector);
+	if (found == methods.end()) return nullptr;
+	const IMP previous = found->second.implementation;
+	found->second.implementation = implementation;
+	method->implementation = implementation;
+	if (method->class_method && method->owner_class->metaclass) {
+		auto meta = method->owner_class->metaclass->methods.find(method->selector);
+		if (meta != method->owner_class->metaclass->methods.end())
+			meta->second.implementation = implementation;
+	}
+	return previous;
 }
 
 extern "C" const char* method_getTypeEncoding(Method method)
@@ -1354,6 +1433,21 @@ extern "C" bool class_addMethod(Class cls, SEL selector, IMP implementation,
 		objc_class::Method{implementation, types ? types : ""}).second;
 }
 
+extern "C" IMP class_replaceMethod(Class cls, SEL selector, IMP implementation,
+	const char* types)
+{
+	if (!cls || !selector || !implementation)
+		return nullptr;
+	std::lock_guard lock(RuntimeMutex());
+	auto [entry, inserted] = cls->methods.emplace(selector,
+		objc_class::Method{implementation, types ? types : ""});
+	if (inserted)
+		return nullptr;
+	const IMP previous = entry->second.implementation;
+	entry->second = objc_class::Method{implementation, types ? types : ""};
+	return previous;
+}
+
 extern "C" bool class_addClassMethod(Class cls, SEL selector, IMP implementation,
 	const char* types)
 {
@@ -1393,7 +1487,7 @@ extern "C" id class_createInstance(Class cls, std::size_t extra_bytes)
 {
 	if (!cls)
 		return nullptr;
-	const std::size_t size = sizeof(objc_object) + extra_bytes;
+	const std::size_t size = class_getInstanceSize(cls) + extra_bytes;
 	auto* object = reinterpret_cast<id>(new unsigned char[size]);
 	object->isa = cls;
 	new (&object->retain_count) std::atomic<std::uint32_t>(1);
@@ -1403,6 +1497,22 @@ extern "C" id class_createInstance(Class cls, std::size_t extra_bytes)
 extern "C" Class object_getClass(id object)
 {
 	return object ? object->isa : nullptr;
+}
+
+extern "C" id object_getIvar(id object, Ivar ivar)
+{
+	if (!object || !ivar || ivar->offset < 0) return nullptr;
+	id value = nullptr;
+	std::memcpy(&value, reinterpret_cast<const std::uint8_t*>(object) + ivar->offset,
+		sizeof(value));
+	return value;
+}
+
+extern "C" void object_setIvar(id object, Ivar ivar, id value)
+{
+	if (!object || !ivar || ivar->offset < 0) return;
+	std::memcpy(reinterpret_cast<std::uint8_t*>(object) + ivar->offset, &value,
+		sizeof(value));
 }
 
 extern "C" const char* object_getClassName(id object)
@@ -1454,6 +1564,15 @@ extern "C" void objc_release(id object)
 	for (id value : associated)
 		objc_release(value);
 	delete[] reinterpret_cast<unsigned char*>(object);
+}
+
+extern "C" void objc_storeStrong(id* location, id object)
+{
+	if (!location) return;
+	if (object) objc_retain(object);
+	const id previous = *location;
+	*location = object;
+	if (previous) objc_release(previous);
 }
 
 extern "C" id objc_autorelease(id object)
@@ -1589,6 +1708,17 @@ extern "C" id objc_loadWeak(id* location)
 	return *location;
 }
 
+extern "C" id objc_loadWeakRetained(id* location)
+{
+	if (!location) return nullptr;
+	id value = nullptr;
+	{
+		std::lock_guard lock(RuntimeMutex());
+		value = *location;
+	}
+	return value ? objc_retain(value) : nullptr;
+}
+
 extern "C" void objc_destroyWeak(id* location)
 {
 	if (!location)
@@ -1614,19 +1744,28 @@ extern "C" id objc_moveWeak(id* destination, id* source)
 {
 	if (!source)
 		return objc_storeWeak(destination, nullptr);
+	if (destination == source)
+		return *source;
 	std::lock_guard lock(RuntimeMutex());
-	if (destination)
-		*destination = *source;
+	if (!destination) return nullptr;
+	if (*destination) {
+		const auto previous = WeakReferences.find(*destination);
+		if (previous != WeakReferences.end()) {
+			previous->second.erase(destination);
+			if (previous->second.empty())
+				WeakReferences.erase(previous);
+		}
+	}
+	*destination = *source;
 	if (*source) {
 		const auto references = WeakReferences.find(*source);
 		if (references != WeakReferences.end()) {
 			references->second.erase(source);
-			if (destination)
-				references->second.insert(destination);
+			references->second.insert(destination);
 		}
 	}
 	*source = nullptr;
-	return destination ? *destination : nullptr;
+	return *destination;
 }
 
 extern "C" id objc_msgSend(id receiver, SEL selector, ...)

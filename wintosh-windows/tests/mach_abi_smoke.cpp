@@ -129,12 +129,63 @@ int main()
 			darling_windows_mach_port_deallocate(task + 1, allocated) == 4 &&
 			darling_windows_mach_port_set_allocate(task + 1, &ignored) == 4;
 	}();
+	const auto mod_refs_lifetime_ok = [&] {
+		darling_mach_port_name_t port = 0;
+		if (darling_windows_mach_port_allocate(task, &port) != 0)
+			return false;
+		std::uint32_t refs = 0;
+		if (darling_windows_mach_port_mod_refs(task, port,
+			darling_mach_port_type_receive, -1) != 0)
+			return false;
+		const auto stale = darling_windows_mach_port_get_refs(task, port,
+			darling_mach_port_type_receive, &refs);
+		const auto send_after = darling_windows_mach_port_send(port, "x", 1);
+		return stale == 3 && send_after == 3;
+	}();
+	const auto extract_right_ok = [&] {
+		darling_mach_port_name_t source = 0;
+		if (darling_windows_mach_port_allocate(task, &source) != 0 ||
+			darling_windows_mach_port_insert_right(task, source, thread,
+				darling_mach_make_send) != 0)
+			return false;
+		darling_mach_port_name_t extracted = 0;
+		std::uint32_t extracted_disposition = 0;
+		std::uint32_t refs = 0;
+		const auto copy_result = darling_windows_mach_port_extract_right(
+			task, source, darling_mach_copy_send, &extracted, &extracted_disposition);
+		const auto copy_disposition = extracted_disposition;
+		const auto copy_refs_result = darling_windows_mach_port_get_refs(
+			task, source, darling_mach_port_type_send, &refs);
+		const auto copy_ref_count = refs;
+		const auto move_result = darling_windows_mach_port_extract_right(
+			task, source, darling_mach_move_send, &extracted, &extracted_disposition);
+		const auto move_disposition = extracted_disposition;
+		const auto move_refs_result = darling_windows_mach_port_get_refs(
+			task, source, darling_mach_port_type_send, &refs);
+		const auto move_ref_count = refs;
+		const auto final_move_result = darling_windows_mach_port_extract_right(
+			task, source, darling_mach_move_send, &extracted, &extracted_disposition);
+		const auto stale_result = darling_windows_mach_port_type(task, source, &refs);
+		const auto cleanup = darling_windows_mach_port_destroy(task, source);
+		const auto stale_extract = darling_windows_mach_port_extract_right(task, source,
+			darling_mach_make_send, &extracted, &extracted_disposition);
+		const bool result = copy_result == 0 && extracted == source &&
+			copy_disposition == darling_mach_copy_send && move_disposition == darling_mach_move_send &&
+			copy_refs_result == 0 &&
+			copy_ref_count == 2 && move_result == 0 && move_refs_result == 0 &&
+			move_ref_count == 1 && final_move_result == 0 && stale_result == 0 &&
+			(refs & darling_mach_port_type_receive) != 0 && cleanup == 0 &&
+			stale_extract == 3;
+		return result;
+	}();
 	const bool ok = task != 0 && thread != 0 && host != 0 &&
 		local_queue_limit_ok &&
 		set_wakeup_ok &&
 		last_deallocate_ok &&
 		local_move_right_ok &&
 		foreign_task_rejected &&
+		mod_refs_lifetime_ok &&
+		extract_right_ok &&
 		darling_windows_host_symbol("mach_task_self") != 0 &&
 		darling_windows_host_symbol("mach_thread_self") != 0 &&
 		darling_windows_host_symbol("mach_host_self") != 0 &&
@@ -143,13 +194,28 @@ int main()
 		darling_windows_host_symbol("mach_vm_deallocate") != 0 &&
 		darling_windows_host_symbol("mach_vm_protect") != 0 &&
 		darling_windows_host_symbol("mach_vm_read_overwrite") != 0 &&
+		darling_windows_host_symbol("mach_vm_read") != 0 &&
 		darling_windows_host_symbol("mach_vm_write") != 0 &&
 		darling_windows_host_symbol("mach_vm_copy") != 0 &&
+		darling_windows_host_symbol("mach_vm_region") != 0 &&
+		darling_windows_host_symbol("mach_vm_region_recurse") != 0 &&
 		darling_windows_host_page_size(host, &page_size) == 0 && page_size >= 4096 &&
 		darling_windows_mach_vm_allocate(task, &vm_address, page_size, 0) == 0 &&
 		vm_address != 0 &&
 		darling_windows_mach_vm_allocate(task, &vm_copy_address, page_size, 0) == 0 &&
 		darling_windows_mach_vm_write(task, vm_address, &vm_value, sizeof(vm_value)) == 0 &&
+		([&] {
+			darling_mach_vm_address_t read_data = 0;
+			darling_mach_vm_size_t read_size = 0;
+			const auto result = darling_windows_mach_vm_read(task, vm_address,
+				sizeof(vm_value), &read_data, &read_size);
+			const auto value = read_data == 0 ? 0u : *reinterpret_cast<std::uint32_t*>(
+				static_cast<std::uintptr_t>(read_data));
+			const auto cleanup = read_data == 0 ? 4 : darling_windows_mach_vm_deallocate(
+				task, read_data, read_size);
+			return result == 0 && read_data != 0 && read_size == sizeof(vm_value) &&
+				value == vm_value && cleanup == 0;
+		})() &&
 		darling_windows_mach_vm_read_overwrite(task, vm_address, sizeof(vm_value),
 		vm_copy_address, &vm_read_size) == 0 && vm_read_size == sizeof(vm_value) &&
 		std::memcpy(&vm_copy, reinterpret_cast<const void*>(static_cast<std::uintptr_t>(vm_copy_address)),
@@ -157,12 +223,26 @@ int main()
 		darling_windows_mach_vm_copy(task, vm_address, sizeof(vm_value), vm_copy_address) == 0 &&
 		std::memcpy(&vm_copy, reinterpret_cast<const void*>(static_cast<std::uintptr_t>(vm_copy_address)),
 		sizeof(vm_copy)) != nullptr && vm_copy == vm_value &&
+		([&] {
+			darling_mach_vm_address_t region_address = vm_address;
+			darling_mach_vm_size_t region_size = 0;
+			darling_mach_vm_region_basic_info region_info{};
+			std::uint32_t region_count = darling_vm_region_basic_info_count;
+			std::uint32_t depth = 0;
+			return darling_windows_mach_vm_region(task, &region_address, &region_size,
+				darling_vm_region_basic_info, &region_info, &region_count) == 0 &&
+				region_address <= vm_address && region_size != 0 &&
+				(region_info.protection & darling_vm_prot_read) != 0 &&
+				darling_windows_mach_vm_region_recurse(task, &region_address, &region_size,
+					&depth, &region_info, &region_count) == 0 && depth == 0;
+		})() &&
 		darling_windows_mach_vm_protect(task, vm_address, page_size, false,
 		 darling_vm_prot_read) == 0 &&
 		darling_windows_mach_vm_deallocate(task, vm_copy_address, page_size) == 0 &&
 		darling_windows_mach_vm_deallocate(task, vm_address, page_size) == 0 &&
 		darling_windows_host_symbol("mach_port_allocate") != 0 &&
 		darling_windows_host_symbol("mach_port_get_refs") != 0 &&
+		darling_windows_host_symbol("mach_port_extract_right") != 0 &&
 		darling_windows_host_symbol("mach_port_type") != 0 &&
 		darling_windows_host_symbol("mach_port_set_allocate") != 0 &&
 		darling_windows_host_symbol("mach_port_move_member") != 0 &&

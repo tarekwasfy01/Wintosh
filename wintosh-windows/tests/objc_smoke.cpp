@@ -175,11 +175,48 @@ int main()
 		class_getSuperclass(child) != root ||
 		std::string(class_getName(child)) != "DarlingChild")
 		return 3;
+	if (class_getInstanceSize(root) == 0 ||
+		class_getInstanceSize(child) < class_getInstanceSize(root) ||
+		darling_windows_host_symbol("class_getInstanceSize") == 0)
+		return 31;
+	Class ivar_class = objc_allocateClassPair(nullptr, "DarlingIvarClass", 0);
+	if (!ivar_class || !class_addIvar(ivar_class, "value", sizeof(id), 3, "@") ||
+		class_addIvar(ivar_class, "value", sizeof(id), 3, "@") ||
+		darling_windows_host_symbol("class_addIvar") == 0)
+		return 32;
+	objc_registerClassPair(ivar_class);
+	id ivar_object = class_createInstance(ivar_class, 0);
+	Ivar value_ivar = class_getInstanceVariable(ivar_class, "value");
+	id ivar_value = class_createInstance(child, 0);
+	object_setIvar(ivar_object, value_ivar, ivar_value);
+	if (!ivar_object || !value_ivar || object_getIvar(ivar_object, value_ivar) != ivar_value ||
+		darling_windows_host_symbol("object_getIvar") == 0 ||
+		darling_windows_host_symbol("object_setIvar") == 0)
+		return 33;
 	if (!class_addMethod(root, selector, reinterpret_cast<IMP>(&main), "@@:") ||
 		class_addMethod(root, selector, reinterpret_cast<IMP>(&main), "@@:") ||
 		class_getMethodImplementation(child, selector) !=
 			reinterpret_cast<IMP>(&main))
 		return 4;
+	const auto replaced = class_replaceMethod(root, selector,
+		reinterpret_cast<IMP>(&ReturnSelf), "@@:");
+	const bool replacement_ok = replaced == reinterpret_cast<IMP>(&main) &&
+		class_getMethodImplementation(child, selector) == reinterpret_cast<IMP>(&ReturnSelf) &&
+		darling_windows_host_symbol("class_replaceMethod") != 0;
+	const auto restored = class_replaceMethod(root, selector,
+		reinterpret_cast<IMP>(&main), "@@:");
+	if (!replacement_ok || restored != reinterpret_cast<IMP>(&ReturnSelf))
+		return 41;
+	Method method_view = class_getInstanceMethod(root, selector);
+	const auto method_previous = method_setImplementation(method_view,
+		reinterpret_cast<IMP>(&ReturnSelf));
+	const bool method_mutation_ok = method_previous == reinterpret_cast<IMP>(&main) &&
+		class_getMethodImplementation(child, selector) == reinterpret_cast<IMP>(&ReturnSelf) &&
+		darling_windows_host_symbol("method_setImplementation") != 0;
+	const auto method_restored = method_setImplementation(method_view,
+		reinterpret_cast<IMP>(&main));
+	if (!method_mutation_ok || method_restored != reinterpret_cast<IMP>(&ReturnSelf))
+		return 42;
 	SEL self_selector = sel_registerName("self");
 	if (!class_addMethod(root, self_selector,
 		reinterpret_cast<IMP>(&ReturnSelf), "@@:") ||
@@ -193,6 +230,13 @@ int main()
 		objc_msgSend(object, self_selector) != object ||
 		objc_msgSendSuper(object, root, self_selector) != object)
 		return 6;
+	id strong_slot = nullptr;
+	objc_storeStrong(&strong_slot, object);
+	if (strong_slot != object || darling_windows_host_symbol("objc_storeStrong") == 0)
+		return 34;
+	objc_storeStrong(&strong_slot, nullptr);
+	if (strong_slot != nullptr)
+		return 35;
 	SEL object_selector = sel_registerName("identity:");
 	SEL integer_selector = sel_registerName("addSeven:");
 	SEL int_selector = sel_registerName("addFiveInt:");
@@ -298,7 +342,7 @@ int main()
 	SEL factory_selector = sel_registerName("factory");
 	if (!class_addClassMethod(child, factory_selector,
 		reinterpret_cast<IMP>(&ClassIdentity), "@@:") ||
-		objc_getMetaClass("DarlingChild") != child ||
+		objc_getMetaClass("DarlingChild") == nullptr ||
 		darling_objc_msgSend_class0(child, factory_selector) !=
 		reinterpret_cast<id>(child))
 		return 16;
@@ -792,20 +836,32 @@ int main()
 		return 47;
 	_Block_object_dispose(weak_destination, 3 | 16);
 	id weak_slot = nullptr;
+	id retained_weak = nullptr;
 	if (objc_initWeak(&weak_slot, object) != object ||
-		objc_loadWeak(&weak_slot) != object)
+		objc_loadWeak(&weak_slot) != object ||
+		(retained_weak = objc_loadWeakRetained(&weak_slot)) != object ||
+		darling_windows_host_symbol("objc_loadWeakRetained") == 0)
 		return 32;
+	objc_release(retained_weak);
 	id copied_slot = nullptr;
 	if (objc_copyWeak(&copied_slot, &weak_slot) != object ||
 		objc_loadWeak(&copied_slot) != object)
 		return 33;
+	id moved_slot = nullptr;
+	if (objc_moveWeak(&moved_slot, &copied_slot) != object ||
+		copied_slot != nullptr || objc_loadWeak(&moved_slot) != object)
+		return 36;
+	if (objc_moveWeak(&moved_slot, &moved_slot) != object)
+		return 37;
 	objc_destroyWeak(&weak_slot);
 	if (objc_loadWeak(&weak_slot) != nullptr)
 		return 34;
 	objc_release(object);
-	if (copied_slot != nullptr || objc_loadWeak(&copied_slot) != nullptr)
+	if (copied_slot != nullptr || objc_loadWeak(&copied_slot) != nullptr ||
+		moved_slot != nullptr || objc_loadWeak(&moved_slot) != nullptr)
 		return 35;
 	objc_destroyWeak(&copied_slot);
+	objc_destroyWeak(&moved_slot);
 	std::puts("DARWIN_OBJC_REGISTRY=PASS");
 	return 0;
 }

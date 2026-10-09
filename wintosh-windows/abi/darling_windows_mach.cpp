@@ -81,6 +81,21 @@ DWORD VmProtection(std::uint32_t protection)
 		(read ? PAGE_EXECUTE_READ : PAGE_EXECUTE);
 	return write ? PAGE_READWRITE : (read ? PAGE_READONLY : PAGE_NOACCESS);
 }
+
+HANDLE OpenVmProcess(darling_mach_port_name_t task, DWORD access, bool& owned)
+{
+	owned = false;
+	if (task == 0) return nullptr;
+	if (task == darling_windows_mach_task_self()) return GetCurrentProcess();
+	const HANDLE process = OpenProcess(access, FALSE, static_cast<DWORD>(task));
+	owned = process != nullptr;
+	return process;
+}
+
+void CloseVmProcess(HANDLE process, bool owned) noexcept
+{
+	if (owned && process != nullptr) CloseHandle(process);
+}
 }
 
 extern "C" darling_kern_return_t darling_windows_mach_vm_allocate(
@@ -89,8 +104,12 @@ extern "C" darling_kern_return_t darling_windows_mach_vm_allocate(
 {
 	(void)flags;
 	if (task == 0 || address == nullptr || size == 0 || size > (std::numeric_limits<SIZE_T>::max)()) return 4;
-	void* allocated = VirtualAlloc(reinterpret_cast<void*>(static_cast<std::uintptr_t>(*address)),
+	bool owned = false;
+	const HANDLE process = OpenVmProcess(task, PROCESS_VM_OPERATION, owned);
+	if (process == nullptr) return 3;
+	void* allocated = VirtualAllocEx(process, reinterpret_cast<void*>(static_cast<std::uintptr_t>(*address)),
 		static_cast<SIZE_T>(size), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+	CloseVmProcess(process, owned);
 	if (allocated == nullptr) return 3;
 	*address = static_cast<darling_mach_vm_address_t>(reinterpret_cast<std::uintptr_t>(allocated));
 	return 0;
@@ -101,9 +120,16 @@ extern "C" darling_kern_return_t darling_windows_mach_vm_deallocate(
 	darling_mach_vm_size_t size)
 {
 	(void)size;
-	if (task == 0 || address == 0 || VirtualFree(reinterpret_cast<void*>(static_cast<std::uintptr_t>(address)),
-		0, MEM_RELEASE) == FALSE) return 4;
-	return 0;
+	bool owned = false;
+	const HANDLE process = OpenVmProcess(task, PROCESS_VM_OPERATION, owned);
+	if (process == nullptr || address == 0) {
+		CloseVmProcess(process, owned);
+		return 4;
+	}
+	const BOOL released = VirtualFreeEx(process,
+		reinterpret_cast<void*>(static_cast<std::uintptr_t>(address)), 0, MEM_RELEASE);
+	CloseVmProcess(process, owned);
+	return released ? 0 : 4;
 }
 
 extern "C" darling_kern_return_t darling_windows_mach_vm_protect(
@@ -112,9 +138,15 @@ extern "C" darling_kern_return_t darling_windows_mach_vm_protect(
 {
 	(void)set_maximum;
 	if (task == 0 || address == 0 || size == 0 || size > (std::numeric_limits<SIZE_T>::max)()) return 4;
+	bool owned = false;
+	const HANDLE process = OpenVmProcess(task, PROCESS_VM_OPERATION, owned);
+	if (process == nullptr) return 4;
 	DWORD old_protection = 0;
-	return VirtualProtect(reinterpret_cast<void*>(static_cast<std::uintptr_t>(address)),
-		static_cast<SIZE_T>(size), VmProtection(protection), &old_protection) ? 0 : 4;
+	const BOOL protected_ok = VirtualProtectEx(process,
+		reinterpret_cast<void*>(static_cast<std::uintptr_t>(address)),
+		static_cast<SIZE_T>(size), VmProtection(protection), &old_protection);
+	CloseVmProcess(process, owned);
+	return protected_ok ? 0 : 4;
 }
 
 extern "C" darling_kern_return_t darling_windows_mach_vm_read_overwrite(
@@ -124,13 +156,53 @@ extern "C" darling_kern_return_t darling_windows_mach_vm_read_overwrite(
 {
 	if (task == 0 || address == 0 || destination == 0 || out_size == nullptr ||
 		size == 0 || size > (std::numeric_limits<SIZE_T>::max)()) return 4;
+	bool owned = false;
+	const HANDLE process = OpenVmProcess(task, PROCESS_VM_READ, owned);
+	if (process == nullptr) return 4;
 	SIZE_T copied = 0;
-	if (!ReadProcessMemory(GetCurrentProcess(),
+	if (!ReadProcessMemory(process,
 		reinterpret_cast<const void*>(static_cast<std::uintptr_t>(address)),
 		reinterpret_cast<void*>(static_cast<std::uintptr_t>(destination)),
-		static_cast<SIZE_T>(size), &copied)) return 4;
+		static_cast<SIZE_T>(size), &copied)) {
+		CloseVmProcess(process, owned);
+		return 4;
+	}
+	CloseVmProcess(process, owned);
 	*out_size = static_cast<darling_mach_vm_size_t>(copied);
 	return copied == size ? 0 : 4;
+}
+
+extern "C" darling_kern_return_t darling_windows_mach_vm_read(
+	darling_mach_port_name_t task, darling_mach_vm_address_t address,
+	darling_mach_vm_size_t size, darling_mach_vm_address_t* data,
+	darling_mach_vm_size_t* out_size)
+{
+	if (task == 0 || address == 0 || size == 0 ||
+		size > (std::numeric_limits<SIZE_T>::max)() || data == nullptr ||
+		out_size == nullptr)
+		return 4;
+	bool owned = false;
+	const HANDLE process = OpenVmProcess(task, PROCESS_VM_READ, owned);
+	if (process == nullptr) return 4;
+	void* buffer = VirtualAlloc(nullptr, static_cast<SIZE_T>(size),
+		MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+	if (buffer == nullptr) {
+		CloseVmProcess(process, owned);
+		return 3;
+	}
+	SIZE_T copied = 0;
+	const BOOL read_ok = ReadProcessMemory(process,
+		reinterpret_cast<const void*>(static_cast<std::uintptr_t>(address)), buffer,
+		static_cast<SIZE_T>(size), &copied);
+	CloseVmProcess(process, owned);
+	if (!read_ok || copied != size) {
+		VirtualFree(buffer, 0, MEM_RELEASE);
+		return 4;
+	}
+	*data = static_cast<darling_mach_vm_address_t>(
+		reinterpret_cast<std::uintptr_t>(buffer));
+	*out_size = static_cast<darling_mach_vm_size_t>(copied);
+	return 0;
 }
 
 extern "C" darling_kern_return_t darling_windows_mach_vm_write(
@@ -139,10 +211,17 @@ extern "C" darling_kern_return_t darling_windows_mach_vm_write(
 {
 	if (task == 0 || address == 0 || data == nullptr || size == 0 ||
 		size > (std::numeric_limits<SIZE_T>::max)()) return 4;
+	bool owned = false;
+	const HANDLE process = OpenVmProcess(task, PROCESS_VM_WRITE | PROCESS_VM_OPERATION, owned);
+	if (process == nullptr) return 4;
 	SIZE_T copied = 0;
-	if (!WriteProcessMemory(GetCurrentProcess(),
+	if (!WriteProcessMemory(process,
 		reinterpret_cast<void*>(static_cast<std::uintptr_t>(address)), data,
-		static_cast<SIZE_T>(size), &copied)) return 4;
+		static_cast<SIZE_T>(size), &copied)) {
+		CloseVmProcess(process, owned);
+		return 4;
+	}
+	CloseVmProcess(process, owned);
 	return copied == size ? 0 : 4;
 }
 
@@ -152,17 +231,87 @@ extern "C" darling_kern_return_t darling_windows_mach_vm_copy(
 {
 	if (task == 0 || source == 0 || destination == 0 || size == 0 ||
 		size > (std::numeric_limits<SIZE_T>::max)()) return 4;
+	bool source_owned = false;
+	const HANDLE source_process = OpenVmProcess(task, PROCESS_VM_READ, source_owned);
+	bool destination_owned = false;
+	const HANDLE destination_process = OpenVmProcess(task,
+		PROCESS_VM_WRITE | PROCESS_VM_OPERATION, destination_owned);
+	if (source_process == nullptr || destination_process == nullptr) {
+		CloseVmProcess(source_process, source_owned);
+		CloseVmProcess(destination_process, destination_owned);
+		return 4;
+	}
 	std::vector<std::uint8_t> buffer(static_cast<std::size_t>(size));
 	SIZE_T copied = 0;
-	if (!ReadProcessMemory(GetCurrentProcess(),
+	if (!ReadProcessMemory(source_process,
 		reinterpret_cast<const void*>(static_cast<std::uintptr_t>(source)),
-		buffer.data(), static_cast<SIZE_T>(size), &copied) || copied != size)
+		buffer.data(), static_cast<SIZE_T>(size), &copied) || copied != size) {
+		CloseVmProcess(source_process, source_owned);
+		CloseVmProcess(destination_process, destination_owned);
 		return 4;
-	if (!WriteProcessMemory(GetCurrentProcess(),
+	}
+	if (!WriteProcessMemory(destination_process,
 		reinterpret_cast<void*>(static_cast<std::uintptr_t>(destination)),
-		buffer.data(), static_cast<SIZE_T>(size), &copied) || copied != size)
+		buffer.data(), static_cast<SIZE_T>(size), &copied) || copied != size) {
+		CloseVmProcess(source_process, source_owned);
+		CloseVmProcess(destination_process, destination_owned);
 		return 4;
+	}
+	CloseVmProcess(source_process, source_owned);
+	CloseVmProcess(destination_process, destination_owned);
 	return 0;
+}
+
+extern "C" darling_kern_return_t darling_windows_mach_vm_region(
+	darling_mach_port_name_t task, darling_mach_vm_address_t* address,
+	darling_mach_vm_size_t* size, std::uint32_t flavor, void* info,
+	std::uint32_t* info_count)
+{
+	if (task == 0 || address == nullptr || size == nullptr || info == nullptr ||
+		info_count == nullptr || flavor != darling_vm_region_basic_info ||
+		*info_count < darling_vm_region_basic_info_count)
+		return 4;
+	bool owned = false;
+	const HANDLE process = OpenVmProcess(task, PROCESS_QUERY_LIMITED_INFORMATION,
+		owned);
+	if (process == nullptr) return 3;
+	MEMORY_BASIC_INFORMATION region{};
+	const SIZE_T queried = VirtualQueryEx(process,
+		reinterpret_cast<const void*>(static_cast<std::uintptr_t>(*address)),
+		&region, sizeof(region));
+	CloseVmProcess(process, owned);
+	if (queried != sizeof(region)) return 4;
+	const DWORD protection = region.Protect == 0 ? region.AllocationProtect : region.Protect;
+	std::int32_t darwin_protection = 0;
+	if ((protection & (PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY |
+		PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY)) != 0)
+		darwin_protection |= darling_vm_prot_read;
+	if ((protection & (PAGE_READWRITE | PAGE_WRITECOPY |
+		PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY)) != 0)
+		darwin_protection |= darling_vm_prot_write;
+	if ((protection & (PAGE_EXECUTE | PAGE_EXECUTE_READ |
+		PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY)) != 0)
+		darwin_protection |= darling_vm_prot_execute;
+	auto* basic = static_cast<darling_mach_vm_region_basic_info*>(info);
+	*basic = darling_mach_vm_region_basic_info{
+		darwin_protection, darwin_protection, 2, 0, 0, 0, 0, 0};
+	*address = static_cast<darling_mach_vm_address_t>(
+		reinterpret_cast<std::uintptr_t>(region.BaseAddress));
+	*size = static_cast<darling_mach_vm_size_t>(region.RegionSize);
+	*info_count = darling_vm_region_basic_info_count;
+	return 0;
+}
+
+extern "C" darling_kern_return_t darling_windows_mach_vm_region_recurse(
+	darling_mach_port_name_t task, darling_mach_vm_address_t* address,
+	darling_mach_vm_size_t* size, std::uint32_t* depth, void* info,
+	std::uint32_t* info_count)
+{
+	if (depth == nullptr || *depth != 0) return 4;
+	const auto result = darling_windows_mach_vm_region(task, address, size,
+		darling_vm_region_basic_info, info, info_count);
+	if (result == 0) *depth = 0;
+	return result;
 }
 
 extern "C" darling_kern_return_t darling_windows_mach_port_deallocate(
@@ -302,6 +451,56 @@ extern "C" darling_kern_return_t darling_windows_mach_port_insert_right(
 	return 0;
 }
 
+extern "C" darling_kern_return_t darling_windows_mach_port_extract_right(
+	darling_mach_port_name_t task, darling_mach_port_name_t name,
+	std::uint32_t disposition, darling_mach_port_name_t* right,
+	std::uint32_t* right_disposition)
+{
+	if (task == 0 || task != darling_windows_mach_task_self() || name == 0 ||
+		right == nullptr || right_disposition == nullptr)
+		return 4;
+	if (disposition != darling_mach_move_receive &&
+		disposition != darling_mach_copy_send &&
+		disposition != darling_mach_move_send &&
+		disposition != darling_mach_make_send)
+		return 4;
+	const auto port = FindPort(name);
+	if (port == nullptr) return 3;
+	bool exhausted = false;
+	{
+		std::lock_guard lock(port->mutex);
+		if (disposition == darling_mach_move_receive) {
+			if (port->receive_refs == 0) return 3;
+			--port->receive_refs;
+		} else if (disposition == darling_mach_move_send) {
+			if (port->send_refs == 0) return 3;
+			--port->send_refs;
+		} else {
+			if (port->send_refs == (std::numeric_limits<std::uint32_t>::max)()) return 3;
+			++port->send_refs;
+		}
+		port->refs = port->receive_refs + port->send_refs;
+		exhausted = port->refs == 0;
+		if (exhausted) port->closed = true;
+	}
+	*right = name;
+	*right_disposition = disposition;
+	if (exhausted) {
+		std::lock_guard ports_lock(ports_mutex);
+		const auto found = ports.find(name);
+		if (found != ports.end() && found->second == port) {
+			ports.erase(found);
+			for (auto& [set_name, members] : port_sets) {
+				(void)set_name;
+				members.erase(name);
+			}
+		}
+		port->condition.notify_all();
+		ports_condition.notify_all();
+	}
+	return 0;
+}
+
 extern "C" darling_kern_return_t darling_windows_mach_port_mod_refs(
 	darling_mach_port_name_t task, darling_mach_port_name_t name,
 	std::uint32_t right, std::int32_t delta)
@@ -311,18 +510,36 @@ extern "C" darling_kern_return_t darling_windows_mach_port_mod_refs(
 		return 4;
 	const auto port = FindPort(name);
 	if (port == nullptr) return 3;
-	std::lock_guard lock(port->mutex);
-	const auto current = static_cast<std::int64_t>(
-		right == darling_mach_port_type_receive ? port->receive_refs : port->send_refs);
-	const auto change = static_cast<std::int64_t>(delta);
-	const auto updated = current + change;
-	if (updated < 0 || updated > static_cast<std::int64_t>(
-		(std::numeric_limits<std::uint32_t>::max)())) return 4;
-	if (right == darling_mach_port_type_receive)
-		port->receive_refs = static_cast<std::uint32_t>(updated);
-	else
-		port->send_refs = static_cast<std::uint32_t>(updated);
-	port->refs = port->receive_refs + port->send_refs;
+	bool exhausted = false;
+	{
+		std::lock_guard lock(port->mutex);
+		const auto current = static_cast<std::int64_t>(
+			right == darling_mach_port_type_receive ? port->receive_refs : port->send_refs);
+		const auto change = static_cast<std::int64_t>(delta);
+		const auto updated = current + change;
+		if (updated < 0 || updated > static_cast<std::int64_t>(
+			(std::numeric_limits<std::uint32_t>::max)())) return 4;
+		if (right == darling_mach_port_type_receive)
+			port->receive_refs = static_cast<std::uint32_t>(updated);
+		else
+			port->send_refs = static_cast<std::uint32_t>(updated);
+		port->refs = port->receive_refs + port->send_refs;
+		exhausted = port->refs == 0;
+		if (exhausted) port->closed = true;
+	}
+	if (exhausted) {
+		std::lock_guard ports_lock(ports_mutex);
+		const auto found = ports.find(name);
+		if (found != ports.end() && found->second == port) {
+			ports.erase(found);
+			for (auto& [set_name, members] : port_sets) {
+				(void)set_name;
+				members.erase(name);
+			}
+		}
+		port->condition.notify_all();
+		ports_condition.notify_all();
+	}
 	return 0;
 }
 

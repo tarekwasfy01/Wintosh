@@ -25,6 +25,18 @@ constexpr std::uint32_t darling_mach_receive_msg = 0x00000002;
 constexpr std::uint32_t darling_vm_prot_read = 1;
 constexpr std::uint32_t darling_vm_prot_write = 2;
 constexpr std::uint32_t darling_vm_prot_execute = 4;
+constexpr std::uint32_t darling_vm_region_basic_info = 9;
+constexpr std::uint32_t darling_vm_region_basic_info_count = 9;
+struct darling_mach_vm_region_basic_info final {
+	std::int32_t protection;
+	std::int32_t max_protection;
+	std::int32_t inheritance;
+	std::uint32_t shared;
+	std::uint32_t reserved;
+	std::int32_t behavior;
+	std::uint16_t user_wired_count;
+	std::uint16_t reserved2;
+};
 constexpr std::uint32_t darling_mach_port_type_none = 0;
 constexpr std::uint32_t darling_mach_port_type_receive = 1;
 constexpr std::uint32_t darling_mach_port_type_send = 2;
@@ -53,12 +65,24 @@ extern "C" darling_kern_return_t darling_windows_mach_vm_read_overwrite(
 	darling_mach_port_name_t task, darling_mach_vm_address_t address,
 	darling_mach_vm_size_t size, darling_mach_vm_address_t destination,
 	darling_mach_vm_size_t* out_size);
+extern "C" darling_kern_return_t darling_windows_mach_vm_read(
+	darling_mach_port_name_t task, darling_mach_vm_address_t address,
+	darling_mach_vm_size_t size, darling_mach_vm_address_t* data,
+	darling_mach_vm_size_t* out_size);
 extern "C" darling_kern_return_t darling_windows_mach_vm_write(
 	darling_mach_port_name_t task, darling_mach_vm_address_t address,
 	const void* data, darling_mach_vm_size_t size);
 extern "C" darling_kern_return_t darling_windows_mach_vm_copy(
 	darling_mach_port_name_t task, darling_mach_vm_address_t source,
 	darling_mach_vm_size_t size, darling_mach_vm_address_t destination);
+extern "C" darling_kern_return_t darling_windows_mach_vm_region(
+	darling_mach_port_name_t task, darling_mach_vm_address_t* address,
+	darling_mach_vm_size_t* size, std::uint32_t flavor, void* info,
+	std::uint32_t* info_count);
+extern "C" darling_kern_return_t darling_windows_mach_vm_region_recurse(
+	darling_mach_port_name_t task, darling_mach_vm_address_t* address,
+	darling_mach_vm_size_t* size, std::uint32_t* depth, void* info,
+	std::uint32_t* info_count);
 extern "C" darling_kern_return_t darling_windows_mach_port_deallocate(
 	darling_mach_port_name_t task, darling_mach_port_name_t name);
 extern "C" darling_kern_return_t darling_windows_mach_port_destroy(
@@ -68,6 +92,10 @@ extern "C" darling_kern_return_t darling_windows_mach_port_allocate(
 extern "C" darling_kern_return_t darling_windows_mach_port_insert_right(
 	darling_mach_port_name_t task, darling_mach_port_name_t name,
 	darling_mach_port_name_t right, std::uint32_t disposition);
+extern "C" darling_kern_return_t darling_windows_mach_port_extract_right(
+	darling_mach_port_name_t task, darling_mach_port_name_t name,
+	std::uint32_t disposition, darling_mach_port_name_t* right,
+	std::uint32_t* right_disposition);
 extern "C" darling_kern_return_t darling_windows_mach_port_mod_refs(
 	darling_mach_port_name_t task, darling_mach_port_name_t name,
 	std::uint32_t right, std::int32_t delta);

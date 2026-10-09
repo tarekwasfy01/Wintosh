@@ -359,6 +359,21 @@ right on a real local source port while adding it to the destination; pseudo
 task/thread/host sources remain borrowed adapter rights. This narrows the
 disposition gap, but does not create Darwin's per-task name space.
 
+The local ABI now also exports `mach_port_extract_right`. It implements the
+same four supported dispositions for a process-local name, reports the
+extracted name and disposition, updates split receive/send references, and
+removes a name when its final right is consumed. The Mach smoke gate covers
+copy-send, move-send, output disposition, and stale-name rejection. This is
+still an adapter-level namespace and not the kernel's complete right-transfer
+or descriptor ABI.
+
+`mach_port_mod_refs` now applies the same final-right cleanup as deallocation:
+when the selected reference reaches zero, the port is closed, removed from all
+local port sets, removed from the local name map, and blocked waiters are
+woken. The Mach smoke gate covers stale lookup and send rejection after this
+path. Cross-task namespaces and kernel-equivalent right destruction remain
+outside the adapter.
+
 When a local move consumes the final right of a source port, the adapter now
 closes and removes that source name from all port sets and wakes waiters; the
 Mach smoke covers the stale-source result. This is local adapter lifetime
@@ -408,3 +423,73 @@ Broker OOL receive now releases the broker's owning mapping handle at transfer
 time while an already-open receiver mapping remains valid.  This bounds broker
 retention after delivery; true Mach VM protection and cross-process descriptor
 rights are still not implemented.
+
+The Mach VM bridge now resolves a non-self task name as a Windows process ID
+and uses `OpenProcess` plus `VirtualAllocEx`, `VirtualFreeEx`,
+`VirtualProtectEx`, `ReadProcessMemory`, and `WriteProcessMemory`. The
+self-process path remains covered by `mach_abi_smoke`; remote COW,
+inheritance, wired/purgeable memory, and a separate child-process integration
+gate remain open.
+
+`mach_vm_region` now reports the containing Windows memory region through
+`VirtualQueryEx` and maps its protection to the supported Darwin basic-info
+flavor. Named submaps, shared-region metadata, inheritance details, and the
+remaining region flavors are not implemented.
+
+`mach_vm_region_recurse` now delegates the same verified basic flavor with a
+zero-depth contract and rejects nonzero submap depth rather than pretending to
+support Darwin submaps. This makes the supported boundary explicit while
+leaving recursive submap traversal open.
+
+`mach_vm_read` now allocates a local Windows buffer, reads from the selected
+task through `ReadProcessMemory`, returns the byte count, and can be released
+through the existing `mach_vm_deallocate` path. This covers the basic
+out-of-line read shape; exact Darwin VM object ownership and remote lifetime
+semantics remain open.
+
+The weak-reference bridge now also implements `objc_moveWeak`: it removes any
+previous destination registration, transfers the tracked weak location, clears
+the source, and treats identical source and destination locations as a no-op.
+The Objective-C smoke gate covers transfer, source clearing, self-move, and
+zeroing after object destruction; atomic replacement and destruction races
+remain open.
+
+The ARC bridge now exports `objc_storeStrong`: it retains the incoming object
+before replacing the slot and releases the previous value afterward. The
+Objective-C smoke gate covers set/clear and resolver lookup. Atomic memory
+ordering, weak-reference races, and complete ARC ownership conventions remain
+outside this minimal process-local adapter.
+
+The weak-reference bridge now also exports `objc_loadWeakRetained`, taking the
+weak-table lock for the load and retaining the result before returning it. The
+Objective-C smoke gate covers the retained load and balances the returned
+retain. Atomic weak replacement, destruction races, and full ARC weak
+semantics remain open.
+
+The Objective-C ABI now exports `class_replaceMethod`. It replaces an existing
+instance-method entry under the runtime lock, returns the previous IMP, keeps
+the type encoding updated, and returns null when no previous method exists.
+The Objective-C smoke gate verifies replacement, dispatch visibility through a
+subclass, resolver lookup, and restoration. Full method-cache invalidation and
+concurrent runtime mutation semantics remain open.
+
+Method views now retain their owning class and method kind. `method_setImplementation`
+therefore mutates the actual instance- or class-method table, returns the old
+IMP, updates the view, and keeps the metaclass mirror synchronized for class
+methods. The Objective-C smoke gate covers instance-method mutation and
+resolver lookup; full method-cache and concurrent mutation semantics remain
+open.
+
+`class_getInstanceSize` now reports a conservative class size from the base
+object and known Ivar offsets/type widths, including inherited Ivars, and is
+available through the resolver. Unknown aggregate encodings fall back to
+pointer width; exact ABI packing, dynamically added-Ivar layout, and object
+storage growth remain open.
+
+The minimal Ivar ABI now supports `class_addIvar` before class registration
+with Darwin-style log2 alignment, extends instance allocation to the computed
+size, and exposes pointer-sized `object_getIvar`/`object_setIvar` access.
+The Objective-C smoke gate covers duplicate rejection, registration, storage
+round-trip, and resolver lookup. Retain/release ownership, non-pointer Ivar
+encodings, dynamic post-registration layout, and exact ABI alignment remain
+open.

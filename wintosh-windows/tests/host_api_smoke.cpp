@@ -67,14 +67,25 @@ namespace {
 		void* condition;
 		void* mutex;
 		std::atomic_bool* started;
+		std::atomic_bool* cleanup_saw_mutex;
 	};
+	void CancellationConditionCleanup(void* argument)
+	{
+		auto& context = *static_cast<CancellationConditionContext*>(argument);
+		if (darling_windows_pthread_mutex_trylock(context.mutex) == 16) {
+			context.cleanup_saw_mutex->store(true, std::memory_order_release);
+			darling_windows_pthread_mutex_unlock(context.mutex);
+		}
+	}
 	void* PthreadCancellationConditionStart(void* argument)
 	{
 		auto& context = *static_cast<CancellationConditionContext*>(argument);
 		if (darling_windows_pthread_mutex_lock(context.mutex) != 0)
 			return nullptr;
 		context.started->store(true, std::memory_order_release);
+		pthread_cleanup_push(&CancellationConditionCleanup, &context);
 		darling_windows_pthread_cond_wait(context.condition, context.mutex);
+		pthread_cleanup_pop(0);
 		darling_windows_pthread_mutex_unlock(context.mutex);
 		return nullptr;
 	}
@@ -1160,8 +1171,10 @@ int main()
 	void* cancellation_condition = nullptr;
 	void* cancellation_condition_mutex = nullptr;
 	std::atomic_bool cancellation_condition_started{false};
+	std::atomic_bool cancellation_condition_cleanup_saw_mutex{false};
 	CancellationConditionContext cancellation_condition_context{&cancellation_condition,
-		&cancellation_condition_mutex, &cancellation_condition_started};
+		&cancellation_condition_mutex, &cancellation_condition_started,
+		&cancellation_condition_cleanup_saw_mutex};
 	std::uint64_t cancellation_condition_thread = 0;
 	void* cancellation_condition_result = nullptr;
 	const bool pthread_condition_cancellation_ok =
@@ -1179,6 +1192,7 @@ int main()
 		darling_windows_pthread_join(cancellation_condition_thread,
 		&cancellation_condition_result) == 0 &&
 		cancellation_condition_result == reinterpret_cast<void*>(static_cast<std::uintptr_t>(-1)) &&
+		cancellation_condition_cleanup_saw_mutex.load(std::memory_order_acquire) &&
 		darling_windows_pthread_mutex_destroy(&cancellation_condition_mutex) == 0 &&
 		darling_windows_pthread_cond_destroy(&cancellation_condition) == 0;
 	void* pthread_attributes = nullptr;

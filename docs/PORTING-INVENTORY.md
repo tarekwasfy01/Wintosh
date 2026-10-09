@@ -4177,9 +4177,10 @@ stack. `darling_windows_pthread_cleanup_push` and
 `darling_windows_pthread_cleanup_pop` model the essential cleanup-handler
 ownership, and deferred cancellation drains registered handlers before TLS
 destructors. The host API smoke verifies exactly one callback on cancellation.
-PureDarwin's source-level `pthread_cleanup_push/pop` macro ABI, complete
-cleanup ordering, mutex reacquisition, and asynchronous cancellation remain
-open.
+PureDarwin's source-level macro shape is covered through the opt-in adapter;
+the condition-wait path also reacquires the associated mutex before draining
+cleanup handlers, as verified by the host smoke. Complete cleanup ordering at
+every cancellation point and asynchronous cancellation remain open.
 
 The pthread ABI layer now also covers `pthread_once` and invokes registered TLS
 destructors when a created Windows-backed pthread exits. x64 and Win32 host API

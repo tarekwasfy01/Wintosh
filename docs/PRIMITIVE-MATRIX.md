@@ -50,6 +50,10 @@ wrapping or complete Darwin cleanup ordering and mutex-reacquisition rules.
 
 Condition-variable waits poll the deferred request in bounded intervals, so
 the cancellation path also covers the main blocking pthread primitive.
+When cancellation is observed from `pthread_cond_wait` or
+`pthread_cond_timedwait`, the adapter now preserves the POSIX rule that the
+associated mutex is reacquired before cleanup handlers run. The host smoke
+verifies this from a cleanup callback and releases the mutex there.
 Mach port reference mutation now rejects signed-delta underflow and unsigned
 overflow, including the `INT32_MIN` edge case, while preserving the existing
 process-local queue behavior.

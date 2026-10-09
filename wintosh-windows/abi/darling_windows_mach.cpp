@@ -38,6 +38,9 @@ std::mutex ports_wait_mutex;
 std::condition_variable ports_condition;
 std::unordered_map<darling_mach_port_name_t, std::shared_ptr<PortQueue>> ports;
 std::unordered_map<darling_mach_port_name_t, std::unordered_set<darling_mach_port_name_t>> port_sets;
+struct ExceptionPort final { darling_exception_mask_t mask; darling_mach_port_name_t port; darling_exception_behavior_t behavior; darling_exception_flavor_t flavor; };
+std::mutex exception_ports_mutex;
+std::unordered_map<darling_mach_port_name_t, std::vector<ExceptionPort>> exception_ports;
 std::mutex read_buffers_mutex;
 std::unordered_map<darling_mach_vm_address_t, SIZE_T> read_buffers;
 
@@ -239,6 +242,67 @@ extern "C" darling_kern_return_t darling_windows_thread_set_state(
 	ResumeThread(handle);
 	CloseHandle(handle);
 	return applied ? 0 : 4;
+}
+
+extern "C" darling_kern_return_t darling_windows_thread_set_exception_ports(
+	darling_mach_port_name_t thread, darling_exception_mask_t mask,
+	darling_mach_port_name_t port, darling_exception_behavior_t behavior,
+	darling_exception_flavor_t flavor)
+{
+	if (thread == 0 || mask == 0) return 4;
+	std::lock_guard lock(exception_ports_mutex);
+	auto& entries = exception_ports[thread];
+	entries.erase(std::remove_if(entries.begin(), entries.end(), [mask](const ExceptionPort& entry) { return (entry.mask & mask) != 0; }), entries.end());
+	if (port != 0) entries.push_back({mask, port, behavior, flavor});
+	return 0;
+}
+
+extern "C" darling_kern_return_t darling_windows_thread_get_exception_ports(
+	darling_mach_port_name_t thread, darling_exception_mask_t mask,
+	darling_exception_mask_t* masks, std::uint32_t* masks_count,
+	darling_mach_port_name_t* handlers, darling_exception_behavior_t* behaviors,
+	darling_exception_flavor_t* flavors)
+{
+	if (thread == 0 || mask == 0 || masks == nullptr || masks_count == nullptr ||
+		handlers == nullptr || behaviors == nullptr || flavors == nullptr || *masks_count == 0)
+		return 4;
+	std::lock_guard lock(exception_ports_mutex);
+	const auto found = exception_ports.find(thread);
+	if (found == exception_ports.end()) { *masks_count = 0; return 0; }
+	const auto capacity = *masks_count;
+	std::uint32_t written = 0;
+	for (const auto& entry : found->second) {
+		if ((entry.mask & mask) == 0 || written == capacity) continue;
+		masks[written] = entry.mask; handlers[written] = entry.port;
+		behaviors[written] = entry.behavior; flavors[written] = entry.flavor; ++written;
+	}
+	*masks_count = written;
+	return 0;
+}
+
+extern "C" darling_kern_return_t darling_windows_thread_swap_exception_ports(
+	darling_mach_port_name_t thread, darling_exception_mask_t mask,
+	darling_mach_port_name_t new_port, darling_exception_behavior_t new_behavior,
+	darling_exception_flavor_t new_flavor, darling_exception_mask_t* masks,
+	std::uint32_t* masks_count, darling_mach_port_name_t* handlers,
+	darling_exception_behavior_t* behaviors, darling_exception_flavor_t* flavors)
+{
+	if (thread == 0 || mask == 0 || masks == nullptr || masks_count == nullptr ||
+		handlers == nullptr || behaviors == nullptr || flavors == nullptr || *masks_count == 0)
+		return 4;
+	std::lock_guard lock(exception_ports_mutex);
+	const auto capacity = *masks_count;
+	std::uint32_t written = 0;
+	auto& entries = exception_ports[thread];
+	for (auto it = entries.begin(); it != entries.end();) {
+		if ((it->mask & mask) == 0 || written == capacity) { ++it; continue; }
+		masks[written] = it->mask; handlers[written] = it->port;
+		behaviors[written] = it->behavior; flavors[written] = it->flavor; ++written;
+		it = entries.erase(it);
+	}
+	if (new_port != 0) entries.push_back({mask, new_port, new_behavior, new_flavor});
+	*masks_count = written;
+	return 0;
 }
 
 namespace {

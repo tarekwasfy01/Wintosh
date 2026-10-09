@@ -127,6 +127,16 @@ registers `Dr0` through `Dr7`; foreign-thread writes use the same
 suspend/resume guard as integer state. FPU and AVX state remain separate and
 are not represented by zero-filled substitutes.
 
+Thread exception-port registration now has a process-local adapter for
+`thread_set_exception_ports` and `thread_get_exception_ports`. It preserves
+mask, handler port, behavior, and state flavor for the current Wintosh
+thread-name namespace. This is registration state only: Windows exception
+dispatch is not yet routed into Mach messages, but `thread_swap_exception_ports`
+now performs validated replacement and returns the previous registrations.
+The Windows-facing `thread_get_exception_ports_info` handler-info layout is
+not public in the bundled SDK and therefore remains intentionally unguessed;
+dispatch and that info variant remain open.
+
 The x86-64 exception-state read flavor is also exposed with the exact
 four-word Darwin layout. Windows can provide the current processor number, but
 there is no active Mach trap record at an ordinary inspection point, so trap,

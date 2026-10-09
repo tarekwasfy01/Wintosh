@@ -11,6 +11,9 @@ using darling_mach_port_name_t = std::uint32_t;
 using darling_kern_return_t = std::int32_t;
 using darling_mach_vm_address_t = std::uint64_t;
 using darling_mach_vm_size_t = std::uint64_t;
+using darling_exception_mask_t = std::uint32_t;
+using darling_exception_behavior_t = std::uint32_t;
+using darling_exception_flavor_t = std::uint32_t;
 
 struct darling_mach_msg_header final {
 	std::uint32_t msgh_bits;
@@ -160,6 +163,21 @@ extern "C" darling_kern_return_t darling_windows_thread_get_state(
 extern "C" darling_kern_return_t darling_windows_thread_set_state(
 	darling_mach_port_name_t thread, std::uint32_t flavor, const void* state,
 	std::uint32_t count);
+extern "C" darling_kern_return_t darling_windows_thread_set_exception_ports(
+	darling_mach_port_name_t thread, darling_exception_mask_t mask,
+	darling_mach_port_name_t port, darling_exception_behavior_t behavior,
+	darling_exception_flavor_t flavor);
+extern "C" darling_kern_return_t darling_windows_thread_get_exception_ports(
+	darling_mach_port_name_t thread, darling_exception_mask_t mask,
+	darling_exception_mask_t* masks, std::uint32_t* masks_count,
+	darling_mach_port_name_t* handlers, darling_exception_behavior_t* behaviors,
+	darling_exception_flavor_t* flavors);
+extern "C" darling_kern_return_t darling_windows_thread_swap_exception_ports(
+	darling_mach_port_name_t thread, darling_exception_mask_t mask,
+	darling_mach_port_name_t new_port, darling_exception_behavior_t new_behavior,
+	darling_exception_flavor_t new_flavor, darling_exception_mask_t* masks,
+	std::uint32_t* masks_count, darling_mach_port_name_t* handlers,
+	darling_exception_behavior_t* behaviors, darling_exception_flavor_t* flavors);
 extern "C" darling_kern_return_t darling_windows_thread_info(
 	darling_mach_port_name_t thread, std::uint32_t flavor, void* info,
 	std::uint32_t* count);

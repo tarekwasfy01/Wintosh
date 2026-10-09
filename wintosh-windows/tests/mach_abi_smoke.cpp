@@ -84,6 +84,23 @@ int main()
 		&fifo_count) != 0 || fifo_count != darling_thread_sched_fifo_info_count)
 		return 1;
 	const auto host = darling_windows_mach_host_self();
+	darling_exception_mask_t exception_mask = 1, returned_mask = 0;
+	darling_mach_port_name_t returned_handler = 0;
+	darling_exception_behavior_t returned_behavior = 0;
+	darling_exception_flavor_t returned_flavor = 0;
+	std::uint32_t exception_ports_count = 1;
+	if (darling_windows_thread_set_exception_ports(thread, exception_mask, host, 2, 4) != 0 ||
+		darling_windows_thread_get_exception_ports(thread, exception_mask, &returned_mask,
+		&exception_ports_count, &returned_handler, &returned_behavior, &returned_flavor) != 0 ||
+		exception_ports_count != 1 || returned_mask != exception_mask || returned_handler != host ||
+		returned_behavior != 2 || returned_flavor != 4)
+		return 1;
+	std::uint32_t swapped_count = 1;
+	returned_mask = 0; returned_handler = 0; returned_behavior = 0; returned_flavor = 0;
+	if (darling_windows_thread_swap_exception_ports(thread, exception_mask, 0x1234, 3, 5,
+		&returned_mask, &swapped_count, &returned_handler, &returned_behavior, &returned_flavor) != 0 ||
+		swapped_count != 1 || returned_handler != host || returned_behavior != 2 || returned_flavor != 4)
+		return 1;
 	std::uint32_t page_size = 0;
 	darling_mach_vm_address_t vm_address = 0;
 	darling_mach_vm_address_t vm_copy_address = 0;

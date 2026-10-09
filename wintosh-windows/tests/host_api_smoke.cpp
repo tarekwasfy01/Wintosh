@@ -130,6 +130,17 @@ namespace {
 		darling_windows_pthread_mutex_unlock(context.mutex);
 		return nullptr;
 	}
+	struct BarrierSmokeContext final {
+		void* barrier = nullptr;
+		std::atomic<int>* completed = nullptr;
+	};
+	void* PthreadBarrierSmokeStart(void* argument)
+	{
+		auto& context = *static_cast<BarrierSmokeContext*>(argument);
+		if (darling_windows_pthread_barrier_wait(context.barrier) == 0)
+			context.completed->fetch_add(1, std::memory_order_release);
+		return nullptr;
+	}
 
 	volatile long tls_destructor_calls = 0;
 	void PthreadTlsDestructor(void*)
@@ -1349,12 +1360,25 @@ int main()
 		darling_windows_pthread_spin_unlock(&pthread_spin_storage) == 0 &&
 		darling_windows_pthread_spin_destroy(&pthread_spin_storage) == 0;
 	void* pthread_barrier_storage = nullptr;
-	const bool pthread_barrier_ok =
+	const bool pthread_barrier_symbols_ok =
 		darling_windows_host_symbol("pthread_barrier_init") != 0 &&
 		darling_windows_host_symbol("pthread_barrier_wait") != 0 &&
-		darling_windows_host_symbol("pthread_barrier_destroy") != 0 &&
-		darling_windows_pthread_barrier_init(&pthread_barrier_storage, nullptr, 1) == 0 &&
-		darling_windows_pthread_barrier_wait(&pthread_barrier_storage) == 0 &&
+		darling_windows_host_symbol("pthread_barrier_destroy") != 0;
+	std::atomic<int> pthread_barrier_completed{0};
+	const bool pthread_barrier_initialized = pthread_barrier_symbols_ok &&
+		darling_windows_pthread_barrier_init(&pthread_barrier_storage, nullptr, 2) == 0;
+	std::thread pthread_barrier_thread_a([&]() {
+		if (darling_windows_pthread_barrier_wait(&pthread_barrier_storage) == 0)
+			pthread_barrier_completed.fetch_add(1, std::memory_order_release);
+	});
+	std::thread pthread_barrier_thread_b([&]() {
+		if (darling_windows_pthread_barrier_wait(&pthread_barrier_storage) == 0)
+			pthread_barrier_completed.fetch_add(1, std::memory_order_release);
+	});
+	pthread_barrier_thread_a.join();
+	pthread_barrier_thread_b.join();
+	const bool pthread_barrier_ok = pthread_barrier_initialized &&
+		pthread_barrier_completed.load(std::memory_order_acquire) == 2 &&
 		darling_windows_pthread_barrier_destroy(&pthread_barrier_storage) == 0;
 	void* pthread_rwlock_storage = nullptr;
 	const bool pthread_rwlock_ok =

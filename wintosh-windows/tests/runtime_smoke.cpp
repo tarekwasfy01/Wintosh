@@ -7,6 +7,7 @@
 
 #include <chrono>
 #include <atomic>
+#include <cstring>
 #include <filesystem>
 #include <iostream>
 #include <thread>
@@ -52,6 +53,17 @@ int wmain()
 	} catch (const std::invalid_argument&) {
 		std::cout << "MACH_IPC_ENVELOPE_TRAILING=PASS\n";
 	}
+	const auto mapping_name = L"Local\\wintosh-mach-ool-" +
+		std::to_wstring(GetCurrentProcessId());
+	auto mapping = darling::windows_host::MachIpcSharedMemory::Create(mapping_name, 4096);
+	std::memset(mapping.Data(), 0, mapping.Size());
+	static_cast<std::uint8_t*>(mapping.Data())[0] = 0x7a;
+	auto mapped_peer = darling::windows_host::MachIpcSharedMemory::Open(mapping_name, 4096);
+	if (mapped_peer.Size() != 4096 || static_cast<std::uint8_t*>(mapped_peer.Data())[0] != 0x7a) {
+		std::cerr << "MACH_IPC_SHARED_MEMORY=FAIL\n";
+		return 1;
+	}
+	std::cout << "MACH_IPC_SHARED_MEMORY=PASS\n";
 	darling::windows_host::MachPort port;
 	if (port.Receive(1).has_value()) {
 		std::cerr << "MACH_PORT_TIMEOUT=FAIL\n";

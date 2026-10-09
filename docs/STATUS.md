@@ -53,6 +53,11 @@ This remains inline transport, not Mach out-of-line memory.
 The envelope smoke also rejects oversized payloads and trailing bytes before
 dispatch (`MACH_IPC_ENVELOPE_LIMIT=PASS` and
 `MACH_IPC_ENVELOPE_TRAILING=PASS`).
+The host now also exposes named shared-memory creation/opening and mapping;
+the runtime smoke verifies a second mapped view with
+`MACH_IPC_SHARED_MEMORY=PASS`. It is the Windows primitive for a future
+out-of-line descriptor, not yet wired into Mach dispositions or the IPC
+envelope.
 
 The platform path adapter now provides lexical `AbsolutePath` resolution and
 handle-based `CanonicalPath` resolution through Windows final-name lookup,

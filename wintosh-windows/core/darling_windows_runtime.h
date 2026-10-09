@@ -46,6 +46,28 @@ struct MachIpcEnvelope final {
 [[nodiscard]] MachIpcEnvelope DecodeMachIpcEnvelope(
 	const std::vector<std::uint8_t>& bytes);
 
+class MachIpcSharedMemory final {
+public:
+	static MachIpcSharedMemory Create(const std::wstring& name, std::size_t size);
+	static MachIpcSharedMemory Open(const std::wstring& name, std::size_t size);
+	MachIpcSharedMemory(const MachIpcSharedMemory&) = delete;
+	MachIpcSharedMemory& operator=(const MachIpcSharedMemory&) = delete;
+	MachIpcSharedMemory(MachIpcSharedMemory&& other) noexcept;
+	MachIpcSharedMemory& operator=(MachIpcSharedMemory&& other) noexcept;
+	~MachIpcSharedMemory() noexcept;
+
+	[[nodiscard]] void* Data() const noexcept { return m_view; }
+	[[nodiscard]] std::size_t Size() const noexcept { return m_size; }
+
+private:
+	MachIpcSharedMemory(HANDLE mapping, void* view, std::size_t size) noexcept :
+		m_mapping(mapping), m_view(view), m_size(size) {}
+	void Reset() noexcept;
+	HANDLE m_mapping = nullptr;
+	void* m_view = nullptr;
+	std::size_t m_size = 0;
+};
+
 class TaskPort final {
 public:
 	enum class MemoryProtection { ReadOnly, ReadWrite, ReadExecute, ReadWriteExecute };

@@ -105,6 +105,77 @@ MachIpcEnvelope DecodeMachIpcEnvelope(const std::vector<std::uint8_t>& bytes)
 	return result;
 }
 
+MachIpcSharedMemory MachIpcSharedMemory::Create(const std::wstring& name, std::size_t size)
+{
+	if (size == 0 || size > 0xffffffffull)
+		throw std::invalid_argument("invalid Mach IPC shared-memory size");
+	const HANDLE mapping = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr,
+		PAGE_READWRITE, 0, static_cast<DWORD>(size), name.c_str());
+	if (mapping == nullptr)
+		throw std::system_error(static_cast<int>(GetLastError()), std::system_category(),
+			"CreateFileMappingW");
+	void* view = MapViewOfFile(mapping, FILE_MAP_ALL_ACCESS, 0, 0, size);
+	if (view == nullptr) {
+		const auto error = GetLastError();
+		CloseHandle(mapping);
+		throw std::system_error(static_cast<int>(error), std::system_category(), "MapViewOfFile");
+	}
+	return MachIpcSharedMemory(mapping, view, size);
+}
+
+MachIpcSharedMemory MachIpcSharedMemory::Open(const std::wstring& name, std::size_t size)
+{
+	if (size == 0 || size > 0xffffffffull)
+		throw std::invalid_argument("invalid Mach IPC shared-memory size");
+	const HANDLE mapping = OpenFileMappingW(FILE_MAP_ALL_ACCESS, FALSE, name.c_str());
+	if (mapping == nullptr)
+		throw std::system_error(static_cast<int>(GetLastError()), std::system_category(),
+			"OpenFileMappingW");
+	void* view = MapViewOfFile(mapping, FILE_MAP_ALL_ACCESS, 0, 0, size);
+	if (view == nullptr) {
+		const auto error = GetLastError();
+		CloseHandle(mapping);
+		throw std::system_error(static_cast<int>(error), std::system_category(), "MapViewOfFile");
+	}
+	return MachIpcSharedMemory(mapping, view, size);
+}
+
+MachIpcSharedMemory::MachIpcSharedMemory(MachIpcSharedMemory&& other) noexcept :
+	m_mapping(other.m_mapping), m_view(other.m_view), m_size(other.m_size)
+{
+	other.m_mapping = nullptr;
+	other.m_view = nullptr;
+	other.m_size = 0;
+}
+
+MachIpcSharedMemory& MachIpcSharedMemory::operator=(MachIpcSharedMemory&& other) noexcept
+{
+	if (this != &other) {
+		Reset();
+		m_mapping = other.m_mapping;
+		m_view = other.m_view;
+		m_size = other.m_size;
+		other.m_mapping = nullptr;
+		other.m_view = nullptr;
+		other.m_size = 0;
+	}
+	return *this;
+}
+
+MachIpcSharedMemory::~MachIpcSharedMemory() noexcept
+{
+	Reset();
+}
+
+void MachIpcSharedMemory::Reset() noexcept
+{
+	if (m_view != nullptr) UnmapViewOfFile(m_view);
+	if (m_mapping != nullptr) CloseHandle(m_mapping);
+	m_view = nullptr;
+	m_mapping = nullptr;
+	m_size = 0;
+}
+
 namespace {
 
 [[noreturn]] void ThrowLastError(const char* operation)

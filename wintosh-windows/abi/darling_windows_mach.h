@@ -14,6 +14,7 @@ using darling_mach_vm_size_t = std::uint64_t;
 using darling_exception_mask_t = std::uint32_t;
 using darling_exception_behavior_t = std::uint32_t;
 using darling_exception_flavor_t = std::uint32_t;
+using darling_mach_msg_id_t = std::int32_t;
 
 struct darling_mach_msg_header final {
 	std::uint32_t msgh_bits;
@@ -257,6 +258,10 @@ extern "C" darling_kern_return_t darling_windows_mach_port_deallocate(
 	darling_mach_port_name_t task, darling_mach_port_name_t name);
 extern "C" darling_kern_return_t darling_windows_mach_port_destroy(
 	darling_mach_port_name_t task, darling_mach_port_name_t name);
+extern "C" darling_kern_return_t darling_windows_mach_port_request_notification(
+	darling_mach_port_name_t task, darling_mach_port_name_t name,
+	darling_mach_msg_id_t msgid, darling_mach_port_name_t notify,
+	darling_mach_port_name_t* previous);
 extern "C" darling_kern_return_t darling_windows_mach_port_allocate(
 	darling_mach_port_name_t task, darling_mach_port_name_t* name);
 extern "C" darling_kern_return_t darling_windows_mach_port_insert_right(

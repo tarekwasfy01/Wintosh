@@ -39,8 +39,11 @@ std::condition_variable ports_condition;
 std::unordered_map<darling_mach_port_name_t, std::shared_ptr<PortQueue>> ports;
 std::unordered_map<darling_mach_port_name_t, std::unordered_set<darling_mach_port_name_t>> port_sets;
 struct ExceptionPort final { darling_exception_mask_t mask; darling_mach_port_name_t port; darling_exception_behavior_t behavior; darling_exception_flavor_t flavor; };
+struct PortNotification final { darling_mach_msg_id_t msgid; darling_mach_port_name_t notify; };
 std::mutex exception_ports_mutex;
 std::unordered_map<darling_mach_port_name_t, std::vector<ExceptionPort>> exception_ports;
+std::mutex port_notifications_mutex;
+std::unordered_map<darling_mach_port_name_t, PortNotification> port_notifications;
 std::mutex suspend_counts_mutex;
 std::unordered_map<darling_mach_port_name_t, std::uint32_t> suspend_counts;
 void* exception_handler_cookie = nullptr;
@@ -52,6 +55,26 @@ std::shared_ptr<PortQueue> FindPort(darling_mach_port_name_t name)
 	std::lock_guard lock(ports_mutex);
 	const auto found = ports.find(name);
 	return found == ports.end() ? nullptr : found->second;
+}
+
+void DeliverPortNotification(darling_mach_port_name_t name)
+{
+	PortNotification notification{};
+	{
+		std::lock_guard lock(port_notifications_mutex);
+		const auto found = port_notifications.find(name);
+		if (found == port_notifications.end()) return;
+		notification = found->second;
+		port_notifications.erase(found);
+	}
+	darling_mach_msg_header message{};
+	message.msgh_size = sizeof(message);
+	message.msgh_remote_port = notification.notify;
+	// The minimal legacy header has no dedicated msgh_id field; preserve the
+	// notification id in its reserved word until the full Darwin header ABI is
+	// introduced.
+	message.msgh_reserved = static_cast<std::uint32_t>(notification.msgid);
+	(void)darling_windows_mach_port_send(notification.notify, &message, sizeof(message));
 }
 }
 
@@ -892,6 +915,7 @@ extern "C" darling_kern_return_t darling_windows_mach_port_deallocate(
 	}
 	port->condition.notify_all();
 	ports_condition.notify_all();
+	DeliverPortNotification(name);
 	return 0; // Host tokens are borrowed pseudo-rights; nothing to close here.
 }
 
@@ -924,6 +948,22 @@ extern "C" darling_kern_return_t darling_windows_mach_port_destroy(
 		port->refs = 1;
 	}
 	return darling_windows_mach_port_deallocate(task, name);
+}
+
+extern "C" darling_kern_return_t darling_windows_mach_port_request_notification(
+	darling_mach_port_name_t task, darling_mach_port_name_t name,
+	darling_mach_msg_id_t msgid, darling_mach_port_name_t notify,
+	darling_mach_port_name_t* previous)
+{
+	if (task == 0 || task != darling_windows_mach_task_self() || name == 0 ||
+		notify == 0 || previous == nullptr || FindPort(name) == nullptr ||
+		FindPort(notify) == nullptr)
+		return 4;
+	std::lock_guard lock(port_notifications_mutex);
+	const auto found = port_notifications.find(name);
+	*previous = found == port_notifications.end() ? 0 : found->second.notify;
+	port_notifications[name] = PortNotification{msgid, notify};
+	return 0;
 }
 
 extern "C" darling_kern_return_t darling_windows_mach_port_insert_right(

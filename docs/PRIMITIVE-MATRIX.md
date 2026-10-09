@@ -263,7 +263,9 @@ overflow, including the `INT32_MIN` edge case, while preserving the existing
 process-local queue behavior.
 Port release also removes stale membership from every process-local port set;
 cross-process Mach IPC and the full kernel notification/disposition model
-remain outside this adapter.
+remain outside this adapter. A minimal local port-death notification request
+is now available and smoke-tested; it uses the legacy header's reserved word
+for the notification id until the full Darwin message header is introduced.
 The local port-set receiver now uses condition-variable wakeups for sends,
 member removal, and set/port destruction, with a cross-thread smoke proof.
 The local C ABI now tracks receive and send references separately and exposes

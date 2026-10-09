@@ -575,6 +575,14 @@ remembered as SIGKILL. The process-syscall smoke test now verifies
 SIGTERM path. This remains controlled `TerminateProcess` emulation, not native
 Unix signal delivery or arbitrary signal-handler execution in another process.
 
+The `waitid(WNOWAIT)` observation path now reports the actual selected child
+PID for `P_ALL` and `P_PGID` selections by reading it from the retained
+Windows process handle, instead of leaking the selector value into `si_pid`.
+It also consults the registered termination-signal metadata for that observed
+PID, so group/all observations preserve the emulated SIGTERM/SIGKILL detail.
+Normal Darwin group wait ordering, concurrent kernel ownership, and stopped or
+continued-child events remain open.
+
 The runtime README now records the actual Mach-O execution boundary: the
 Windows x86_64 runner can enter compatible x86_64 images after mapping,
 relocations, bindings, initializers, and protection setup, while i386 and

@@ -4972,15 +4972,21 @@ extern "C" int darling_windows_waitid(int id_type, int id,
 			CloseHandle(process);
 			return -1;
 		}
+		const DWORD observed_pid = GetProcessId(process);
+		const int observed_termination_signal = observed_pid == 0 ? 0 :
+			DarlingChildTerminationSignal(static_cast<int>(observed_pid));
 		if (info != nullptr) {
 			std::memset(info, 0, sizeof(*info));
 			info->si_signo = sigchld;
 			info->si_errno = 0;
-			info->si_code = requested_termination_signal != 0 ? 2 : child_exited;
-			info->si_pid = selected_id;
+			info->si_code = (observed_termination_signal != 0 ?
+				observed_termination_signal : requested_termination_signal) != 0 ? 2 : child_exited;
+			info->si_pid = observed_pid != 0 ? static_cast<int>(observed_pid) : selected_id;
 			info->si_uid = static_cast<std::uint32_t>(darling_windows_getuid());
-			info->si_status = requested_termination_signal != 0 ?
-				requested_termination_signal : (exit_code <= 0xffu ? static_cast<int>(exit_code) :
+			const int termination_signal = observed_termination_signal != 0 ?
+				observed_termination_signal : requested_termination_signal;
+			info->si_status = termination_signal != 0 ? termination_signal :
+				(exit_code <= 0xffu ? static_cast<int>(exit_code) :
 				static_cast<int>((exit_code >> 8) & 0xffu));
 		}
 		CloseHandle(process);

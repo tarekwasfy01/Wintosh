@@ -1135,6 +1135,22 @@ int main()
 		darling_windows_pthread_getname_np(pthread_self, pthread_name,
 		sizeof(pthread_name)) == 0 &&
 		std::strcmp(pthread_name, "darling-smoke") == 0;
+	void* pthread_mutex_attributes = nullptr;
+	int pthread_mutex_type = -1;
+	int pthread_mutex_shared = -1;
+	const bool pthread_mutex_attributes_ok =
+		darling_windows_host_symbol("pthread_mutexattr_init") != 0 &&
+		darling_windows_host_symbol("pthread_mutexattr_destroy") != 0 &&
+		darling_windows_pthread_mutexattr_init(&pthread_mutex_attributes) == 0 &&
+		darling_windows_pthread_mutexattr_gettype(pthread_mutex_attributes,
+		&pthread_mutex_type) == 0 && pthread_mutex_type == 0 &&
+		darling_windows_pthread_mutexattr_getpshared(pthread_mutex_attributes,
+		&pthread_mutex_shared) == 0 && pthread_mutex_shared == 0 &&
+		darling_windows_pthread_mutexattr_settype(pthread_mutex_attributes, 1) == 95 &&
+		darling_windows_pthread_mutexattr_setpshared(pthread_mutex_attributes, 1) == 95 &&
+		darling_windows_pthread_mutexattr_settype(pthread_mutex_attributes, 0) == 0 &&
+		darling_windows_pthread_mutexattr_setpshared(pthread_mutex_attributes, 0) == 0 &&
+		darling_windows_pthread_mutexattr_destroy(&pthread_mutex_attributes) == 0;
 	char pthread_payload[] = "thread-result";
 	std::uint64_t created_thread = 0;
 	void* joined_result = nullptr;
@@ -1362,7 +1378,7 @@ int main()
 		darling_windows_pthread_cond_destroy(&timed_condition_storage) == 0;
 	std::cout << "DARWIN_PTHREAD_SELF_NAME_EQUAL="
 		          << (pthread_abi_ok && pthread_lifecycle_ok && pthread_cancellation_ok && pthread_lock_cancellation_ok && pthread_condition_cancellation_ok && pthread_attributes_ok && pthread_detach_ok &&
-			pthread_threadid_ok && pthread_mutex_ok && pthread_rwlock_ok && pthread_tls_ok &&
+			pthread_threadid_ok && pthread_mutex_attributes_ok && pthread_mutex_ok && pthread_rwlock_ok && pthread_tls_ok &&
 			pthread_tls_destructor_ok && pthread_once_ok && pthread_condition_ok &&
 			pthread_timedwait_ok ? "PASS" : "FAIL") << "\n";
 	const bool normalized_terminal_environment_symbols =

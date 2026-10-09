@@ -2749,12 +2749,74 @@ std::mutex* PthreadMutexFromStorage(void* storage)
 	if (storage == nullptr) return nullptr;
 	return *reinterpret_cast<std::mutex**>(storage);
 }
+
+struct DarlingPthreadMutexAttributes final {
+	int type = 0;
+	int pshared = 0;
+};
+
+DarlingPthreadMutexAttributes* PthreadMutexAttributesFromStorage(const void* storage)
+{
+	return storage == nullptr ? nullptr :
+		*reinterpret_cast<DarlingPthreadMutexAttributes* const*>(storage);
+}
+}
+
+extern "C" int darling_windows_pthread_mutexattr_init(void* attributes)
+{
+	if (attributes == nullptr) return 22;
+	*reinterpret_cast<DarlingPthreadMutexAttributes**>(attributes) =
+		new (std::nothrow) DarlingPthreadMutexAttributes();
+	return *reinterpret_cast<DarlingPthreadMutexAttributes**>(attributes) == nullptr ? 12 : 0;
+}
+
+extern "C" int darling_windows_pthread_mutexattr_destroy(void* attributes)
+{
+	auto* value = PthreadMutexAttributesFromStorage(attributes);
+	if (value == nullptr) return 22;
+	delete value;
+	*reinterpret_cast<DarlingPthreadMutexAttributes**>(attributes) = nullptr;
+	return 0;
+}
+
+extern "C" int darling_windows_pthread_mutexattr_settype(void* attributes, int type)
+{
+	auto* value = PthreadMutexAttributesFromStorage(attributes);
+	if (value == nullptr || (type != 0 && type != 1 && type != 2)) return 22;
+	value->type = type;
+	return type == 0 ? 0 : 95;
+}
+
+extern "C" int darling_windows_pthread_mutexattr_gettype(const void* attributes, int* type)
+{
+	auto* value = PthreadMutexAttributesFromStorage(attributes);
+	if (value == nullptr || type == nullptr) return 22;
+	*type = value->type;
+	return 0;
+}
+
+extern "C" int darling_windows_pthread_mutexattr_setpshared(void* attributes, int shared)
+{
+	auto* value = PthreadMutexAttributesFromStorage(attributes);
+	if (value == nullptr || (shared != 0 && shared != 1)) return 22;
+	value->pshared = shared;
+	return shared == 0 ? 0 : 95;
+}
+
+extern "C" int darling_windows_pthread_mutexattr_getpshared(const void* attributes, int* shared)
+{
+	auto* value = PthreadMutexAttributesFromStorage(attributes);
+	if (value == nullptr || shared == nullptr) return 22;
+	*shared = value->pshared;
+	return 0;
 }
 
 extern "C" int darling_windows_pthread_mutex_init(void* mutex, const void* attributes)
 {
-	(void)attributes;
 	if (mutex == nullptr) return 22;
+	const auto* attr = PthreadMutexAttributesFromStorage(attributes);
+	if (attributes != nullptr && attr == nullptr) return 22;
+	if (attr != nullptr && (attr->type != 0 || attr->pshared != 0)) return 95;
 	*reinterpret_cast<std::mutex**>(mutex) = new (std::nothrow) std::mutex();
 	return *reinterpret_cast<std::mutex**>(mutex) == nullptr ? 12 : 0;
 }
@@ -4424,6 +4486,12 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 	if (std::strcmp(name, "_pthread_mutex_unlock") == 0 || std::strcmp(name, "pthread_mutex_unlock") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_mutex_unlock);
 	}
+	if (std::strcmp(name, "_pthread_mutexattr_init") == 0 || std::strcmp(name, "pthread_mutexattr_init") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_mutexattr_init);
+	if (std::strcmp(name, "_pthread_mutexattr_destroy") == 0 || std::strcmp(name, "pthread_mutexattr_destroy") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_mutexattr_destroy);
+	if (std::strcmp(name, "_pthread_mutexattr_settype") == 0 || std::strcmp(name, "pthread_mutexattr_settype") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_mutexattr_settype);
+	if (std::strcmp(name, "_pthread_mutexattr_gettype") == 0 || std::strcmp(name, "pthread_mutexattr_gettype") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_mutexattr_gettype);
+	if (std::strcmp(name, "_pthread_mutexattr_setpshared") == 0 || std::strcmp(name, "pthread_mutexattr_setpshared") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_mutexattr_setpshared);
+	if (std::strcmp(name, "_pthread_mutexattr_getpshared") == 0 || std::strcmp(name, "pthread_mutexattr_getpshared") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_mutexattr_getpshared);
 	if (std::strcmp(name, "_pthread_cond_init") == 0 || std::strcmp(name, "pthread_cond_init") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_cond_init);
 	}

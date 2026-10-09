@@ -15,6 +15,7 @@
 namespace {
 std::atomic<int> signal_count{0};
 std::atomic<int> siginfo_count{0};
+std::atomic<int> siginfo_mask_seen{0};
 
 void Handler(int signal_number)
 {
@@ -25,6 +26,9 @@ void Handler(int signal_number)
 
 void SiginfoHandler(int signal_number, void* info, void* context)
 {
+	if (signal_number == SIGTERM && info == nullptr && context == nullptr &&
+		darling::windows_host::DarwinSignals::Blocked(SIGINT))
+		siginfo_mask_seen.fetch_add(1, std::memory_order_relaxed);
 	if (signal_number == SIGTERM && info == nullptr && context == nullptr)
 		siginfo_count.fetch_add(1, std::memory_order_relaxed);
 }
@@ -114,9 +118,12 @@ int main()
 	darling_darwin_sigaction_record siginfo_action{};
 	siginfo_action.sigaction_handler = &SiginfoHandler;
 	siginfo_action.flags = 0x0040; // SA_SIGINFO
+	siginfo_action.mask.bits[0] = 1u << (SIGINT - 1);
 	if (darling_windows_sigaction(SIGTERM, &siginfo_action, nullptr) != 0 ||
 		!darling::windows_host::DarwinSignals::Raise(SIGTERM) ||
-		siginfo_count.load(std::memory_order_relaxed) != 1)
+		siginfo_count.load(std::memory_order_relaxed) != 1 ||
+		siginfo_mask_seen.load(std::memory_order_relaxed) != 1 ||
+		darling::windows_host::DarwinSignals::Blocked(SIGINT))
 		return 4;
 	darling_darwin_sigset wait_set{};
 	wait_set.bits[0] = 1u << (SIGINT - 1);

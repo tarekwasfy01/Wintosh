@@ -469,6 +469,9 @@ thread-local mask and drain newly unblocked pending signals. This aligns the
 local delivery path with the existing sigaction-handler path; native kernel
 delivery, reentrancy races, and complete Darwin restart semantics remain open.
 
+The signal smoke now observes the configured `sigaction` mask from inside a
+`SA_SIGINFO` handler and verifies that the mask is restored after return.
+
 The VM read bridge now records returned local buffers and makes
 `mach_vm_deallocate` release those buffers in the current Windows process,
 even when the read targeted a different PID. This closes the previous

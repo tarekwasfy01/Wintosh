@@ -28,6 +28,7 @@
 
 #include <cstdint>
 #include <atomic>
+#include <barrier>
 #include <array>
 #include <cstring>
 #include <cstdarg>
@@ -2788,6 +2789,18 @@ struct DarlingPthreadSpinlock final {
 	std::atomic_flag held = ATOMIC_FLAG_INIT;
 };
 
+struct DarlingPthreadBarrier final {
+	explicit DarlingPthreadBarrier(unsigned participants)
+		: value(static_cast<std::ptrdiff_t>(participants)) {}
+	std::barrier<> value;
+};
+
+DarlingPthreadBarrier* PthreadBarrierFromStorage(void* storage)
+{
+	return storage == nullptr ? nullptr :
+		*reinterpret_cast<DarlingPthreadBarrier**>(storage);
+}
+
 DarlingPthreadSpinlock* PthreadSpinlockFromStorage(void* storage)
 {
 	return storage == nullptr ? nullptr :
@@ -2992,6 +3005,32 @@ extern "C" int darling_windows_pthread_spin_unlock(void* lock)
 	auto* value = PthreadSpinlockFromStorage(lock);
 	if (value == nullptr) return 22;
 	value->held.clear(std::memory_order_release);
+	return 0;
+}
+
+extern "C" int darling_windows_pthread_barrier_init(void* barrier,
+	const void* attributes, unsigned count)
+{
+	if (barrier == nullptr || attributes != nullptr || count == 0) return 22;
+	*reinterpret_cast<DarlingPthreadBarrier**>(barrier) =
+		new (std::nothrow) DarlingPthreadBarrier(count);
+	return *reinterpret_cast<DarlingPthreadBarrier**>(barrier) == nullptr ? 12 : 0;
+}
+
+extern "C" int darling_windows_pthread_barrier_destroy(void* barrier)
+{
+	auto* value = PthreadBarrierFromStorage(barrier);
+	if (value == nullptr) return 22;
+	delete value;
+	*reinterpret_cast<DarlingPthreadBarrier**>(barrier) = nullptr;
+	return 0;
+}
+
+extern "C" int darling_windows_pthread_barrier_wait(void* barrier)
+{
+	auto* value = PthreadBarrierFromStorage(barrier);
+	if (value == nullptr) return 22;
+	value->value.arrive_and_wait();
 	return 0;
 }
 
@@ -4785,6 +4824,9 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 	if (std::strcmp(name, "_pthread_spin_lock") == 0 || std::strcmp(name, "pthread_spin_lock") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_spin_lock);
 	if (std::strcmp(name, "_pthread_spin_trylock") == 0 || std::strcmp(name, "pthread_spin_trylock") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_spin_trylock);
 	if (std::strcmp(name, "_pthread_spin_unlock") == 0 || std::strcmp(name, "pthread_spin_unlock") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_spin_unlock);
+	if (std::strcmp(name, "_pthread_barrier_init") == 0 || std::strcmp(name, "pthread_barrier_init") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_barrier_init);
+	if (std::strcmp(name, "_pthread_barrier_destroy") == 0 || std::strcmp(name, "pthread_barrier_destroy") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_barrier_destroy);
+	if (std::strcmp(name, "_pthread_barrier_wait") == 0 || std::strcmp(name, "pthread_barrier_wait") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_barrier_wait);
 	if (std::strcmp(name, "_pthread_mutexattr_init") == 0 || std::strcmp(name, "pthread_mutexattr_init") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_mutexattr_init);
 	if (std::strcmp(name, "_pthread_mutexattr_destroy") == 0 || std::strcmp(name, "pthread_mutexattr_destroy") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_mutexattr_destroy);
 	if (std::strcmp(name, "_pthread_mutexattr_settype") == 0 || std::strcmp(name, "pthread_mutexattr_settype") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_mutexattr_settype);

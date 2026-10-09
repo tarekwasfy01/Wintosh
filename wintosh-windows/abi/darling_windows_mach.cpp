@@ -289,7 +289,7 @@ extern "C" darling_kern_return_t darling_windows_thread_set_state(
 		return 4;
 	}
 	CONTEXT context{};
-	context.ContextFlags = flavor == darling_x86_debug_state64_flavor ? CONTEXT_DEBUG_REGISTERS : flavor == darling_x86_float_state64_flavor ? CONTEXT_FULL : CONTEXT_CONTROL | CONTEXT_INTEGER;
+	context.ContextFlags = flavor == darling_x86_debug_state64_flavor ? CONTEXT_DEBUG_REGISTERS : flavor == darling_x86_float_state64_flavor ? CONTEXT_FLOATING_POINT : CONTEXT_CONTROL | CONTEXT_INTEGER;
 	if (!GetThreadContext(handle, &context)) {
 		ResumeThread(handle); CloseHandle(handle); return 4;
 	}

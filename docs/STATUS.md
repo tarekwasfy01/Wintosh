@@ -526,3 +526,9 @@ The Objective-C smoke gate covers duplicate rejection, registration, storage
 round-trip, and resolver lookup. Retain/release ownership, non-pointer Ivar
 encodings, dynamic post-registration layout, and exact ABI alignment remain
 open.
+
+The runtime README now records the actual Mach-O execution boundary: the
+Windows x86_64 runner can enter compatible x86_64 images after mapping,
+relocations, bindings, initializers, and protection setup, while i386 and
+ARM64 images remain rejected without a CPU translation layer. This is loader
+execution evidence, not proof of full unmodified macOS application support.

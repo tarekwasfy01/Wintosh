@@ -74,7 +74,9 @@ timed wait behavior; `MACH_IPC_NOTIFICATION=PASS` verifies the host primitive.
 The broker now routes `NotificationCreate`, `NotificationSignal`,
 `NotificationReset`, and `NotificationWait`; the cross-process smoke covers
 timeout and signal behavior as `BROKER_MACH_NOTIFICATION=PASS`. Full Mach
-notification-port rights and delivery semantics remain open.
+notification-port rights and delivery semantics remain open. Explicit
+`NotificationDestroy` cleanup and stale-token rejection are covered by
+`BROKER_MACH_NOTIFICATION_DESTROY=PASS`.
 The broker also accepts the explicit `Destroy` operation, releasing the
 port and rejecting later use (`BROKER_MACH_DESTROY=PASS`).
 Each port FIFO is bounded to 1024 queued messages and reports

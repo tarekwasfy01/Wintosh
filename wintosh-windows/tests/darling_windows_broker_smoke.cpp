@@ -309,6 +309,18 @@ int wmain()
 			return 5;
 		}
 		std::cout << "BROKER_MACH_NOTIFICATION=PASS\n";
+		const darling::windows_host::MachIpcEnvelope notification_destroy{
+			darling::windows_host::MachIpcOperation::NotificationDestroy, 2034, notification_token, 0, {}};
+		const auto notification_destroy_bytes = darling::windows_host::EncodeMachIpcEnvelope(notification_destroy);
+		client.Write(std::string(notification_destroy_bytes.begin(), notification_destroy_bytes.end()));
+		(void)client.Read();
+		const auto stale_notification_bytes = darling::windows_host::EncodeMachIpcEnvelope(notification_signal);
+		client.Write(std::string(stale_notification_bytes.begin(), stale_notification_bytes.end()));
+		if (client.Read() != "INVALID_MACH_IPC_REQUEST") {
+			std::cerr << "BROKER_MACH_NOTIFICATION_DESTROY=FAIL\n";
+			return 5;
+		}
+		std::cout << "BROKER_MACH_NOTIFICATION_DESTROY=PASS\n";
 
 		client.Write("SHUTDOWN");
 		const auto shutdown = client.Read();

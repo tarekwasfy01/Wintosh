@@ -34,7 +34,8 @@ enum class MachIpcOperation : std::uint16_t {
 	NotificationCreate = 6,
 	NotificationSignal = 7,
 	NotificationReset = 8,
-	NotificationWait = 9
+	NotificationWait = 9,
+	NotificationDestroy = 10
 };
 
 struct MachIpcEnvelope final {

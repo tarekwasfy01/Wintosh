@@ -79,12 +79,15 @@ int wmain(int argc, wchar_t** argv)
 				}
 				if (envelope.operation == darling::windows_host::MachIpcOperation::NotificationSignal ||
 					envelope.operation == darling::windows_host::MachIpcOperation::NotificationReset ||
-					envelope.operation == darling::windows_host::MachIpcOperation::NotificationWait) {
+					envelope.operation == darling::windows_host::MachIpcOperation::NotificationWait ||
+					envelope.operation == darling::windows_host::MachIpcOperation::NotificationDestroy) {
 					auto notification = notifications.find(envelope.port_token);
 					if (notification == notifications.end())
 						throw std::invalid_argument("unknown Mach IPC notification token");
 					std::vector<std::uint8_t> result;
-					if (envelope.operation == darling::windows_host::MachIpcOperation::NotificationSignal)
+					if (envelope.operation == darling::windows_host::MachIpcOperation::NotificationDestroy)
+						notifications.erase(notification);
+					else if (envelope.operation == darling::windows_host::MachIpcOperation::NotificationSignal)
 						notification->second.Signal();
 					else if (envelope.operation == darling::windows_host::MachIpcOperation::NotificationReset)
 						notification->second.Reset();

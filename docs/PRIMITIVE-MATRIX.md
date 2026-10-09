@@ -111,8 +111,8 @@ The signal smoke exposes setup diagnostics separately, and the action/handler
 state is synchronized while callbacks remain reentrant outside the lock. Ten
 consecutive isolated runs complete with `DARWIN_SYSCALL_SIGNAL=PASS`.
 Condition-variable attributes now expose `init`, `destroy`, pshared, and clock
-accessors. Default clock/pshared values are verified; process-shared
-conditions and non-default clock execution return `ENOTSUP` explicitly.
+accessors. Default and monotonic clock values are verified; process-shared
+conditions return `ENOTSUP` explicitly.
 Read/write-lock attributes now expose default-only init/destroy/pshared accessors
 with resolver coverage; process-shared rwlocks return `ENOTSUP` explicitly.
 The immediate `tryrdlock`/`trywrlock` primitives are now resolved and tested:

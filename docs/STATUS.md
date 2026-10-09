@@ -519,10 +519,10 @@ coverage. Non-default priority protocols and robust recovery are rejected with
 `ENOTSUP`; this exposes the ABI boundary without claiming owner-death recovery
 or priority inheritance.
 
-The condition-variable attribute boundary now exposes default-only opaque
-attributes with pshared and clock accessors. The host smoke verifies default
-values and explicit `ENOTSUP` for process-shared conditions and non-default
-clock selection; monotonic-clock timed-wait semantics remain open.
+The condition-variable attribute boundary now exposes opaque attributes with
+pshared and clock accessors. The host smoke verifies default and monotonic
+clock values, monotonic timed-wait expiry, and explicit `ENOTSUP` for
+process-shared conditions; exact Darwin interruption behavior remains open.
 
 The read/write-lock attribute boundary now exposes default-only opaque objects
 with pshared accessors. The host smoke verifies default reads and explicit

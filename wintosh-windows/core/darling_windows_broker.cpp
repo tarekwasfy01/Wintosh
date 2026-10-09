@@ -11,6 +11,7 @@
 #include <iostream>
 #include <deque>
 #include <cstring>
+#include <mutex>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -51,6 +52,7 @@ int wmain(int argc, wchar_t** argv)
 		std::uint64_t next_out_of_line_token = 1;
 		std::unordered_map<std::uint64_t, darling::windows_host::MachIpcNotification> notifications;
 		std::uint64_t next_notification_token = 1;
+		std::mutex broker_state_mutex;
 
 		for (;;) {
 			const auto request = server.Read();
@@ -66,6 +68,7 @@ int wmain(int argc, wchar_t** argv)
 				return 0;
 			}
 			try {
+				std::lock_guard state_lock(broker_state_mutex);
 				const auto envelope = darling::windows_host::DecodeMachIpcEnvelope(
 					AsBytes(request));
 				if (envelope.operation == darling::windows_host::MachIpcOperation::NotificationCreate) {

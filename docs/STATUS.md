@@ -89,6 +89,9 @@ the boundary is exercised by the broker smoke as
 The named-pipe transport now reserves up to eight server instances, preparing
 the endpoint for concurrent client workers; the current broker loop still
 serves one connected client and does not yet claim multi-client semantics.
+The shared broker state is now protected by a mutex at the request boundary,
+so the existing port/OOL/notification tables have an explicit synchronization
+contract for the upcoming worker split.
 
 The platform path adapter now provides lexical `AbsolutePath` resolution and
 handle-based `CanonicalPath` resolution through Windows final-name lookup,

@@ -70,6 +70,26 @@ private:
 	std::size_t m_size = 0;
 };
 
+class MachIpcNotification final {
+public:
+	static MachIpcNotification Create(const std::wstring& name);
+	static MachIpcNotification Open(const std::wstring& name);
+	MachIpcNotification(const MachIpcNotification&) = delete;
+	MachIpcNotification& operator=(const MachIpcNotification&) = delete;
+	MachIpcNotification(MachIpcNotification&& other) noexcept;
+	MachIpcNotification& operator=(MachIpcNotification&& other) noexcept;
+	~MachIpcNotification() noexcept;
+
+	void Signal() const;
+	void Reset() const;
+	[[nodiscard]] bool Wait(DWORD timeout_ms) const noexcept;
+
+private:
+	 explicit MachIpcNotification(HANDLE event) noexcept : m_event(event) {}
+	void Close() noexcept;
+	HANDLE m_event = nullptr;
+};
+
 class TaskPort final {
 public:
 	enum class MemoryProtection { ReadOnly, ReadWrite, ReadExecute, ReadWriteExecute };

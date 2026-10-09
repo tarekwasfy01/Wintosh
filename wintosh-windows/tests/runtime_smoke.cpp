@@ -74,6 +74,25 @@ int wmain()
 		return 1;
 	}
 	std::cout << "MACH_IPC_SHARED_MEMORY=PASS\n";
+	const auto notification_name = L"Local\\wintosh-mach-notification-" +
+		std::to_wstring(GetCurrentProcessId());
+	auto notification = darling::windows_host::MachIpcNotification::Create(notification_name);
+	auto notification_peer = darling::windows_host::MachIpcNotification::Open(notification_name);
+	if (notification_peer.Wait(1)) {
+		std::cerr << "MACH_IPC_NOTIFICATION_TIMEOUT=FAIL\n";
+		return 1;
+	}
+	notification.Signal();
+	if (!notification_peer.Wait(1000)) {
+		std::cerr << "MACH_IPC_NOTIFICATION_SIGNAL=FAIL\n";
+		return 1;
+	}
+	notification.Reset();
+	if (notification_peer.Wait(1)) {
+		std::cerr << "MACH_IPC_NOTIFICATION_RESET=FAIL\n";
+		return 1;
+	}
+	std::cout << "MACH_IPC_NOTIFICATION=PASS\n";
 	darling::windows_host::MachPort port;
 	if (port.Receive(1).has_value()) {
 		std::cerr << "MACH_PORT_TIMEOUT=FAIL\n";

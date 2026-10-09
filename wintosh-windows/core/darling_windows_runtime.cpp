@@ -185,6 +185,68 @@ void MachIpcSharedMemory::Reset() noexcept
 	m_size = 0;
 }
 
+MachIpcNotification MachIpcNotification::Create(const std::wstring& name)
+{
+	const HANDLE event = CreateEventW(nullptr, TRUE, FALSE, name.c_str());
+	if (event == nullptr)
+		throw std::system_error(static_cast<int>(GetLastError()), std::system_category(),
+			"CreateEventW");
+	return MachIpcNotification(event);
+}
+
+MachIpcNotification MachIpcNotification::Open(const std::wstring& name)
+{
+	const HANDLE event = OpenEventW(EVENT_MODIFY_STATE | SYNCHRONIZE, FALSE, name.c_str());
+	if (event == nullptr)
+		throw std::system_error(static_cast<int>(GetLastError()), std::system_category(),
+			"OpenEventW");
+	return MachIpcNotification(event);
+}
+
+MachIpcNotification::MachIpcNotification(MachIpcNotification&& other) noexcept :
+	m_event(other.m_event)
+{
+	other.m_event = nullptr;
+}
+
+MachIpcNotification& MachIpcNotification::operator=(MachIpcNotification&& other) noexcept
+{
+	if (this != &other) {
+		Close();
+		m_event = other.m_event;
+		other.m_event = nullptr;
+	}
+	return *this;
+}
+
+MachIpcNotification::~MachIpcNotification() noexcept
+{
+	Close();
+}
+
+void MachIpcNotification::Close() noexcept
+{
+	if (m_event != nullptr) CloseHandle(m_event);
+	m_event = nullptr;
+}
+
+void MachIpcNotification::Signal() const
+{
+	if (!SetEvent(m_event))
+		throw std::system_error(static_cast<int>(GetLastError()), std::system_category(), "SetEvent");
+}
+
+void MachIpcNotification::Reset() const
+{
+	if (!ResetEvent(m_event))
+		throw std::system_error(static_cast<int>(GetLastError()), std::system_category(), "ResetEvent");
+}
+
+bool MachIpcNotification::Wait(DWORD timeout_ms) const noexcept
+{
+	return WaitForSingleObject(m_event, timeout_ms) == WAIT_OBJECT_0;
+}
+
 namespace {
 
 [[noreturn]] void ThrowLastError(const char* operation)

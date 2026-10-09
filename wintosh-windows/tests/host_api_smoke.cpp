@@ -1621,13 +1621,17 @@ int main()
 	const auto timed_nanos = std::chrono::duration_cast<std::chrono::nanoseconds>(
 		timed_now - timed_seconds);
 	darling_timespec timed_deadline{timed_seconds.count(), timed_nanos.count()};
+	darling_timespec timed_relative{0, 1000000};
 	const bool pthread_timedwait_ok =
 		darling_windows_host_symbol("pthread_cond_timedwait") != 0 &&
+		darling_windows_host_symbol("pthread_cond_timedwait_relative_np") != 0 &&
 		darling_windows_pthread_cond_init(&timed_condition_storage, nullptr) == 0 &&
 		darling_windows_pthread_mutex_init(&timed_mutex_storage, nullptr) == 0 &&
 		darling_windows_pthread_mutex_lock(&timed_mutex_storage) == 0 &&
 		darling_windows_pthread_cond_timedwait(&timed_condition_storage,
 			&timed_mutex_storage, &timed_deadline) == 110 &&
+		darling_windows_pthread_cond_timedwait_relative_np(&timed_condition_storage,
+		&timed_mutex_storage, &timed_relative) == 110 &&
 		darling_windows_pthread_mutex_unlock(&timed_mutex_storage) == 0 &&
 		darling_windows_pthread_mutex_destroy(&timed_mutex_storage) == 0 &&
 		darling_windows_pthread_cond_destroy(&timed_condition_storage) == 0;

@@ -3439,6 +3439,21 @@ extern "C" int darling_windows_pthread_cond_timedwait(void* condition, void* mut
 	}
 }
 
+extern "C" int darling_windows_pthread_cond_timedwait_relative_np(void* condition,
+	void* mutex, const darling_timespec* relative)
+{
+	if (relative == nullptr || relative->tv_sec < 0 || relative->tv_nsec < 0 ||
+		relative->tv_nsec >= 1000000000) return 22;
+	const auto now = std::chrono::system_clock::now().time_since_epoch();
+	const auto relative_duration = std::chrono::seconds(relative->tv_sec) +
+		std::chrono::nanoseconds(relative->tv_nsec);
+	const auto absolute = now + relative_duration;
+	const auto seconds = std::chrono::duration_cast<std::chrono::seconds>(absolute);
+	const auto nanoseconds = std::chrono::duration_cast<std::chrono::nanoseconds>(absolute - seconds);
+	darling_timespec deadline{seconds.count(), nanoseconds.count()};
+	return darling_windows_pthread_cond_timedwait(condition, mutex, &deadline);
+}
+
 extern "C" int darling_windows_pthread_cond_signal(void* condition)
 {
 	auto* value = PthreadConditionFromStorage(condition);
@@ -5142,6 +5157,10 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 	if (std::strcmp(name, "_pthread_cond_timedwait") == 0 ||
 		std::strcmp(name, "pthread_cond_timedwait") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_cond_timedwait);
+	}
+	if (std::strcmp(name, "_pthread_cond_timedwait_relative_np") == 0 ||
+		std::strcmp(name, "pthread_cond_timedwait_relative_np") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_cond_timedwait_relative_np);
 	}
 	if (std::strcmp(name, "_pthread_cond_signal") == 0 || std::strcmp(name, "pthread_cond_signal") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_cond_signal);

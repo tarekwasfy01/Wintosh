@@ -387,6 +387,8 @@ extern "C" int darling_windows_pthread_condattr_getclock(const void* attributes,
 extern "C" int darling_windows_pthread_cond_wait(void* condition, void* mutex);
 extern "C" int darling_windows_pthread_cond_timedwait(void* condition, void* mutex,
 	const darling_timespec* deadline);
+extern "C" int darling_windows_pthread_cond_timedwait_relative_np(void* condition,
+	void* mutex, const darling_timespec* relative);
 extern "C" int darling_windows_pthread_cond_signal(void* condition);
 extern "C" int darling_windows_pthread_cond_broadcast(void* condition);
 extern "C" int darling_windows_pthread_rwlock_init(void* lock, const void* attributes);

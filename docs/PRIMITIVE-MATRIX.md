@@ -76,6 +76,11 @@ a Windows scheduling-policy mapping is implemented.
 The WSL/legacy winpthreads `pthread_yield` spelling now aliases the verified
 Windows `SwitchToThread`-backed `sched_yield` primitive.
 
+CoreAudio's `pthread_cond_timedwait_relative_np` is now exposed as well. It
+converts a validated relative Darwin timespec to the existing absolute,
+cancellation-aware condition wait and preserves mutex reacquisition behavior;
+the underlying monotonic-clock and exact Darwin interruption gaps remain open.
+
 The Windows adapter also provides an explicit port-local LIFO cleanup-record
 stack through `darling_windows_pthread_cleanup_push` and
 `darling_windows_pthread_cleanup_pop`. Deferred cancellation drains the stack

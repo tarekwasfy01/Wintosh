@@ -2734,7 +2734,11 @@ extern "C" int darling_windows_pthread_mutex_lock(void* mutex)
 {
 	auto* value = PthreadMutexFromStorage(mutex);
 	if (value == nullptr) return 22;
-	value->lock();
+	darling_windows_pthread_testcancel();
+	while (!value->try_lock()) {
+		Sleep(1);
+		darling_windows_pthread_testcancel();
+	}
 	return 0;
 }
 
@@ -2897,7 +2901,11 @@ extern "C" int darling_windows_pthread_rwlock_rdlock(void* lock)
 {
 	auto* value = PthreadRwlockFromStorage(lock);
 	if (value == nullptr) return 22;
-	value->lock_shared();
+	darling_windows_pthread_testcancel();
+	while (!value->try_lock_shared()) {
+		Sleep(1);
+		darling_windows_pthread_testcancel();
+	}
 	darling_rwlock_read_modes[lock] = true;
 	return 0;
 }
@@ -2906,7 +2914,11 @@ extern "C" int darling_windows_pthread_rwlock_wrlock(void* lock)
 {
 	auto* value = PthreadRwlockFromStorage(lock);
 	if (value == nullptr) return 22;
-	value->lock();
+	darling_windows_pthread_testcancel();
+	while (!value->try_lock()) {
+		Sleep(1);
+		darling_windows_pthread_testcancel();
+	}
 	darling_rwlock_read_modes[lock] = false;
 	return 0;
 }

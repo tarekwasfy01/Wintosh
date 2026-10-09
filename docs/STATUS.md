@@ -499,6 +499,11 @@ an unrelated signal. This adds practical cancellation-point coverage while
 leaving POSIX mutex reacquisition, cleanup-handler ordering, and exact timed
 wait interruption semantics open.
 
+Blocking pthread mutex and read/write-lock acquisition now uses the same
+bounded cancellation-point polling, while uncontended acquisition remains a
+single fast `try_lock`. Native priority inheritance, robust/shared locks,
+cleanup ordering, and exact Darwin cancellation behavior remain open.
+
 The VM read bridge now records returned local buffers and makes
 `mach_vm_deallocate` release those buffers in the current Windows process,
 even when the read targeted a different PID. This closes the previous

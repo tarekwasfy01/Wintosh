@@ -554,6 +554,13 @@ handles. The Objective-C smoke gate covers class-object, metaclass, instance,
 and missing-selector queries; method-cache invalidation, swizzling races, and
 the complete Apple metaclass ABI remain open.
 
+`CFRunLoopRunInMode` now drains queued blocks until the requested deadline or
+an explicit stop when `return_after_source` is false. The CoreFoundation smoke
+gate verifies two queued sources are both delivered during one run and that
+the run returns by timeout afterward; source ordering beyond the adapter queue,
+run-loop modes, cancellation, and native observer/scheduling semantics remain
+open.
+
 The runtime README now records the actual Mach-O execution boundary: the
 Windows x86_64 runner can enter compatible x86_64 images after mapping,
 relocations, bindings, initializers, and protection setup, while i386 and

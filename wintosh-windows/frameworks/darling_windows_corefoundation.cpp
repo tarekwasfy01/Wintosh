@@ -1418,22 +1418,30 @@ extern "C" int darling_windows_CFRunLoopRunInMode(double seconds, bool return_af
 	std::unique_lock lock(state->mutex);
 	state->running = true;
 	state->stopped = false;
-	const auto duration = std::chrono::duration<double>(seconds);
-	state->condition.wait_for(lock, duration, [&state] { return state->stopped || !state->blocks.empty(); });
-	if (!state->stopped && !state->blocks.empty()) {
+	const auto deadline = std::chrono::steady_clock::now() +
+		std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+			std::chrono::duration<double>(seconds));
+	bool returned_after_source = false;
+	while (!state->stopped) {
+		if (state->blocks.empty() && !state->condition.wait_until(lock, deadline, [&state] {
+			return state->stopped || !state->blocks.empty();
+		})) break;
+		if (state->stopped || state->blocks.empty()) break;
 		std::vector<std::pair<darling_windows_CFRunLoopBlock, void*>> pending;
 		if (return_after_source) {
 			pending.push_back(state->blocks.front());
 			state->blocks.erase(state->blocks.begin());
+			returned_after_source = true;
 		} else {
 			pending = std::move(state->blocks);
 		}
 		lock.unlock();
 		for (const auto& entry : pending) if (entry.first != nullptr) entry.first(entry.second);
 		lock.lock();
+		if (return_after_source || std::chrono::steady_clock::now() >= deadline) break;
 	}
 	state->running = false;
-	return state->stopped || return_after_source ? 0 : 1;
+	return state->stopped || returned_after_source ? 0 : 1;
 }
 
 extern "C" void darling_windows_CFRunLoopStop(darling_windows_CFRunLoopRef value)

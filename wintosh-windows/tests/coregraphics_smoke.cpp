@@ -89,6 +89,12 @@ int main()
 	const auto vector = darling_windows_CGVectorMake(3, 4);
 	bool vector_valid = false;
 	const auto normalized = darling_windows_CGVectorNormalize(vector, &vector_valid);
+	bool infinite_vector_valid = true;
+	const auto infinite_normalized = darling_windows_CGVectorNormalize(
+		{INFINITY, 1}, &infinite_vector_valid);
+	bool nonfinite_invertible = true;
+	(void)darling_windows_CGAffineTransformInvert(
+		{NAN, 0, 0, 1, 0, 0}, &nonfinite_invertible);
 	const auto point_sum = darling_windows_CGPointAdd({1, 2}, vector);
 	const auto point_delta = darling_windows_CGPointSubtract(point_sum, {1, 2});
 	double components[4]{};
@@ -128,7 +134,9 @@ int main()
 		oversized_slice.size.width == 10 && oversized_remainder.size.width == 0;
 	const bool vector_ok = vector_valid && darling_windows_CGVectorLength(vector) == 5 &&
 		darling_windows_CGVectorDot(vector, vector) == 25 &&
-		std::abs(normalized.dx - 0.6) < 1e-12 && point_delta.dx == 3 && point_delta.dy == 4;
+		std::abs(normalized.dx - 0.6) < 1e-12 && point_delta.dx == 3 && point_delta.dy == 4 &&
+		!infinite_vector_valid && infinite_normalized.dx == 0 && infinite_normalized.dy == 0 &&
+		!nonfinite_invertible;
 	const bool all_ok = ok && vector_ok && geometry_access_ok && divide_ok && oversized_divide_ok;
 	std::cout << "DARWIN_COREGRAPHICS_GEOMETRY=" << (all_ok ? "PASS" : "FAIL") << "\n";
 	return all_ok ? 0 : 1;

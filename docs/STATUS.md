@@ -602,6 +602,12 @@ well, so malformed aggregates cannot wrap during field padding or final size
 alignment. The Foundation smoke gate covers both array-count and aggregate
 overflow rejection; valid aggregate layout behavior remains unchanged.
 
+CoreGraphics vector normalization now rejects non-finite lengths, and affine
+inversion treats a non-finite determinant as non-invertible instead of
+returning a falsely valid NaN transform. The CoreGraphics smoke gate covers
+both fail-closed cases; full floating-point exception and platform-specific
+NaN propagation behavior remain outside this geometry adapter.
+
 The runtime README now records the actual Mach-O execution boundary: the
 Windows x86_64 runner can enter compatible x86_64 images after mapping,
 relocations, bindings, initializers, and protection setup, while i386 and

@@ -61,7 +61,7 @@ extern "C" darling_windows_CGVector darling_windows_CGVectorNormalize(
 	darling_windows_CGVector vector, bool* valid)
 {
 	const double length = darling_windows_CGVectorLength(vector);
-	if (length == 0) {
+	if (length == 0 || !std::isfinite(length)) {
 		if (valid != nullptr) *valid = false;
 		return {0, 0};
 	}
@@ -168,7 +168,7 @@ extern "C" darling_windows_CGAffineTransform darling_windows_CGAffineTransformIn
 	darling_windows_CGAffineTransform transform, bool* invertible)
 {
 	const double determinant = transform.a * transform.d - transform.b * transform.c;
-	if (std::abs(determinant) < 1e-15) {
+	if (!std::isfinite(determinant) || std::abs(determinant) < 1e-15) {
 		if (invertible != nullptr) *invertible = false;
 		return darling_windows_CGAffineTransformIdentity();
 	}

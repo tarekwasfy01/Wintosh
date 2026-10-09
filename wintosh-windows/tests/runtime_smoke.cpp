@@ -15,6 +15,24 @@
 
 int wmain()
 {
+	darling::windows_host::MachIpcEnvelope envelope{
+		darling::windows_host::MachIpcOperation::Send, 42, 7, 1, {'M', 'A', 'C', 'H'}};
+	const auto encoded = darling::windows_host::EncodeMachIpcEnvelope(envelope);
+	const auto decoded = darling::windows_host::DecodeMachIpcEnvelope(encoded);
+	if (decoded.operation != envelope.operation || decoded.request_id != 42 ||
+		decoded.port_token != 7 || decoded.disposition_count != 1 ||
+		decoded.payload != envelope.payload) {
+		std::cerr << "MACH_IPC_ENVELOPE=FAIL\n";
+		return 1;
+	}
+	std::cout << "MACH_IPC_ENVELOPE=PASS\n";
+	try {
+		darling::windows_host::DecodeMachIpcEnvelope({'B', 'A', 'D'});
+		std::cerr << "MACH_IPC_ENVELOPE_VALIDATION=FAIL\n";
+		return 1;
+	} catch (const std::invalid_argument&) {
+		std::cout << "MACH_IPC_ENVELOPE_VALIDATION=PASS\n";
+	}
 	darling::windows_host::MachPort port;
 	if (port.Receive(1).has_value()) {
 		std::cerr << "MACH_PORT_TIMEOUT=FAIL\n";

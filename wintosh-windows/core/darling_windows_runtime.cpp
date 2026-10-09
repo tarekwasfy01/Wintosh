@@ -19,6 +19,92 @@
 namespace darling::windows_host {
 
 namespace {
+constexpr std::uint16_t mach_ipc_version = 1;
+constexpr std::size_t mach_ipc_header_size = 32;
+constexpr std::size_t mach_ipc_max_payload = 4 * 1024 * 1024;
+
+void AppendU16(std::vector<std::uint8_t>& bytes, std::uint16_t value)
+{
+	bytes.push_back(static_cast<std::uint8_t>(value));
+	bytes.push_back(static_cast<std::uint8_t>(value >> 8));
+}
+void AppendU32(std::vector<std::uint8_t>& bytes, std::uint32_t value)
+{
+	for (unsigned shift = 0; shift < 32; shift += 8)
+		bytes.push_back(static_cast<std::uint8_t>(value >> shift));
+}
+void AppendU64(std::vector<std::uint8_t>& bytes, std::uint64_t value)
+{
+	for (unsigned shift = 0; shift < 64; shift += 8)
+		bytes.push_back(static_cast<std::uint8_t>(value >> shift));
+}
+std::uint16_t ReadU16(const std::vector<std::uint8_t>& bytes, std::size_t& offset)
+{
+	if (offset + 2 > bytes.size()) throw std::invalid_argument("truncated Mach IPC u16");
+	const auto value = static_cast<std::uint16_t>(bytes[offset]) |
+		(static_cast<std::uint16_t>(bytes[offset + 1]) << 8);
+	offset += 2;
+	return value;
+}
+std::uint32_t ReadU32(const std::vector<std::uint8_t>& bytes, std::size_t& offset)
+{
+	if (offset + 4 > bytes.size()) throw std::invalid_argument("truncated Mach IPC u32");
+	std::uint32_t value = 0;
+	for (unsigned shift = 0; shift < 32; shift += 8) value |=
+		static_cast<std::uint32_t>(bytes[offset++]) << shift;
+	return value;
+}
+std::uint64_t ReadU64(const std::vector<std::uint8_t>& bytes, std::size_t& offset)
+{
+	if (offset + 8 > bytes.size()) throw std::invalid_argument("truncated Mach IPC u64");
+	std::uint64_t value = 0;
+	for (unsigned shift = 0; shift < 64; shift += 8) value |=
+		static_cast<std::uint64_t>(bytes[offset++]) << shift;
+	return value;
+}
+}
+
+std::vector<std::uint8_t> EncodeMachIpcEnvelope(const MachIpcEnvelope& envelope)
+{
+	if (envelope.payload.size() > mach_ipc_max_payload)
+		throw std::length_error("Mach IPC payload is too large");
+	std::vector<std::uint8_t> bytes;
+	bytes.reserve(mach_ipc_header_size + envelope.payload.size());
+	bytes.insert(bytes.end(), {'W', 'I', 'P', 'C'});
+	AppendU16(bytes, mach_ipc_version);
+	AppendU16(bytes, static_cast<std::uint16_t>(envelope.operation));
+	AppendU64(bytes, envelope.request_id);
+	AppendU64(bytes, envelope.port_token);
+	AppendU32(bytes, envelope.disposition_count);
+	AppendU32(bytes, static_cast<std::uint32_t>(envelope.payload.size()));
+	bytes.insert(bytes.end(), envelope.payload.begin(), envelope.payload.end());
+	return bytes;
+}
+
+MachIpcEnvelope DecodeMachIpcEnvelope(const std::vector<std::uint8_t>& bytes)
+{
+	if (bytes.size() < mach_ipc_header_size ||
+		!std::equal(bytes.begin(), bytes.begin() + 4, "WIPC"))
+		throw std::invalid_argument("invalid Mach IPC envelope magic");
+	std::size_t offset = 4;
+	if (ReadU16(bytes, offset) != mach_ipc_version)
+		throw std::invalid_argument("unsupported Mach IPC envelope version");
+	const auto operation = ReadU16(bytes, offset);
+	if (operation < 1 || operation > 5)
+		throw std::invalid_argument("unknown Mach IPC operation");
+	MachIpcEnvelope result;
+	result.operation = static_cast<MachIpcOperation>(operation);
+	result.request_id = ReadU64(bytes, offset);
+	result.port_token = ReadU64(bytes, offset);
+	result.disposition_count = ReadU32(bytes, offset);
+	const auto payload_size = ReadU32(bytes, offset);
+	if (payload_size > mach_ipc_max_payload || offset + payload_size != bytes.size())
+		throw std::invalid_argument("invalid Mach IPC payload size");
+	result.payload.assign(bytes.begin() + static_cast<std::ptrdiff_t>(offset), bytes.end());
+	return result;
+}
+
+namespace {
 
 [[noreturn]] void ThrowLastError(const char* operation)
 {

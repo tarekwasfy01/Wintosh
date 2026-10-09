@@ -25,6 +25,27 @@ struct MachMessage final {
 	std::vector<std::uint8_t> out_of_line_data;
 };
 
+enum class MachIpcOperation : std::uint16_t {
+	Allocate = 1,
+	Send = 2,
+	Receive = 3,
+	Deallocate = 4,
+	Destroy = 5
+};
+
+struct MachIpcEnvelope final {
+	MachIpcOperation operation = MachIpcOperation::Allocate;
+	std::uint64_t request_id = 0;
+	std::uint64_t port_token = 0;
+	std::uint32_t disposition_count = 0;
+	std::vector<std::uint8_t> payload;
+};
+
+[[nodiscard]] std::vector<std::uint8_t> EncodeMachIpcEnvelope(
+	const MachIpcEnvelope& envelope);
+[[nodiscard]] MachIpcEnvelope DecodeMachIpcEnvelope(
+	const std::vector<std::uint8_t>& bytes);
+
 class TaskPort final {
 public:
 	enum class MemoryProtection { ReadOnly, ReadWrite, ReadExecute, ReadWriteExecute };

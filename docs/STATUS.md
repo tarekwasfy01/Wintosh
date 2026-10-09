@@ -25,6 +25,15 @@ Studio aggregate build target can
 still stall during orchestration, so the reproducible fallback is to build
 the generated targets individually; this does not represent a test failure.
 
+The first cross-process Mach IPC slice is now implemented as a version-1
+`WIPC` envelope codec. It validates bounded little-endian operation, request,
+port-token, disposition-count, and payload fields. The runtime smoke test
+reports `MACH_IPC_ENVELOPE=PASS` and `MACH_IPC_ENVELOPE_VALIDATION=PASS`.
+This is only the transport-neutral message format; broker-backed port
+allocation and lookup, cross-process send/receive, dispositions, waiters,
+notifications, cancellation, MIG descriptors, out-of-line memory, and
+Mach-compatible error semantics remain unimplemented.
+
 The platform path adapter now provides lexical `AbsolutePath` resolution and
 handle-based `CanonicalPath` resolution through Windows final-name lookup,
 with an explicit absolute-path fallback when the host denies that query.

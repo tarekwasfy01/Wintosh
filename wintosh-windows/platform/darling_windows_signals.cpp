@@ -56,6 +56,21 @@ void BitsToSet(std::uint64_t bits, darling_darwin_sigset& set) noexcept
 	set.bits[1] = static_cast<std::uint32_t>(darwin_bits >> 32);
 }
 
+bool ValidSetSignal(int signal_number) noexcept
+{
+	return signal_number > 0 && signal_number < 64;
+}
+
+std::uint32_t* SetWord(darling_darwin_sigset& set, int signal_number) noexcept
+{
+	return &set.bits[static_cast<std::size_t>(signal_number - 1) / 32];
+}
+
+std::uint32_t SetMask(int signal_number) noexcept
+{
+	return std::uint32_t{1} << ((signal_number - 1) % 32);
+}
+
 std::uint64_t SignalBit(int signal_number) noexcept
 {
 	return signal_number > 0 && signal_number < 64 ?
@@ -224,6 +239,49 @@ extern "C" int darling_windows_sigaction(int signal_number,
 		(void)mask;
 	}
 	return 0;
+}
+
+extern "C" int darling_windows_sigemptyset(darling_darwin_sigset* set)
+{
+	if (set == nullptr)
+		return 22;
+	*set = {};
+	return 0;
+}
+
+extern "C" int darling_windows_sigfillset(darling_darwin_sigset* set)
+{
+	if (set == nullptr)
+		return 22;
+	*set = {};
+	set->bits[0] = 0xffff'fffeu;
+	set->bits[1] = 0x7fffffffu;
+	return 0;
+}
+
+extern "C" int darling_windows_sigaddset(darling_darwin_sigset* set, int signal_number)
+{
+	if (set == nullptr || !ValidSetSignal(signal_number))
+		return 22;
+	*SetWord(*set, signal_number) |= SetMask(signal_number);
+	return 0;
+}
+
+extern "C" int darling_windows_sigdelset(darling_darwin_sigset* set, int signal_number)
+{
+	if (set == nullptr || !ValidSetSignal(signal_number))
+		return 22;
+	*SetWord(*set, signal_number) &= ~SetMask(signal_number);
+	return 0;
+}
+
+extern "C" int darling_windows_sigismember(const darling_darwin_sigset* set,
+	int signal_number)
+{
+	if (set == nullptr || !ValidSetSignal(signal_number))
+		return -1;
+	return (*SetWord(*const_cast<darling_darwin_sigset*>(set), signal_number) &
+		SetMask(signal_number)) != 0 ? 1 : 0;
 }
 
 extern "C" int darling_windows_sigprocmask(int how,

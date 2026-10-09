@@ -15,6 +15,13 @@ struct darling_darwin_sigset final {
 	std::uint32_t bits[4]{};
 };
 
+extern "C" int darling_windows_sigemptyset(darling_darwin_sigset* set);
+extern "C" int darling_windows_sigfillset(darling_darwin_sigset* set);
+extern "C" int darling_windows_sigaddset(darling_darwin_sigset* set, int signal_number);
+extern "C" int darling_windows_sigdelset(darling_darwin_sigset* set, int signal_number);
+extern "C" int darling_windows_sigismember(const darling_darwin_sigset* set,
+	int signal_number);
+
 struct darling_signal_value final {
 	union {
 		int sival_int;

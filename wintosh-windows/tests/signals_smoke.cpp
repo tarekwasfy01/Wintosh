@@ -32,6 +32,26 @@ void SiginfoHandler(int signal_number, void* info, void* context)
 
 int main()
 {
+	darling_darwin_sigset constructed{};
+	darling_darwin_sigset filled{};
+	const bool sigset_primitives =
+		darling_windows_sigemptyset(&constructed) == 0 &&
+		darling_windows_sigaddset(&constructed, SIGTERM) == 0 &&
+		darling_windows_sigismember(&constructed, SIGTERM) == 1 &&
+		darling_windows_sigdelset(&constructed, SIGTERM) == 0 &&
+		darling_windows_sigismember(&constructed, SIGTERM) == 0 &&
+		darling_windows_sigfillset(&filled) == 0 &&
+		darling_windows_sigismember(&filled, SIGTERM) == 1 &&
+		darling_windows_sigismember(&filled, 0) == -1 &&
+		darling_windows_host_symbol("sigemptyset") != 0 &&
+		darling_windows_host_symbol("sigfillset") != 0 &&
+		darling_windows_host_symbol("sigaddset") != 0 &&
+		darling_windows_host_symbol("sigdelset") != 0 &&
+		darling_windows_host_symbol("sigismember") != 0;
+	if (!sigset_primitives) {
+		std::cerr << "SIGNAL_SMOKE_ERROR=sigset primitives failed\n";
+		return 1;
+	}
 	const auto previous = darling::windows_host::DarwinSignals::Install(SIGINT, Handler);
 	if (previous == SIG_ERR || !darling::windows_host::DarwinSignals::Raise(SIGINT) ||
 		signal_count.load(std::memory_order_relaxed) != 1) {

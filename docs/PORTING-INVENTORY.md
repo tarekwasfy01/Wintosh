@@ -4338,3 +4338,9 @@ and exact Darwin cancellation semantics remain open.
 The resolver also recognizes `sleep_nocancel` and the common `__sleep` form;
 the aliases share the whole-second Windows sleep implementation. Darwin signal
 interruption and cancellation behavior are still not reproduced.
+
+The signal ABI now adds `sigemptyset`, `sigfillset`, `sigaddset`, `sigdelset`,
+and `sigismember` using the existing four-word Darwin layout. The dedicated
+signal smoke covers construction, membership, deletion, full-set population,
+invalid signal rejection, and resolver entries. Cross-process delivery, full
+kernel mask behavior, and exact Darwin signal-set corner cases remain open.

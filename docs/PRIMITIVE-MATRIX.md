@@ -28,6 +28,10 @@ Current verified low-level families include libc/file descriptors, sockets,
 process and time primitives, pthread synchronization/TLS, Mach-O loading, and
 the process-local Mach C ABI including basic VM and port-type operations. This
 matrix does not claim that ordinary macOS applications run yet.
+
+The process row also covers the four-word Darwin signal-set constructors and
+membership operations, verified by `signals_smoke`; this does not establish
+native cross-process signal delivery or complete Darwin signal semantics.
 Mach port reference mutation now rejects signed-delta underflow and unsigned
 overflow, including the `INT32_MIN` edge case, while preserving the existing
 process-local queue behavior.

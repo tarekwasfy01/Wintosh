@@ -447,6 +447,13 @@ through the existing `mach_vm_deallocate` path. This covers the basic
 out-of-line read shape; exact Darwin VM object ownership and remote lifetime
 semantics remain open.
 
+The signal ABI now also implements `sigemptyset`, `sigfillset`, `sigaddset`,
+`sigdelset`, and `sigismember` over the existing four-word Darwin signal-set
+layout. The signal smoke verifies construction, membership, removal, full-set
+population, resolver lookup, and invalid-number rejection. This is still a
+process-local adapter; native cross-process delivery, complete kernel masks,
+and exact Darwin signal-set ABI edge cases remain open.
+
 The VM read bridge now records returned local buffers and makes
 `mach_vm_deallocate` release those buffers in the current Windows process,
 even when the read targeted a different PID. This closes the previous

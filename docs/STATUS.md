@@ -561,6 +561,13 @@ the run returns by timeout afterward; source ordering beyond the adapter queue,
 run-loop modes, cancellation, and native observer/scheduling semantics remain
 open.
 
+The process wait family now serializes selection and reaping across `waitpid`,
+`wait4`, and `waitid` with one recursive wait mutex. This prevents concurrent
+callers from selecting and consuming the same registered child; recursion is
+required because the normal `waitid` reap path delegates to `wait4`. Kernel
+orphan/zombie ownership, stopped/continued states, and full Darwin wait
+concurrency semantics remain outside the Windows registry model.
+
 The runtime README now records the actual Mach-O execution boundary: the
 Windows x86_64 runner can enter compatible x86_64 images after mapping,
 relocations, bindings, initializers, and protection setup, while i386 and

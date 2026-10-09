@@ -99,6 +99,9 @@ bool ReleaseOwnedFileMapping(void* user_address)
 }
 
 std::mutex child_resource_mutex;
+// Serialize child selection and reaping across concurrent wait calls. This is
+// recursive because waitid delegates its normal reap path to wait4.
+std::recursive_mutex child_wait_mutex;
 darling_rusage completed_child_resources{};
 std::unordered_set<int> darling_child_processes;
 std::unordered_map<int, int> darling_child_groups;
@@ -4773,6 +4776,7 @@ extern "C" int darling_windows_getppid()
 
 extern "C" int darling_windows_waitpid(int process_id, int* status, int options)
 {
+	std::lock_guard wait_lock(child_wait_mutex);
 	constexpr int wait_nohang = 1;
 	if ((options & ~wait_nohang) != 0) {
 		darling::windows_host::DarwinErrno::Set(22);
@@ -4838,6 +4842,7 @@ extern "C" int darling_windows_waitpid(int process_id, int* status, int options)
 extern "C" int darling_windows_wait4(int process_id, int* status, int options,
 	darling_rusage* usage)
 {
+	std::lock_guard wait_lock(child_wait_mutex);
 	if (usage != nullptr)
 		std::memset(usage, 0, sizeof(*usage));
 	if ((options & ~1) != 0) {
@@ -4905,6 +4910,7 @@ extern "C" int darling_windows_wait4(int process_id, int* status, int options,
 extern "C" int darling_windows_waitid(int id_type, int id,
 	darling_siginfo* info, int options)
 {
+	std::lock_guard wait_lock(child_wait_mutex);
 	constexpr int darwin_p_all = 0;
 	constexpr int darwin_p_pid = 1;
 	constexpr int darwin_p_pgid = 2;

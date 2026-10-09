@@ -5296,6 +5296,7 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 	if (std::strcmp(name, "mach_vm_region_recurse") == 0 || std::strcmp(name, "_mach_vm_region_recurse") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_mach_vm_region_recurse);
 	if (std::strcmp(name, "mach_port_deallocate") == 0 || std::strcmp(name, "_mach_port_deallocate") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_mach_port_deallocate);
 	if (std::strcmp(name, "mach_port_destroy") == 0 || std::strcmp(name, "_mach_port_destroy") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_mach_port_destroy);
+	if (std::strcmp(name, "mach_port_request_notification") == 0 || std::strcmp(name, "_mach_port_request_notification") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_mach_port_request_notification);
 	if (std::strcmp(name, "mach_port_allocate") == 0 || std::strcmp(name, "_mach_port_allocate") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_mach_port_allocate);
 	if (std::strcmp(name, "mach_port_insert_right") == 0 || std::strcmp(name, "_mach_port_insert_right") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_mach_port_insert_right);
 	if (std::strcmp(name, "mach_port_extract_right") == 0 || std::strcmp(name, "_mach_port_extract_right") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_mach_port_extract_right);

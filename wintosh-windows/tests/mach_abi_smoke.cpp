@@ -503,6 +503,8 @@ int main()
 		darling_windows_host_symbol("mach_port_remove_member") != 0 &&
 		darling_windows_host_symbol("mach_port_set_destroy") != 0 &&
 		darling_windows_host_symbol("mach_port_set_receive") != 0 &&
+		darling_windows_host_symbol("mach_port_request_notification") != 0 &&
+		darling_windows_host_symbol("_mach_port_request_notification") != 0 &&
 		darling_windows_host_symbol("mach_msg") != 0 &&
 		darling_windows_host_symbol("mach_port_destroy") != 0 &&
 		 darling_windows_mach_port_allocate(task, &allocated) == 0 && allocated != 0 &&

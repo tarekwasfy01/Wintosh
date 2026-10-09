@@ -108,7 +108,8 @@ unsupported because Windows has no equivalent Mach deadline contract.
 `thread_suspend` and `thread_resume` now map foreign Mach thread names to the
 Windows suspend counter. Self-suspension is rejected deliberately because it
 would deadlock the host bridge. `thread_abort` now queues a non-destructive
-Windows APC, which can wake a foreign thread in an alertable wait; it never
+Windows APC, and the smoke test proves it wakes a foreign thread in an
+alertable `SleepEx` wait; it never
 maps to `TerminateThread`. Non-alertable waits and exact Mach abort/
 suspend-count semantics remain open.
 

@@ -46,9 +46,13 @@ int main()
 		return 1;
 	std::atomic<bool> worker_ready = false;
 	std::atomic<bool> worker_stop = false;
+	std::atomic<bool> worker_apc_woken = false;
 	std::thread worker([&] {
 		worker_ready.store(true, std::memory_order_release);
-		while (!worker_stop.load(std::memory_order_acquire)) std::this_thread::yield();
+		while (!worker_stop.load(std::memory_order_acquire)) {
+			if (SleepEx(1000, TRUE) == WAIT_IO_COMPLETION)
+				worker_apc_woken.store(true, std::memory_order_release);
+		}
 	});
 	while (!worker_ready.load(std::memory_order_acquire)) std::this_thread::yield();
 	const auto worker_thread = static_cast<darling_mach_port_name_t>(GetThreadId(worker.native_handle()));
@@ -85,6 +89,18 @@ int main()
 		return 1;
 	}
 	if (worker_avx512 == 0 && worker_avx512_count != darling_x86_avx512_state64_count) {
+		worker_stop.store(true, std::memory_order_release);
+		worker.join();
+		return 1;
+	}
+	if (darling_windows_thread_abort(worker_thread) != 0) {
+		worker_stop.store(true, std::memory_order_release);
+		worker.join();
+		return 1;
+	}
+	for (int attempt = 0; attempt != 100 && !worker_apc_woken.load(std::memory_order_acquire); ++attempt)
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+	if (!worker_apc_woken.load(std::memory_order_acquire)) {
 		worker_stop.store(true, std::memory_order_release);
 		worker.join();
 		return 1;

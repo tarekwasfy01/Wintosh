@@ -85,6 +85,15 @@ int wmain()
 			return 5;
 		}
 		const auto token = allocate_response.port_token;
+		const darling::windows_host::MachIpcEnvelope empty_receive_request{
+			darling::windows_host::MachIpcOperation::Receive, 104, token, 0, {}};
+		const auto empty_receive_bytes = darling::windows_host::EncodeMachIpcEnvelope(empty_receive_request);
+		client.Write(std::string(empty_receive_bytes.begin(), empty_receive_bytes.end()));
+		if (client.Read() != "MACH_RECEIVE_WOULD_BLOCK") {
+			std::cerr << "BROKER_MACH_EMPTY_RECEIVE=FAIL\n";
+			return 5;
+		}
+		std::cout << "BROKER_MACH_EMPTY_RECEIVE=PASS\n";
 		const darling::windows_host::MachIpcEnvelope send_request{
 			darling::windows_host::MachIpcOperation::Send, 101, token, 0,
 			{'B', 'R', 'O', 'K', 'E', 'R'}};

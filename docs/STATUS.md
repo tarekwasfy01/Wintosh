@@ -43,6 +43,10 @@ covered by `BROKER_MACH_SEND_RECEIVE=PASS`. Rights/dispositions,
 notifications, waiters, MIG, out-of-line memory, and a Mach-compatible
 name-space remain open. The lifecycle smoke also proves
 `BROKER_MACH_LIFECYCLE=PASS`: a deallocated token is rejected on later use.
+An empty nonblocking receive now returns the explicit
+`MACH_RECEIVE_WOULD_BLOCK` result (`BROKER_MACH_EMPTY_RECEIVE=PASS`), rather
+than being conflated with malformed input. A blocking waiter/timeout and
+multi-client transport are still unimplemented.
 
 The platform path adapter now provides lexical `AbsolutePath` resolution and
 handle-based `CanonicalPath` resolution through Windows final-name lookup,

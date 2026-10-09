@@ -106,6 +106,12 @@ int wmain(int argc, wchar_t** argv)
 					continue;
 				}
 				server.Write("UNSUPPORTED_MACH_IPC_OPERATION");
+			} catch (const std::runtime_error& error) {
+				if (std::string(error.what()) == "Mach IPC receive would block") {
+					server.Write("MACH_RECEIVE_WOULD_BLOCK");
+				} else {
+					server.Write("INVALID_MACH_IPC_REQUEST");
+				}
 			} catch (const std::exception&) {
 				server.Write("INVALID_MACH_IPC_REQUEST");
 			}

@@ -112,9 +112,12 @@ expired deadline; the host smoke verifies the resolver and expired-lock path.
 Wall-clock adjustment equivalence and cancellation while blocked remain open.
 
 Mutex priority-ceiling attributes now resolve through
-`pthread_mutexattr_getprioceiling` and `pthread_mutexattr_setprioceiling`.
-The default ceiling is readable, while enabling a non-default ceiling returns
-`ENOTSUP` until Windows priority-inheritance semantics are implemented.
+`pthread_mutexattr_getprioceiling` and `pthread_mutexattr_setprioceiling`, and
+mutex instances expose the matching
+`pthread_mutex_getprioceiling`/`pthread_mutex_setprioceiling` ABI. The default
+ceiling is readable through both paths; changing an instance ceiling currently
+returns `ENOTSUP` until Windows priority-inheritance semantics are implemented.
+The host smoke covers resolver, default-value, and unsupported-set behavior.
 
 The pthread barrier family now resolves `pthread_barrier_init`,
 `pthread_barrier_wait`, and `pthread_barrier_destroy` through an opaque

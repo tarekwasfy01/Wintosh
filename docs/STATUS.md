@@ -646,6 +646,7 @@ execution evidence, not proof of full unmodified macOS application support.
 
 The signal resolver now also covers common Darwin spellings for
 `sigaction_nocancel`, `sigprocmask_nocancel`, `sigwait_nocancel`, and
-`sigwaitinfo_nocancel`, plus the double-underscore `sigaction` form. They reuse
-the existing Windows signal adapter; native cross-process signal delivery,
-full masks, interruption, and cancellation semantics remain open.
+`sigwaitinfo_nocancel`, `sigpending_nocancel`, and `sigqueue_nocancel`, plus
+the double-underscore forms. They reuse the existing Windows signal adapter;
+native cross-process signal delivery, full masks, interruption, and cancellation
+semantics remain open.

@@ -3720,6 +3720,12 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 	if (std::strcmp(name, "_sigpending") == 0 || std::strcmp(name, "sigpending") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_sigpending);
 	}
+	if (std::strcmp(name, "__sigpending") == 0 ||
+		std::strcmp(name, "_sigpending_nocancel") == 0 ||
+		std::strcmp(name, "__sigpending_nocancel") == 0 ||
+		std::strcmp(name, "sigpending_nocancel") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_sigpending);
+	}
 	if (std::strcmp(name, "_sigwait") == 0 || std::strcmp(name, "sigwait") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_sigwait);
 	}
@@ -3740,6 +3746,12 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_sigwaitinfo);
 	}
 	if (std::strcmp(name, "_sigqueue") == 0 || std::strcmp(name, "sigqueue") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_sigqueue);
+	}
+	if (std::strcmp(name, "__sigqueue") == 0 ||
+		std::strcmp(name, "_sigqueue_nocancel") == 0 ||
+		std::strcmp(name, "__sigqueue_nocancel") == 0 ||
+		std::strcmp(name, "sigqueue_nocancel") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_sigqueue);
 	}
 	if (std::strcmp(name, "_objc_autorelease") == 0) {

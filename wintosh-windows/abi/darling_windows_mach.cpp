@@ -163,14 +163,17 @@ extern "C" darling_kern_return_t darling_windows_thread_resume(darling_mach_port
 extern "C" darling_kern_return_t darling_windows_thread_abort(darling_mach_port_name_t thread)
 {
 	if (thread == 0 || thread == darling_windows_mach_thread_self()) return 4;
-	const HANDLE handle = OpenThread(THREAD_SET_CONTEXT, FALSE, thread);
+	const HANDLE handle = OpenThread(THREAD_SET_CONTEXT | THREAD_TERMINATE, FALSE, thread);
 	if (handle == nullptr) return 4;
 	// QueueUserAPC is the non-destructive Windows primitive that can wake a
 	// thread in an alertable wait; it never terminates or forcefully suspends it.
 	const auto callback = [](ULONG_PTR) {};
 	const BOOL queued = QueueUserAPC(callback, handle, 0);
+	// CancelSynchronousIo covers a thread blocked in a synchronous Win32 I/O
+	// call; it is cooperative and does not terminate the thread.
+	const BOOL cancelled_io = CancelSynchronousIo(handle);
 	CloseHandle(handle);
-	return queued ? 0 : 4;
+	return (queued || cancelled_io) ? 0 : 4;
 }
 
 extern "C" darling_kern_return_t darling_windows_thread_get_state(

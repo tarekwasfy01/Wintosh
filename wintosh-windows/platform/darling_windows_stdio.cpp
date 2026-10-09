@@ -2451,12 +2451,26 @@ struct DarlingPthreadStart final {
 	void* argument = nullptr;
 	void* result = nullptr;
 	std::atomic_bool detached = false;
+	std::atomic_bool cancel_requested = false;
+	std::atomic_bool cancel_enabled = true;
+	std::atomic_bool cancel_deferred = true;
 };
+
+struct DarlingPthreadCancelled final {};
+thread_local DarlingPthreadStart* current_pthread_start = nullptr;
 
 DWORD WINAPI DarlingPthreadThunk(void* raw)
 {
 	auto* start = static_cast<DarlingPthreadStart*>(raw);
-	start->result = start->function(start->argument);
+	current_pthread_start = start;
+	try {
+		start->result = start->function(start->argument);
+	} catch (const DarlingPthreadCancelled&) {
+		start->result = reinterpret_cast<void*>(static_cast<std::uintptr_t>(-1));
+	} catch (...) {
+		start->result = nullptr;
+	}
+	current_pthread_start = nullptr;
 	RunPthreadTlsDestructors();
 	if (start->detached.load(std::memory_order_acquire))
 		delete start;
@@ -2475,6 +2489,46 @@ extern "C" std::uint64_t darling_windows_pthread_self()
 extern "C" int darling_windows_pthread_equal(std::uint64_t left, std::uint64_t right)
 {
 	return left == right ? 1 : 0;
+}
+
+extern "C" int darling_windows_pthread_cancel(std::uint64_t thread)
+{
+	std::lock_guard lock(darling_pthread_mutex);
+	auto found = darling_pthreads.find(thread);
+	if (found == darling_pthreads.end()) return 3;
+	found->second->cancel_requested.store(true, std::memory_order_release);
+	return 0;
+}
+
+extern "C" int darling_windows_pthread_setcancelstate(int state, int* old_state)
+{
+	if (current_pthread_start == nullptr || (state != 0 && state != 1)) return 22;
+	const bool was_enabled = current_pthread_start->cancel_enabled.exchange(
+		state == 0, std::memory_order_acq_rel);
+	if (old_state != nullptr) *old_state = was_enabled ? 0 : 1;
+	return 0;
+}
+
+extern "C" int darling_windows_pthread_setcanceltype(int type, int* old_type)
+{
+	if (current_pthread_start == nullptr || (type != 0 && type != 1)) return 22;
+	if (type == 1) return 95;
+	const bool was_deferred = current_pthread_start->cancel_deferred.exchange(
+		true, std::memory_order_acq_rel);
+	if (old_type != nullptr) *old_type = was_deferred ? 0 : 1;
+	return 0;
+}
+
+extern "C" int darling_windows_pthread_testcancel()
+{
+	if (current_pthread_start != nullptr &&
+		current_pthread_start->cancel_enabled.load(std::memory_order_acquire) &&
+		current_pthread_start->cancel_deferred.load(std::memory_order_acquire) &&
+		current_pthread_start->cancel_requested.load(std::memory_order_acquire)) {
+		RunPthreadTlsDestructors();
+		throw DarlingPthreadCancelled{};
+	}
+	return 0;
 }
 
 extern "C" int darling_windows_pthread_setname_np(const char* name)
@@ -4261,6 +4315,14 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 	if (std::strcmp(name, "_pthread_detach") == 0 || std::strcmp(name, "pthread_detach") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_detach);
 	}
+	if (std::strcmp(name, "_pthread_cancel") == 0 || std::strcmp(name, "pthread_cancel") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_cancel);
+	if (std::strcmp(name, "_pthread_setcancelstate") == 0 || std::strcmp(name, "pthread_setcancelstate") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_setcancelstate);
+	if (std::strcmp(name, "_pthread_setcanceltype") == 0 || std::strcmp(name, "pthread_setcanceltype") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_setcanceltype);
+	if (std::strcmp(name, "_pthread_testcancel") == 0 || std::strcmp(name, "pthread_testcancel") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_testcancel);
 	if (std::strcmp(name, "_pthread_threadid_np") == 0 ||
 		std::strcmp(name, "pthread_threadid_np") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_threadid_np);

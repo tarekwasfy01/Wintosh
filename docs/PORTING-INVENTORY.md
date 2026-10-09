@@ -4349,3 +4349,10 @@ kernel mask behavior, and exact Darwin signal-set corner cases remain open.
 the common `__pthread_sigmask` spelling. This closes the import-level gap for
 thread mask management but not cancellation interaction or native
 cross-process signal delivery.
+
+The pthread family now has a controlled deferred-cancellation implementation:
+the thread context carries an atomic request and state, `pthread_testcancel`
+unwinds through the Windows thunk, and `pthread_join` observes the canceled
+result. The host API smoke verifies the full request-to-join path. Async
+cancellation remains rejected; cancellation points, cleanup handlers,
+scheduling, and process-shared pthread attributes remain open.

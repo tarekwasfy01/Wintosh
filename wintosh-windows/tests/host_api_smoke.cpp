@@ -9,6 +9,7 @@
 #include <ws2tcpip.h>
 
 #include <csignal>
+#include <atomic>
 #include <chrono>
 #include <algorithm>
 #include <iostream>
@@ -23,6 +24,20 @@ namespace {
 	void* PthreadSmokeStart(void* argument)
 	{
 		return static_cast<char*>(argument) + 5;
+	}
+	std::atomic_bool cancellation_worker_started{false};
+	void* PthreadCancellationStart(void*)
+	{
+		cancellation_worker_started.store(true, std::memory_order_release);
+		int old_state = -1;
+		int old_type = -1;
+		if (darling_windows_pthread_setcancelstate(0, &old_state) != 0 ||
+			darling_windows_pthread_setcanceltype(0, &old_type) != 0)
+			return nullptr;
+		for (;;) {
+			darling_windows_pthread_testcancel();
+			Sleep(1);
+		}
 	}
 	volatile long pthread_attr_detached_calls = 0;
 	void* PthreadAttrDetachedStart(void*)
@@ -1061,6 +1076,25 @@ int main()
 			&PthreadSmokeStart, pthread_payload) == 0 &&
 		darling_windows_pthread_join(created_thread, &joined_result) == 0 &&
 		joined_result == pthread_payload + 5;
+	std::uint64_t cancellation_thread = 0;
+	void* cancellation_result = nullptr;
+	const bool pthread_cancellation_ok =
+		darling_windows_host_symbol("pthread_cancel") != 0 &&
+		darling_windows_host_symbol("pthread_setcancelstate") != 0 &&
+		darling_windows_host_symbol("pthread_setcanceltype") != 0 &&
+		darling_windows_host_symbol("pthread_testcancel") != 0 &&
+		darling_windows_pthread_create(&cancellation_thread, nullptr,
+		&PthreadCancellationStart, nullptr) == 0 &&
+		([&] {
+			for (int attempt = 0; attempt < 100 &&
+				!cancellation_worker_started.load(std::memory_order_acquire); ++attempt)
+				Sleep(1);
+			return cancellation_worker_started.load(std::memory_order_acquire);
+		}()) &&
+		darling_windows_pthread_cancel(cancellation_thread) == 0 &&
+		darling_windows_pthread_join(cancellation_thread, &cancellation_result) == 0 &&
+		cancellation_result == reinterpret_cast<void*>(static_cast<std::uintptr_t>(-1)) &&
+		darling_windows_pthread_setcanceltype(1, nullptr) == 22;
 	void* pthread_attributes = nullptr;
 	int pthread_detach_state = 0;
 	std::size_t pthread_stack_size = 0;
@@ -1207,7 +1241,7 @@ int main()
 		darling_windows_pthread_mutex_destroy(&timed_mutex_storage) == 0 &&
 		darling_windows_pthread_cond_destroy(&timed_condition_storage) == 0;
 	std::cout << "DARWIN_PTHREAD_SELF_NAME_EQUAL="
-	          << (pthread_abi_ok && pthread_lifecycle_ok && pthread_attributes_ok && pthread_detach_ok &&
+		          << (pthread_abi_ok && pthread_lifecycle_ok && pthread_cancellation_ok && pthread_attributes_ok && pthread_detach_ok &&
 			pthread_threadid_ok && pthread_mutex_ok && pthread_rwlock_ok && pthread_tls_ok &&
 			pthread_tls_destructor_ok && pthread_once_ok && pthread_condition_ok &&
 			pthread_timedwait_ok ? "PASS" : "FAIL") << "\n";

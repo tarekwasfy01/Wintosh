@@ -36,6 +36,10 @@ native cross-process signal delivery or complete Darwin signal semantics.
 `pthread_sigmask` resolves to the same thread-local mask backend and is
 verified as an import boundary by the signal smoke test; cancellation and
 cross-process delivery remain separate gaps.
+
+The pthread family now includes a verified deferred-cancellation path using
+`pthread_cancel`, `pthread_setcancelstate`, `pthread_setcanceltype`, and
+`pthread_testcancel`. Async cancellation is intentionally not claimed.
 Mach port reference mutation now rejects signed-delta underflow and unsigned
 overflow, including the `INT32_MIN` edge case, while preserving the existing
 process-local queue behavior.

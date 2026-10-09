@@ -481,6 +481,13 @@ delivery path by resetting the installed plain handler after its first call.
 The smoke test reads the post-delivery disposition and verifies that it is
 `SIG_DFL`.
 
+The pthread bridge now provides deferred cancellation through
+`pthread_cancel`, `pthread_setcancelstate`, `pthread_setcanceltype`, and
+`pthread_testcancel`. The host smoke starts a worker, requests cancellation,
+joins it, and verifies `PTHREAD_CANCELED`; asynchronous cancellation is
+explicitly rejected because forcibly terminating arbitrary Windows threads is
+not a safe Darwin-compatible implementation.
+
 The VM read bridge now records returned local buffers and makes
 `mach_vm_deallocate` release those buffers in the current Windows process,
 even when the read targeted a different PID. This closes the previous

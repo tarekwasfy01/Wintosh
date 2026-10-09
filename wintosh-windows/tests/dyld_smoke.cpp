@@ -10,6 +10,7 @@
 #include <windows.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cstring>
 #include <fstream>
 #include <iostream>
@@ -17,6 +18,46 @@
 #include <vector>
 
 namespace {
+
+std::atomic<int> initializer_hits = 0;
+
+void InitializerProbe()
+{
+	initializer_hits.fetch_add(1, std::memory_order_relaxed);
+}
+
+void WriteInitializerMachO(const std::filesystem::path& path)
+{
+	using namespace darling::windows_host;
+	const MachHeader64 header{MH_MAGIC_64, CPU_TYPE_X86_64, 3, MH_DYLIB, 1,
+		static_cast<std::uint32_t>(sizeof(SegmentCommand64) + sizeof(Section64)), 0, 0};
+	SegmentCommand64 segment{};
+	segment.header = {LC_SEGMENT_64, static_cast<std::uint32_t>(sizeof(segment) + sizeof(Section64))};
+	std::memcpy(segment.segment_name, "__TEXT", 6);
+	segment.vm_address = 0x1000;
+	segment.vm_size = 0x1000;
+	segment.file_offset = 0x200;
+	segment.file_size = 0x200;
+	segment.max_protection = 5;
+	segment.initial_protection = 5;
+	segment.section_count = 1;
+	Section64 section{};
+	std::memcpy(section.section_name, "__mod_init_func", 15);
+	std::memcpy(section.segment_name, "__TEXT", 6);
+	section.address = 0x1100;
+	section.size = sizeof(std::uintptr_t);
+	section.file_offset = 0x300;
+	section.alignment = 3;
+	std::vector<std::uint8_t> bytes(0x400, 0);
+	std::memcpy(bytes.data(), &header, sizeof(header));
+	std::memcpy(bytes.data() + sizeof(header), &segment, sizeof(segment));
+	std::memcpy(bytes.data() + sizeof(header) + sizeof(segment), &section, sizeof(section));
+	const auto initializer = reinterpret_cast<std::uintptr_t>(&InitializerProbe);
+	std::memcpy(bytes.data() + section.file_offset, &initializer, sizeof(initializer));
+	std::ofstream output(path, std::ios::binary | std::ios::trunc);
+	output.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+	if (!output) throw std::runtime_error("cannot write initializer Mach-O");
+}
 
 void WriteMachO(const std::filesystem::path& path, const char* dependency,
 	bool dylib_image, bool undefined_symbol, bool weak_dependency = false,
@@ -345,6 +386,17 @@ int wmain()
 		std::filesystem::create_directories((root / "PlugIns").string());
 		WriteMachO(library, nullptr, true, false, false, true);
 		WriteMachO(no_main_library, nullptr, true, false, false, false, false, false);
+		const auto initializer_image = root / "usr" / "lib" / "libInitializer.dylib";
+		WriteInitializerMachO(initializer_image);
+		initializer_hits.store(0, std::memory_order_relaxed);
+		{
+			const auto initializer_metadata = darling::windows_host::MachOImage::Open(initializer_image.wstring());
+			const auto initializer_mapping = initializer_metadata.MapSegments();
+			initializer_metadata.ExecuteInitializers(initializer_mapping);
+		}
+		if (initializer_hits.load(std::memory_order_relaxed) != 1)
+			throw std::runtime_error("Mach-O __mod_init_func initializer did not execute");
+		std::cout << "DYLD_MOD_INIT=PASS\n";
 		const auto bundle = root / "PlugIns" / "Demo.bundle";
 		WriteMachO(bundle, nullptr, false, false, false, false, false, false, true);
 		if (darling::windows_host::MachOImage::Open(no_main_library.wstring()).EntryOffset() != 0) {

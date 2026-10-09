@@ -758,6 +758,9 @@ Windows x86_64 runner can enter compatible x86_64 images after mapping,
 relocations, bindings, initializers, and protection setup, while i386 and
 ARM64 images remain rejected without a CPU translation layer. This is loader
 execution evidence, not proof of full unmodified macOS application support.
+The dyld smoke now also executes a separate minimal `__mod_init_func` fixture
+and reports `DYLD_MOD_INIT=PASS`; complete ObjC runtime initialization and
+full dyld parity remain open.
 
 The signal resolver now also covers common Darwin spellings for
 `sigaction_nocancel`, `sigprocmask_nocancel`, `sigwait_nocancel`, and

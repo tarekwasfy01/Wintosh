@@ -1201,6 +1201,7 @@ extern "C" darling_kern_return_t darling_windows_mach_port_receive(
 	port->messages.pop_front();
 	std::memcpy(data, message.data(), message.size());
 	*size = static_cast<std::uint32_t>(message.size());
+	port->condition.notify_all();
 	return 0;
 }
 
@@ -1217,8 +1218,24 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 	if ((option & darling_mach_send_msg) != 0) {
 		if (send_size < sizeof(darling_mach_msg_header) ||
 			message->msgh_remote_port == 0 || message->msgh_size != send_size) return 4;
-		const auto result = darling_windows_mach_port_send(message->msgh_remote_port,
+		auto result = darling_windows_mach_port_send(message->msgh_remote_port,
 			message, send_size);
+		if (result == darling_mach_send_queue_full && (option & darling_mach_send_timeout) != 0) {
+			const auto port = FindPort(message->msgh_remote_port);
+			if (port == nullptr) return 3;
+			const auto deadline = std::chrono::steady_clock::now() +
+				std::chrono::milliseconds(timeout_ms);
+			while (result == darling_mach_send_queue_full) {
+				std::unique_lock lock(port->mutex);
+				if (!port->condition.wait_until(lock, deadline, [&] {
+					return port->closed || port->messages.size() < max_port_queue_depth;
+				})) return darling_mach_send_queue_full;
+				if (port->closed) return 3;
+				lock.unlock();
+				result = darling_windows_mach_port_send(message->msgh_remote_port,
+					message, send_size);
+			}
+		}
 		if (result != 0) return result;
 	}
 	if ((option & darling_mach_receive_msg) != 0) {

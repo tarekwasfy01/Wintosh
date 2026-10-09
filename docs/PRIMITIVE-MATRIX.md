@@ -402,8 +402,10 @@ these use the existing whole-second sleep adapter.
 ## Mach message options
 
 The Mach message adapter accepts Darwin send/receive timeout option bits.
-Receive timeouts apply only with `MACH_RCV_TIMEOUT`; without that bit the
-adapter waits indefinitely. Unsupported option bits still fail closed.
+Receive timeouts apply only with `MACH_RCV_TIMEOUT`; with `MACH_SEND_TIMEOUT`
+a full local queue waits for space until the same deadline. Without the
+respective timeout bit the adapter keeps its immediate-send or indefinite-
+receive behavior. Unsupported option bits still fail closed.
 
 ## Source boundaries
 

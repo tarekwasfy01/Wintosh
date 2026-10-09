@@ -590,6 +590,13 @@ is consumed. The preview is only metadata capture; `wait4` remains the single
 reaping operation. Exact kernel selection ordering and stopped/continued event
 semantics remain open.
 
+`NSGetSizeAndAlignment` now rejects overflowing array-count parsing and
+array-size multiplication instead of wrapping a malformed Objective-C type
+encoding into a smaller ABI size. The Foundation smoke gate covers a huge
+array-count rejection while valid scalar, pointer, array, struct, union, and
+qualified encodings remain passing; exact Apple bit-field packing and private
+type encodings remain outside this minimal parser.
+
 The runtime README now records the actual Mach-O execution boundary: the
 Windows x86_64 runner can enter compatible x86_64 images after mapping,
 relocations, bindings, initializers, and protection setup, while i386 and

@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <algorithm>
+#include <limits>
 
 namespace {
 std::size_t AlignUp(std::size_t value, std::size_t alignment)
@@ -133,13 +134,18 @@ extern "C" const char* darling_windows_NSGetSizeAndAlignment(
 		const char* cursor = type + 1;
 		std::size_t count = 0;
 		while (*cursor >= '0' && *cursor <= '9') {
-			count = count * 10 + static_cast<std::size_t>(*cursor - '0'); ++cursor;
+			const auto digit = static_cast<std::size_t>(*cursor - '0');
+			if (count > ((std::numeric_limits<std::size_t>::max)() - digit) / 10)
+				return nullptr;
+			count = count * 10 + digit; ++cursor;
 		}
 		std::size_t element_size = 0;
 		std::size_t element_alignment = 0;
 		const char* end = darling_windows_NSGetSizeAndAlignment(cursor,
 			&element_size, &element_alignment);
 		if (end == nullptr || *end != ']') return nullptr;
+		if (element_size != 0 && count > (std::numeric_limits<std::size_t>::max)() / element_size)
+			return nullptr;
 		*size = count * element_size;
 		*alignment = element_alignment;
 		return end + 1;

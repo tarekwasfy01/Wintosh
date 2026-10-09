@@ -3,6 +3,7 @@
  * GPL-3.0-only; see the bundled license and source manifests.
  */
 #include "darling_windows_mach.h"
+#include "darling_windows_stdio.h"
 
 #include <windows.h>
 #include <intrin.h>
@@ -610,6 +611,9 @@ extern "C" darling_kern_return_t darling_windows_thread_info(
 			result->current_priority = GetThreadPriority(handle);
 			result->priority = result->current_priority;
 			result->max_priority = THREAD_PRIORITY_HIGHEST;
+			char stored_name[sizeof(result->name)]{};
+			if (darling_windows_pthread_getname_np(thread, stored_name, sizeof(stored_name)) == 0)
+				std::memcpy(result->name, stored_name, sizeof(result->name));
 		} else {
 			auto* result = static_cast<darling_thread_basic_info*>(info);
 			result->user_time = FileTimeToDarling(user);

@@ -88,7 +88,9 @@ Windows thread identifier as the stable adapter identity. The implementation
 validates the caller-provided natural-word count and rejects unsupported
 flavors instead of fabricating Darwin data. `THREAD_EXTENDED_INFO` additionally
 returns nanosecond-scaled Windows CPU times and current Windows priority; the
-Darwin thread name and scheduler telemetry remain defaulted. The
+Darwin scheduler telemetry remains defaulted. The process-local thread-name
+bridge now reads the existing `pthread_setname_np` registry into the extended
+info name field and is covered by the Mach smoke. The
 scheduler-specific info flavors remain open. Layouts and flavor/count values
 were checked against Apple's published XNU `mach/thread_info.h`; Wintosh does
 not copy that header into the repository.

@@ -199,9 +199,12 @@ int main()
 		return 1;
 	darling_thread_extended_info extended{};
 	std::uint32_t extended_count = darling_thread_extended_info_count;
+	if (darling_windows_pthread_setname_np("mach-info") != 0)
+		return 1;
 	if (darling_windows_thread_info(thread, darling_thread_extended_info_flavor,
 		&extended, &extended_count) != 0 || extended_count != darling_thread_extended_info_count ||
-		extended.max_priority != THREAD_PRIORITY_HIGHEST)
+		extended.max_priority != THREAD_PRIORITY_HIGHEST ||
+		std::strcmp(extended.name, "mach-info") != 0)
 		return 1;
 	darling_thread_sched_timeshare_info timeshare{};
 	std::uint32_t timeshare_count = darling_thread_sched_timeshare_info_count;

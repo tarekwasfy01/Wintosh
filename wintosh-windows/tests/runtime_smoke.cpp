@@ -53,6 +53,16 @@ int wmain()
 	} catch (const std::invalid_argument&) {
 		std::cout << "MACH_IPC_ENVELOPE_TRAILING=PASS\n";
 	}
+	try {
+		auto invalid_descriptor = encoded;
+		invalid_descriptor.resize(invalid_descriptor.size() - 4);
+		invalid_descriptor.insert(invalid_descriptor.end(), {1, 0, 0, 0, 0, 0, 0, 0});
+		(void)darling::windows_host::DecodeMachIpcEnvelope(invalid_descriptor);
+		std::cerr << "MACH_IPC_DESCRIPTOR_VALIDATION=FAIL\n";
+		return 1;
+	} catch (const std::invalid_argument&) {
+		std::cout << "MACH_IPC_DESCRIPTOR_VALIDATION=PASS\n";
+	}
 	const auto mapping_name = L"Local\\wintosh-mach-ool-" +
 		std::to_wstring(GetCurrentProcessId());
 	auto mapping = darling::windows_host::MachIpcSharedMemory::Create(mapping_name, 4096);

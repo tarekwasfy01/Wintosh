@@ -64,6 +64,8 @@ the receiver opens and verifies it after `Receive`. This is a Windows shared
 mapping approximation, not yet Mach handle passing, protection transfer, or
 full OOL lifetime/disposition semantics. The broker now associates OOL
 regions with their owning port and releases them on `Deallocate`.
+Envelope decoding also rejects partially specified or oversized OOL
+descriptors (`MACH_IPC_DESCRIPTOR_VALIDATION=PASS`).
 
 The platform path adapter now provides lexical `AbsolutePath` resolution and
 handle-based `CanonicalPath` resolution through Windows final-name lookup,

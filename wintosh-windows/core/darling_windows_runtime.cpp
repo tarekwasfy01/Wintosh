@@ -108,6 +108,9 @@ MachIpcEnvelope DecodeMachIpcEnvelope(const std::vector<std::uint8_t>& bytes)
 	result.payload.resize(payload_size);
 	result.out_of_line_token = ReadU64(bytes, offset);
 	result.out_of_line_size = ReadU32(bytes, offset);
+	if ((result.out_of_line_token == 0) != (result.out_of_line_size == 0) ||
+		result.out_of_line_size > mach_ipc_max_payload)
+		throw std::invalid_argument("invalid Mach IPC out-of-line descriptor");
 	return result;
 }
 

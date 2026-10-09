@@ -271,6 +271,44 @@ int wmain()
 		client.Write(std::string(queue_destroy_bytes.begin(), queue_destroy_bytes.end()));
 		(void)client.Read();
 		std::cout << "BROKER_MACH_QUEUE_LIMIT=PASS\n";
+		const darling::windows_host::MachIpcEnvelope notification_create{
+			darling::windows_host::MachIpcOperation::NotificationCreate, 2030, 0, 0, {}};
+		const auto notification_create_bytes = darling::windows_host::EncodeMachIpcEnvelope(notification_create);
+		client.Write(std::string(notification_create_bytes.begin(), notification_create_bytes.end()));
+		const auto notification_create_wire = client.Read();
+		const auto notification_create_response = darling::windows_host::DecodeMachIpcEnvelope(
+			std::vector<std::uint8_t>(notification_create_wire.begin(), notification_create_wire.end()));
+		const auto notification_token = notification_create_response.port_token;
+		const darling::windows_host::MachIpcEnvelope notification_wait{
+			darling::windows_host::MachIpcOperation::NotificationWait, 2031, notification_token, 0,
+			{1, 0, 0, 0}};
+		const auto notification_wait_bytes = darling::windows_host::EncodeMachIpcEnvelope(notification_wait);
+		client.Write(std::string(notification_wait_bytes.begin(), notification_wait_bytes.end()));
+		const auto notification_wait_wire = client.Read();
+		const auto notification_wait_response = darling::windows_host::DecodeMachIpcEnvelope(
+			std::vector<std::uint8_t>(notification_wait_wire.begin(), notification_wait_wire.end()));
+		if (notification_wait_response.payload != std::vector<std::uint8_t>{0}) {
+			std::cerr << "BROKER_MACH_NOTIFICATION_TIMEOUT=FAIL\n";
+			return 5;
+		}
+		const darling::windows_host::MachIpcEnvelope notification_signal{
+			darling::windows_host::MachIpcOperation::NotificationSignal, 2032, notification_token, 0, {}};
+		const auto notification_signal_bytes = darling::windows_host::EncodeMachIpcEnvelope(notification_signal);
+		client.Write(std::string(notification_signal_bytes.begin(), notification_signal_bytes.end()));
+		(void)client.Read();
+		const auto notification_wait_signal_bytes = darling::windows_host::EncodeMachIpcEnvelope(
+			darling::windows_host::MachIpcEnvelope{
+				darling::windows_host::MachIpcOperation::NotificationWait, 2033,
+				notification_token, 0, {}});
+		client.Write(std::string(notification_wait_signal_bytes.begin(), notification_wait_signal_bytes.end()));
+		const auto notification_wait_signal_wire = client.Read();
+		const auto notification_wait_signal = darling::windows_host::DecodeMachIpcEnvelope(
+			std::vector<std::uint8_t>(notification_wait_signal_wire.begin(), notification_wait_signal_wire.end()));
+		if (notification_wait_signal.payload != std::vector<std::uint8_t>{1}) {
+			std::cerr << "BROKER_MACH_NOTIFICATION_SIGNAL=FAIL\n";
+			return 5;
+		}
+		std::cout << "BROKER_MACH_NOTIFICATION=PASS\n";
 
 		client.Write("SHUTDOWN");
 		const auto shutdown = client.Read();

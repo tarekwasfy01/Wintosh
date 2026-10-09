@@ -71,7 +71,10 @@ The broker explicitly rejects disposition counts above one with
 unimplemented rather than being silently collapsed.
 The runtime now also provides named notification events with signal/reset and
 timed wait behavior; `MACH_IPC_NOTIFICATION=PASS` verifies the host primitive.
-Broker notification routing and Mach notification-port semantics remain open.
+The broker now routes `NotificationCreate`, `NotificationSignal`,
+`NotificationReset`, and `NotificationWait`; the cross-process smoke covers
+timeout and signal behavior as `BROKER_MACH_NOTIFICATION=PASS`. Full Mach
+notification-port rights and delivery semantics remain open.
 The broker also accepts the explicit `Destroy` operation, releasing the
 port and rejecting later use (`BROKER_MACH_DESTROY=PASS`).
 Each port FIFO is bounded to 1024 queued messages and reports

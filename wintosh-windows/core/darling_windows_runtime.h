@@ -30,7 +30,11 @@ enum class MachIpcOperation : std::uint16_t {
 	Send = 2,
 	Receive = 3,
 	Deallocate = 4,
-	Destroy = 5
+	Destroy = 5,
+	NotificationCreate = 6,
+	NotificationSignal = 7,
+	NotificationReset = 8,
+	NotificationWait = 9
 };
 
 struct MachIpcEnvelope final {

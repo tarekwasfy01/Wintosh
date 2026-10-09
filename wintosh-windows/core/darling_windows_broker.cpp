@@ -49,6 +49,8 @@ int wmain(int argc, wchar_t** argv)
 		std::unordered_map<std::uint64_t, darling::windows_host::MachIpcSharedMemory> out_of_line_regions;
 		std::unordered_map<std::uint64_t, std::uint64_t> out_of_line_owners;
 		std::uint64_t next_out_of_line_token = 1;
+		std::unordered_map<std::uint64_t, darling::windows_host::MachIpcNotification> notifications;
+		std::uint64_t next_notification_token = 1;
 
 		for (;;) {
 			const auto request = server.Read();
@@ -66,6 +68,42 @@ int wmain(int argc, wchar_t** argv)
 			try {
 				const auto envelope = darling::windows_host::DecodeMachIpcEnvelope(
 					AsBytes(request));
+				if (envelope.operation == darling::windows_host::MachIpcOperation::NotificationCreate) {
+					const auto token = next_notification_token++;
+					const auto name = L"Local\\wintosh-mach-notification-" + std::to_wstring(token);
+					notifications.emplace(token, darling::windows_host::MachIpcNotification::Create(name));
+					darling::windows_host::MachIpcEnvelope response{
+						envelope.operation, envelope.request_id, token, 0, {}};
+					server.Write(AsString(darling::windows_host::EncodeMachIpcEnvelope(response)));
+					continue;
+				}
+				if (envelope.operation == darling::windows_host::MachIpcOperation::NotificationSignal ||
+					envelope.operation == darling::windows_host::MachIpcOperation::NotificationReset ||
+					envelope.operation == darling::windows_host::MachIpcOperation::NotificationWait) {
+					auto notification = notifications.find(envelope.port_token);
+					if (notification == notifications.end())
+						throw std::invalid_argument("unknown Mach IPC notification token");
+					std::vector<std::uint8_t> result;
+					if (envelope.operation == darling::windows_host::MachIpcOperation::NotificationSignal)
+						notification->second.Signal();
+					else if (envelope.operation == darling::windows_host::MachIpcOperation::NotificationReset)
+						notification->second.Reset();
+					else {
+						DWORD timeout = INFINITE;
+						if (envelope.payload.size() == 4)
+							timeout = static_cast<DWORD>(envelope.payload[0]) |
+								(static_cast<DWORD>(envelope.payload[1]) << 8) |
+								(static_cast<DWORD>(envelope.payload[2]) << 16) |
+								(static_cast<DWORD>(envelope.payload[3]) << 24);
+						else if (!envelope.payload.empty())
+							throw std::invalid_argument("invalid Mach IPC notification timeout");
+						result.push_back(notification->second.Wait(timeout) ? 1 : 0);
+					}
+					darling::windows_host::MachIpcEnvelope response{
+						envelope.operation, envelope.request_id, envelope.port_token, 0, std::move(result)};
+					server.Write(AsString(darling::windows_host::EncodeMachIpcEnvelope(response)));
+					continue;
+				}
 				if (envelope.operation == darling::windows_host::MachIpcOperation::Allocate) {
 					const auto token = next_port_token++;
 					allocated_ports.insert(token);

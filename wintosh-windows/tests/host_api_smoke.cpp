@@ -28,9 +28,28 @@ namespace {
 	}
 	std::atomic_bool cancellation_worker_started{false};
 	std::atomic<int> cancellation_cleanup_calls{0};
+	std::atomic<int> nested_cleanup_order{0};
 	void CancellationCleanup(void*)
 	{
 		cancellation_cleanup_calls.fetch_add(1, std::memory_order_relaxed);
+	}
+	void NestedCleanupOuter(void*)
+	{
+		if (nested_cleanup_order.load(std::memory_order_relaxed) == 2)
+			nested_cleanup_order.store(3, std::memory_order_relaxed);
+	}
+	void NestedCleanupInner(void*)
+	{
+		nested_cleanup_order.store(2, std::memory_order_relaxed);
+	}
+	bool NestedCleanupSmoke()
+	{
+		nested_cleanup_order.store(0, std::memory_order_relaxed);
+		pthread_cleanup_push(&NestedCleanupOuter, nullptr);
+		pthread_cleanup_push(&NestedCleanupInner, nullptr);
+		pthread_cleanup_pop(1);
+		pthread_cleanup_pop(1);
+		return nested_cleanup_order.load(std::memory_order_relaxed) == 3;
 	}
 	void* PthreadCancellationStart(void*)
 	{
@@ -1145,6 +1164,7 @@ int main()
 		darling_windows_pthread_join(cancellation_thread, &cancellation_result) == 0 &&
 		cancellation_result == reinterpret_cast<void*>(static_cast<std::uintptr_t>(-1)) &&
 		cancellation_cleanup_calls.load(std::memory_order_relaxed) == 1 &&
+		NestedCleanupSmoke() &&
 		darling_windows_pthread_setcanceltype(1, nullptr) == 22;
 	void* cancellation_mutex = nullptr;
 	std::atomic_bool cancellation_lock_started{false};

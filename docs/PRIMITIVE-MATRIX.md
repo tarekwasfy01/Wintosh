@@ -44,9 +44,9 @@ The pthread family now includes a verified deferred-cancellation path using
 The Windows adapter also provides an explicit port-local LIFO cleanup-record
 stack through `darling_windows_pthread_cleanup_push` and
 `darling_windows_pthread_cleanup_pop`. Deferred cancellation drains the stack
-before TLS destructors, and the host smoke verifies one callback. This does
-not yet claim source-compatible PureDarwin `pthread_cleanup_push/pop` macro
-wrapping or complete Darwin cleanup ordering and mutex-reacquisition rules.
+before TLS destructors, and the host smoke verifies one callback. The opt-in
+PureDarwin-shaped macro wrapper is source-compatible for matched pairs; full
+Darwin cleanup ordering at every cancellation point remains open.
 
 Condition-variable waits poll the deferred request in bounded intervals, so
 the cancellation path also covers the main blocking pthread primitive.

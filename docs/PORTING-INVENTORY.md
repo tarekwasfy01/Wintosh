@@ -4198,6 +4198,9 @@ resolver coverage. Default values pass; process-shared rwlocks fail explicitly
 with `ENOTSUP`, while inter-process rwlock behavior remains open.
 Immediate read/write try-lock entry points now have resolver and runtime
 coverage, including reader coexistence and writer `EBUSY` behavior.
+Timed read/write lock entry points now use absolute Darwin deadlines, expose
+cancellation points, and report `ETIMEDOUT` for expired deadlines; that path is
+covered by the host smoke.
 
 The same attribute object now carries protocol and robustness fields with
 resolver coverage and default-value checks. Enabling priority protocols or

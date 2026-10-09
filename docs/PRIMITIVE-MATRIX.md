@@ -75,6 +75,9 @@ with resolver coverage; process-shared rwlocks return `ENOTSUP` explicitly.
 The immediate `tryrdlock`/`trywrlock` primitives are now resolved and tested:
 shared readers can coexist, writers report `EBUSY` while readers hold the lock,
 and acquire successfully after release.
+Absolute-deadline `timedrdlock` and `timedwrlock` entry points now poll with
+cancellation points and return `ETIMEDOUT` for expired deadlines; the host
+smoke verifies the expired-reader case.
 Mach port reference mutation now rejects signed-delta underflow and unsigned
 overflow, including the `INT32_MIN` edge case, while preserving the existing
 process-local queue behavior.

@@ -1362,6 +1362,17 @@ int main()
 		darling_windows_pthread_rwlock_trywrlock(&pthread_try_rwlock_storage) == 0 &&
 		darling_windows_pthread_rwlock_unlock(&pthread_try_rwlock_storage) == 0 &&
 		darling_windows_pthread_rwlock_destroy(&pthread_try_rwlock_storage) == 0;
+	void* pthread_timed_rwlock_storage = nullptr;
+	darling_timespec pthread_rwlock_past_deadline{0, 0};
+	const bool pthread_rwlock_timed_ok =
+		darling_windows_pthread_rwlock_init(&pthread_timed_rwlock_storage, nullptr) == 0 &&
+		darling_windows_pthread_rwlock_wrlock(&pthread_timed_rwlock_storage) == 0 &&
+		darling_windows_host_symbol("pthread_rwlock_timedrdlock") != 0 &&
+		darling_windows_host_symbol("pthread_rwlock_timedwrlock") != 0 &&
+		darling_windows_pthread_rwlock_timedrdlock(&pthread_timed_rwlock_storage,
+		&pthread_rwlock_past_deadline) == 110 &&
+		darling_windows_pthread_rwlock_unlock(&pthread_timed_rwlock_storage) == 0 &&
+		darling_windows_pthread_rwlock_destroy(&pthread_timed_rwlock_storage) == 0;
 	void* pthread_rwlock_attributes = nullptr;
 	int pthread_rwlock_shared = -1;
 	const bool pthread_rwlock_attributes_ok =
@@ -1447,7 +1458,7 @@ int main()
 		darling_windows_pthread_cond_destroy(&timed_condition_storage) == 0;
 	std::cout << "DARWIN_PTHREAD_SELF_NAME_EQUAL="
 		          << (pthread_abi_ok && pthread_lifecycle_ok && pthread_cancellation_ok && pthread_lock_cancellation_ok && pthread_condition_cancellation_ok && pthread_attributes_ok && pthread_detach_ok &&
-			pthread_threadid_ok && pthread_mutex_attributes_ok && pthread_condition_attributes_ok && pthread_mutex_ok && pthread_rwlock_attributes_ok && pthread_rwlock_ok && pthread_rwlock_try_ok && pthread_tls_ok &&
+			pthread_threadid_ok && pthread_mutex_attributes_ok && pthread_condition_attributes_ok && pthread_mutex_ok && pthread_rwlock_attributes_ok && pthread_rwlock_ok && pthread_rwlock_try_ok && pthread_rwlock_timed_ok && pthread_tls_ok &&
 			pthread_tls_destructor_ok && pthread_once_ok && pthread_condition_ok &&
 			pthread_timedwait_ok ? "PASS" : "FAIL") << "\n";
 	const bool normalized_terminal_environment_symbols =

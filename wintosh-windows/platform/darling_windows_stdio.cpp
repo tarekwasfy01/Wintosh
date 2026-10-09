@@ -3240,6 +3240,42 @@ extern "C" int darling_windows_pthread_rwlock_trywrlock(void* lock)
 	return 0;
 }
 
+extern "C" int darling_windows_pthread_rwlock_timedrdlock(void* lock,
+	const darling_timespec* deadline)
+{
+	auto* value = PthreadRwlockFromStorage(lock);
+	if (value == nullptr || deadline == nullptr || deadline->tv_nsec < 0 ||
+		deadline->tv_nsec >= 1000000000) return 22;
+	const auto end = std::chrono::system_clock::time_point(
+		std::chrono::duration_cast<std::chrono::system_clock::duration>(
+			std::chrono::seconds(deadline->tv_sec) + std::chrono::nanoseconds(deadline->tv_nsec)));
+	while (!value->try_lock_shared()) {
+		darling_windows_pthread_testcancel();
+		if (std::chrono::system_clock::now() >= end) return 110;
+		Sleep(1);
+	}
+	darling_rwlock_read_modes[lock] = true;
+	return 0;
+}
+
+extern "C" int darling_windows_pthread_rwlock_timedwrlock(void* lock,
+	const darling_timespec* deadline)
+{
+	auto* value = PthreadRwlockFromStorage(lock);
+	if (value == nullptr || deadline == nullptr || deadline->tv_nsec < 0 ||
+		deadline->tv_nsec >= 1000000000) return 22;
+	const auto end = std::chrono::system_clock::time_point(
+		std::chrono::duration_cast<std::chrono::system_clock::duration>(
+			std::chrono::seconds(deadline->tv_sec) + std::chrono::nanoseconds(deadline->tv_nsec)));
+	while (!value->try_lock()) {
+		darling_windows_pthread_testcancel();
+		if (std::chrono::system_clock::now() >= end) return 110;
+		Sleep(1);
+	}
+	darling_rwlock_read_modes[lock] = false;
+	return 0;
+}
+
 extern "C" int darling_windows_pthread_rwlock_unlock(void* lock)
 {
 	auto* value = PthreadRwlockFromStorage(lock);
@@ -4743,6 +4779,8 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 	}
 	if (std::strcmp(name, "_pthread_rwlock_tryrdlock") == 0 || std::strcmp(name, "pthread_rwlock_tryrdlock") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_rwlock_tryrdlock);
 	if (std::strcmp(name, "_pthread_rwlock_trywrlock") == 0 || std::strcmp(name, "pthread_rwlock_trywrlock") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_rwlock_trywrlock);
+	if (std::strcmp(name, "_pthread_rwlock_timedrdlock") == 0 || std::strcmp(name, "pthread_rwlock_timedrdlock") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_rwlock_timedrdlock);
+	if (std::strcmp(name, "_pthread_rwlock_timedwrlock") == 0 || std::strcmp(name, "pthread_rwlock_timedwrlock") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_rwlock_timedwrlock);
 	if (std::strcmp(name, "_pthread_rwlock_unlock") == 0 || std::strcmp(name, "pthread_rwlock_unlock") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_rwlock_unlock);
 	}

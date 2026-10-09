@@ -478,6 +478,8 @@ callback and the handler invoked exactly once.
 
 The deferred path now also honors `SA_RESETHAND`, matching the existing direct
 delivery path by resetting the installed plain handler after its first call.
+The smoke test reads the post-delivery disposition and verifies that it is
+`SIG_DFL`.
 
 The VM read bridge now records returned local buffers and makes
 `mach_vm_deallocate` release those buffers in the current Windows process,

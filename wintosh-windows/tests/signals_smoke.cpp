@@ -134,6 +134,7 @@ int main()
 		return 4;
 	darling_darwin_sigaction_record deferred_action{};
 	deferred_action.handler = &Handler;
+	deferred_action.flags = 0x0004; // SA_RESETHAND
 	deferred_action.mask.bits[0] = 1u << (SIGINT - 1);
 	darling_darwin_sigset blocked_term{};
 	darling_windows_sigemptyset(&blocked_term);
@@ -146,6 +147,10 @@ int main()
 		deferred_count.load(std::memory_order_relaxed) != 1 ||
 		deferred_mask_seen.load(std::memory_order_relaxed) != 1)
 		return 8;
+	darling_darwin_sigaction_record reset_action{};
+	if (darling_windows_sigaction(SIGTERM, nullptr, &reset_action) != 0 ||
+		reset_action.handler != SIG_DFL)
+		return 9;
 	darling_darwin_sigset wait_set{};
 	wait_set.bits[0] = 1u << (SIGINT - 1);
 	std::atomic<int> waited_signal{0};

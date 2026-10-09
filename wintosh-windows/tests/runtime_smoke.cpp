@@ -27,11 +27,30 @@ int wmain()
 	}
 	std::cout << "MACH_IPC_ENVELOPE=PASS\n";
 	try {
-		darling::windows_host::DecodeMachIpcEnvelope({'B', 'A', 'D'});
+		(void)darling::windows_host::DecodeMachIpcEnvelope({'B', 'A', 'D'});
 		std::cerr << "MACH_IPC_ENVELOPE_VALIDATION=FAIL\n";
 		return 1;
 	} catch (const std::invalid_argument&) {
 		std::cout << "MACH_IPC_ENVELOPE_VALIDATION=PASS\n";
+	}
+	try {
+		darling::windows_host::MachIpcEnvelope oversized{
+			darling::windows_host::MachIpcOperation::Send, 43, 7, 0,
+			std::vector<std::uint8_t>(4 * 1024 * 1024 + 1, 0)};
+		(void)darling::windows_host::EncodeMachIpcEnvelope(oversized);
+		std::cerr << "MACH_IPC_ENVELOPE_LIMIT=FAIL\n";
+		return 1;
+	} catch (const std::length_error&) {
+		std::cout << "MACH_IPC_ENVELOPE_LIMIT=PASS\n";
+	}
+	try {
+		auto trailing = encoded;
+		trailing.push_back(0);
+		(void)darling::windows_host::DecodeMachIpcEnvelope(trailing);
+		std::cerr << "MACH_IPC_ENVELOPE_TRAILING=FAIL\n";
+		return 1;
+	} catch (const std::invalid_argument&) {
+		std::cout << "MACH_IPC_ENVELOPE_TRAILING=PASS\n";
 	}
 	darling::windows_host::MachPort port;
 	if (port.Receive(1).has_value()) {
@@ -42,7 +61,7 @@ int wmain()
 		Sleep(20);
 		const char payload[] = "DARLING-MACH";
 		const char attached[] = "OUT-OF-LINE";
-		port.Send({
+		(void)port.Send({
 			std::vector<std::uint8_t>(payload, payload + sizeof(payload) - 1),
 			std::vector<std::uint8_t>(attached, attached + sizeof(attached) - 1)});
 	});

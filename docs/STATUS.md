@@ -50,6 +50,9 @@ multi-client transport are still unimplemented. The named-pipe frame limit is
 now aligned with the envelope's 4 MiB bounded payload limit; a 2 MiB
 cross-process FIFO round trip passes as `BROKER_MACH_LARGE_PAYLOAD=PASS`.
 This remains inline transport, not Mach out-of-line memory.
+The envelope smoke also rejects oversized payloads and trailing bytes before
+dispatch (`MACH_IPC_ENVELOPE_LIMIT=PASS` and
+`MACH_IPC_ENVELOPE_TRAILING=PASS`).
 
 The platform path adapter now provides lexical `AbsolutePath` resolution and
 handle-based `CanonicalPath` resolution through Windows final-name lookup,

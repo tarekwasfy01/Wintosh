@@ -534,6 +534,11 @@ only; it does not establish full Darwin behavior or framework compatibility.
 The exact method and remaining behavioral boundary are recorded in
 `docs/FRAMEWORK-ABI-COVERAGE.md`.
 
+CoreFoundation XML serialization now maps the adapter's URL objects to valid
+escaped string elements instead of emitting an invalid unsupported marker. The
+CoreFoundation smoke gate covers the filesystem URL round-trip shape; native
+CFURL property-list callback semantics remain outside this minimal bridge.
+
 The runtime README now records the actual Mach-O execution boundary: the
 Windows x86_64 runner can enter compatible x86_64 images after mapping,
 relocations, bindings, initializers, and protection setup, while i386 and

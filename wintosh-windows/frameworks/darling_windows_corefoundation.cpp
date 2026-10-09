@@ -186,6 +186,7 @@ void AppendXML(const Object* object, std::ostringstream& output)
 	if (object == nullptr) { output << "<null/>"; return; }
 	switch (object->kind) {
 	case Kind::String: output << "<string>" << EscapeXML(object->string) << "</string>"; break;
+	case Kind::URL: output << "<string>" << EscapeXML(object->string) << "</string>"; break;
 	case Kind::Number: output << "<integer>" << object->number << "</integer>"; break;
 	case Kind::Real: output << "<real>" << object->real_number << "</real>"; break;
 	case Kind::Data: output << "<data>" << Base64(object->data) << "</data>"; break;

@@ -66,6 +66,9 @@ full OOL lifetime/disposition semantics. The broker now associates OOL
 regions with their owning port and releases them on `Deallocate`.
 Envelope decoding also rejects partially specified or oversized OOL
 descriptors (`MACH_IPC_DESCRIPTOR_VALIDATION=PASS`).
+The broker explicitly rejects disposition counts above one with
+`BROKER_MACH_DISPOSITION_LIMIT=PASS`; multiple rights/dispositions remain
+unimplemented rather than being silently collapsed.
 The broker also accepts the explicit `Destroy` operation, releasing the
 port and rejecting later use (`BROKER_MACH_DESTROY=PASS`).
 Each port FIFO is bounded to 1024 queued messages and reports

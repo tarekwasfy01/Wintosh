@@ -183,6 +183,15 @@ int wmain()
 			return 5;
 		}
 		std::cout << "BROKER_MACH_OOL=PASS\n";
+		const darling::windows_host::MachIpcEnvelope unsupported_dispositions{
+			darling::windows_host::MachIpcOperation::Send, 113, token, 2, {'X'}};
+		const auto unsupported_bytes = darling::windows_host::EncodeMachIpcEnvelope(unsupported_dispositions);
+		client.Write(std::string(unsupported_bytes.begin(), unsupported_bytes.end()));
+		if (client.Read() != "INVALID_MACH_IPC_REQUEST") {
+			std::cerr << "BROKER_MACH_DISPOSITION_LIMIT=FAIL\n";
+			return 5;
+		}
+		std::cout << "BROKER_MACH_DISPOSITION_LIMIT=PASS\n";
 
 		const darling::windows_host::MachIpcEnvelope deallocate_request{
 			darling::windows_host::MachIpcOperation::Deallocate, 103, token, 0, {}};

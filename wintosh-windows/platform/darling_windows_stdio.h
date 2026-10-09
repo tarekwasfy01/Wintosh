@@ -295,6 +295,16 @@ extern "C" int darling_windows_pthread_cancel(std::uint64_t thread);
 extern "C" int darling_windows_pthread_setcancelstate(int state, int* old_state);
 extern "C" int darling_windows_pthread_setcanceltype(int type, int* old_type);
 extern "C" int darling_windows_pthread_testcancel();
+
+struct darling_pthread_cleanup_record final {
+	void (*routine)(void*) = nullptr;
+	void* argument = nullptr;
+	darling_pthread_cleanup_record* next = nullptr;
+};
+extern "C" void darling_windows_pthread_cleanup_push(
+	darling_pthread_cleanup_record* record, void (*routine)(void*), void* argument);
+extern "C" void darling_windows_pthread_cleanup_pop(
+	darling_pthread_cleanup_record* record, int execute);
 extern "C" int darling_windows_pthread_threadid_np(std::uint64_t thread,
 	std::uint64_t* thread_id);
 extern "C" int darling_windows_pthread_attr_init(void* attributes);

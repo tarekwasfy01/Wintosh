@@ -514,6 +514,13 @@ joins the canceled worker and destroys the condition and mutex normally.
 worker blocked in a join can observe cancellation. Handle ownership and exact
 POSIX join cleanup/reacquire behavior after a canceled join remain open.
 
+The Windows adapter now has an explicit LIFO cleanup-record stack with push/pop
+operations, and deferred cancellation drains it before TLS destructors. The
+host API smoke verifies one cleanup callback during cancellation. This is a
+port-specific adapter boundary; source-compatible PureDarwin macro wrapping,
+cleanup-handler ordering around every POSIX cancellation point, and exact
+mutex reacquisition remain open.
+
 The VM read bridge now records returned local buffers and makes
 `mach_vm_deallocate` release those buffers in the current Windows process,
 even when the read targeted a different PID. This closes the previous

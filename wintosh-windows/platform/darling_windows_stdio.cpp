@@ -2458,6 +2458,7 @@ struct DarlingPthreadStart final {
 
 struct DarlingPthreadCancelled final {};
 thread_local DarlingPthreadStart* current_pthread_start = nullptr;
+thread_local darling_pthread_cleanup_record* current_pthread_cleanup = nullptr;
 
 DWORD WINAPI DarlingPthreadThunk(void* raw)
 {
@@ -2500,6 +2501,36 @@ extern "C" int darling_windows_pthread_cancel(std::uint64_t thread)
 	return 0;
 }
 
+extern "C" void darling_windows_pthread_cleanup_push(
+	darling_pthread_cleanup_record* record, void (*routine)(void*), void* argument)
+{
+	if (record == nullptr) return;
+	record->routine = routine;
+	record->argument = argument;
+	record->next = current_pthread_cleanup;
+	current_pthread_cleanup = record;
+}
+
+extern "C" void darling_windows_pthread_cleanup_pop(
+	darling_pthread_cleanup_record* record, int execute)
+{
+	if (record == nullptr) return;
+	if (current_pthread_cleanup == record)
+		current_pthread_cleanup = record->next;
+	if (execute != 0 && record->routine != nullptr)
+		record->routine(record->argument);
+}
+
+void RunPthreadCleanupHandlers() noexcept
+{
+	while (current_pthread_cleanup != nullptr) {
+		auto* record = current_pthread_cleanup;
+		current_pthread_cleanup = record->next;
+		if (record->routine != nullptr)
+			record->routine(record->argument);
+	}
+}
+
 extern "C" int darling_windows_pthread_setcancelstate(int state, int* old_state)
 {
 	if (current_pthread_start == nullptr || (state != 0 && state != 1)) return 22;
@@ -2508,6 +2539,7 @@ extern "C" int darling_windows_pthread_setcancelstate(int state, int* old_state)
 	if (old_state != nullptr) *old_state = was_enabled ? 0 : 1;
 	if (state == 0 && current_pthread_start->cancel_deferred.load(std::memory_order_acquire) &&
 		current_pthread_start->cancel_requested.load(std::memory_order_acquire)) {
+		RunPthreadCleanupHandlers();
 		RunPthreadTlsDestructors();
 		throw DarlingPthreadCancelled{};
 	}

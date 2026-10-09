@@ -4172,6 +4172,15 @@ clock-source selection, and complete Darwin time ABI semantics remain open.
 
 The terminal/environment family now resolves normalized `getenv`, `setenv`, `unsetenv`, `putenv`, `clearenv`, `isatty`, `ioctl`, and `ctermid`. The x64 and Win32 host API smokes both report `DARWIN_NORMALIZED_TERMINAL_ENV_SYMBOLS=PASS`. Complete Windows console/TTY semantics, environment inheritance races, and the Darwin terminal ABI remain open. The aggregate host smoke still stops at the known privilege-sensitive rename check with `WIN32_ERROR=5` (`ERROR_ACCESS_DENIED`), not at the new resolver family.
 
+The Windows pthread adapter now also has a port-local LIFO cleanup-record
+stack. `darling_windows_pthread_cleanup_push` and
+`darling_windows_pthread_cleanup_pop` model the essential cleanup-handler
+ownership, and deferred cancellation drains registered handlers before TLS
+destructors. The host API smoke verifies exactly one callback on cancellation.
+PureDarwin's source-level `pthread_cleanup_push/pop` macro ABI, complete
+cleanup ordering, mutex reacquisition, and asynchronous cancellation remain
+open.
+
 The pthread ABI layer now also covers `pthread_once` and invokes registered TLS
 destructors when a created Windows-backed pthread exits. x64 and Win32 host API
 smokes build successfully and report `DARWIN_PTHREAD_SELF_NAME_EQUAL=PASS`,

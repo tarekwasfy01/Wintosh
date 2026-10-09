@@ -26,9 +26,16 @@ namespace {
 		return static_cast<char*>(argument) + 5;
 	}
 	std::atomic_bool cancellation_worker_started{false};
+	std::atomic<int> cancellation_cleanup_calls{0};
+	void CancellationCleanup(void*)
+	{
+		cancellation_cleanup_calls.fetch_add(1, std::memory_order_relaxed);
+	}
 	void* PthreadCancellationStart(void*)
 	{
 		cancellation_worker_started.store(true, std::memory_order_release);
+		darling_pthread_cleanup_record cleanup{};
+		darling_windows_pthread_cleanup_push(&cleanup, &CancellationCleanup, nullptr);
 		int old_state = -1;
 		int old_type = -1;
 		if (darling_windows_pthread_setcancelstate(1, &old_state) != 0 ||
@@ -42,6 +49,7 @@ namespace {
 			if (darling_windows_pthread_setcancelstate(1, &old_state) != 0)
 				return nullptr;
 		}
+		darling_windows_pthread_cleanup_pop(&cleanup, 0);
 		return nullptr;
 	}
 	struct CancellationLockContext final {
@@ -1125,6 +1133,7 @@ int main()
 		darling_windows_pthread_cancel(cancellation_thread) == 0 &&
 		darling_windows_pthread_join(cancellation_thread, &cancellation_result) == 0 &&
 		cancellation_result == reinterpret_cast<void*>(static_cast<std::uintptr_t>(-1)) &&
+		cancellation_cleanup_calls.load(std::memory_order_relaxed) == 1 &&
 		darling_windows_pthread_setcanceltype(1, nullptr) == 22;
 	void* cancellation_mutex = nullptr;
 	std::atomic_bool cancellation_lock_started{false};

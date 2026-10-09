@@ -493,6 +493,12 @@ from `PTHREAD_CANCEL_DISABLE` back to `PTHREAD_CANCEL_ENABLE`; the host worker
 smoke exercises that state transition. The implementation still does not
 provide cleanup-handler stacks or asynchronous cancellation.
 
+The condition-variable waits now poll deferred cancellation in bounded
+intervals, so a waiting pthread can observe `pthread_cancel` without requiring
+an unrelated signal. This adds practical cancellation-point coverage while
+leaving POSIX mutex reacquisition, cleanup-handler ordering, and exact timed
+wait interruption semantics open.
+
 The VM read bridge now records returned local buffers and makes
 `mach_vm_deallocate` release those buffers in the current Windows process,
 even when the read targeted a different PID. This closes the previous

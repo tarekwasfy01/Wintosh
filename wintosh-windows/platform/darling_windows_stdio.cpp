@@ -2785,7 +2785,10 @@ extern "C" int darling_windows_pthread_cond_wait(void* condition, void* mutex)
 	auto* mutex_value = PthreadMutexFromStorage(mutex);
 	if (condition_value == nullptr || mutex_value == nullptr) return 22;
 	std::unique_lock lock(*mutex_value, std::adopt_lock);
-	condition_value->wait(lock);
+	darling_windows_pthread_testcancel();
+	while (condition_value->wait_for(lock, std::chrono::milliseconds(10)) ==
+		std::cv_status::timeout)
+		darling_windows_pthread_testcancel();
 	lock.release();
 	return 0;
 }
@@ -2802,8 +2805,19 @@ extern "C" int darling_windows_pthread_cond_timedwait(void* condition, void* mut
 		std::chrono::nanoseconds(deadline->tv_nsec);
 	const auto remaining = deadline_duration - now;
 	std::unique_lock lock(*mutex_value, std::adopt_lock);
-	const auto status = remaining <= std::chrono::nanoseconds::zero() ?
-		std::cv_status::timeout : condition_value->wait_for(lock, remaining);
+	darling_windows_pthread_testcancel();
+	if (remaining <= std::chrono::nanoseconds::zero()) {
+		lock.release();
+		return 110;
+	}
+	const auto status = condition_value->wait_for(lock,
+		(remaining > std::chrono::milliseconds(10) ?
+			std::chrono::milliseconds(10) : remaining));
+	if (status == std::cv_status::timeout && remaining > std::chrono::milliseconds(10)) {
+		lock.release();
+		return darling_windows_pthread_cond_timedwait(condition, mutex, deadline);
+	}
+	darling_windows_pthread_testcancel();
 	lock.release();
 	return status == std::cv_status::timeout ? 110 : 0;
 }

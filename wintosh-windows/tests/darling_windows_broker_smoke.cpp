@@ -114,6 +114,26 @@ int wmain()
 		}
 		std::cout << "BROKER_MACH_SEND_RECEIVE=PASS\n";
 
+		const darling::windows_host::MachIpcEnvelope deallocate_request{
+			darling::windows_host::MachIpcOperation::Deallocate, 103, token, 0, {}};
+		const auto deallocate_bytes = darling::windows_host::EncodeMachIpcEnvelope(deallocate_request);
+		client.Write(std::string(deallocate_bytes.begin(), deallocate_bytes.end()));
+		const auto deallocate_wire = client.Read();
+		const auto deallocate_response = darling::windows_host::DecodeMachIpcEnvelope(
+			std::vector<std::uint8_t>(deallocate_wire.begin(), deallocate_wire.end()));
+		if (deallocate_response.operation != darling::windows_host::MachIpcOperation::Deallocate ||
+			deallocate_response.request_id != 103 || deallocate_response.port_token != token) {
+			std::cerr << "BROKER_MACH_DEALLOCATE=FAIL\n";
+			return 5;
+		}
+		const auto invalid_send_bytes = darling::windows_host::EncodeMachIpcEnvelope(send_request);
+		client.Write(std::string(invalid_send_bytes.begin(), invalid_send_bytes.end()));
+		if (client.Read() != "INVALID_MACH_IPC_REQUEST") {
+			std::cerr << "BROKER_MACH_STALE_TOKEN=FAIL\n";
+			return 5;
+		}
+		std::cout << "BROKER_MACH_LIFECYCLE=PASS\n";
+
 		client.Write("SHUTDOWN");
 		const auto shutdown = client.Read();
 		std::cout << "BROKER_SHUTDOWN=" << shutdown << "\n";

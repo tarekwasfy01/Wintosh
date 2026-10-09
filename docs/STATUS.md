@@ -41,7 +41,8 @@ token and `Deallocate` releases it. The separate-process smoke test passes
 delivery (`Send`/`Receive`) now has a bounded broker FIFO for allocated tokens,
 covered by `BROKER_MACH_SEND_RECEIVE=PASS`. Rights/dispositions,
 notifications, waiters, MIG, out-of-line memory, and a Mach-compatible
-name-space remain open.
+name-space remain open. The lifecycle smoke also proves
+`BROKER_MACH_LIFECYCLE=PASS`: a deallocated token is rejected on later use.
 
 The platform path adapter now provides lexical `AbsolutePath` resolution and
 handle-based `CanonicalPath` resolution through Windows final-name lookup,

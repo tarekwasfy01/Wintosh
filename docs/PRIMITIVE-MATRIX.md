@@ -273,8 +273,10 @@ The named-pipe broker separately covers bounded inline/OOL transport and
 reconnect persistence; it is still sequential per client rather than a
 concurrent Mach dispatcher.
 The local ABI distinguishes reference-decrementing `mach_port_deallocate`
-from forced `mach_port_destroy`; this is a tested adapter rule, not proof of
-Darwin's per-task right tables or interprocess right transfer. `get_refs` and
+from forced `mach_port_destroy`; the smoke gate also verifies that forced
+destruction closes a blocked receiver and rejects subsequent use. This is a
+tested adapter rule, not proof of Darwin's per-task right tables or
+interprocess right transfer. `get_refs` and
 `mod_refs` now reject unknown right selectors while accepting the adapter's
 Receive-/Send-right values.
 

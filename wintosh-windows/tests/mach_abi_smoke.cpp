@@ -407,7 +407,7 @@ int main()
 			stale_extract == 3;
 		return result;
 	}();
-	const bool ok = task != 0 && thread != 0 && host != 0 &&
+	bool ok = task != 0 && thread != 0 && host != 0 &&
 		local_queue_limit_ok &&
 		set_wakeup_ok &&
 		last_deallocate_ok &&
@@ -544,6 +544,27 @@ int main()
 		darling_windows_mach_port_type(task, allocated, &port_type) == 3 &&
 		port_type == darling_mach_port_type_none &&
 		darling_windows_mach_port_deallocate(0, thread) == 4;
+	if (ok) {
+		darling_mach_port_name_t blocked_port = 0;
+		std::atomic<bool> receiver_started = false;
+		std::atomic<darling_kern_return_t> receiver_result = 0;
+		if (darling_windows_mach_port_allocate(task, &blocked_port) != 0) {
+			ok = false;
+		} else {
+			std::thread blocked_receiver([&] {
+				receiver_started.store(true, std::memory_order_release);
+				char byte = 0;
+				std::uint32_t blocked_size = 0;
+				receiver_result.store(darling_windows_mach_port_receive(blocked_port,
+					&byte, sizeof(byte), &blocked_size, 5000), std::memory_order_release);
+			});
+			while (!receiver_started.load(std::memory_order_acquire)) std::this_thread::yield();
+			std::this_thread::sleep_for(std::chrono::milliseconds(10));
+			const auto destroyed = darling_windows_mach_port_destroy(task, blocked_port);
+			blocked_receiver.join();
+			ok = destroyed == 0 && receiver_result.load(std::memory_order_acquire) == 3;
+		}
+	}
 	std::cout << "MACH_C_ABI_SELF_DEALLOCATE=" << (ok ? "PASS" : "FAIL") << "\n";
 	return ok ? 0 : 1;
 }

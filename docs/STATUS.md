@@ -380,9 +380,10 @@ behavior, not yet the kernel's full per-task port-death machinery.
 
 Local port destruction now marks the backing queue closed, wakes blocked
 receivers, removes the name from port sets, and rejects later sends or
-receives.  The pseudo task/thread/host names retain their borrowed no-op
-deallocation behavior.  This closes the local lifetime race; cross-process
-broker rights are still separate and incomplete.
+receives; `mach_abi_smoke` covers a receiver blocked during forced destroy.
+The pseudo task/thread/host names retain their borrowed no-op deallocation
+behavior.  This closes the local lifetime race; cross-process broker rights
+are still separate and incomplete.
 
 The local `mach_msg` bridge now rejects unknown option bits, zero options, and
 send frames whose declared `msgh_size` does not match `send_size`.  Negative
@@ -411,8 +412,8 @@ set receiver is released by a later member send before its 500-ms deadline.
 
 Local `mach_port_deallocate` now decrements one reference and removes the port
 only when the last reference is released.  The smoke gate verifies the
-intermediate reference count; `mach_port_destroy` still shares the adapter's
-current deallocation path and needs a separate forced-destroy implementation.
+intermediate reference count; `mach_port_destroy` explicitly collapses the
+local rights and uses the close/wakeup path for forced destruction.
 The same smoke gate now also verifies that the final deallocation removes the
 name and rejects a subsequent send.
 `mach_port_get_refs` and `mach_port_mod_refs` now reject unknown right kinds;

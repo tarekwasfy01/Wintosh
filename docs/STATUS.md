@@ -86,6 +86,9 @@ Each port FIFO is bounded to 1024 queued messages and reports
 `MACH_SEND_QUEUE_FULL` instead of allowing unbounded broker memory growth;
 the boundary is exercised by the broker smoke as
 `BROKER_MACH_QUEUE_LIMIT=PASS`.
+The named-pipe transport now reserves up to eight server instances, preparing
+the endpoint for concurrent client workers; the current broker loop still
+serves one connected client and does not yet claim multi-client semantics.
 
 The platform path adapter now provides lexical `AbsolutePath` resolution and
 handle-based `CanonicalPath` resolution through Windows final-name lookup,

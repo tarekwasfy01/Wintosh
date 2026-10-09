@@ -581,7 +581,7 @@ NamedPipeRpcServer NamedPipeRpcServer::Create(const std::wstring& name)
 		full_name.c_str(),
 		PIPE_ACCESS_DUPLEX,
 		PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT,
-		1,
+		8,
 		1024 * 1024,
 		1024 * 1024,
 		0,

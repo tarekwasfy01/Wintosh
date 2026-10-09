@@ -539,6 +539,14 @@ escaped string elements instead of emitting an invalid unsupported marker. The
 CoreFoundation smoke gate covers the filesystem URL round-trip shape; native
 CFURL property-list callback semantics remain outside this minimal bridge.
 
+`CFRunLoopGetCurrent` now returns a thread-local run-loop object rather than a
+process-global singleton. The CoreFoundation smoke gate verifies that a worker
+thread receives a distinct loop, can be observed while running, and can be
+stopped without changing the caller's loop. One-shot timers still use detached
+threads and therefore require a later ownership/lifetime family before they
+can safely target a loop whose owning thread has exited; modes, sources,
+observers, and native CFRunLoop scheduling semantics also remain open.
+
 The runtime README now records the actual Mach-O execution boundary: the
 Windows x86_64 runner can enter compatible x86_64 images after mapping,
 relocations, bindings, initializers, and protection setup, while i386 and

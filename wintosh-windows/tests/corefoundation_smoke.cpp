@@ -209,14 +209,18 @@ int main()
 		equal_string) == number;
 	auto loop = darling_windows_CFRunLoopGetCurrent();
 	bool loop_started = false;
+	darling_windows_CFRunLoopRef worker_loop = nullptr;
 	std::thread loop_thread([&] {
+		worker_loop = darling_windows_CFRunLoopGetCurrent();
 		darling_windows_CFRunLoopRunInMode(5.0, false);
 	});
 	std::this_thread::sleep_for(std::chrono::milliseconds(20));
-	loop_started = darling_windows_CFRunLoopIsRunning(loop);
-	darling_windows_CFRunLoopStop(loop);
+	loop_started = worker_loop != nullptr && worker_loop != loop &&
+		darling_windows_CFRunLoopIsRunning(worker_loop);
+	darling_windows_CFRunLoopStop(worker_loop);
 	loop_thread.join();
-	const bool runloop_ok = loop_started && !darling_windows_CFRunLoopIsRunning(loop);
+	const bool runloop_ok = loop_started && !darling_windows_CFRunLoopIsRunning(worker_loop) &&
+		!darling_windows_CFRunLoopIsRunning(loop);
 	int callback_value = 7;
 	runloop_callback_value = 0;
 	const bool queued = darling_windows_CFRunLoopPerformBlock(loop, RunLoopCallback, &callback_value);

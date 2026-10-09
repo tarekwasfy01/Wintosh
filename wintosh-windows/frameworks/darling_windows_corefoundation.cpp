@@ -457,7 +457,10 @@ struct RunLoop {
 	bool stopped = false;
 	std::vector<std::pair<darling_windows_CFRunLoopBlock, void*>> blocks;
 };
-RunLoop current_run_loop;
+// CoreFoundation associates the current run loop with the calling thread.
+// Keeping this object thread-local also prevents callbacks posted by one
+// thread from being consumed by an unrelated thread's run loop.
+thread_local RunLoop current_run_loop;
 struct NotificationObserver {
 	const void* observer;
 	darling_windows_CFNotificationCallback callback;

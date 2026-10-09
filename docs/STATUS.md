@@ -56,8 +56,9 @@ dispatch (`MACH_IPC_ENVELOPE_LIMIT=PASS` and
 The host now also exposes named shared-memory creation/opening and mapping;
 the runtime smoke verifies a second mapped view with
 `MACH_IPC_SHARED_MEMORY=PASS`. It is the Windows primitive for a future
-out-of-line descriptor, not yet wired into Mach dispositions or the IPC
-envelope.
+out-of-line descriptor. The version-1 envelope now carries an explicit
+out-of-line token and size trailer, validated on encode/decode; broker-side
+mapping allocation and disposition transfer are the next integration step.
 
 The platform path adapter now provides lexical `AbsolutePath` resolution and
 handle-based `CanonicalPath` resolution through Windows final-name lookup,

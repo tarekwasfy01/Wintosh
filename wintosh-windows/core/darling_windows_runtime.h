@@ -39,6 +39,8 @@ struct MachIpcEnvelope final {
 	std::uint64_t port_token = 0;
 	std::uint32_t disposition_count = 0;
 	std::vector<std::uint8_t> payload;
+	std::uint64_t out_of_line_token = 0;
+	std::uint32_t out_of_line_size = 0;
 };
 
 [[nodiscard]] std::vector<std::uint8_t> EncodeMachIpcEnvelope(

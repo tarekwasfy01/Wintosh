@@ -79,6 +79,8 @@ std::vector<std::uint8_t> EncodeMachIpcEnvelope(const MachIpcEnvelope& envelope)
 	AppendU32(bytes, envelope.disposition_count);
 	AppendU32(bytes, static_cast<std::uint32_t>(envelope.payload.size()));
 	bytes.insert(bytes.end(), envelope.payload.begin(), envelope.payload.end());
+	AppendU64(bytes, envelope.out_of_line_token);
+	AppendU32(bytes, envelope.out_of_line_size);
 	return bytes;
 }
 
@@ -99,9 +101,13 @@ MachIpcEnvelope DecodeMachIpcEnvelope(const std::vector<std::uint8_t>& bytes)
 	result.port_token = ReadU64(bytes, offset);
 	result.disposition_count = ReadU32(bytes, offset);
 	const auto payload_size = ReadU32(bytes, offset);
-	if (payload_size > mach_ipc_max_payload || offset + payload_size != bytes.size())
+	if (payload_size > mach_ipc_max_payload || offset + payload_size + 12 != bytes.size())
 		throw std::invalid_argument("invalid Mach IPC payload size");
 	result.payload.assign(bytes.begin() + static_cast<std::ptrdiff_t>(offset), bytes.end());
+	offset += payload_size;
+	result.payload.resize(payload_size);
+	result.out_of_line_token = ReadU64(bytes, offset);
+	result.out_of_line_size = ReadU32(bytes, offset);
 	return result;
 }
 

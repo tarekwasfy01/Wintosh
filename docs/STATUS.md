@@ -463,6 +463,12 @@ double-underscore spelling to the existing thread-local Darwin mask adapter.
 This covers the import boundary; full pthread cancellation interaction and
 native cross-process signal delivery remain open.
 
+Deferred plain signal handlers now temporarily apply the installed `sigaction`
+mask and the signal's default self-blocking rule, then restore the prior
+thread-local mask and drain newly unblocked pending signals. This aligns the
+local delivery path with the existing sigaction-handler path; native kernel
+delivery, reentrancy races, and complete Darwin restart semantics remain open.
+
 The VM read bridge now records returned local buffers and makes
 `mach_vm_deallocate` release those buffers in the current Windows process,
 even when the read targeted a different PID. This closes the previous

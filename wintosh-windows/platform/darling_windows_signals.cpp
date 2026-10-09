@@ -86,11 +86,19 @@ void DeliverUnblocked() noexcept
 			continue;
 		pending_signals &= ~bit;
 		InitializeActions();
+		const auto& action = installed_actions[static_cast<std::size_t>(signal_number)];
 		const auto handler = installed_handlers[static_cast<std::size_t>(signal_number)];
-		if (handler != nullptr && handler != SIG_DFL && handler != SIG_IGN)
+		if (handler != nullptr && handler != SIG_DFL && handler != SIG_IGN) {
+			const auto previous_mask = blocked_signals;
+			blocked_signals |= SetToBits(action.mask);
+			if ((action.flags & 0x0010) == 0) // SA_NODEFER
+				blocked_signals |= bit;
 			handler(signal_number);
-		else
+			blocked_signals = previous_mask;
+			DeliverUnblocked();
+		} else {
 			(void)std::raise(signal_number);
+		}
 	}
 }
 

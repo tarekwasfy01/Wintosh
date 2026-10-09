@@ -58,6 +58,11 @@ The implementation itself is documented at
 - [../licenses/EXTERNAL-COMPONENT-REVIEW.md](../licenses/EXTERNAL-COMPONENT-REVIEW.md)
   — explanation of the 147 remaining component reviews.
 - [../licenses/SOURCE-BUNDLE.md](../licenses/SOURCE-BUNDLE.md) — corresponding-source
+
+## Architecture designs
+
+- [MACH-IPC-WINDOWS-DESIGN.md](MACH-IPC-WINDOWS-DESIGN.md) — planned
+  broker-backed cross-process Mach IPC boundary and remaining gates.
   boundary and known NTFS checkout limitation.
 - [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) — human-readable notice.
 - [../LICENSE-WINTOSH-ORIGINAL-MIT.txt](../LICENSE-WINTOSH-ORIGINAL-MIT.txt) — only

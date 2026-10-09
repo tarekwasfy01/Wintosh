@@ -381,6 +381,7 @@ public:
 		MachOImage::Mapping mapping;
 		std::vector<std::pair<DarwinTLVDescriptor*, std::size_t>> tlv_registrations;
 	};
+	std::filesystem::path path;
 	MachOImage image;
 	MachOImage::Mapping mapping;
 	std::vector<Provider> providers;
@@ -400,7 +401,7 @@ public:
 
 DarwinDynamicImage* OpenDynamicImage(const std::filesystem::path& path)
 {
-	auto* result = new DarwinDynamicImage{MachOImage::Open(path.wstring()), {}, {}, {}, {}};
+	auto* result = new DarwinDynamicImage{path, MachOImage::Open(path.wstring()), {}, {}, {}, {}};
 	try {
 		result->mapping = result->image.MapSegments();
 		const auto graph_bindings = DylibGraph::BindImports(path, {}, {});
@@ -538,6 +539,22 @@ std::uintptr_t DynamicImageSymbol(const DarwinDynamicImage& image, const char* n
 			return address;
 	}
 	return 0;
+}
+
+const std::filesystem::path& DynamicImagePath(const DarwinDynamicImage& image) noexcept
+{
+	return image.path;
+}
+
+const void* DynamicImageHeader(const DarwinDynamicImage& image) noexcept
+{
+	if (image.mapping.Segments().empty()) return nullptr;
+	return reinterpret_cast<const void*>(image.mapping.Segments().front().address);
+}
+
+std::intptr_t DynamicImageSlide(const DarwinDynamicImage& image) noexcept
+{
+	return image.mapping.Slide();
 }
 
 void CloseDynamicImage(DarwinDynamicImage* image) noexcept

@@ -60,6 +60,9 @@ class DarwinDynamicImage;
 DarwinDynamicImage* OpenDynamicImage(const std::filesystem::path& path);
 std::uintptr_t DynamicImageSymbol(const DarwinDynamicImage& image,
 	const char* name);
+const std::filesystem::path& DynamicImagePath(const DarwinDynamicImage& image) noexcept;
+const void* DynamicImageHeader(const DarwinDynamicImage& image) noexcept;
+std::intptr_t DynamicImageSlide(const DarwinDynamicImage& image) noexcept;
 void CloseDynamicImage(DarwinDynamicImage* image) noexcept;
 
 } // namespace darling::windows_host

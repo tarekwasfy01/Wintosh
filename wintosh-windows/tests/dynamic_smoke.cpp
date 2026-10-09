@@ -152,14 +152,25 @@ int wmain()
 			static_cast<std::streamsize>(data.size()));
 		output.close();
 		const auto utf8_path = path.string();
+		const auto image_count_before = darling_windows_dyld_image_count();
 		void* handle = darling_windows_dlopen(utf8_path.c_str(), 0);
 		void* second_handle = darling_windows_dlopen(utf8_path.c_str(), 0);
+		const auto image_count_after = darling_windows_dyld_image_count();
+		bool image_visible = false;
+		for (std::uint32_t index = 0; index < image_count_after; ++index) {
+			const auto* image_name = darling_windows_dyld_get_image_name(index);
+			if (image_name != nullptr && std::strcmp(image_name, utf8_path.c_str()) == 0) {
+				image_visible = darling_windows_dyld_get_image_header(index) != nullptr;
+				break;
+			}
+		}
 		void* symbol_address = darling_windows_dlsym(handle, "exported");
 		void* default_symbol_address = darling_windows_dlsym(
 			reinterpret_cast<void*>(static_cast<std::intptr_t>(-2)), "exported");
 		void* process_handle = darling_windows_dlopen(nullptr, 0);
 		void* process_symbol_address = darling_windows_dlsym(process_handle, "exported");
 		const bool passed = handle != nullptr && second_handle == handle &&
+			image_count_after > image_count_before && image_visible &&
 			symbol_address != nullptr &&
 			default_symbol_address == symbol_address &&
 			process_symbol_address == symbol_address &&
@@ -217,6 +228,7 @@ int wmain()
 		std::cout << "DARWIN_RTLD_DEFAULT=PASS\n";
 		std::cout << "DARWIN_DLOPEN_CONCURRENT=PASS\n";
 		std::cout << "DARWIN_DLCLOSE=PASS\n";
+		std::cout << "DARWIN_DYLD_DYNAMIC_IMAGE=PASS\n";
 		return 0;
 	} catch (const std::exception& error) {
 		std::cerr << "DYNAMIC_SMOKE_ERROR=" << error.what() << "\n";

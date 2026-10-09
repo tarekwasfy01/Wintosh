@@ -6555,36 +6555,58 @@ extern "C" int darling_windows_dladdr(const void* address, darling_dl_info* info
 extern "C" std::uint32_t darling_windows_dyld_image_count()
 {
 	const auto modules = CurrentProcessModules();
-	return static_cast<std::uint32_t>(modules.size());
+	std::lock_guard lock(dynamic_image_mutex);
+	return static_cast<std::uint32_t>(modules.size() + dynamic_images.size());
 }
 
 extern "C" const char* darling_windows_dyld_get_image_name(std::uint32_t index)
 {
 	const auto modules = CurrentProcessModules();
-	if (index >= modules.size()) {
-		return nullptr;
+	if (index < modules.size()) {
+		static thread_local std::string image_name;
+		char path[MAX_PATH]{};
+		const DWORD length = GetModuleFileNameA(modules[index], path,
+			static_cast<DWORD>(std::size(path)));
+		if (length == 0 || length >= std::size(path)) {
+			return nullptr;
+		}
+		image_name.assign(path, length);
+		return image_name.c_str();
 	}
+	std::lock_guard lock(dynamic_image_mutex);
+	const auto dynamic_index = index - static_cast<std::uint32_t>(modules.size());
+	if (dynamic_index >= dynamic_images.size()) return nullptr;
 	static thread_local std::string image_name;
-	char path[MAX_PATH]{};
-	const DWORD length = GetModuleFileNameA(modules[index], path,
-		static_cast<DWORD>(std::size(path)));
-	if (length == 0 || length >= std::size(path)) {
-		return nullptr;
-	}
-	image_name.assign(path, length);
+	auto iterator = dynamic_images.begin();
+	std::advance(iterator, dynamic_index);
+	image_name = darling::windows_host::DynamicImagePath(*iterator->second).string();
 	return image_name.c_str();
 }
 
 extern "C" const void* darling_windows_dyld_get_image_header(std::uint32_t index)
 {
 	const auto modules = CurrentProcessModules();
-	return index < modules.size() ? static_cast<const void*>(modules[index]) : nullptr;
+	if (index < modules.size()) {
+		return static_cast<const void*>(modules[index]);
+	}
+	std::lock_guard lock(dynamic_image_mutex);
+	const auto dynamic_index = index - static_cast<std::uint32_t>(modules.size());
+	if (dynamic_index >= dynamic_images.size()) return nullptr;
+	auto iterator = dynamic_images.begin();
+	std::advance(iterator, dynamic_index);
+	return darling::windows_host::DynamicImageHeader(*iterator->second);
 }
 
 extern "C" std::intptr_t darling_windows_dyld_get_image_vmaddr_slide(std::uint32_t index)
 {
-	(void)index;
-	return 0;
+	const auto modules = CurrentProcessModules();
+	if (index < modules.size()) return 0;
+	std::lock_guard lock(dynamic_image_mutex);
+	const auto dynamic_index = index - static_cast<std::uint32_t>(modules.size());
+	if (dynamic_index >= dynamic_images.size()) return 0;
+	auto iterator = dynamic_images.begin();
+	std::advance(iterator, dynamic_index);
+	return darling::windows_host::DynamicImageSlide(*iterator->second);
 }
 
 extern "C" int darling_windows_getpagesize()

@@ -2790,13 +2790,14 @@ open.
 
 The dyld image-enumeration family now exports `_dyld_image_count`,
 `_dyld_get_image_name`, `_dyld_get_image_header`, and
-`_dyld_get_image_vmaddr_slide` with their common Mach-O spellings; the Windows
-host enumerates current-process modules through `EnumProcessModules`, returns
-module paths and bases, and reports a zero slide for the host-module model.
-The host fixture verifies resolver lookup, a nonempty real image list, an image
-name, a non-null image base, and slide lookup on x64 and Win32, while both
-complete Release matrices remain green at 27/27. Darwin image ordering,
-Mach-O header translation, unload notifications, slide/UUID computation,
+`_dyld_get_image_vmaddr_slide` with their common Mach-O spellings. The Windows
+host enumerates current-process modules through `EnumProcessModules` and also
+appends process-local Mach-O images loaded through `dlopen`, returning their
+path, mapped image base, and mapping slide. The dynamic-loader fixture verifies
+that a Mach-O image becomes visible in this enumeration and disappears again
+through the existing `dlclose` lifetime path; the complete Release suite is
+green at 39/39. Darwin image ordering, Mach-O header translation beyond the
+mapped-base contract, unload notifications, slide/UUID computation,
 shared-cache indices, and exact dyld image-lifetime semantics remain open.
 
 The process-identity family now exports Darwin `_getprogname` and `_setprogname`;

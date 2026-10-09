@@ -548,9 +548,10 @@ POSIX join cleanup/reacquire behavior after a canceled join remain open.
 The Windows adapter now has an explicit LIFO cleanup-record stack with push/pop
 operations, and deferred cancellation drains it before TLS destructors. The
 opt-in PureDarwin-shaped macros are exercised by the host smoke. Cancellation
-from `pthread_cond_wait` and `pthread_cond_timedwait` now preserves the mutex
-reacquisition rule before cleanup handlers run; the smoke verifies ownership
-from a cleanup callback. Full cleanup-handler ordering around every POSIX
+from `pthread_cond_wait` and `pthread_cond_timedwait` is detected, but the
+cleanup callback ownership assertion is not yet reliable. A native
+exception-free transition is still required to reacquire the mutex before
+draining cleanup handlers; full cleanup-handler ordering around every POSIX
 cancellation point and exact Darwin cancellation behavior remain open.
 
 The VM read bridge now records returned local buffers and makes

@@ -50,10 +50,11 @@ Darwin cleanup ordering at every cancellation point remains open.
 
 Condition-variable waits poll the deferred request in bounded intervals, so
 the cancellation path also covers the main blocking pthread primitive.
-When cancellation is observed from `pthread_cond_wait` or
-`pthread_cond_timedwait`, the adapter now preserves the POSIX rule that the
-associated mutex is reacquired before cleanup handlers run. The host smoke
-verifies this from a cleanup callback and releases the mutex there.
+Condition waits currently detect deferred cancellation, but the cleanup
+callback ownership assertion is not yet passing reliably. The implementation
+still needs a native exception-free transition that reacquires the mutex before
+draining cleanup handlers; this sub-path is therefore partial and not claimed
+as verified.
 The mutex-attribute subfamily now has `init`, `destroy`, `gettype`, `settype`,
 `getpshared`, and `setpshared` adapters plus resolver coverage. Normal and
 recursive mutexes are backed by distinct Windows synchronization objects and

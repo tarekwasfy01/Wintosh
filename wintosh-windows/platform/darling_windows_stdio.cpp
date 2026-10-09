@@ -2667,7 +2667,13 @@ extern "C" int darling_windows_pthread_join(std::uint64_t thread, void** result)
 		if (found == darling_pthreads.end()) return 3;
 		context = &found->second;
 	}
-	if (WaitForSingleObject(handle, INFINITE) != WAIT_OBJECT_0) return 4;
+	darling_windows_pthread_testcancel();
+	for (;;) {
+		const auto wait_result = WaitForSingleObject(handle, 10);
+		if (wait_result == WAIT_OBJECT_0) break;
+		if (wait_result == WAIT_FAILED) return 4;
+		darling_windows_pthread_testcancel();
+	}
 	if (result != nullptr) *result = (*context)->result;
 	CloseHandle(handle);
 	{

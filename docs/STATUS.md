@@ -510,6 +510,10 @@ held mutex, cancellation, canceled join, and orderly mutex cleanup.
 It also proves cancellation while a worker is inside `pthread_cond_wait`, then
 joins the canceled worker and destroys the condition and mutex normally.
 
+`pthread_join` now uses bounded waits with a deferred cancellation check, so a
+worker blocked in a join can observe cancellation. Handle ownership and exact
+POSIX join cleanup/reacquire behavior after a canceled join remain open.
+
 The VM read bridge now records returned local buffers and makes
 `mach_vm_deallocate` release those buffers in the current Windows process,
 even when the read targeted a different PID. This closes the previous

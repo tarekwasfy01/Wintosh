@@ -1716,12 +1716,11 @@ extern "C" id objc_loadWeak(id* location)
 extern "C" id objc_loadWeakRetained(id* location)
 {
 	if (!location) return nullptr;
-	id value = nullptr;
-	{
-		std::lock_guard lock(RuntimeMutex());
-		value = *location;
-	}
-	return value ? objc_retain(value) : nullptr;
+	std::lock_guard lock(RuntimeMutex());
+	const id value = *location;
+	if (value)
+		value->retain_count.fetch_add(1, std::memory_order_relaxed);
+	return value;
 }
 
 extern "C" void objc_destroyWeak(id* location)

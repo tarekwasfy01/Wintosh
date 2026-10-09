@@ -488,10 +488,10 @@ Objective-C smoke gate covers set/clear and resolver lookup. Atomic memory
 ordering, weak-reference races, and complete ARC ownership conventions remain
 outside this minimal process-local adapter.
 
-The weak-reference bridge now also exports `objc_loadWeakRetained`, taking the
-weak-table lock for the load and retaining the result before returning it. The
-Objective-C smoke gate covers the retained load and balances the returned
-retain. Atomic weak replacement, destruction races, and full ARC weak
+The weak-reference bridge now also exports `objc_loadWeakRetained`, loading
+and retaining the result under the same runtime lock used by final release.
+The Objective-C smoke gate covers the retained load and balances the returned
+retain. Lock-free ARC ordering, atomic weak replacement, and full ARC weak
 semantics remain open.
 
 The Objective-C ABI now exports `class_replaceMethod`. It replaces an existing

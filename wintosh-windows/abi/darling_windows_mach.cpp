@@ -218,10 +218,9 @@ extern "C" darling_kern_return_t darling_windows_thread_set_state(
 	std::uint32_t count)
 {
 	if (thread == 0 || thread == darling_windows_mach_thread_self() ||
-		(flavor != darling_x86_thread_state64_flavor && flavor != darling_x86_debug_state64_flavor) || state == nullptr ||
-		count < (flavor == darling_x86_thread_state64_flavor ? darling_x86_thread_state64_count : darling_x86_debug_state64_count))
+		(flavor != darling_x86_thread_state64_flavor && flavor != darling_x86_float_state64_flavor && flavor != darling_x86_debug_state64_flavor) || state == nullptr ||
+		count < (flavor == darling_x86_thread_state64_flavor ? darling_x86_thread_state64_count : flavor == darling_x86_float_state64_flavor ? darling_x86_float_state64_count : darling_x86_debug_state64_count))
 		return 4;
-	if (flavor == darling_x86_debug_state64_flavor && count < darling_x86_debug_state64_count) return 4;
 	const HANDLE handle = OpenThread(THREAD_SUSPEND_RESUME | THREAD_SET_CONTEXT, FALSE, thread);
 	if (handle == nullptr) return 4;
 	if (SuspendThread(handle) == static_cast<DWORD>(-1)) {
@@ -229,7 +228,7 @@ extern "C" darling_kern_return_t darling_windows_thread_set_state(
 		return 4;
 	}
 	CONTEXT context{};
-	context.ContextFlags = flavor == darling_x86_debug_state64_flavor ? CONTEXT_DEBUG_REGISTERS : CONTEXT_CONTROL | CONTEXT_INTEGER;
+	context.ContextFlags = flavor == darling_x86_debug_state64_flavor ? CONTEXT_DEBUG_REGISTERS : flavor == darling_x86_float_state64_flavor ? CONTEXT_FLOATING_POINT : CONTEXT_CONTROL | CONTEXT_INTEGER;
 	if (!GetThreadContext(handle, &context)) {
 		ResumeThread(handle); CloseHandle(handle); return 4;
 	}
@@ -238,6 +237,14 @@ extern "C" darling_kern_return_t darling_windows_thread_set_state(
 		context.Dr0 = source->dr0; context.Dr1 = source->dr1; context.Dr2 = source->dr2; context.Dr3 = source->dr3;
 		context.Dr6 = source->dr6; context.Dr7 = source->dr7;
 		const BOOL applied = SetThreadContext(handle, &context); ResumeThread(handle); CloseHandle(handle); return applied ? 0 : 4;
+	}
+	if (flavor == darling_x86_float_state64_flavor) {
+		static_assert(sizeof(context.FltSave) == darling_x86_float_state64_count * sizeof(std::uint32_t));
+		const auto* source = static_cast<const darling_x86_float_state64*>(state);
+		std::memcpy(&context.FltSave, source, sizeof(context.FltSave));
+		const BOOL applied = SetThreadContext(handle, &context);
+		ResumeThread(handle); CloseHandle(handle);
+		return applied ? 0 : 4;
 	}
 	const auto* source = static_cast<const darling_x86_thread_state64*>(state);
 	context.Rax = source->rax; context.Rbx = source->rbx; context.Rcx = source->rcx; context.Rdx = source->rdx;

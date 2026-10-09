@@ -36,7 +36,9 @@ nonblocking descriptor flag. It also transfers a payload through the Darwin
 `darling_msghdr` ABI using `sendmsg`/`recvmsg`. The larger host smoke still
 exercises additional exception-data and resolver combinations; the focused test
 also verifies IPv6 `inet_pton`/`inet_ntop`. Those remaining combinations stay
-separate coverage.
+separate coverage. The specialized `syscalls_smoke` additionally exercises
+`SCM_RIGHTS` descriptor transfer and malformed-control rejection in five
+successful runs.
 
 The process row also covers the four-word Darwin signal-set constructors and
 membership operations, verified by `signals_smoke`; this does not establish

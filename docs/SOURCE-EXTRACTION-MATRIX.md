@@ -67,3 +67,8 @@ root with:
 ```powershell
 .\tools\Check-LicensePreflight.ps1
 ```
+
+The preflight also scans the 90 current `wintosh-windows` C/C++ source and
+header files for a license, copyright, or GPL notice in their first 14 lines;
+the current result is 90 covered and 0 missing notices. This is a notice
+coverage check, not a substitute for component-by-component license review.

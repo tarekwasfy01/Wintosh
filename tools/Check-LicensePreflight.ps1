@@ -22,7 +22,20 @@ if ($missing.Count -ne 0) {
 }
 $provenance = Import-Csv (Join-Path $licenseDir 'EXTERNAL-COMPONENT-PROVENANCE.csv')
 $inventory = Import-Csv (Join-Path $licenseDir 'SOURCE-LICENSE-INVENTORY.csv')
+$sourceFiles = @(Get-ChildItem (Join-Path $Root 'wintosh-windows') -Recurse -File |
+    Where-Object { $_.Extension -in '.cpp', '.h', '.c', '.hpp' })
+$missingNotices = @()
+foreach ($sourceFile in $sourceFiles) {
+    $head = (Get-Content -LiteralPath $sourceFile.FullName -TotalCount 14) -join "`n"
+    if ($head -notmatch '(?i)GPL|license|copyright') {
+        $missingNotices += $sourceFile.FullName
+    }
+}
 Write-Output ("PROVENANCE_ROWS={0}" -f @($provenance).Count)
 Write-Output ("LICENSE_INVENTORY_ROWS={0}" -f @($inventory).Count)
+Write-Output ("PORT_SOURCE_FILES={0}" -f $sourceFiles.Count)
+Write-Output ("PORT_SOURCE_FILES_WITHOUT_HEADER_NOTICE={0}" -f $missingNotices.Count)
+foreach ($file in $missingNotices) { Write-Output ("MISSING_HEADER_NOTICE {0}" -f $file) }
+if ($missingNotices.Count -ne 0) { exit 1 }
 Write-Output 'LICENSE_PREFLIGHT=PASS'
 exit 0

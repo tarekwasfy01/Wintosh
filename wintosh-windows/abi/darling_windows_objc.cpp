@@ -1758,11 +1758,9 @@ extern "C" id objc_moveWeak(id* destination, id* source)
 	}
 	*destination = *source;
 	if (*source) {
-		const auto references = WeakReferences.find(*source);
-		if (references != WeakReferences.end()) {
-			references->second.erase(source);
-			references->second.insert(destination);
-		}
+		auto& references = WeakReferences[*source];
+		references.erase(source);
+		references.insert(destination);
 	}
 	*source = nullptr;
 	return *destination;

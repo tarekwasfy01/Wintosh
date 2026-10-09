@@ -853,15 +853,23 @@ int main()
 		return 36;
 	if (objc_moveWeak(&moved_slot, &moved_slot) != object)
 		return 37;
+	id externally_initialized = object;
+	id externally_moved = nullptr;
+	if (objc_moveWeak(&externally_moved, &externally_initialized) != object ||
+		externally_initialized != nullptr ||
+		objc_loadWeak(&externally_moved) != object)
+		return 38;
 	objc_destroyWeak(&weak_slot);
 	if (objc_loadWeak(&weak_slot) != nullptr)
 		return 34;
 	objc_release(object);
 	if (copied_slot != nullptr || objc_loadWeak(&copied_slot) != nullptr ||
-		moved_slot != nullptr || objc_loadWeak(&moved_slot) != nullptr)
+		moved_slot != nullptr || objc_loadWeak(&moved_slot) != nullptr ||
+		externally_moved != nullptr || objc_loadWeak(&externally_moved) != nullptr)
 		return 35;
 	objc_destroyWeak(&copied_slot);
 	objc_destroyWeak(&moved_slot);
+	objc_destroyWeak(&externally_moved);
 	std::puts("DARWIN_OBJC_REGISTRY=PASS");
 	return 0;
 }

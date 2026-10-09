@@ -454,6 +454,11 @@ The Objective-C smoke gate covers transfer, source clearing, self-move, and
 zeroing after object destruction; atomic replacement and destruction races
 remain open.
 
+The move path now also creates the destination registration when the source
+slot contains an object but was not previously present in the weak table. This
+keeps later object destruction able to zero the moved destination rather than
+leaving an externally initialized slot stale.
+
 The ARC bridge now exports `objc_storeStrong`: it retains the incoming object
 before replacing the slot and releases the previous value afterward. The
 Objective-C smoke gate covers set/clear and resolver lookup. Atomic memory

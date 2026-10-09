@@ -37,6 +37,8 @@ std::mutex ports_wait_mutex;
 std::condition_variable ports_condition;
 std::unordered_map<darling_mach_port_name_t, std::shared_ptr<PortQueue>> ports;
 std::unordered_map<darling_mach_port_name_t, std::unordered_set<darling_mach_port_name_t>> port_sets;
+std::mutex read_buffers_mutex;
+std::unordered_map<darling_mach_vm_address_t, SIZE_T> read_buffers;
 
 std::shared_ptr<PortQueue> FindPort(darling_mach_port_name_t name)
 {
@@ -120,9 +122,19 @@ extern "C" darling_kern_return_t darling_windows_mach_vm_deallocate(
 	darling_mach_vm_size_t size)
 {
 	(void)size;
+	if (address == 0) return 4;
+	{
+		std::lock_guard lock(read_buffers_mutex);
+		const auto found = read_buffers.find(address);
+		if (found != read_buffers.end()) {
+			const BOOL released = VirtualFree(reinterpret_cast<void*>(static_cast<std::uintptr_t>(address)), 0, MEM_RELEASE);
+			if (released) read_buffers.erase(found);
+			return released ? 0 : 4;
+		}
+	}
 	bool owned = false;
 	const HANDLE process = OpenVmProcess(task, PROCESS_VM_OPERATION, owned);
-	if (process == nullptr || address == 0) {
+	if (process == nullptr) {
 		CloseVmProcess(process, owned);
 		return 4;
 	}
@@ -202,6 +214,10 @@ extern "C" darling_kern_return_t darling_windows_mach_vm_read(
 	*data = static_cast<darling_mach_vm_address_t>(
 		reinterpret_cast<std::uintptr_t>(buffer));
 	*out_size = static_cast<darling_mach_vm_size_t>(copied);
+	{
+		std::lock_guard lock(read_buffers_mutex);
+		read_buffers.emplace(*data, static_cast<SIZE_T>(copied));
+	}
 	return 0;
 }
 

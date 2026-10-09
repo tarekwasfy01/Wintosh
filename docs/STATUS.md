@@ -447,6 +447,12 @@ through the existing `mach_vm_deallocate` path. This covers the basic
 out-of-line read shape; exact Darwin VM object ownership and remote lifetime
 semantics remain open.
 
+The VM read bridge now records returned local buffers and makes
+`mach_vm_deallocate` release those buffers in the current Windows process,
+even when the read targeted a different PID. This closes the previous
+remote-OOL deallocation mismatch; complete Darwin VM object lifetime and
+cross-task ownership semantics remain open.
+
 The weak-reference bridge now also implements `objc_moveWeak`: it removes any
 previous destination registration, transfers the tracked weak location, clears
 the source, and treats identical source and destination locations as a no-op.

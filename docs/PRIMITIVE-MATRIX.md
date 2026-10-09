@@ -58,6 +58,8 @@ the parent after join; unknown handles and invalid buffers remain `EINVAL`.
 `pthread_threadid_np` likewise resolves a live managed pthread handle to its
 native Windows thread ID; invalid or no-longer-managed handles remain
 `EINVAL`.
+Handle-scoped names are removed when the thread is joined or detached, so the
+adapter does not retain stale pthread identity state.
 
 The Windows adapter also provides an explicit port-local LIFO cleanup-record
 stack through `darling_windows_pthread_cleanup_push` and

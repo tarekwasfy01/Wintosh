@@ -1172,9 +1172,10 @@ int main()
 	std::uint64_t named_thread = 0;
 	const bool pthread_cross_thread_name_ok =
 		darling_windows_pthread_create(&named_thread, nullptr, &PthreadNamedStart, nullptr) == 0 &&
-		darling_windows_pthread_join(named_thread, nullptr) == 0 &&
 		darling_windows_pthread_getname_np(named_thread, pthread_name, sizeof(pthread_name)) == 0 &&
-		std::strcmp(pthread_name, "darling-worker") == 0;
+		std::strcmp(pthread_name, "darling-worker") == 0 &&
+		darling_windows_pthread_join(named_thread, nullptr) == 0 &&
+		darling_windows_pthread_getname_np(named_thread, pthread_name, sizeof(pthread_name)) == 22;
 	void* pthread_mutex_attributes = nullptr;
 	void* recursive_mutex_storage = nullptr;
 	void* errorcheck_mutex_storage = nullptr;

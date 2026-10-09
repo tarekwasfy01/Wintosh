@@ -2735,6 +2735,10 @@ extern "C" int darling_windows_pthread_join(std::uint64_t thread, void** result)
 		std::lock_guard lock(darling_pthread_mutex);
 		darling_pthreads.erase(thread);
 	}
+	{
+		std::lock_guard lock(darling_pthread_name_mutex);
+		darling_pthread_names.erase(thread);
+	}
 	return 0;
 }
 
@@ -2751,6 +2755,10 @@ extern "C" int darling_windows_pthread_detach(std::uint64_t thread)
 	}
 	context->detached.store(true, std::memory_order_release);
 	context.release();
+	{
+		std::lock_guard lock(darling_pthread_name_mutex);
+		darling_pthread_names.erase(thread);
+	}
 	CloseHandle(handle);
 	return 0;
 }

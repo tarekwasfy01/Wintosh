@@ -949,6 +949,9 @@ int main()
 		darling_windows_host_symbol("nanosleep") != 0 &&
 		darling_windows_host_symbol("gettimeofday") != 0 &&
 		darling_windows_host_symbol("usleep") != 0 &&
+		darling_windows_host_symbol("sleep") != 0 &&
+		darling_windows_host_symbol("sleep_nocancel") != 0 &&
+		darling_windows_host_symbol("__sleep") != 0 &&
 		darling_windows_host_symbol("clock_gettime_nocancel") != 0 &&
 		darling_windows_host_symbol("clock_getres_nocancel") != 0 &&
 		darling_windows_host_symbol("nanosleep_nocancel") != 0 &&

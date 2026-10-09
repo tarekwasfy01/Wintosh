@@ -171,6 +171,9 @@ relative and absolute waits on the supported wall-clock and monotonic-clock
 IDs. Deadline handling is adapted to Windows clocks and is not full Darwin
 interruption or cancellation behavior.
 
+The same row covers the `sleep_nocancel` and `__sleep` resolver spellings;
+these use the existing whole-second sleep adapter.
+
 ## Source boundaries
 
 Linux/WSL references are compatibility evidence and test material, not a new

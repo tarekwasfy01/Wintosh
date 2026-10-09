@@ -628,6 +628,11 @@ deadlines with checked timespec validation. The host API smoke checks both
 resolver names; Windows sleep interruption and exact Darwin cancellation
 semantics remain outside this adapter.
 
+The same resolver family now covers `sleep_nocancel` and the common `__sleep`
+spelling in addition to the existing `sleep` entry point. These aliases retain
+the current whole-second Windows behavior and do not claim Darwin interruption
+or cancellation semantics.
+
 The runtime README now records the actual Mach-O execution boundary: the
 Windows x86_64 runner can enter compatible x86_64 images after mapping,
 relocations, bindings, initializers, and protection setup, while i386 and

@@ -4350,6 +4350,12 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 	if (std::strcmp(name, "_sleep") == 0 || std::strcmp(name, "sleep") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_sleep);
 	}
+	if (std::strcmp(name, "__sleep") == 0 ||
+		std::strcmp(name, "_sleep_nocancel") == 0 ||
+		std::strcmp(name, "__sleep_nocancel") == 0 ||
+		std::strcmp(name, "sleep_nocancel") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_sleep);
+	}
 	if (std::strcmp(name, "_arc4random") == 0 || std::strcmp(name, "arc4random") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_arc4random);
 	}

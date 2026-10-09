@@ -4334,3 +4334,7 @@ adapter; absolute waits compute a checked deadline against the selected wall
 or monotonic clock before sleeping. Resolver and host smoke coverage pass on
 the current Release build. Signal interruption, remaining-time restart rules,
 and exact Darwin cancellation semantics remain open.
+
+The resolver also recognizes `sleep_nocancel` and the common `__sleep` form;
+the aliases share the whole-second Windows sleep implementation. Darwin signal
+interruption and cancellation behavior are still not reproduced.

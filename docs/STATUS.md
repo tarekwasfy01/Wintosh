@@ -69,7 +69,9 @@ descriptors (`MACH_IPC_DESCRIPTOR_VALIDATION=PASS`).
 The broker also accepts the explicit `Destroy` operation, releasing the
 port and rejecting later use (`BROKER_MACH_DESTROY=PASS`).
 Each port FIFO is bounded to 1024 queued messages and reports
-`MACH_SEND_QUEUE_FULL` instead of allowing unbounded broker memory growth.
+`MACH_SEND_QUEUE_FULL` instead of allowing unbounded broker memory growth;
+the boundary is exercised by the broker smoke as
+`BROKER_MACH_QUEUE_LIMIT=PASS`.
 
 The platform path adapter now provides lexical `AbsolutePath` resolution and
 handle-based `CanonicalPath` resolution through Windows final-name lookup,

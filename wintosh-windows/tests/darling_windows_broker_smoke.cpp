@@ -232,6 +232,36 @@ int wmain()
 			return 5;
 		}
 		std::cout << "BROKER_MACH_DESTROY=PASS\n";
+		const darling::windows_host::MachIpcEnvelope queue_allocate_request{
+			darling::windows_host::MachIpcOperation::Allocate, 112, 0, 0, {}};
+		const auto queue_allocate_bytes = darling::windows_host::EncodeMachIpcEnvelope(queue_allocate_request);
+		client.Write(std::string(queue_allocate_bytes.begin(), queue_allocate_bytes.end()));
+		const auto queue_allocate_wire = client.Read();
+		const auto queue_allocate_response = darling::windows_host::DecodeMachIpcEnvelope(
+			std::vector<std::uint8_t>(queue_allocate_wire.begin(), queue_allocate_wire.end()));
+		const auto queue_token = queue_allocate_response.port_token;
+		for (std::uint64_t request_id = 0; request_id != 1024; ++request_id) {
+			const darling::windows_host::MachIpcEnvelope queued_send{
+				darling::windows_host::MachIpcOperation::Send, 1000 + request_id,
+				queue_token, 0, {'Q'}};
+			const auto queued_bytes = darling::windows_host::EncodeMachIpcEnvelope(queued_send);
+			client.Write(std::string(queued_bytes.begin(), queued_bytes.end()));
+			(void)client.Read();
+		}
+		const darling::windows_host::MachIpcEnvelope overflow_send{
+			darling::windows_host::MachIpcOperation::Send, 2024, queue_token, 0, {'Q'}};
+		const auto overflow_bytes = darling::windows_host::EncodeMachIpcEnvelope(overflow_send);
+		client.Write(std::string(overflow_bytes.begin(), overflow_bytes.end()));
+		if (client.Read() != "MACH_SEND_QUEUE_FULL") {
+			std::cerr << "BROKER_MACH_QUEUE_LIMIT=FAIL\n";
+			return 5;
+		}
+		const darling::windows_host::MachIpcEnvelope queue_destroy{
+			darling::windows_host::MachIpcOperation::Destroy, 2025, queue_token, 0, {}};
+		const auto queue_destroy_bytes = darling::windows_host::EncodeMachIpcEnvelope(queue_destroy);
+		client.Write(std::string(queue_destroy_bytes.begin(), queue_destroy_bytes.end()));
+		(void)client.Read();
+		std::cout << "BROKER_MACH_QUEUE_LIMIT=PASS\n";
 
 		client.Write("SHUTDOWN");
 		const auto shutdown = client.Read();

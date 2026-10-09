@@ -60,3 +60,10 @@ No source analysis entry grants permission to copy code. Before a family is
 ported, its provenance, applicable license, copyright notices, and whether the
 implementation is original or derivative must be recorded in the porting
 inventory.
+
+Run the reproducible license-file and inventory preflight from the repository
+root with:
+
+```powershell
+.\tools\Check-LicensePreflight.ps1
+```

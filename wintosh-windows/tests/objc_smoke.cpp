@@ -18,6 +18,7 @@
 namespace {
 
 std::int64_t observed_void_int64 = 0;
+int observed_void_int = 0;
 
 id ReturnSelf(id receiver, SEL)
 {
@@ -51,6 +52,11 @@ void MarkCalled(id, SEL)
 void ObserveInt64(id, SEL, std::int64_t value)
 {
 	observed_void_int64 = value;
+}
+
+void ObserveInt(id, SEL, int value)
+{
+	observed_void_int = value;
 }
 
 bool IsPositive(id, SEL, bool value)
@@ -297,6 +303,7 @@ int main()
 	SEL double_selector = sel_registerName("scale:");
 	SEL double_pair_selector = sel_registerName("addDoubles:");
 	SEL void_int64_selector = sel_registerName("observeInt64:");
+	SEL void_int_selector = sel_registerName("observeInt:");
 	if (!class_addMethod(child, bool_selector,
 		reinterpret_cast<IMP>(&IsPositive), "B@:B") ||
 		!class_addMethod(child, double_selector,
@@ -306,6 +313,9 @@ int main()
 		return 10;
 	if (!class_addMethod(child, void_int64_selector,
 		reinterpret_cast<IMP>(&ObserveInt64), "v@:q"))
+		return 10;
+	if (!class_addMethod(child, void_int_selector,
+		reinterpret_cast<IMP>(&ObserveInt), "v@:i"))
 		return 10;
 	const DarlingObjcValue bool_result = darling_objc_invoke1(object,
 		bool_selector, DarlingObjcValue{DARLING_OBJC_BOOL, {.boolean = true}});
@@ -325,6 +335,9 @@ int main()
 		0x123456789LL);
 	if (observed_void_int64 != 0x123456789LL)
 		return 20;
+	darling_objc_msgSend_void1_int(object, void_int_selector, 123456);
+	if (observed_void_int != 123456)
+		return 21;
 	SEL pointer_selector = sel_registerName("pointer:");
 	SEL two_selector = sel_registerName("addTwo:");
 	if (!class_addMethod(child, pointer_selector,

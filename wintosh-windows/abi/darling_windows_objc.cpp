@@ -2151,6 +2151,18 @@ extern "C" void darling_objc_msgSend_void1_int64(id receiver, SEL selector,
 	reinterpret_cast<VoidMethod>(implementation)(receiver, selector, argument);
 }
 
+extern "C" void darling_objc_msgSend_void1_int(id receiver, SEL selector,
+	int argument)
+{
+	const IMP implementation = FindMethod(receiver, selector);
+	const char* types = class_getMethodTypeEncoding(object_getClass(receiver),
+		selector);
+	if (!implementation || !types || std::strcmp(types, "v@:i") != 0)
+		return;
+	using VoidMethod = void (*)(id, SEL, int);
+	reinterpret_cast<VoidMethod>(implementation)(receiver, selector, argument);
+}
+
 extern "C" double darling_objc_msgSend_double1(id receiver, SEL selector,
 	double argument)
 {

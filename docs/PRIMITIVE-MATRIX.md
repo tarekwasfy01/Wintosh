@@ -342,10 +342,15 @@ queueing and is covered by the descriptor smoke; cross-task name translation
 remains open. `MACH_MSG_TYPE_MAKE_SEND` and `MAKE_SEND_ONCE` now add the
 corresponding local sender reference while retaining the receive right. A
 single local `COPY` OOL descriptor is now validated and
-transported without deallocation or cross-process copying; true Mach VM
-ownership and protection transfer remain open. Negative smoke cases explicitly
-reject OOL deallocation and physical-copy requests until an ownership table is
-available.
+transported without deallocation or cross-process copying. The first native
+ownership slice is now available as `MachOolOwnershipTable`: it tracks queue
+and receiver references under a mutex and invokes a release callback only
+after the final reference is dropped. It is covered by
+`mach_ool_ownership_smoke`, but is not yet wired to raw guest pointers or the
+`mach_msg` OOL path. True Mach VM ownership, protection transfer,
+`VirtualAlloc`-backed mappings, and cross-process transfer therefore remain
+open. Negative smoke cases explicitly reject OOL deallocation and
+physical-copy requests.
 The local ABI distinguishes reference-decrementing `mach_port_deallocate`
 from forced `mach_port_destroy`; the smoke gate also verifies that forced
 destruction closes a blocked receiver and rejects subsequent use. This is a

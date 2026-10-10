@@ -45,6 +45,12 @@ This contract does not yet implement Darwin VM protection, copy-on-write,
 inheritance, purgeable memory, wired memory, Mach trailers, MIG, or complete
 cross-task name translation. Those remain separate matrix rows.
 
+The first implementation slice is now present as
+`MachOolOwnershipTable`: it tracks queue and receiver references under a
+mutex and invokes the supplied release callback only after the final reference
+is released. It is intentionally not wired to raw guest pointers or physical
+OOL copying yet.
+
 ## Provenance and license
 
 This is original Wintosh design documentation for a GPL-3.0-compatible adapter.

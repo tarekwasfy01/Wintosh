@@ -479,7 +479,7 @@ int main()
 		darling_mach_dispose_send_once, &disposal_right, &disposal_disposition) != 0 ||
 		disposal_right != 0 ||
 		darling_windows_mach_port_extract_right(task, send_once_port,
-			darling_mach_dispose_send, &disposal_right, &disposal_disposition) != 0 ||
+			darling_mach_dispose_send_once, &disposal_right, &disposal_disposition) != 0 ||
 		disposal_right != 0 ||
 		darling_windows_mach_port_extract_right(task, send_once_port,
 			darling_mach_dispose_receive, &disposal_right, &disposal_disposition) != 0 ||

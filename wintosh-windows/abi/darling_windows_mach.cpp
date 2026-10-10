@@ -35,6 +35,8 @@ struct PortQueue final {
 	std::uint32_t refs = 1;
 	std::uint32_t receive_refs = 1;
 	std::uint32_t send_refs = 0;
+	std::uint32_t send_once_refs = 0;
+	std::uint32_t total_refs() const { return receive_refs + send_refs + send_once_refs; }
 	bool closed = false;
 };
 std::mutex ports_mutex;
@@ -973,7 +975,7 @@ extern "C" darling_kern_return_t darling_windows_mach_port_deallocate(
 			if (port->send_refs != 0) --port->send_refs;
 			else if (port->receive_refs != 0) --port->receive_refs;
 			else return 3;
-			port->refs = port->receive_refs + port->send_refs;
+			port->refs = port->total_refs();
 			if (port->refs != 0) return 0;
 		}
 		ports.erase(found);
@@ -1018,6 +1020,7 @@ extern "C" darling_kern_return_t darling_windows_mach_port_destroy(
 		std::lock_guard lock(port->mutex);
 		port->receive_refs = 1;
 		port->send_refs = 0;
+		port->send_once_refs = 0;
 		port->refs = 1;
 	}
 	{
@@ -1078,9 +1081,11 @@ extern "C" darling_kern_return_t darling_windows_mach_port_insert_right(
 			if (port->refs == (std::numeric_limits<std::uint32_t>::max)()) return 3;
 			if (disposition == darling_mach_move_receive || disposition == darling_mach_copy_receive)
 				++port->receive_refs;
+			else if (disposition == darling_mach_move_send_once || disposition == darling_mach_make_send_once)
+				++port->send_once_refs;
 			else
 				++port->send_refs;
-			port->refs = port->receive_refs + port->send_refs;
+			port->refs = port->total_refs();
 			return 0;
 		}
 		if (source == port) return 0;
@@ -1093,13 +1098,17 @@ extern "C" darling_kern_return_t darling_windows_mach_port_insert_right(
 			if (source->receive_refs == 0) return 3;
 			--source->receive_refs;
 			++port->receive_refs;
+		} else if (disposition == darling_mach_move_send_once) {
+			if (source->send_once_refs == 0) return 3;
+			--source->send_once_refs;
+			++port->send_once_refs;
 		} else {
 			if (source->send_refs == 0) return 3;
 			--source->send_refs;
 			++port->send_refs;
 		}
-		source->refs = source->receive_refs + source->send_refs;
-		port->refs = port->receive_refs + port->send_refs;
+		source->refs = source->total_refs();
+		port->refs = port->total_refs();
 		source_exhausted = source->refs == 0;
 		if (source_exhausted) source->closed = true;
 		source_lock.unlock();
@@ -1151,19 +1160,30 @@ extern "C" darling_kern_return_t darling_windows_mach_port_extract_right(
 			if (port->receive_refs == 0) return 3;
 			--port->receive_refs;
 		} else if (disposition == darling_mach_dispose_send || disposition == darling_mach_dispose_send_once) {
-			if (port->send_refs == 0) return 3;
-			--port->send_refs;
+			if (disposition == darling_mach_dispose_send_once) {
+				if (port->send_once_refs == 0) return 3;
+				--port->send_once_refs;
+			} else {
+				if (port->send_refs == 0) return 3;
+				--port->send_refs;
+			}
 		} else if (disposition == darling_mach_move_receive || disposition == darling_mach_copy_receive) {
 			if (port->receive_refs == 0) return 3;
 			--port->receive_refs;
 		} else if (disposition == darling_mach_move_send || disposition == darling_mach_move_send_once) {
-			if (port->send_refs == 0) return 3;
-			--port->send_refs;
+			if (disposition == darling_mach_move_send_once) {
+				if (port->send_once_refs == 0) return 3;
+				--port->send_once_refs;
+			} else {
+				if (port->send_refs == 0) return 3;
+				--port->send_refs;
+			}
 		} else {
 			if (port->send_refs == (std::numeric_limits<std::uint32_t>::max)()) return 3;
-			++port->send_refs;
+			if (disposition == darling_mach_make_send_once) ++port->send_once_refs;
+			else ++port->send_refs;
 		}
-		port->refs = port->receive_refs + port->send_refs;
+		port->refs = port->total_refs();
 		exhausted = port->refs == 0;
 		if (exhausted) port->closed = true;
 	}
@@ -1208,7 +1228,7 @@ extern "C" darling_kern_return_t darling_windows_mach_port_mod_refs(
 			port->receive_refs = static_cast<std::uint32_t>(updated);
 		else
 			port->send_refs = static_cast<std::uint32_t>(updated);
-		port->refs = port->receive_refs + port->send_refs;
+		port->refs = port->total_refs();
 		exhausted = port->refs == 0;
 		if (exhausted) port->closed = true;
 	}
@@ -1225,7 +1245,7 @@ extern "C" darling_kern_return_t darling_windows_mach_port_mod_refs(
 		port->condition.notify_all();
 		ports_condition.notify_all();
 	}
-	if (port->send_refs == 0) DeliverNoSendersNotification(name);
+	if (port->send_refs == 0 && port->send_once_refs == 0) DeliverNoSendersNotification(name);
 	return 0;
 }
 
@@ -1239,7 +1259,7 @@ extern "C" darling_kern_return_t darling_windows_mach_port_get_refs(
 	const auto port = FindPort(name);
 	if (port == nullptr) return 3;
 	std::lock_guard lock(port->mutex);
-	*refs = right == darling_mach_port_type_receive ? port->receive_refs : port->send_refs;
+	*refs = right == darling_mach_port_type_receive ? port->receive_refs : port->send_refs + port->send_once_refs;
 	return 0;
 }
 
@@ -1255,7 +1275,7 @@ extern "C" darling_kern_return_t darling_windows_mach_port_type(
 	}
 	std::lock_guard lock(port->mutex);
 	*type = (port->receive_refs != 0 ? darling_mach_port_type_receive : 0) |
-		(port->send_refs != 0 ? darling_mach_port_type_send : 0);
+		(port->send_refs + port->send_once_refs != 0 ? darling_mach_port_type_send : 0);
 	return 0;
 }
 

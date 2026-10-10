@@ -26,6 +26,11 @@ On the current host, direct WSL probing returns `Wsl/E_ACCESSDENIED`, so no
 WSL-backed Darling execution is claimed or required for the native smoke-test
 suite.
 
+The native `wintosh.exe` Release target was built and verified with
+`--help` and `--version` (`Wintosh 0.1.1`). No standalone Mach-O fixture is
+bundled in the current workspace, so `--inspect` and actual Mach-O execution
+remain unclaimed until a licensed test image is supplied.
+
 ## What is included in a source release
 
 Include the Windows port source, all documentation, and the `licenses`

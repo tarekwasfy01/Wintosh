@@ -399,6 +399,34 @@ int wmain()
 		return 3;
 	}
 
+	auto envelope_pipe = darling::windows_host::NamedPipeRpcServer::Create(
+		L"darling-envelope-" + std::to_wstring(GetCurrentProcessId()));
+	std::thread envelope_server([&] {
+		envelope_pipe.WaitForClient();
+		const auto bytes = envelope_pipe.Read();
+		const auto request = darling::windows_host::DecodeMachIpcEnvelope(
+			std::vector<std::uint8_t>(bytes.begin(), bytes.end()));
+		const auto response_bytes = darling::windows_host::EncodeMachIpcEnvelope(request);
+		envelope_pipe.Write(std::string(response_bytes.begin(), response_bytes.end()));
+	});
+	Sleep(100);
+	auto envelope_client = darling::windows_host::NamedPipeRpcClient::Connect(envelope_pipe.Name());
+	darling::windows_host::MachIpcEnvelope envelope_request;
+	envelope_request.operation = darling::windows_host::MachIpcOperation::Send;
+	envelope_request.request_id = 0x1234;
+	envelope_request.port_token = 0x55;
+	envelope_request.payload = {0x4d, 0x41, 0x43, 0x48};
+	const auto envelope_response = darling::windows_host::SendMachIpcEnvelope(
+		envelope_client, envelope_request);
+	envelope_server.join();
+	if (envelope_response.operation != envelope_request.operation ||
+		envelope_response.request_id != envelope_request.request_id ||
+		envelope_response.payload != envelope_request.payload) {
+		std::cerr << "MACH_IPC_RPC=FAIL\n";
+		return 5;
+	}
+	std::cout << "MACH_IPC_RPC=PASS\n";
+
 	std::error_code cleanup_error;
 	std::filesystem::remove_all(prefix.Root(), cleanup_error);
 	std::cout << "PREFIX_CLEANUP=" << (cleanup_error ? "FAIL" : "PASS") << "\n";

@@ -237,4 +237,7 @@ private:
 	HANDLE m_pipe = INVALID_HANDLE_VALUE;
 };
 
+[[nodiscard]] MachIpcEnvelope SendMachIpcEnvelope(
+	NamedPipeRpcClient& client, const MachIpcEnvelope& request);
+
 } // namespace darling::windows_host

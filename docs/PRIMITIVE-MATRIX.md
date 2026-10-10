@@ -59,8 +59,11 @@ adapter and covered by `syscalls_smoke`.
 
 The native `MachMessage` runtime boundary now converts inline and OOL payloads
 to and from the broker's `MachIpcEnvelope`; `runtime_smoke` verifies both
-directions. This is the serialization bridge, not yet automatic routing of
-the local C `mach_msg` entry point through the broker session.
+directions. `SendMachIpcEnvelope` now performs the corresponding binary
+request/response exchange over the native Named Pipe transport and is covered
+by `MACH_IPC_RPC=PASS`. This is the operational serialization bridge, not yet
+automatic routing of the local C `mach_msg` entry point through the broker
+session.
 Broker receive envelopes carrying a duplicated native mapping handle can now
 be materialized back into OOL bytes through `MachIpcSharedMemory`; the runtime
 smoke covers handle mapping and closure. Descriptor rewriting in the C ABI is

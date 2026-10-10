@@ -778,4 +778,14 @@ void NamedPipeRpcClient::Reset() noexcept
 	}
 }
 
+MachIpcEnvelope SendMachIpcEnvelope(NamedPipeRpcClient& client,
+	const MachIpcEnvelope& request)
+{
+	const auto bytes = EncodeMachIpcEnvelope(request);
+	client.Write(std::string(bytes.begin(), bytes.end()));
+	const auto response = client.Read();
+	if (response.empty()) throw std::runtime_error("empty Mach IPC broker response");
+	return DecodeMachIpcEnvelope(std::vector<std::uint8_t>(response.begin(), response.end()));
+}
+
 } // namespace darling::windows_host

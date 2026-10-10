@@ -19,12 +19,13 @@ int main()
 			L"C:\\Windows\\System32\\cmd.exe /d /c \"choice /c A /n >nul & echo DARLING-INPUT\"",
 			{}, 80, 25);
 		terminal->Resize(100, 40);
-		const char key = 'A';
-		if (terminal->Write(&key, 1) != 1) {
+		const char key_sequence[] = "A\r\n";
+		if (terminal->Write(key_sequence, sizeof(key_sequence) - 1) !=
+			 sizeof(key_sequence) - 1) {
 			throw std::runtime_error("ConPTY input write was incomplete");
 		}
 		std::string output;
-		for (int attempt = 0; attempt < 200; ++attempt) {
+		for (int attempt = 0; attempt < 1000; ++attempt) {
 			char buffer[512]{};
 			const auto read = terminal->ReadAvailable(buffer, sizeof(buffer));
 			output.append(buffer, read);

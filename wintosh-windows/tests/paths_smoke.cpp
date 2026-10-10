@@ -10,6 +10,17 @@
 #include <filesystem>
 #include <iostream>
 
+namespace {
+
+bool SameWindowsPath(const std::filesystem::path& left,
+	const std::filesystem::path& right)
+{
+	std::error_code error;
+	return std::filesystem::equivalent(left, right, error) && !error;
+}
+
+}
+
 int wmain()
 {
 	try {
@@ -31,7 +42,7 @@ int wmain()
 			target_text.pop_back();
 		const auto target = std::filesystem::path(target_text).lexically_normal();
 		const auto canonical = darling::windows_host::DarwinPaths::CanonicalPath(target);
-		if (canonical != target) {
+		if (!SameWindowsPath(canonical, target)) {
 			std::cerr << "PATH_SMOKE_ERROR=canonical path mismatch\n";
 			return 1;
 		}

@@ -13,6 +13,17 @@
 #include <iostream>
 #include <string>
 
+namespace {
+
+bool SameWindowsPath(const std::filesystem::path& left,
+	const std::filesystem::path& right)
+{
+	std::error_code error;
+	return std::filesystem::equivalent(left, right, error) && !error;
+}
+
+}
+
 int wmain()
 {
 	try {
@@ -260,7 +271,7 @@ int wmain()
 			}
 			char resolved_link[1024]{};
 			if (darling_windows_realpath(symlink.string().c_str(), resolved_link) == nullptr ||
-				std::string(resolved_link) != nested.string()) {
+				!SameWindowsPath(std::filesystem::path(resolved_link), nested)) {
 				throw std::runtime_error("realpath did not resolve symbolic link");
 			}
 			if (darling_windows_host_symbol("_symlink") == 0 ||

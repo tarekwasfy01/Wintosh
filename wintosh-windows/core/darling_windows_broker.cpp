@@ -339,12 +339,14 @@ int wmain(int argc, wchar_t** argv)
 						queued.out_of_line_token = token;
 						queued.out_of_line_size = static_cast<std::uint32_t>(envelope.payload.size());
 					}
+					const auto response_out_of_line_token = queued.out_of_line_token;
+					const auto response_out_of_line_size = queued.out_of_line_size;
 					port_queues.at(envelope.port_token).push_back(std::move(queued));
 					broker_state_condition.notify_all();
 					darling::windows_host::MachIpcEnvelope response{
 						darling::windows_host::MachIpcOperation::Send,
 						envelope.request_id, envelope.port_token, 0, {},
-						queued.out_of_line_token, queued.out_of_line_size};
+						response_out_of_line_token, response_out_of_line_size};
 					server.Write(AsString(darling::windows_host::EncodeMachIpcEnvelope(response)));
 					continue;
 				}

@@ -165,13 +165,19 @@ int wmain()
 			}
 		}
 		void* symbol_address = darling_windows_dlsym(handle, "exported");
+		darling_dl_info dynamic_info{};
+		const bool dynamic_dladdr = symbol_address != nullptr &&
+			darling_windows_dladdr(symbol_address, &dynamic_info) == 1 &&
+			dynamic_info.dli_fname != nullptr &&
+			std::strcmp(dynamic_info.dli_fname, utf8_path.c_str()) == 0 &&
+			dynamic_info.dli_fbase != nullptr;
 		void* default_symbol_address = darling_windows_dlsym(
 			reinterpret_cast<void*>(static_cast<std::intptr_t>(-2)), "exported");
 		void* process_handle = darling_windows_dlopen(nullptr, 0);
 		void* process_symbol_address = darling_windows_dlsym(process_handle, "exported");
 		const bool passed = handle != nullptr && second_handle == handle &&
 			image_count_after > image_count_before && image_visible &&
-			symbol_address != nullptr &&
+			dynamic_dladdr &&
 			default_symbol_address == symbol_address &&
 			process_symbol_address == symbol_address &&
 			darling_windows_dlclose(process_handle) == 0 &&

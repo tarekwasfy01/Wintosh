@@ -557,6 +557,22 @@ std::intptr_t DynamicImageSlide(const DarwinDynamicImage& image) noexcept
 	return image.mapping.Slide();
 }
 
+bool DynamicImageContains(const DarwinDynamicImage& image, const void* address) noexcept
+{
+	const auto value = reinterpret_cast<std::uintptr_t>(address);
+	for (const auto& segment : image.mapping.Segments()) {
+		if (value >= segment.address && value - segment.address < segment.size)
+			return true;
+	}
+	return false;
+}
+
+void* DynamicImageBase(const DarwinDynamicImage& image) noexcept
+{
+	return image.mapping.Segments().empty() ? nullptr :
+		reinterpret_cast<void*>(image.mapping.Segments().front().address);
+}
+
 void CloseDynamicImage(DarwinDynamicImage* image) noexcept
 {
 	if (image == nullptr)

@@ -63,6 +63,8 @@ std::uintptr_t DynamicImageSymbol(const DarwinDynamicImage& image,
 const std::filesystem::path& DynamicImagePath(const DarwinDynamicImage& image) noexcept;
 const void* DynamicImageHeader(const DarwinDynamicImage& image) noexcept;
 std::intptr_t DynamicImageSlide(const DarwinDynamicImage& image) noexcept;
+bool DynamicImageContains(const DarwinDynamicImage& image, const void* address) noexcept;
+void* DynamicImageBase(const DarwinDynamicImage& image) noexcept;
 void CloseDynamicImage(DarwinDynamicImage* image) noexcept;
 
 } // namespace darling::windows_host

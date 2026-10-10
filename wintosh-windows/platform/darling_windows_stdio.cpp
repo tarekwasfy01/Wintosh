@@ -6532,6 +6532,20 @@ extern "C" int darling_windows_dladdr(const void* address, darling_dl_info* info
 	if (address == nullptr || info == nullptr) {
 		return 0;
 	}
+	{
+		std::lock_guard lock(dynamic_image_mutex);
+		for (const auto& entry : dynamic_images) {
+			if (!darling::windows_host::DynamicImageContains(*entry.second, address))
+				continue;
+			static thread_local std::string image_name;
+			image_name = darling::windows_host::DynamicImagePath(*entry.second).string();
+			info->dli_fname = image_name.c_str();
+			info->dli_fbase = darling::windows_host::DynamicImageBase(*entry.second);
+			info->dli_sname = nullptr;
+			info->dli_saddr = nullptr;
+			return info->dli_fbase == nullptr ? 0 : 1;
+		}
+	}
 	MEMORY_BASIC_INFORMATION memory{};
 	if (VirtualQuery(address, &memory, sizeof(memory)) != sizeof(memory) ||
 		memory.AllocationBase == nullptr) {

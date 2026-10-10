@@ -75,6 +75,7 @@ constexpr std::uint32_t darling_thread_extended_info_count = 28;
 constexpr std::uint32_t darling_thread_sched_timeshare_info_count = 5;
 constexpr std::uint32_t darling_thread_sched_rr_info_count = 5;
 constexpr std::uint32_t darling_thread_sched_fifo_info_count = 4;
+constexpr std::uint32_t darling_thread_time_constraint_policy_count = 4;
 constexpr std::uint32_t darling_x86_thread_state64_flavor = 4;
 constexpr std::uint32_t darling_x86_float_state64_flavor = 5;
 constexpr std::uint32_t darling_x86_exception_state64_flavor = 6;

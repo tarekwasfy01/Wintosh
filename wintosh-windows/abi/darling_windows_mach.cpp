@@ -53,6 +53,8 @@ std::mutex port_notifications_mutex;
 std::unordered_map<darling_mach_port_name_t, PortNotification> port_notifications;
 std::mutex suspend_counts_mutex;
 std::unordered_map<darling_mach_port_name_t, std::uint32_t> suspend_counts;
+std::mutex time_constraint_policies_mutex;
+std::unordered_map<darling_mach_port_name_t, darling_thread_time_constraint_policy_info> time_constraint_policies;
 void* exception_handler_cookie = nullptr;
 std::mutex read_buffers_mutex;
 std::unordered_map<darling_mach_vm_address_t, SIZE_T> read_buffers;
@@ -135,8 +137,17 @@ extern "C" darling_kern_return_t darling_windows_thread_policy_set(
 		priority = (std::max)(THREAD_PRIORITY_LOWEST,
 			(std::min)(THREAD_PRIORITY_HIGHEST, THREAD_PRIORITY_NORMAL + value->importance));
 	} else if (flavor == darling_thread_time_constraint_policy) {
+		if (count < darling_thread_time_constraint_policy_count) {
+			if (handle != GetCurrentThread()) CloseHandle(handle);
+			return 4;
+		}
+		const auto* value = static_cast<const darling_thread_time_constraint_policy_info*>(policy);
+		{
+			std::lock_guard lock(time_constraint_policies_mutex);
+			time_constraint_policies[thread] = *value;
+		}
 		if (handle != GetCurrentThread()) CloseHandle(handle);
-		return darling_kern_not_supported;
+		return 0;
 	} else {
 		if (handle != GetCurrentThread()) CloseHandle(handle);
 		return darling_kern_not_supported;
@@ -152,8 +163,16 @@ extern "C" darling_kern_return_t darling_windows_thread_policy_get(
 {
 	if (thread == 0 || policy == nullptr || count == nullptr || *count < 1)
 		return 4;
-	if (flavor == darling_thread_time_constraint_policy)
-		return darling_kern_not_supported;
+	if (flavor == darling_thread_time_constraint_policy) {
+		if (*count < darling_thread_time_constraint_policy_count) return 4;
+		std::lock_guard lock(time_constraint_policies_mutex);
+		const auto found = time_constraint_policies.find(thread);
+		*static_cast<darling_thread_time_constraint_policy_info*>(policy) =
+			found == time_constraint_policies.end() ? darling_thread_time_constraint_policy_info{} : found->second;
+		*count = darling_thread_time_constraint_policy_count;
+		if (get_default != nullptr) *get_default = found == time_constraint_policies.end();
+		return 0;
+	}
 	if (flavor != darling_thread_extended_policy && flavor != darling_thread_precedence_policy)
 		return darling_kern_not_supported;
 	HANDLE handle = thread == darling_windows_mach_thread_self() ?

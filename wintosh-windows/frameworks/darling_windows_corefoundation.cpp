@@ -537,6 +537,28 @@ extern "C" std::uint64_t darling_windows_CFHash(const void* value)
 	case Kind::Date: return mix(static_cast<std::uint64_t>(std::hash<double>{}(object->date)));
 	case Kind::Boolean: return mix(object->boolean ? 1 : 0);
 	case Kind::Null: return mix(0);
+	case Kind::Array: {
+		std::uint64_t hash = 0x4152524159ULL;
+		for (const auto* element : object->array)
+			hash = hash * 0x100000001b3ULL ^ darling_windows_CFHash(element);
+		return mix(hash);
+	}
+	case Kind::Dictionary: {
+		std::uint64_t hash = 0x44494354ULL;
+		// Dictionary equality is order-independent, so combine entries
+		// commutatively rather than hashing vector order.
+		for (const auto& [key, element] : object->dictionary)
+			hash ^= darling_windows_CFHash(key) +
+				0x9e3779b97f4a7c15ULL + (darling_windows_CFHash(element) << 6) +
+				(darling_windows_CFHash(element) >> 2);
+		return mix(hash);
+	}
+	case Kind::Set: {
+		std::uint64_t hash = 0x534554ULL;
+		for (const auto* element : object->array)
+			hash ^= darling_windows_CFHash(element);
+		return mix(hash);
+	}
 	default: return mix(static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(value)));
 	}
 }

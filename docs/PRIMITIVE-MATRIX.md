@@ -306,7 +306,8 @@ minimal XML property-list serializer with XML escaping, nested arrays,
 Base64 data nodes, and ISO-8601 date nodes. Its
 `corefoundation_smoke` gate proves only that adapter subset; there is no plist
 parser or binary-plist implementation, collection ownership is intentionally
-minimal, dictionary lookup is not full `CFEqual` semantics, and timers/sources
+minimal, collection hashing now follows the implemented equality semantics,
+and timers/sources
 are not Apple-compatible implementations. This is not a claim of full
 CoreFoundation or Foundation compatibility.
 The XML boundary now also parses scalar strings, integers, reals, booleans,

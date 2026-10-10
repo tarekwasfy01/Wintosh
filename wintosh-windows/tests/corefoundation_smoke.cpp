@@ -99,7 +99,8 @@ int main()
 		darling_windows_CFArrayGetCountOfValue(array, string) == 1 &&
 		darling_windows_CFArrayGetLastIndexOfValue(array, data) == 1;
 	const auto equal_array = darling_windows_CFArrayCreate(values, 2);
-	const bool collection_equal_ok = darling_windows_CFEqual(array, equal_array);
+	const bool collection_equal_ok = darling_windows_CFEqual(array, equal_array) &&
+		darling_windows_CFHash(array) == darling_windows_CFHash(equal_array);
 	const auto number = darling_windows_CFNumberCreateInteger(42);
 	std::int64_t integer = 0;
 	const bool number_ok = darling_windows_CFNumberGetInteger(number, &integer) && integer == 42;
@@ -133,6 +134,18 @@ int main()
 	const bool duplicate_dictionary_ok = duplicate_dictionary != nullptr &&
 		darling_windows_CFDictionaryGetCount(duplicate_dictionary) == 1 &&
 		darling_windows_CFDictionaryGetValue(duplicate_dictionary, string) == real_number;
+	const void* reordered_keys[] = {string, data};
+	const void* reordered_values[] = {number, real_number};
+	const auto reordered_dictionary = darling_windows_CFDictionaryCreate(
+		reordered_keys, reordered_values, 2);
+	const void* original_keys[] = {data, string};
+	const void* original_values[] = {real_number, number};
+	const auto original_dictionary = darling_windows_CFDictionaryCreate(
+		original_keys, original_values, 2);
+	const bool dictionary_hash_ok = reordered_dictionary != nullptr &&
+		original_dictionary != nullptr && darling_windows_CFEqual(reordered_dictionary,
+			original_dictionary) && darling_windows_CFHash(reordered_dictionary) ==
+			darling_windows_CFHash(original_dictionary);
 	const void* copied_keys[1]{};
 	const void* copied_dictionary_values[1]{};
 	darling_windows_CFDictionaryGetKeysAndValues(dictionary, copied_keys,
@@ -145,6 +158,10 @@ int main()
 	const auto equal_data = darling_windows_CFDataCreate(bytes, 4);
 	const bool set_ok = set != nullptr && darling_windows_CFSetGetCount(set) == 2 &&
 		darling_windows_CFSetContainsValue(set, equal_data);
+	const void* reversed_set_values[] = {data, string};
+	const auto reversed_set = darling_windows_CFSetCreate(reversed_set_values, 2);
+	const bool set_hash_ok = reversed_set != nullptr && darling_windows_CFEqual(set, reversed_set) &&
+		darling_windows_CFHash(set) == darling_windows_CFHash(reversed_set);
 	const void* copied_set_values[2]{};
 	darling_windows_CFSetGetValues(set, copied_set_values);
 	const bool set_values_ok = (copied_set_values[0] == string || copied_set_values[1] == string) &&
@@ -548,8 +565,11 @@ int main()
 	darling_windows_CFRelease(equal_hash_string);
 	darling_windows_CFRelease(set);
 	darling_windows_CFRelease(equal_data);
+	darling_windows_CFRelease(reversed_set);
 	darling_windows_CFRelease(dictionary);
 	darling_windows_CFRelease(duplicate_dictionary);
+	darling_windows_CFRelease(reordered_dictionary);
+	darling_windows_CFRelease(original_dictionary);
 	darling_windows_CFRelease(number);
 	darling_windows_CFRelease(equal_real_number);
 	darling_windows_CFRelease(real_number);
@@ -592,6 +612,7 @@ int main()
 	darling_windows_CFRelease(parsed_binary_extended);
 	darling_windows_CFRelease(parsed_binary_data);
 	darling_windows_CFRelease(string);
+	if (!dictionary_hash_ok || !set_hash_ok) return 1;
 	std::cout << "DARWIN_COREF_FOUNDATION=\"" <<
 		(string_ok && string_match_ok && string_find_ok && equal_ok && semantic_lookup_ok && collection_equal_ok && array_search_ok && data_ok && data_slice_ok && array_ok && array_values_ok && number_ok && real_number_ok && number_conversion_ok && dictionary_ok && dictionary_values_ok && set_ok && set_values_ok && date_url_ok && url_xml_ok && scalar_ok && runloop_ok && callback_ok && timer_ok && drain_sources_ok && notification_ok && delivered && plist_ok && array_plist_ok && data_plist_ok && date_plist_ok && real_plist_ok && escaping_ok && plist_parse_ok && plist_dict_parse_ok && plist_data_parse_ok && plist_date_parse_ok && plist_fractional_date_ok && plist_offset_date_ok && binary_plist_ok && binary_dictionary_ok && binary_utf16_ok && binary_extended_ok && binary_data_ok && binary_date_ok && binary_real_ok && binary_uid_ok && mutable_array_ok && mutable_dictionary_ok && mutable_set_ok && mutable_data_ok ? "PASS" : "FAIL") << "\n";
 	if (!identity_ok) return 1;

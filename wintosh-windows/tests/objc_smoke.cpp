@@ -818,6 +818,7 @@ int main()
 		return 33;
 	darling_objc_block_release(bridge_callback);
 	if (objc_msgSend(object, self_selector) != object ||
+		darling_objc_msgSend_object0(object, self_selector) != object ||
 		objc_msgSend(object, object_selector, object) != object ||
 		static_cast<std::int64_t>(reinterpret_cast<std::uintptr_t>(
 			objc_msgSend(object, integer_selector, static_cast<std::int64_t>(35)))) != 42)

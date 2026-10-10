@@ -56,6 +56,12 @@ struct MachIpcEnvelope final {
 	std::uint64_t out_of_line_handle = 0;
 };
 
+[[nodiscard]] MachIpcEnvelope EncodeMachMessageForIpc(
+	const MachMessage& message, std::uint64_t request_id,
+	std::uint64_t port_token, std::uint64_t session_token = 0);
+[[nodiscard]] MachMessage DecodeMachMessageFromIpc(
+	const MachIpcEnvelope& envelope);
+
 [[nodiscard]] std::vector<std::uint8_t> EncodeMachIpcEnvelope(
 	const MachIpcEnvelope& envelope);
 [[nodiscard]] MachIpcEnvelope DecodeMachIpcEnvelope(

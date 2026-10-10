@@ -27,6 +27,18 @@ int wmain()
 		return 1;
 	}
 	std::cout << "MACH_IPC_ENVELOPE=PASS\n";
+	darling::windows_host::MachMessage inline_message{{'I', 'N'}, {}};
+	const auto inline_ipc = darling::windows_host::EncodeMachMessageForIpc(inline_message, 50, 8, 11);
+	const auto inline_roundtrip = darling::windows_host::DecodeMachMessageFromIpc(inline_ipc);
+	darling::windows_host::MachMessage ool_message{{}, {'O', 'O', 'L'}};
+	const auto ool_ipc = darling::windows_host::EncodeMachMessageForIpc(ool_message, 51, 8, 11);
+	const auto ool_roundtrip = darling::windows_host::DecodeMachMessageFromIpc(ool_ipc);
+	if (inline_ipc.disposition_count != 0 || inline_roundtrip.inline_data != inline_message.inline_data ||
+		ool_ipc.disposition_count != 1 || ool_roundtrip.out_of_line_data != ool_message.out_of_line_data) {
+		std::cerr << "MACH_IPC_MESSAGE_BRIDGE=FAIL\n";
+		return 1;
+	}
+	std::cout << "MACH_IPC_MESSAGE_BRIDGE=PASS\n";
 	darling::windows_host::MachIpcEnvelope cancel{
 		darling::windows_host::MachIpcOperation::Cancel, 44, 0, 0, {}, 0, 0, 99};
 	const auto cancel_decoded = darling::windows_host::DecodeMachIpcEnvelope(

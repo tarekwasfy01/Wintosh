@@ -57,6 +57,11 @@ addressed receive variants and full interruption parity remain open.
 The same type modifiers are now applied to both ends of the native `socketpair`
 adapter and covered by `syscalls_smoke`.
 
+The native `MachMessage` runtime boundary now converts inline and OOL payloads
+to and from the broker's `MachIpcEnvelope`; `runtime_smoke` verifies both
+directions. This is the serialization bridge, not yet automatic routing of
+the local C `mach_msg` entry point through the broker session.
+
 The process row also covers the four-word Darwin signal-set constructors and
 membership operations, verified by `signals_smoke`; this does not establish
 native cross-process signal delivery or complete Darwin signal semantics.

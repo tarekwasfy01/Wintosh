@@ -118,6 +118,31 @@ MachIpcEnvelope DecodeMachIpcEnvelope(const std::vector<std::uint8_t>& bytes)
 	return result;
 }
 
+MachIpcEnvelope EncodeMachMessageForIpc(const MachMessage& message,
+	std::uint64_t request_id, std::uint64_t port_token, std::uint64_t session_token)
+{
+	MachIpcEnvelope envelope{MachIpcOperation::Send, request_id, port_token,
+		message.out_of_line_data.empty() ? 0u : 1u,
+		message.out_of_line_data.empty() ? message.inline_data : message.out_of_line_data};
+	envelope.session_token = session_token;
+	return envelope;
+}
+
+MachMessage DecodeMachMessageFromIpc(const MachIpcEnvelope& envelope)
+{
+	if (envelope.operation != MachIpcOperation::Send &&
+		envelope.operation != MachIpcOperation::Receive)
+		throw std::invalid_argument("Mach IPC envelope is not a message");
+	if (envelope.disposition_count > 1)
+		throw std::invalid_argument("unsupported Mach IPC descriptor count");
+	MachMessage message;
+	if (envelope.disposition_count == 0)
+		message.inline_data = envelope.payload;
+	else
+		message.out_of_line_data = envelope.payload;
+	return message;
+}
+
 MachIpcSharedMemory MachIpcSharedMemory::Create(const std::wstring& name, std::size_t size)
 {
 	if (size == 0 || size > 0xffffffffull)

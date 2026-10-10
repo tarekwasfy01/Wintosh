@@ -185,7 +185,8 @@ The Windows bridge now also exposes ABI-safe typed
 for `B@:B` and `^v@:^v`, alongside the floating-point entry points
 `darling_objc_msgSend_double1` and `darling_objc_msgSend_double2`
 for the supported `d@:d` and `d@:dd` signatures; `objc_smoke` verifies the
-native floating-point call paths. This does not make
+native floating-point call paths. The bridge also exposes
+`darling_objc_msgSend_void1_int64` for `v@:q`. This does not make
 the variadic `objc_msgSend` ABI-complete for arbitrary signatures.
 complex numbers, quoted aggregates, and nested pointers.
 

@@ -1346,6 +1346,8 @@ extern "C" void method_exchangeImplementations(Method first, Method second)
 {
 	if (!first || !second || !first->owner_class || !second->owner_class)
 		return;
+	if (first->types != second->types)
+		return;
 	std::lock_guard lock(RuntimeMutex());
 	auto implementation_for = [](Method method) -> IMP& {
 		auto& methods = method->class_method ? method->owner_class->class_methods :

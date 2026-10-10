@@ -303,6 +303,11 @@ int main()
 		darling_objc_msgSend_object1(object, exchange_selector, object) != object)
 		return 22;
 	method_exchangeImplementations(exchange_first, exchange_second);
+	Method incompatible_method = class_getInstanceMethod(child, integer_selector);
+	const IMP object_before_incompatible = method_getImplementation(exchange_first);
+	method_exchangeImplementations(exchange_first, incompatible_method);
+	if (method_getImplementation(exchange_first) != object_before_incompatible)
+		return 23;
 	if (std::string(class_getMethodTypeEncoding(child, object_selector)) !=
 		"@@:@" || std::string(class_getMethodTypeEncoding(child, integer_selector)) !=
 		"q@:q" || std::string(class_getMethodTypeEncoding(child, void_selector)) !=

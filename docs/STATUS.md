@@ -199,6 +199,7 @@ The zero-argument object-return bridge `darling_objc_msgSend_object0` for
 `@@:` is covered as well.
 `method_exchangeImplementations` now swaps compatible instance-method IMPs
 and class-method IMPs, and the smoke verifies both swaps and restoration; full Apple method-cache,
+incompatible encodings are rejected without mutation. Full Apple method-cache,
 concurrency, and arbitrary swizzling semantics remain open.
 complex numbers, quoted aggregates, and nested pointers.
 

@@ -466,12 +466,22 @@ int main()
 		return result;
 	}();
 	darling_mach_port_name_t send_once_port = 0;
+	darling_mach_port_name_t disposal_right = 0;
+	std::uint32_t disposal_disposition = 0;
 	if (darling_windows_mach_port_allocate(task, &send_once_port) != 0 ||
 		darling_windows_mach_port_insert_right(task, send_once_port, thread,
-			darling_mach_copy_send_once) != 0 ||
+		darling_mach_make_send_once) != 0 ||
 		darling_windows_mach_port_insert_right(task, send_once_port, thread,
 			darling_mach_move_send_once) != 0 ||
-		darling_windows_mach_port_destroy(task, send_once_port) != 0)
+		darling_windows_mach_port_extract_right(task, send_once_port,
+		darling_mach_dispose_send_once, &disposal_right, &disposal_disposition) != 0 ||
+		disposal_right != 0 ||
+		darling_windows_mach_port_extract_right(task, send_once_port,
+			darling_mach_dispose_send, &disposal_right, &disposal_disposition) != 0 ||
+		disposal_right != 0 ||
+		darling_windows_mach_port_extract_right(task, send_once_port,
+			darling_mach_dispose_receive, &disposal_right, &disposal_disposition) != 0 ||
+		disposal_right != 0)
 		return 1;
 	bool ok = task != 0 && thread != 0 && host != 0 &&
 		local_queue_limit_ok &&

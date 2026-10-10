@@ -1062,7 +1062,7 @@ extern "C" darling_kern_return_t darling_windows_mach_port_insert_right(
 		disposition != darling_mach_copy_send &&
 		disposition != darling_mach_move_send &&
 		disposition != darling_mach_make_send &&
-		disposition != darling_mach_copy_send_once)
+		disposition != darling_mach_make_send_once)
 		return 4;
 	if (FindPort(right) == nullptr && right != darling_windows_mach_task_self() &&
 		right != darling_windows_mach_thread_self() &&
@@ -1072,7 +1072,7 @@ extern "C" darling_kern_return_t darling_windows_mach_port_insert_right(
 	const auto source = FindPort(right);
 	{
 		if (source == nullptr || disposition == darling_mach_copy_send ||
-			disposition == darling_mach_copy_send_once || disposition == darling_mach_make_send) {
+			disposition == darling_mach_make_send_once || disposition == darling_mach_make_send) {
 			std::lock_guard lock(port->mutex);
 			if (port->refs == (std::numeric_limits<std::uint32_t>::max)()) return 3;
 			if (disposition == darling_mach_move_receive)
@@ -1135,14 +1135,23 @@ extern "C" darling_kern_return_t darling_windows_mach_port_extract_right(
 		disposition != darling_mach_copy_send &&
 		disposition != darling_mach_move_send &&
 		disposition != darling_mach_make_send &&
-		disposition != darling_mach_copy_send_once)
+		disposition != darling_mach_make_send_once &&
+		disposition != darling_mach_dispose_receive &&
+		disposition != darling_mach_dispose_send &&
+		disposition != darling_mach_dispose_send_once)
 		return 4;
 	const auto port = FindPort(name);
 	if (port == nullptr) return 3;
 	bool exhausted = false;
 	{
 		std::lock_guard lock(port->mutex);
-		if (disposition == darling_mach_move_receive) {
+		if (disposition == darling_mach_dispose_receive) {
+			if (port->receive_refs == 0) return 3;
+			--port->receive_refs;
+		} else if (disposition == darling_mach_dispose_send || disposition == darling_mach_dispose_send_once) {
+			if (port->send_refs == 0) return 3;
+			--port->send_refs;
+		} else if (disposition == darling_mach_move_receive) {
 			if (port->receive_refs == 0) return 3;
 			--port->receive_refs;
 		} else if (disposition == darling_mach_move_send || disposition == darling_mach_move_send_once) {
@@ -1156,7 +1165,8 @@ extern "C" darling_kern_return_t darling_windows_mach_port_extract_right(
 		exhausted = port->refs == 0;
 		if (exhausted) port->closed = true;
 	}
-	*right = name;
+	*right = (disposition == darling_mach_dispose_receive ||
+		disposition == darling_mach_dispose_send || disposition == darling_mach_dispose_send_once) ? 0 : name;
 	*right_disposition = disposition;
 	if (exhausted) {
 		std::lock_guard ports_lock(ports_mutex);

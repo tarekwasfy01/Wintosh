@@ -417,7 +417,14 @@ int wmain(int argc, wchar_t** argv)
 						active_request_sessions.erase(envelope.request_id);
 						throw std::runtime_error("Mach IPC request cancelled");
 					}
-						if (!ready || !allocated_ports.contains(envelope.port_token) ||
+						if (!allocated_ports.contains(envelope.port_token)) {
+							if (cancellation) {
+								active_requests.erase(envelope.request_id);
+								active_request_sessions.erase(envelope.request_id);
+							}
+							throw std::runtime_error("Mach IPC port dead");
+						}
+						if (!ready ||
 							port_queues.at(envelope.port_token).empty()) {
 							if (cancellation) {
 								active_requests.erase(envelope.request_id);
@@ -511,6 +518,8 @@ int wmain(int argc, wchar_t** argv)
 			} catch (const std::runtime_error& error) {
 				if (std::string(error.what()) == "Mach IPC receive would block") {
 					server.Write("MACH_RECEIVE_WOULD_BLOCK");
+				} else if (std::string(error.what()) == "Mach IPC port dead") {
+					server.Write("MACH_PORT_DEAD");
 				} else if (std::string(error.what()) == "Mach IPC request cancelled") {
 					server.Write("MACH_REQUEST_CANCELLED");
 				} else if (std::string(error.what()) == "Mach IPC send queue is full") {

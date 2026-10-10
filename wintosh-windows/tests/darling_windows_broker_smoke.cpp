@@ -376,7 +376,7 @@ int wmain()
 			const auto blocked_wire = blocked_client.Read();
 			blocked_cancel_result.assign(blocked_wire.begin(), blocked_wire.end());
 		});
-		Sleep(50);
+		Sleep(250);
 		const darling::windows_host::MachIpcEnvelope cross_client_cancel{
 			darling::windows_host::MachIpcOperation::Cancel, 118, 0, 0, {}};
 		auto authenticated_cancel = cross_client_cancel;
@@ -384,7 +384,8 @@ int wmain()
 		const auto cancel_bytes = darling::windows_host::EncodeMachIpcEnvelope(
 			authenticated_cancel);
 		client.Write(std::string(cancel_bytes.begin(), cancel_bytes.end()));
-		if (client.Read().empty()) {
+		const auto cancel_result = client.Read();
+		if (cancel_result.empty()) {
 			blocked_receiver.join();
 			std::cerr << "BROKER_MACH_CROSS_CLIENT_CANCEL=FAIL\n";
 			return 5;
@@ -608,6 +609,41 @@ int wmain()
 			return 5;
 		}
 		std::cout << "BROKER_MACH_LIFECYCLE_VALIDATION=PASS\n";
+		const darling::windows_host::MachIpcEnvelope death_allocate_request{
+			darling::windows_host::MachIpcOperation::Allocate, 124, 0, 0, {}};
+		const auto death_allocate_bytes = darling::windows_host::EncodeMachIpcEnvelope(
+			death_allocate_request);
+		client.Write(std::string(death_allocate_bytes.begin(), death_allocate_bytes.end()));
+		const auto death_allocate_wire = client.Read();
+		const auto death_allocate_response = darling::windows_host::DecodeMachIpcEnvelope(
+			std::vector<std::uint8_t>(death_allocate_wire.begin(), death_allocate_wire.end()));
+		const auto death_token = death_allocate_response.port_token;
+		std::string death_receive_result;
+		std::thread death_receiver([&] {
+			auto death_client = darling::windows_host::NamedPipeRpcClient::Connect(pipe_name);
+			const darling::windows_host::MachIpcEnvelope death_receive{
+				darling::windows_host::MachIpcOperation::Receive, 125, death_token, 0,
+				{232, 3, 0, 0}};
+			const auto bytes = darling::windows_host::EncodeMachIpcEnvelope(death_receive);
+			death_client.Write(std::string(bytes.begin(), bytes.end()));
+			death_receive_result = death_client.Read();
+		});
+		Sleep(250);
+		const darling::windows_host::MachIpcEnvelope death_destroy{
+			darling::windows_host::MachIpcOperation::Destroy, 126, death_token, 0, {}};
+		const auto death_destroy_bytes = darling::windows_host::EncodeMachIpcEnvelope(death_destroy);
+		client.Write(std::string(death_destroy_bytes.begin(), death_destroy_bytes.end()));
+		const auto death_destroy_result = client.Read();
+		if (death_destroy_result.empty()) {
+			death_receiver.join();
+			throw std::runtime_error("port-death destroy failed");
+		}
+		death_receiver.join();
+		if (death_receive_result != "MACH_PORT_DEAD") {
+			std::cerr << "BROKER_MACH_PORT_DEATH=FAIL RESULT=" << death_receive_result << "\n";
+			return 5;
+		}
+		std::cout << "BROKER_MACH_PORT_DEATH=PASS\n";
 		const darling::windows_host::MachIpcEnvelope second_allocate_request{
 			darling::windows_host::MachIpcOperation::Allocate, 109, 0, 0, {}};
 		const auto second_allocate_bytes = darling::windows_host::EncodeMachIpcEnvelope(second_allocate_request);

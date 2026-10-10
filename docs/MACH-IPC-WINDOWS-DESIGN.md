@@ -96,7 +96,8 @@ validation and round-trip coverage: a blocked `Receive` registers its nonzero
 request ID, a matching session can wake it, and the worker returns
 `MACH_REQUEST_CANCELLED`. The smoke gate now proves this across two
 authenticated clients; requests are also cancelled and removed when their
-owning session disconnects.
+owning session disconnects. A blocked receive now returns the explicit
+`MACH_PORT_DEAD` result when its port is destroyed while waiting.
 Broker reconnect preserves the shared namespace, and the current broker uses a
 joinable worker per accepted connection. The smoke gate proves a two-client
 send/receive through one shared port token. Workers preserve the shared state
@@ -127,5 +128,5 @@ application execution.
 The worker pool, controlled shutdown/join, two-client notification wakeup, and
 two-client blocked-receive wakeup test are now in place with the existing
 shared state. Remaining worker hardening is complete rights semantics and
-explicit port-death/no-senders parity. The accept loop owns listening instances; `BrokerState` owns ports,
+explicit no-senders parity. The accept loop owns listening instances; `BrokerState` owns ports,
 queues, OOL mappings, notifications, counters, and the state mutex.

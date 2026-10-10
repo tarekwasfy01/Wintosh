@@ -12,7 +12,8 @@ payload into a native `VirtualAlloc` block, and
 transports the rewritten descriptor through the local Mach queue. Both the
 `mach_msg` receive path and direct `mach_port_receive` promote the queue
 reference to receiver ownership, which is released through the native ABI
-helper. OOL deallocation and physical-copy requests are rejected.
+helper. `copy=1` is handled as an eager, independent host copy; this is a
+functional Windows mapping, not a claim of XNU physical-page semantics.
 An OOL deallocation request is accepted only when its source address is already
 owned by the local Wintosh ownership table; it then releases that receiver
 reference after queue insertion. Raw unmanaged addresses remain rejected.

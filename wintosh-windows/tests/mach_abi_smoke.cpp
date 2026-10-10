@@ -1000,16 +1000,29 @@ int main()
 		ool_descriptor.deallocate = 0;
 		ool_descriptor.copy = 1;
 		std::memcpy(ool_wire.data() + sizeof(ool_message) + sizeof(ool_body), &ool_descriptor, sizeof(ool_descriptor));
-		const bool ool_physical_copy_rejected = darling_windows_mach_msg(
+		const bool ool_physical_copy_send_ok = darling_windows_mach_msg(
 			reinterpret_cast<darling_mach_msg_header*>(ool_wire.data()), darling_mach_send_msg,
-			static_cast<std::uint32_t>(ool_wire.size()), 0, 0, 0, 0) == darling_kern_not_supported;
+			static_cast<std::uint32_t>(ool_wire.size()), 0, 0, 0, 0) == 0;
+		std::array<std::uint8_t, sizeof(ool_wire)> physical_received{};
+		const bool ool_physical_copy_receive_ok = darling_windows_mach_msg(
+			reinterpret_cast<darling_mach_msg_header*>(physical_received.data()),
+			darling_mach_receive_msg | darling_mach_receive_timeout, 0,
+			static_cast<std::uint32_t>(physical_received.size()), ns_notify, 100, 0) == 0;
+		const auto* physical_descriptor = reinterpret_cast<const darling_mach_msg_ool_descriptor*>(
+			physical_received.data() + sizeof(darling_mach_msg_header) + sizeof(darling_mach_msg_body));
+		const auto* physical_payload = reinterpret_cast<const std::uint32_t*>(
+			static_cast<std::uintptr_t>(physical_descriptor->address));
+		const bool ool_physical_copy_ok = ool_physical_copy_send_ok && ool_physical_copy_receive_ok &&
+			physical_descriptor->address != 0 && physical_payload != nullptr &&
+			*physical_payload == ool_payload && darling_windows_mach_ool_release(
+				const_cast<void*>(reinterpret_cast<const void*>(physical_payload))) == 0;
 		ool_descriptor.copy = 0;
 		ool_descriptor.address = 1;
 		std::memcpy(ool_wire.data() + sizeof(ool_message) + sizeof(ool_body), &ool_descriptor, sizeof(ool_descriptor));
 		const bool ool_invalid_address_rejected = darling_windows_mach_msg(
 			reinterpret_cast<darling_mach_msg_header*>(ool_wire.data()), darling_mach_send_msg,
 			static_cast<std::uint32_t>(ool_wire.size()), 0, 0, 0, 0) == 4;
-		if (!ool_deallocate_rejected || !ool_physical_copy_rejected || !ool_invalid_address_rejected) return 1;
+		if (!ool_deallocate_rejected || !ool_physical_copy_ok || !ool_invalid_address_rejected) return 1;
 		if (ns_target != 0) darling_windows_mach_port_destroy(task, ns_target);
 		if (ns_notify != 0) darling_windows_mach_port_destroy(task, ns_notify);
 		darling_mach_port_name_t dead_target = 0, dead_notify = 0, dead_previous = 0xffffffffu;

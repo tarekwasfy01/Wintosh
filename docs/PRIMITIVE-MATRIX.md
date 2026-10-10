@@ -352,9 +352,10 @@ after the final reference is dropped. The local `mach_msg` path now copies the
 payload into a `VirtualAlloc` block after a checked readable-range walk,
 transfers queue ownership to either receive API,
 and exposes explicit release through the native ABI. Raw guest mappings,
-protection transfer, physical-copy semantics, and cross-process transfer remain
-open. Deallocation is accepted only for an already-owned local mapping; raw
-unmanaged deallocation requests and physical-copy requests remain rejected.
+protection transfer and cross-process transfer remain open. `copy=1` is
+implemented as an eager independent host copy, not as XNU physical-page
+semantics. Deallocation is accepted only for an already-owned local mapping;
+raw unmanaged deallocation requests remain rejected.
 When a `mach_msg` receive buffer has room beyond the payload, the native path
 now appends the Darwin `trailer_none` layout and updates `msgh_size`; exact
 payload-sized buffers retain the previous behavior. Credential and audit

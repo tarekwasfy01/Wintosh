@@ -1505,7 +1505,7 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 			if (body->msgh_descriptor_count == 1 && first_ool_type == darling_mach_msg_descriptor_ool) {
 				if (remaining < sizeof(darling_mach_msg_ool_descriptor)) return 4;
 				const auto* descriptor = reinterpret_cast<const darling_mach_msg_ool_descriptor*>(descriptor_bytes_start);
-				if (descriptor->copy != 0 ||
+				if (descriptor->copy > 1 ||
 					(descriptor->deallocate != 0 && !mach_ool_ownership.Contains(
 						reinterpret_cast<void*>(static_cast<std::uintptr_t>(descriptor->address)))) ||
 					(descriptor->size != 0 && descriptor->address == 0))

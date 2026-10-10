@@ -16,10 +16,14 @@ int main()
 	void* rwlock = nullptr;
 	void* barrier = nullptr;
 	int mutex_ceiling = -1;
+	int previous_mutex_ceiling = -1;
 	const bool mutex_ok = darling_windows_pthread_mutex_init(&mutex, nullptr) == 0 &&
 		darling_windows_pthread_mutex_getprioceiling(&mutex, &mutex_ceiling) == 0 &&
 		mutex_ceiling == 0 &&
-		darling_windows_pthread_mutex_setprioceiling(&mutex, 1) == 0 &&
+		(previous_mutex_ceiling = darling_windows_pthread_mutex_setprioceiling(&mutex, 1)) == 0 &&
+		darling_windows_pthread_mutex_getprioceiling(&mutex, &mutex_ceiling) == 0 &&
+		mutex_ceiling == 1 &&
+		darling_windows_pthread_mutex_setprioceiling(&mutex, -1) == 22 &&
 		darling_windows_pthread_mutex_lock(&mutex) == 0 &&
 		darling_windows_pthread_mutex_trylock(&mutex) == 16 &&
 		darling_windows_pthread_mutex_unlock(&mutex) == 0 &&

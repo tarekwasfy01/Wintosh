@@ -1227,6 +1227,14 @@ extern "C" darling_kern_return_t darling_windows_mach_port_mod_refs(
 			const auto updated = static_cast<std::int64_t>(port->receive_refs) + delta;
 			if (updated < 0 || updated > static_cast<std::int64_t>((std::numeric_limits<std::uint32_t>::max)())) return 4;
 			port->receive_refs = static_cast<std::uint32_t>(updated);
+		} else if (right == darling_mach_port_type_send_once && delta >= 0) {
+			const auto updated = static_cast<std::int64_t>(port->send_once_refs) + delta;
+			if (updated > static_cast<std::int64_t>((std::numeric_limits<std::uint32_t>::max)())) return 4;
+			port->send_once_refs = static_cast<std::uint32_t>(updated);
+		} else if (right == darling_mach_port_type_send_once) {
+			const auto remove = static_cast<std::uint64_t>(-(static_cast<std::int64_t>(delta)));
+			if (remove > port->send_once_refs) return 4;
+			port->send_once_refs -= static_cast<std::uint32_t>(remove);
 		} else if (delta >= 0) {
 			const auto updated = static_cast<std::int64_t>(port->send_refs) + delta;
 			if (updated > static_cast<std::int64_t>((std::numeric_limits<std::uint32_t>::max)())) return 4;

@@ -296,6 +296,8 @@ Send-once references are now reported by `mach_port_type` through the distinct
 rights; `mach_port_get_refs` can query that reference count independently, and
 the Mach smoke covers a receive-plus-send-once port. This remains a
 process-local adapter rather than a complete per-task Darwin right table.
+`mach_port_mod_refs` now applies positive and negative deltas to the send-once
+counter independently, including underflow rejection.
 All public port calls currently bind to the current Windows process and share
 one process-local registry. Foreign task names are rejected consistently;
 true task-owned namespaces and cross-task name translation remain an

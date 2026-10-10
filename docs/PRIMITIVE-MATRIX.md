@@ -348,12 +348,12 @@ single local `COPY` OOL descriptor is now identified using its native ABI
 cross-process copying. The first native
 ownership slice is now available as `MachOolOwnershipTable`: it tracks queue
 and receiver references under a mutex and invokes a release callback only
-after the final reference is dropped. It is covered by
-`mach_ool_ownership_smoke`, but is not yet wired to raw guest pointers or the
-`mach_msg` OOL path. True Mach VM ownership, protection transfer,
-`VirtualAlloc`-backed mappings, and cross-process transfer therefore remain
-open. Negative smoke cases explicitly reject OOL deallocation and
-physical-copy requests.
+after the final reference is dropped. The local `mach_msg` path now copies the
+payload into a `VirtualAlloc` block, transfers queue ownership to a receiver,
+and exposes explicit release through the native ABI. Raw guest mappings,
+protection transfer, physical-copy/deallocation-request semantics, and
+cross-process transfer remain open. Negative smoke cases explicitly reject
+OOL deallocation and physical-copy requests.
 The local ABI distinguishes reference-decrementing `mach_port_deallocate`
 from forced `mach_port_destroy`; the smoke gate also verifies that forced
 destruction closes a blocked receiver and rejects subsequent use. This is a

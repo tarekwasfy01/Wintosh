@@ -3,6 +3,7 @@
  * GPL-3.0-only; see the bundled license and source manifests.
  */
 #include "darling_windows_mach.h"
+#include "darling_windows_mach_ool.h"
 #include "darling_windows_stdio.h"
 
 #include <windows.h>
@@ -24,6 +25,7 @@
 
 namespace {
 std::atomic<darling_mach_port_name_t> next_port{0x100};
+darling::windows_host::MachOolOwnershipTable mach_ool_ownership;
 constexpr std::size_t max_port_queue_depth = 1024;
 constexpr std::size_t max_inline_message_size = 4 * 1024 * 1024;
 constexpr darling_mach_msg_id_t mach_notify_dead_name = 0x48;
@@ -1500,6 +1502,39 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 			}
 			}
 		}
+		std::uint64_t original_ool_address = 0;
+		void* copied_ool_address = nullptr;
+		if ((message->msgh_bits & darling_mach_msg_complex) != 0) {
+			const auto* body = reinterpret_cast<const darling_mach_msg_body*>(
+				reinterpret_cast<const std::uint8_t*>(message) + sizeof(darling_mach_msg_header));
+			const auto* descriptor_bytes = reinterpret_cast<const std::uint8_t*>(body + 1);
+			const auto first_ool_type = descriptor_bytes[offsetof(darling_mach_msg_ool_descriptor, type)];
+			if (body->msgh_descriptor_count == 1 && first_ool_type == darling_mach_msg_descriptor_ool) {
+				auto* descriptor = reinterpret_cast<darling_mach_msg_ool_descriptor*>(
+					const_cast<std::uint8_t*>(descriptor_bytes));
+				if (descriptor->size != 0) {
+					original_ool_address = descriptor->address;
+					copied_ool_address = VirtualAlloc(nullptr, descriptor->size,
+						MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+					if (copied_ool_address == nullptr || !mach_ool_ownership.Register(
+						copied_ool_address, descriptor->size,
+						[](void* address) { VirtualFree(address, 0, MEM_RELEASE); })) {
+						if (copied_ool_address != nullptr) VirtualFree(copied_ool_address, 0, MEM_RELEASE);
+						return 8;
+					}
+					std::memcpy(copied_ool_address,
+						reinterpret_cast<const void*>(static_cast<std::uintptr_t>(original_ool_address)),
+						descriptor->size);
+					descriptor->address = static_cast<std::uint64_t>(
+						reinterpret_cast<std::uintptr_t>(copied_ool_address));
+					if (!mach_ool_ownership.RetainQueue(copied_ool_address)) {
+						descriptor->address = original_ool_address;
+						(void)mach_ool_ownership.ReleaseQueue(copied_ool_address);
+						return 8;
+					}
+				}
+			}
+		}
 		auto result = darling_windows_mach_port_send(message->msgh_remote_port,
 			message, send_size);
 		if (result == 0 && (message->msgh_bits & darling_mach_msg_complex) != 0) {
@@ -1549,7 +1584,24 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 					message, send_size);
 			}
 		}
-		if (result != 0) return result;
+		if (result != 0) {
+			if (copied_ool_address != nullptr) (void)mach_ool_ownership.ReleaseQueue(copied_ool_address);
+			if (copied_ool_address != nullptr) {
+				const auto* body = reinterpret_cast<const darling_mach_msg_body*>(
+					reinterpret_cast<const std::uint8_t*>(message) + sizeof(darling_mach_msg_header));
+				auto* descriptor = reinterpret_cast<darling_mach_msg_ool_descriptor*>(
+					const_cast<std::uint8_t*>(reinterpret_cast<const std::uint8_t*>(body + 1)));
+				descriptor->address = original_ool_address;
+			}
+			return result;
+		}
+		if (copied_ool_address != nullptr) {
+			const auto* body = reinterpret_cast<const darling_mach_msg_body*>(
+				reinterpret_cast<const std::uint8_t*>(message) + sizeof(darling_mach_msg_header));
+			auto* descriptor = reinterpret_cast<darling_mach_msg_ool_descriptor*>(
+				const_cast<std::uint8_t*>(reinterpret_cast<const std::uint8_t*>(body + 1)));
+			descriptor->address = original_ool_address;
+		}
 	}
 	if ((option & darling_mach_receive_msg) != 0) {
 		if (receive_size < sizeof(darling_mach_msg_header) || receive_name == 0)
@@ -1561,6 +1613,26 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 			receive_size, &actual_size, receive_timeout);
 		if (result != 0) return result;
 		message->msgh_size = actual_size;
+		if ((message->msgh_bits & darling_mach_msg_complex) != 0) {
+			const auto* body = reinterpret_cast<const darling_mach_msg_body*>(
+				reinterpret_cast<const std::uint8_t*>(message) + sizeof(darling_mach_msg_header));
+			const auto* descriptor_bytes = reinterpret_cast<const std::uint8_t*>(body + 1);
+			const auto first_ool_type = descriptor_bytes[offsetof(darling_mach_msg_ool_descriptor, type)];
+			if (body->msgh_descriptor_count == 1 && first_ool_type == darling_mach_msg_descriptor_ool) {
+				auto* descriptor = reinterpret_cast<darling_mach_msg_ool_descriptor*>(
+					const_cast<std::uint8_t*>(descriptor_bytes));
+				if (descriptor->address != 0) {
+					void* address = reinterpret_cast<void*>(static_cast<std::uintptr_t>(descriptor->address));
+					if (mach_ool_ownership.RetainReceiver(address))
+						(void)mach_ool_ownership.ReleaseQueue(address);
+				}
+			}
+		}
 	}
 	return 0;
+}
+
+extern "C" darling_kern_return_t darling_windows_mach_ool_release(void* address)
+{
+	return mach_ool_ownership.ReleaseReceiver(address) ? 0 : 4;
 }

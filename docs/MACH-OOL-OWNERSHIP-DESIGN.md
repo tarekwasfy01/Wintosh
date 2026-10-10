@@ -7,9 +7,10 @@ full Darwin VM contract is already implemented.
 ## Current boundary
 
 Wintosh currently accepts one local virtual-copy OOL descriptor, validates its
-address and size, and transports the descriptor bytes through the local Mach
-queue. OOL deallocation and physical-copy requests are rejected. The current
-behavior is covered by `wintosh_mach_abi_smoke`.
+address and size, copies the payload into a native `VirtualAlloc` block, and
+transports the rewritten descriptor through the local Mach queue. The receiver
+obtains an explicit ownership reference and releases it through the native ABI
+helper. OOL deallocation and physical-copy requests are rejected.
 
 ## Required ownership states
 
@@ -48,8 +49,9 @@ cross-task name translation. Those remain separate matrix rows.
 The first implementation slice is now present as
 `MachOolOwnershipTable`: it tracks queue and receiver references under a
 mutex and invokes the supplied release callback only after the final reference
-is released. It is intentionally not wired to raw guest pointers or physical
-OOL copying yet.
+is released. The local `mach_msg` path now uses this table for its virtual-copy
+mapping; raw guest mappings and physical OOL copying remain outside the
+boundary.
 
 ## Provenance and license
 

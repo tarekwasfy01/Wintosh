@@ -347,3 +347,4 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 	std::uint32_t send_size, std::uint32_t receive_size,
 	darling_mach_port_name_t receive_name, std::uint32_t timeout_ms,
 	darling_mach_port_name_t notify);
+extern "C" darling_kern_return_t darling_windows_mach_ool_release(void* address);

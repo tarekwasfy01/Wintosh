@@ -271,6 +271,8 @@ int main()
 		dispatch_message.thread != thread)
 		return 1;
 	darling_windows_mach_port_destroy(task, dispatch_port);
+	if (darling_windows_dispatch_mach_exception(1, 0xfeed, 0xbeef) == 0)
+		return 1;
 	std::uint32_t page_size = 0;
 	darling_mach_vm_address_t vm_address = 0;
 	darling_mach_vm_address_t vm_copy_address = 0;

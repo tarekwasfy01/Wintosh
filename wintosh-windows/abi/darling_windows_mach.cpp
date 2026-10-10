@@ -996,6 +996,15 @@ extern "C" darling_kern_return_t darling_windows_mach_port_destroy(
 		port->send_refs = 0;
 		port->refs = 1;
 	}
+	{
+		std::lock_guard lock(exception_ports_mutex);
+		for (auto it = exception_ports.begin(); it != exception_ports.end();) {
+			auto& entries = it->second;
+			entries.erase(std::remove_if(entries.begin(), entries.end(),
+				[name](const ExceptionPort& entry) { return entry.port == name; }), entries.end());
+			if (entries.empty()) it = exception_ports.erase(it); else ++it;
+		}
+	}
 	return darling_windows_mach_port_deallocate(task, name);
 }
 

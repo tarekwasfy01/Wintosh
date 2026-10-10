@@ -27,6 +27,8 @@ int main()
 	const auto inner = darling_windows_CGRectMake(2, 3, 4, 5);
 	const auto reversed = darling_windows_CGRectMake(10, 8, -6, -4);
 	const auto bounding = darling_windows_CGRectGetBoundingBox(reversed);
+	if (darling_windows_CGRectIsStandardized(reversed) ||
+		!darling_windows_CGRectIsStandardized(bounding)) return 1;
 	if (bounding.origin.x != 4 || bounding.origin.y != 4 ||
 		bounding.size.width != 6 || bounding.size.height != 4) return 1;
 	const auto null_rect = darling_windows_CGRectNull();

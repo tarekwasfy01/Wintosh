@@ -300,6 +300,9 @@ process-local adapter rather than a complete per-task Darwin right table.
 counter independently, including underflow rejection.
 `mach_port_deallocate` also releases a send-once reference before falling back
 to a receive right, with the behavior covered by the Mach smoke.
+When that release removes the final send or send-once reference, the existing
+no-senders notification path is now invoked after the registry lock is
+released, avoiding a native Windows lock cycle.
 All public port calls currently bind to the current Windows process and share
 one process-local registry. Foreign task names are rejected consistently;
 true task-owned namespaces and cross-task name translation remain an

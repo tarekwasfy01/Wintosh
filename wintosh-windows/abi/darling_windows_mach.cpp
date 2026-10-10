@@ -964,6 +964,8 @@ extern "C" darling_kern_return_t darling_windows_mach_port_deallocate(
 		name == darling_windows_mach_host_self())
 		return 0;
 	std::shared_ptr<PortQueue> port;
+	bool no_senders = false;
+	bool exhausted = false;
 	{
 		std::lock_guard lock(ports_mutex);
 		const auto found = ports.find(name);
@@ -976,22 +978,26 @@ extern "C" darling_kern_return_t darling_windows_mach_port_deallocate(
 			else if (port->send_once_refs != 0) --port->send_once_refs;
 			else if (port->receive_refs != 0) --port->receive_refs;
 			else return 3;
+			no_senders = port->send_refs == 0 && port->send_once_refs == 0;
 			port->refs = port->total_refs();
-			if (port->refs != 0) return 0;
-		}
-		ports.erase(found);
-		for (auto& [set_name, members] : port_sets) {
-			(void)set_name;
-			members.erase(name);
+			exhausted = port->refs == 0;
+			if (exhausted) {
+				ports.erase(found);
+				for (auto& [set_name, members] : port_sets) {
+					(void)set_name;
+					members.erase(name);
+				}
+			}
 		}
 	}
-	{
+	if (exhausted) {
 		std::lock_guard lock(port->mutex);
 		port->closed = true;
+		port->condition.notify_all();
+		ports_condition.notify_all();
 	}
-	port->condition.notify_all();
-	ports_condition.notify_all();
-	DeliverPortNotification(name);
+	if (no_senders) DeliverNoSendersNotification(name);
+	if (exhausted) DeliverPortNotification(name);
 	return 0; // Host tokens are borrowed pseudo-rights; nothing to close here.
 }
 

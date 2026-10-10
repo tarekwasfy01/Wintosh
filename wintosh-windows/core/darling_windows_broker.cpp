@@ -76,6 +76,7 @@ int wmain(int argc, wchar_t** argv)
 		std::unordered_set<std::uint64_t> active_sessions;
 		std::unordered_map<std::uint64_t, DWORD> session_process_ids;
 		std::unordered_map<std::uint64_t, std::shared_ptr<std::atomic_bool>> active_requests;
+		std::unordered_map<std::uint64_t, std::uint64_t> active_request_sessions;
 
 		// Keep the broker state alive across client reconnects.  A disconnected
 		// client must not destroy the emulated Mach namespace.
@@ -121,6 +122,18 @@ int wmain(int argc, wchar_t** argv)
 							out_of_line_regions.erase(it->first);
 							out_of_line_owners.erase(it->first);
 							it = out_of_line_session_owners.erase(it);
+						} else {
+							++it;
+						}
+					}
+					broker_state_condition.notify_all();
+					for (auto it = active_request_sessions.begin();
+						it != active_request_sessions.end();) {
+						if (it->second == session_token) {
+							auto request = active_requests.find(it->first);
+							if (request != active_requests.end())
+								request->second->store(true);
+							it = active_request_sessions.erase(it);
 						} else {
 							++it;
 						}
@@ -386,6 +399,7 @@ int wmain(int argc, wchar_t** argv)
 							throw std::invalid_argument("duplicate active Mach IPC request ID");
 						cancellation = std::make_shared<std::atomic_bool>(false);
 						active_requests[envelope.request_id] = cancellation;
+						active_request_sessions[envelope.request_id] = envelope.session_token;
 					}
 					if (queue.empty() && !envelope.payload.empty()) {
 						const auto timeout = static_cast<std::uint32_t>(envelope.payload[0]) |
@@ -400,11 +414,15 @@ int wmain(int argc, wchar_t** argv)
 							});
 					if (cancellation && cancellation->load()) {
 						active_requests.erase(envelope.request_id);
+						active_request_sessions.erase(envelope.request_id);
 						throw std::runtime_error("Mach IPC request cancelled");
 					}
 						if (!ready || !allocated_ports.contains(envelope.port_token) ||
 							port_queues.at(envelope.port_token).empty()) {
-							if (cancellation) active_requests.erase(envelope.request_id);
+							if (cancellation) {
+								active_requests.erase(envelope.request_id);
+								active_request_sessions.erase(envelope.request_id);
+							}
 							throw std::runtime_error("Mach IPC receive would block");
 						}
 					}
@@ -413,10 +431,16 @@ int wmain(int argc, wchar_t** argv)
 						// request. Remove it before returning the immediate
 						// would-block error, otherwise the request table retains a
 						// stale entry for the lifetime of the broker.
-						if (cancellation) active_requests.erase(envelope.request_id);
+						if (cancellation) {
+							active_requests.erase(envelope.request_id);
+							active_request_sessions.erase(envelope.request_id);
+						}
 						throw std::runtime_error("Mach IPC receive would block");
 					}
-					if (cancellation) active_requests.erase(envelope.request_id);
+					if (cancellation) {
+						active_requests.erase(envelope.request_id);
+						active_request_sessions.erase(envelope.request_id);
+					}
 					std::uint32_t maximum_inline_size = UINT32_MAX;
 					if (envelope.payload.size() == 8) {
 						maximum_inline_size = static_cast<std::uint32_t>(envelope.payload[4]) |

@@ -354,36 +354,47 @@ int wmain()
 		}
 		std::cout << "BROKER_MACH_RECEIVE_TIMEOUT=PASS\n";
 		std::vector<std::uint8_t> blocked_receive_payload;
+		std::string blocked_cancel_result;
 		std::thread blocked_receiver([&] {
 			auto blocked_client = darling::windows_host::NamedPipeRpcClient::Connect(pipe_name);
+			const darling::windows_host::MachIpcEnvelope blocked_session_open{
+				darling::windows_host::MachIpcOperation::SessionOpen, 1178, 0, 0, {}};
+			const auto blocked_session_bytes = darling::windows_host::EncodeMachIpcEnvelope(
+				blocked_session_open);
+			blocked_client.Write(std::string(blocked_session_bytes.begin(), blocked_session_bytes.end()));
+			const auto blocked_session_wire = blocked_client.Read();
+			const auto blocked_session = darling::windows_host::DecodeMachIpcEnvelope(
+				std::vector<std::uint8_t>(blocked_session_wire.begin(), blocked_session_wire.end()));
 			const darling::windows_host::MachIpcEnvelope blocked_request{
 				darling::windows_host::MachIpcOperation::Receive, 118, token, 0,
 				{232, 3, 0, 0}};
-			const auto blocked_bytes = darling::windows_host::EncodeMachIpcEnvelope(blocked_request);
+			auto authenticated_blocked_request = blocked_request;
+			authenticated_blocked_request.session_token = blocked_session.session_token;
+			const auto blocked_bytes = darling::windows_host::EncodeMachIpcEnvelope(
+				authenticated_blocked_request);
 			blocked_client.Write(std::string(blocked_bytes.begin(), blocked_bytes.end()));
 			const auto blocked_wire = blocked_client.Read();
-			const auto blocked_response = darling::windows_host::DecodeMachIpcEnvelope(
-				std::vector<std::uint8_t>(blocked_wire.begin(), blocked_wire.end()));
-			blocked_receive_payload = blocked_response.payload;
+			blocked_cancel_result.assign(blocked_wire.begin(), blocked_wire.end());
 		});
 		Sleep(50);
-		auto wake_sender = darling::windows_host::NamedPipeRpcClient::Connect(pipe_name);
-		const darling::windows_host::MachIpcEnvelope wake_send{
-			darling::windows_host::MachIpcOperation::Send, 119, token, 0,
-			{'W', 'A', 'K', 'E'}};
-		const auto wake_send_bytes = darling::windows_host::EncodeMachIpcEnvelope(wake_send);
-		wake_sender.Write(std::string(wake_send_bytes.begin(), wake_send_bytes.end()));
-		if (wake_sender.Read().empty()) {
+		const darling::windows_host::MachIpcEnvelope cross_client_cancel{
+			darling::windows_host::MachIpcOperation::Cancel, 118, 0, 0, {}};
+		auto authenticated_cancel = cross_client_cancel;
+		authenticated_cancel.session_token = session_response.session_token;
+		const auto cancel_bytes = darling::windows_host::EncodeMachIpcEnvelope(
+			authenticated_cancel);
+		client.Write(std::string(cancel_bytes.begin(), cancel_bytes.end()));
+		if (client.Read().empty()) {
 			blocked_receiver.join();
-			std::cerr << "BROKER_MACH_BLOCKED_RECEIVE_WAKE=FAIL\n";
+			std::cerr << "BROKER_MACH_CROSS_CLIENT_CANCEL=FAIL\n";
 			return 5;
 		}
 		blocked_receiver.join();
-		if (blocked_receive_payload != wake_send.payload) {
-			std::cerr << "BROKER_MACH_BLOCKED_RECEIVE_WAKE=FAIL\n";
+		if (blocked_cancel_result != "MACH_REQUEST_CANCELLED") {
+			std::cerr << "BROKER_MACH_CROSS_CLIENT_CANCEL=FAIL\n";
 			return 5;
 		}
-		std::cout << "BROKER_MACH_BLOCKED_RECEIVE_WAKE=PASS\n";
+		std::cout << "BROKER_MACH_CROSS_CLIENT_CANCEL=PASS\n";
 		const darling::windows_host::MachIpcEnvelope send_request{
 			darling::windows_host::MachIpcOperation::Send, 101, token, 0,
 			{'B', 'R', 'O', 'K', 'E', 'R'}};

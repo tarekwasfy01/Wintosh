@@ -89,6 +89,16 @@ int main()
 		darling_windows_recvmsg(peer, &recv_message, 0) ==
 		static_cast<int>(sizeof(message_payload) - 1) &&
 		std::memcmp(message_received, message_payload, sizeof(message_payload) - 1) == 0;
+	darling_cmsghdr malformed_length{sizeof(darling_cmsghdr) - 1, 0xffff, 1};
+	darling_msghdr malformed_message = send_message;
+	malformed_message.msg_control = &malformed_length;
+	malformed_message.msg_controllen = sizeof(malformed_length);
+	darling_cmsghdr unsupported_type{sizeof(darling_cmsghdr), 0xffff, 99};
+	darling_msghdr unsupported_message = send_message;
+	unsupported_message.msg_control = &unsupported_type;
+	unsupported_message.msg_controllen = sizeof(unsupported_type);
+	const bool malformed_control_ok = darling_windows_sendmsg(client, &malformed_message, 0) < 0 &&
+		darling_windows_sendmsg(client, &unsupported_message, 0) < 0;
 	unsigned char ipv6_address[16]{};
 	char ipv6_text[46]{};
 	const bool ipv6_ok = darling_windows_inet_pton(AF_INET6, "2001:db8::17",
@@ -99,7 +109,7 @@ int main()
 	if (duplicate >= 0) darling_windows_close(duplicate);
 	darling_windows_close(client);
 	darling_windows_close(listener);
-	if (!io_ok || !message_ok || !ipv6_ok || !options_ok || !duplicate_ok) return 6;
+	if (!io_ok || !message_ok || !malformed_control_ok || !ipv6_ok || !options_ok || !duplicate_ok) return 6;
 	std::cout << "DARWIN_SOCKET_SMOKE=PASS\n";
 	return 0;
 }

@@ -26,6 +26,7 @@ namespace {
 std::atomic<darling_mach_port_name_t> next_port{0x100};
 constexpr std::size_t max_port_queue_depth = 1024;
 constexpr std::size_t max_inline_message_size = 4 * 1024 * 1024;
+constexpr darling_mach_msg_id_t mach_notify_no_senders = 0x4a;
 struct PortQueue final {
 	std::mutex mutex;
 	std::condition_variable condition;
@@ -78,6 +79,24 @@ void DeliverPortNotification(darling_mach_port_name_t name)
 	// The minimal legacy header has no dedicated msgh_id field; preserve the
 	// notification id in its reserved word until the full Darwin header ABI is
 	// introduced.
+	message.msgh_reserved = static_cast<std::uint32_t>(notification.msgid);
+	(void)darling_windows_mach_port_send(notification.notify, &message, sizeof(message));
+}
+
+void DeliverNoSendersNotification(darling_mach_port_name_t name)
+{
+	PortNotification notification{};
+	{
+		std::lock_guard lock(port_notifications_mutex);
+		const auto found = port_notifications.find(name);
+		if (found == port_notifications.end() || found->second.msgid != mach_notify_no_senders)
+			return;
+		notification = found->second;
+		port_notifications.erase(found);
+	}
+	darling_mach_msg_header message{};
+	message.msgh_size = sizeof(message);
+	message.msgh_remote_port = notification.notify;
 	message.msgh_reserved = static_cast<std::uint32_t>(notification.msgid);
 	(void)darling_windows_mach_port_send(notification.notify, &message, sizeof(message));
 }
@@ -1158,6 +1177,7 @@ extern "C" darling_kern_return_t darling_windows_mach_port_mod_refs(
 		port->condition.notify_all();
 		ports_condition.notify_all();
 	}
+	if (port->send_refs == 0) DeliverNoSendersNotification(name);
 	return 0;
 }
 

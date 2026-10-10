@@ -95,7 +95,7 @@ MachIpcEnvelope DecodeMachIpcEnvelope(const std::vector<std::uint8_t>& bytes)
 	if (ReadU16(bytes, offset) != mach_ipc_version)
 		throw std::invalid_argument("unsupported Mach IPC envelope version");
 	const auto operation = ReadU16(bytes, offset);
-	if (operation < 1 || operation > 12)
+	if (operation < 1 || operation > static_cast<std::uint16_t>(MachIpcOperation::Cancel))
 		throw std::invalid_argument("unknown Mach IPC operation");
 	MachIpcEnvelope result;
 	result.operation = static_cast<MachIpcOperation>(operation);

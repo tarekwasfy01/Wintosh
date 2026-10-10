@@ -27,6 +27,16 @@ int wmain()
 		return 1;
 	}
 	std::cout << "MACH_IPC_ENVELOPE=PASS\n";
+	darling::windows_host::MachIpcEnvelope cancel{
+		darling::windows_host::MachIpcOperation::Cancel, 44, 0, 0, {}, 0, 0, 99};
+	const auto cancel_decoded = darling::windows_host::DecodeMachIpcEnvelope(
+		darling::windows_host::EncodeMachIpcEnvelope(cancel));
+	if (cancel_decoded.operation != darling::windows_host::MachIpcOperation::Cancel ||
+		cancel_decoded.request_id != 44 || cancel_decoded.session_token != 99) {
+		std::cerr << "MACH_IPC_CANCEL_ENVELOPE=FAIL\n";
+		return 1;
+	}
+	std::cout << "MACH_IPC_CANCEL_ENVELOPE=PASS\n";
 	try {
 		(void)darling::windows_host::DecodeMachIpcEnvelope({'B', 'A', 'D'});
 		std::cerr << "MACH_IPC_ENVELOPE_VALIDATION=FAIL\n";

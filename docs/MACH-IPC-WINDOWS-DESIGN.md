@@ -91,10 +91,10 @@ successful transfer and is invalidated on session teardown.
 Receive supports bounded timeout and an explicit `MACH_RCV_TOO_LARGE`-style
 response containing the required inline size without consuming the message.
 Queue shutdown returns a stable port-dead result. Session-authenticated request
-cancellation is now available through the `Cancel` operation: a blocked
-`Receive` registers its nonzero request ID, a matching session can wake it, and
-the worker returns `MACH_REQUEST_CANCELLED`. Request cancellation by
-request ID is still unimplemented.
+cancellation is now available through the `Cancel` operation with envelope
+validation and round-trip coverage: a blocked `Receive` registers its nonzero
+request ID, a matching session can wake it, and the worker returns
+`MACH_REQUEST_CANCELLED`; a stable cross-client broker proof is still open.
 Broker reconnect preserves the shared namespace, and the current broker uses a
 joinable worker per accepted connection. The smoke gate proves a two-client
 send/receive through one shared port token. Workers preserve the shared state

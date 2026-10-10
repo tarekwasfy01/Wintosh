@@ -155,6 +155,8 @@ id darling_objc_msgSend_object1(id receiver, SEL selector, id argument);
 id darling_objc_msgSend_object0(id receiver, SEL selector);
 id darling_objc_msgSend_object2(id receiver, SEL selector, id first, id second);
 std::int64_t darling_objc_msgSend_int64_0(id receiver, SEL selector);
+int darling_objc_msgSend_int0(id receiver, SEL selector);
+int darling_objc_msgSend_int1(id receiver, SEL selector, int argument);
 id darling_objc_msgSend_block1(id receiver, SEL selector,
 	DarlingObjcCallbackBlock* argument);
 std::int64_t darling_objc_msgSend_int64_1(id receiver, SEL selector,

@@ -58,6 +58,8 @@ int AddFiveInt(id, SEL, int value)
 	return value + 5;
 }
 
+int ReturnInt(id, SEL) { return 42; }
+
 void MarkCalled(id, SEL)
 {
 }
@@ -346,6 +348,7 @@ int main()
 	SEL bool_zero_selector = sel_registerName("isReady");
 	SEL double_zero_selector = sel_registerName("piValue");
 	SEL pointer_zero_selector = sel_registerName("context");
+	SEL int_zero_selector = sel_registerName("answerInt");
 	if (!class_addMethod(child, bool_selector,
 		reinterpret_cast<IMP>(&IsPositive), "B@:B") ||
 		!class_addMethod(child, double_selector,
@@ -360,6 +363,7 @@ int main()
 		reinterpret_cast<IMP>(&ObserveInt), "v@:i"))
 		return 10;
 	if (!class_addMethod(child, int64_zero_selector, reinterpret_cast<IMP>(&ReturnInt64), "q@:") ||
+		!class_addMethod(child, int_zero_selector, reinterpret_cast<IMP>(&ReturnInt), "i@:") ||
 		!class_addMethod(child, bool_zero_selector, reinterpret_cast<IMP>(&ReturnTrue), "B@:") ||
 		!class_addMethod(child, double_zero_selector, reinterpret_cast<IMP>(&ReturnDouble), "d@:") ||
 		!class_addMethod(child, pointer_zero_selector, reinterpret_cast<IMP>(&ReturnPointer), "^v@:"))
@@ -377,6 +381,8 @@ int main()
 		darling_objc_msgSend_double1(object, double_selector, 3.5) != 7.0 ||
 		darling_objc_msgSend_double2(object, double_pair_selector, 1.25, 2.75) != 4.0 ||
 		darling_objc_msgSend_int64_0(object, int64_zero_selector) != 42 ||
+		darling_objc_msgSend_int0(object, int_zero_selector) != 42 ||
+		darling_objc_msgSend_int1(object, int_selector, 37) != 42 ||
 		!darling_objc_msgSend_bool0(object, bool_zero_selector) ||
 		darling_objc_msgSend_double0(object, double_zero_selector) != 3.5 ||
 		void_result.kind != DARLING_OBJC_VOID)

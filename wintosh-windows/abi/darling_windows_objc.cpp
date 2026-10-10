@@ -2151,6 +2151,15 @@ extern "C" std::int64_t darling_objc_msgSend_int64_1(id receiver, SEL selector,
 		argument);
 }
 
+extern "C" std::int64_t darling_objc_msgSend_int64_0(id receiver, SEL selector)
+{
+	const IMP implementation = FindMethod(receiver, selector);
+	const char* types = class_getMethodTypeEncoding(object_getClass(receiver), selector);
+	if (!implementation || !types || std::strcmp(types, "q@:") != 0) return 0;
+	using IntegerMethod = std::int64_t (*)(id, SEL);
+	return reinterpret_cast<IntegerMethod>(implementation)(receiver, selector);
+}
+
 extern "C" std::int64_t darling_objc_msgSend_int64_2(id receiver, SEL selector,
 	std::int64_t first, std::int64_t second)
 {
@@ -2177,6 +2186,15 @@ extern "C" bool darling_objc_msgSend_bool1(id receiver, SEL selector,
 		argument);
 }
 
+extern "C" bool darling_objc_msgSend_bool0(id receiver, SEL selector)
+{
+	const IMP implementation = FindMethod(receiver, selector);
+	const char* types = class_getMethodTypeEncoding(object_getClass(receiver), selector);
+	if (!implementation || !types || std::strcmp(types, "B@:") != 0) return false;
+	using BoolMethod = bool (*)(id, SEL);
+	return reinterpret_cast<BoolMethod>(implementation)(receiver, selector);
+}
+
 extern "C" void* darling_objc_msgSend_pointer1(id receiver, SEL selector,
 	void* argument)
 {
@@ -2188,6 +2206,15 @@ extern "C" void* darling_objc_msgSend_pointer1(id receiver, SEL selector,
 	using PointerMethod = void* (*)(id, SEL, void*);
 	return reinterpret_cast<PointerMethod>(implementation)(receiver, selector,
 		argument);
+}
+
+extern "C" void* darling_objc_msgSend_pointer0(id receiver, SEL selector)
+{
+	const IMP implementation = FindMethod(receiver, selector);
+	const char* types = class_getMethodTypeEncoding(object_getClass(receiver), selector);
+	if (!implementation || !types || std::strcmp(types, "^v@:") != 0) return nullptr;
+	using PointerMethod = void* (*)(id, SEL);
+	return reinterpret_cast<PointerMethod>(implementation)(receiver, selector);
 }
 
 extern "C" void darling_objc_msgSend_void1_int64(id receiver, SEL selector,
@@ -2225,6 +2252,15 @@ extern "C" double darling_objc_msgSend_double1(id receiver, SEL selector,
 	using DoubleMethod = double (*)(id, SEL, double);
 	return reinterpret_cast<DoubleMethod>(implementation)(receiver, selector,
 		argument);
+}
+
+extern "C" double darling_objc_msgSend_double0(id receiver, SEL selector)
+{
+	const IMP implementation = FindMethod(receiver, selector);
+	const char* types = class_getMethodTypeEncoding(object_getClass(receiver), selector);
+	if (!implementation || !types || std::strcmp(types, "d@:") != 0) return 0.0;
+	using DoubleMethod = double (*)(id, SEL);
+	return reinterpret_cast<DoubleMethod>(implementation)(receiver, selector);
 }
 
 extern "C" double darling_objc_msgSend_double2(id receiver, SEL selector,

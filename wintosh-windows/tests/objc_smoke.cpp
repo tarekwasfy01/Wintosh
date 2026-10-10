@@ -46,6 +46,13 @@ std::int64_t AddSeven(id, SEL, std::int64_t value)
 	return value + 7;
 }
 
+std::int64_t ReturnInt64(id, SEL) { return 42; }
+bool ReturnTrue(id, SEL) { return true; }
+double ReturnDouble(id, SEL) { return 3.5; }
+void* ReturnPointer(id, SEL) {
+	return reinterpret_cast<void*>(static_cast<std::uintptr_t>(0x4321));
+}
+
 int AddFiveInt(id, SEL, int value)
 {
 	return value + 5;
@@ -335,6 +342,10 @@ int main()
 	SEL double_pair_selector = sel_registerName("addDoubles:");
 	SEL void_int64_selector = sel_registerName("observeInt64:");
 	SEL void_int_selector = sel_registerName("observeInt:");
+	SEL int64_zero_selector = sel_registerName("answer");
+	SEL bool_zero_selector = sel_registerName("isReady");
+	SEL double_zero_selector = sel_registerName("piValue");
+	SEL pointer_zero_selector = sel_registerName("context");
 	if (!class_addMethod(child, bool_selector,
 		reinterpret_cast<IMP>(&IsPositive), "B@:B") ||
 		!class_addMethod(child, double_selector,
@@ -348,6 +359,11 @@ int main()
 	if (!class_addMethod(child, void_int_selector,
 		reinterpret_cast<IMP>(&ObserveInt), "v@:i"))
 		return 10;
+	if (!class_addMethod(child, int64_zero_selector, reinterpret_cast<IMP>(&ReturnInt64), "q@:") ||
+		!class_addMethod(child, bool_zero_selector, reinterpret_cast<IMP>(&ReturnTrue), "B@:") ||
+		!class_addMethod(child, double_zero_selector, reinterpret_cast<IMP>(&ReturnDouble), "d@:") ||
+		!class_addMethod(child, pointer_zero_selector, reinterpret_cast<IMP>(&ReturnPointer), "^v@:"))
+		return 10;
 	const DarlingObjcValue bool_result = darling_objc_invoke1(object,
 		bool_selector, DarlingObjcValue{DARLING_OBJC_BOOL, {.boolean = true}});
 	const DarlingObjcValue double_result = darling_objc_invoke1(object,
@@ -360,6 +376,9 @@ int main()
 		double_result.floating != 5.0 ||
 		darling_objc_msgSend_double1(object, double_selector, 3.5) != 7.0 ||
 		darling_objc_msgSend_double2(object, double_pair_selector, 1.25, 2.75) != 4.0 ||
+		darling_objc_msgSend_int64_0(object, int64_zero_selector) != 42 ||
+		!darling_objc_msgSend_bool0(object, bool_zero_selector) ||
+		darling_objc_msgSend_double0(object, double_zero_selector) != 3.5 ||
 		void_result.kind != DARLING_OBJC_VOID)
 		return 11;
 	darling_objc_msgSend_void1_int64(object, void_int64_selector,
@@ -379,6 +398,9 @@ int main()
 	void* pointer_marker = reinterpret_cast<void*>(static_cast<std::uintptr_t>(0x1234));
 	if (darling_objc_msgSend_pointer1(object, pointer_selector, pointer_marker) !=
 		pointer_marker)
+		return 13;
+	if (darling_objc_msgSend_pointer0(object, pointer_zero_selector) !=
+		reinterpret_cast<void*>(static_cast<std::uintptr_t>(0x4321)))
 		return 13;
 	if (static_cast<std::int64_t>(reinterpret_cast<std::uintptr_t>(
 		objc_msgSend(object, two_selector, static_cast<std::int64_t>(19),

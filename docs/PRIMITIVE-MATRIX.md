@@ -375,7 +375,8 @@ The same Foundation adapter also exposes basic `NSRange` construction, maximum,
 containment, intersection, and union operations.
 
 The Objective-C matrix row includes the current typed Windows dispatch surface:
-object, integer, Boolean, pointer, double, fixed CGRect, block, and void
+object, zero-argument and argument-bearing integer/Boolean/pointer/double,
+fixed CGRect, block, and void dispatch
 entry points, plus the tested `method_exchangeImplementations` path. These
 are fixed signatures backed by the custom runtime; they do not claim a
 general variadic Apple ABI or complete method-cache/swizzling semantics.

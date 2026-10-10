@@ -154,6 +154,7 @@ id darling_objc_msgSend_class0(Class cls, SEL selector);
 id darling_objc_msgSend_object1(id receiver, SEL selector, id argument);
 id darling_objc_msgSend_object0(id receiver, SEL selector);
 id darling_objc_msgSend_object2(id receiver, SEL selector, id first, id second);
+std::int64_t darling_objc_msgSend_int64_0(id receiver, SEL selector);
 id darling_objc_msgSend_block1(id receiver, SEL selector,
 	DarlingObjcCallbackBlock* argument);
 std::int64_t darling_objc_msgSend_int64_1(id receiver, SEL selector,
@@ -161,11 +162,14 @@ std::int64_t darling_objc_msgSend_int64_1(id receiver, SEL selector,
 std::int64_t darling_objc_msgSend_int64_2(id receiver, SEL selector,
 	std::int64_t first, std::int64_t second);
 bool darling_objc_msgSend_bool1(id receiver, SEL selector, bool argument);
+bool darling_objc_msgSend_bool0(id receiver, SEL selector);
 void* darling_objc_msgSend_pointer1(id receiver, SEL selector, void* argument);
+void* darling_objc_msgSend_pointer0(id receiver, SEL selector);
 void darling_objc_msgSend_void1_int64(id receiver, SEL selector,
 	std::int64_t argument);
 void darling_objc_msgSend_void1_int(id receiver, SEL selector, int argument);
 double darling_objc_msgSend_double1(id receiver, SEL selector, double argument);
+double darling_objc_msgSend_double0(id receiver, SEL selector);
 double darling_objc_msgSend_double2(id receiver, SEL selector, double first,
 	double second);
 void darling_objc_msgSend_void0(id receiver, SEL selector);

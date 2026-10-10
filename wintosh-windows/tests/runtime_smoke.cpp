@@ -64,6 +64,15 @@ int wmain()
 		return 1;
 	}
 	std::cout << "MACH_IPC_NATIVE_HANDLE=PASS\n";
+	try {
+		darling::windows_host::MachIpcEnvelope inconsistent_ool{
+			darling::windows_host::MachIpcOperation::Receive, 53, 8, 1, {'X'}, 78, 2, 11};
+		(void)darling::windows_host::DecodeMachMessageFromIpc(inconsistent_ool);
+		std::cerr << "MACH_IPC_OOL_VALIDATION=FAIL\n";
+		return 1;
+	} catch (const std::invalid_argument&) {
+		std::cout << "MACH_IPC_OOL_VALIDATION=PASS\n";
+	}
 	darling::windows_host::MachIpcEnvelope cancel{
 		darling::windows_host::MachIpcOperation::Cancel, 44, 0, 0, {}, 0, 0, 99};
 	const auto cancel_decoded = darling::windows_host::DecodeMachIpcEnvelope(

@@ -64,7 +64,8 @@ the local C `mach_msg` entry point through the broker session.
 Broker receive envelopes carrying a duplicated native mapping handle can now
 be materialized back into OOL bytes through `MachIpcSharedMemory`; the runtime
 smoke covers handle mapping and closure. Descriptor rewriting in the C ABI is
-still a separate integration step.
+still a separate integration step. OOL payload-size mismatches and missing
+payload/handle combinations are rejected before mapping.
 
 The process row also covers the four-word Darwin signal-set constructors and
 membership operations, verified by `signals_smoke`; this does not establish

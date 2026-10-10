@@ -124,6 +124,8 @@ MachIpcEnvelope EncodeMachMessageForIpc(const MachMessage& message,
 	MachIpcEnvelope envelope{MachIpcOperation::Send, request_id, port_token,
 		message.out_of_line_data.empty() ? 0u : 1u,
 		message.out_of_line_data.empty() ? message.inline_data : message.out_of_line_data};
+	if (envelope.disposition_count != 0)
+		envelope.out_of_line_size = static_cast<std::uint32_t>(message.out_of_line_data.size());
 	envelope.session_token = session_token;
 	return envelope;
 }
@@ -138,9 +140,11 @@ MachMessage DecodeMachMessageFromIpc(const MachIpcEnvelope& envelope)
 	MachMessage message;
 	if (envelope.disposition_count == 0)
 		message.inline_data = envelope.payload;
-	else if (!envelope.payload.empty())
+	else if (!envelope.payload.empty()) {
+		if (envelope.out_of_line_size != envelope.payload.size())
+			throw std::invalid_argument("Mach IPC OOL payload size mismatch");
 		message.out_of_line_data = envelope.payload;
-	else if (envelope.out_of_line_handle != 0 && envelope.out_of_line_size != 0) {
+	} else if (envelope.out_of_line_handle != 0 && envelope.out_of_line_size != 0) {
 		auto mapping = MachIpcSharedMemory::FromNativeHandle(
 			reinterpret_cast<HANDLE>(static_cast<std::uintptr_t>(envelope.out_of_line_handle)),
 			envelope.out_of_line_size);

@@ -61,6 +61,8 @@ int AddFiveInt(id, SEL, int value)
 }
 
 int ReturnInt(id, SEL) { return 42; }
+unsigned int ReturnUInt(id, SEL) { return 42; }
+unsigned int AddUInt(id, SEL, unsigned int value) { return value + 7; }
 
 void MarkCalled(id, SEL)
 {
@@ -353,6 +355,8 @@ int main()
 	SEL int_zero_selector = sel_registerName("answerInt");
 	SEL uint64_zero_selector = sel_registerName("answerUInt");
 	SEL uint64_selector = sel_registerName("addUInt:");
+	SEL uint_zero_selector = sel_registerName("answerUInt32");
+	SEL uint_selector = sel_registerName("addUInt32:");
 	if (!class_addMethod(child, bool_selector,
 		reinterpret_cast<IMP>(&IsPositive), "B@:B") ||
 		!class_addMethod(child, double_selector,
@@ -369,6 +373,8 @@ int main()
 	if (!class_addMethod(child, int64_zero_selector, reinterpret_cast<IMP>(&ReturnInt64), "q@:") ||
 		!class_addMethod(child, uint64_zero_selector, reinterpret_cast<IMP>(&ReturnUInt64), "Q@:") ||
 		!class_addMethod(child, uint64_selector, reinterpret_cast<IMP>(&AddUInt64), "Q@:Q") ||
+		!class_addMethod(child, uint_zero_selector, reinterpret_cast<IMP>(&ReturnUInt), "I@:") ||
+		!class_addMethod(child, uint_selector, reinterpret_cast<IMP>(&AddUInt), "I@:I") ||
 		!class_addMethod(child, int_zero_selector, reinterpret_cast<IMP>(&ReturnInt), "i@:") ||
 		!class_addMethod(child, bool_zero_selector, reinterpret_cast<IMP>(&ReturnTrue), "B@:") ||
 		!class_addMethod(child, double_zero_selector, reinterpret_cast<IMP>(&ReturnDouble), "d@:") ||
@@ -389,6 +395,8 @@ int main()
 		darling_objc_msgSend_int64_0(object, int64_zero_selector) != 42 ||
 		darling_objc_msgSend_uint64_0(object, uint64_zero_selector) != 42 ||
 		darling_objc_msgSend_uint64_1(object, uint64_selector, 35) != 42 ||
+		darling_objc_msgSend_uint0(object, uint_zero_selector) != 42 ||
+		darling_objc_msgSend_uint1(object, uint_selector, 35) != 42 ||
 		darling_objc_msgSend_int0(object, int_zero_selector) != 42 ||
 		darling_objc_msgSend_int1(object, int_selector, 37) != 42 ||
 		!darling_objc_msgSend_bool0(object, bool_zero_selector) ||

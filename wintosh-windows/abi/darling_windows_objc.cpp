@@ -2197,6 +2197,25 @@ extern "C" int darling_objc_msgSend_int1(id receiver, SEL selector, int argument
 	return reinterpret_cast<IntegerMethod>(implementation)(receiver, selector, argument);
 }
 
+extern "C" unsigned int darling_objc_msgSend_uint0(id receiver, SEL selector)
+{
+	const IMP implementation = FindMethod(receiver, selector);
+	const char* types = class_getMethodTypeEncoding(object_getClass(receiver), selector);
+	if (!implementation || !types || std::strcmp(types, "I@:") != 0) return 0;
+	using IntegerMethod = unsigned int (*)(id, SEL);
+	return reinterpret_cast<IntegerMethod>(implementation)(receiver, selector);
+}
+
+extern "C" unsigned int darling_objc_msgSend_uint1(id receiver, SEL selector,
+	unsigned int argument)
+{
+	const IMP implementation = FindMethod(receiver, selector);
+	const char* types = class_getMethodTypeEncoding(object_getClass(receiver), selector);
+	if (!implementation || !types || std::strcmp(types, "I@:I") != 0) return 0;
+	using IntegerMethod = unsigned int (*)(id, SEL, unsigned int);
+	return reinterpret_cast<IntegerMethod>(implementation)(receiver, selector, argument);
+}
+
 extern "C" std::int64_t darling_objc_msgSend_int64_2(id receiver, SEL selector,
 	std::int64_t first, std::int64_t second)
 {

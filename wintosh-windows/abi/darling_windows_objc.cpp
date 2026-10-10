@@ -2125,6 +2125,16 @@ extern "C" id darling_objc_msgSend_object2(id receiver, SEL selector,
 		first, second);
 }
 
+extern "C" id darling_objc_msgSend_object_pointer1(id receiver, SEL selector,
+	void* argument)
+{
+	const IMP implementation = FindMethod(receiver, selector);
+	const char* types = class_getMethodTypeEncoding(object_getClass(receiver), selector);
+	if (!implementation || !types || std::strcmp(types, "@@:^v") != 0) return nullptr;
+	using ObjectMethod = id (*)(id, SEL, void*);
+	return reinterpret_cast<ObjectMethod>(implementation)(receiver, selector, argument);
+}
+
 extern "C" id darling_objc_msgSend_block1(id receiver, SEL selector,
 	DarlingObjcCallbackBlock* argument)
 {

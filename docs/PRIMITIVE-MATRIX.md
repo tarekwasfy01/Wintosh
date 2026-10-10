@@ -382,6 +382,7 @@ and unsigned 32-bit (`I`) zero- and one-argument entry points,
 plus single-precision float (`f`) zero-, one-, and two-argument entry points,
 fixed CGRect, block, and void dispatch
 including void methods with a typed pointer argument (`v@:^v`)
+and object-returning methods with a typed pointer argument (`@@:^v`)
 entry points, plus the tested `method_exchangeImplementations` path. These
 are fixed signatures backed by the custom runtime; they do not claim a
 general variadic Apple ABI or complete method-cache/swizzling semantics.

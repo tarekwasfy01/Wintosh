@@ -58,6 +58,7 @@ void* ReturnPointer(id, SEL) {
 	return reinterpret_cast<void*>(static_cast<std::uintptr_t>(0x4321));
 }
 void MarkPointer(id, SEL, void* value) { if (value) *static_cast<int*>(value) = 42; }
+id ReturnPointerAsObject(id, SEL, void* value) { return reinterpret_cast<id>(value); }
 
 int AddFiveInt(id, SEL, int value)
 {
@@ -365,6 +366,7 @@ int main()
 	SEL float_selector = sel_registerName("scaleFloat:");
 	SEL float_pair_selector = sel_registerName("addFloats:");
 	SEL mark_pointer_selector = sel_registerName("markPointer:");
+	SEL object_pointer_selector = sel_registerName("objectFromPointer:");
 	if (!class_addMethod(child, bool_selector,
 		reinterpret_cast<IMP>(&IsPositive), "B@:B") ||
 		!class_addMethod(child, double_selector,
@@ -387,6 +389,7 @@ int main()
 		!class_addMethod(child, float_selector, reinterpret_cast<IMP>(&ScaleFloat), "f@:f") ||
 		!class_addMethod(child, float_pair_selector, reinterpret_cast<IMP>(&AddFloats), "f@:ff") ||
 		!class_addMethod(child, mark_pointer_selector, reinterpret_cast<IMP>(&MarkPointer), "v@:^v") ||
+		!class_addMethod(child, object_pointer_selector, reinterpret_cast<IMP>(&ReturnPointerAsObject), "@@:^v") ||
 		!class_addMethod(child, int_zero_selector, reinterpret_cast<IMP>(&ReturnInt), "i@:") ||
 		!class_addMethod(child, bool_zero_selector, reinterpret_cast<IMP>(&ReturnTrue), "B@:") ||
 		!class_addMethod(child, double_zero_selector, reinterpret_cast<IMP>(&ReturnDouble), "d@:") ||
@@ -442,6 +445,8 @@ int main()
 	int marked_pointer = 0;
 	darling_objc_msgSend_void1_pointer(object, mark_pointer_selector, &marked_pointer);
 	if (marked_pointer != 42) return 13;
+	if (darling_objc_msgSend_object_pointer1(object, object_pointer_selector, pointer_marker) !=
+		reinterpret_cast<id>(pointer_marker)) return 13;
 	if (static_cast<std::int64_t>(reinterpret_cast<std::uintptr_t>(
 		objc_msgSend(object, two_selector, static_cast<std::int64_t>(19),
 			static_cast<std::int64_t>(23)))) != 42)

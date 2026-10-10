@@ -552,3 +552,9 @@ reports `MACH_C_ABI_BROKER_CAPABILITY=PASS`. This is an integration seam for
 port allocation and descriptor rewriting, not yet automatic broker allocation
 or automatic routing of `mach_msg`.
 
+The optional native broker context is now active: `darling_windows_mach_broker_enable`
+opens a Named Pipe session, and `mach_port_allocate` sends a broker `Allocate`
+request and records the returned capability. The broker smoke verifies this
+complete path with `BROKER_C_ABI_ALLOCATE=PASS`. Local allocation remains the
+fallback when the broker context is disabled.
+

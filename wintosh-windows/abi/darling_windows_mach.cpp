@@ -28,6 +28,10 @@ namespace {
 std::atomic<darling_mach_port_name_t> next_port{0x100};
 darling::windows_host::MachOolOwnershipTable mach_ool_ownership;
 darling::windows_host::MachIpcCapabilityTable mach_ipc_capabilities;
+std::mutex mach_broker_mutex;
+std::unique_ptr<darling::windows_host::NamedPipeRpcClient> mach_broker_client;
+std::uint64_t mach_broker_session = 0;
+std::atomic<std::uint64_t> mach_broker_request{0x200000};
 constexpr std::size_t max_port_queue_depth = 1024;
 constexpr std::size_t max_inline_message_size = 4 * 1024 * 1024;
 constexpr darling_mach_msg_id_t mach_notify_dead_name = 0x48;
@@ -1031,6 +1035,29 @@ extern "C" darling_kern_return_t darling_windows_mach_port_deallocate(
 	return 0; // Host tokens are borrowed pseudo-rights; nothing to close here.
 }
 
+extern "C" darling_kern_return_t darling_windows_mach_broker_enable(const wchar_t* pipe_name)
+{
+	if (pipe_name == nullptr || *pipe_name == L'\0') return 4;
+	try {
+		auto client = darling::windows_host::NamedPipeRpcClient::Connect(pipe_name);
+		const auto session = darling::windows_host::OpenMachIpcSession(client);
+		std::lock_guard lock(mach_broker_mutex);
+		mach_broker_client = std::make_unique<darling::windows_host::NamedPipeRpcClient>(std::move(client));
+		mach_broker_session = session;
+		return 0;
+	} catch (...) {
+		return 4;
+	}
+}
+
+extern "C" darling_kern_return_t darling_windows_mach_broker_disable()
+{
+	std::lock_guard lock(mach_broker_mutex);
+	mach_broker_client.reset();
+	mach_broker_session = 0;
+	return 0;
+}
+
 extern "C" darling_kern_return_t darling_windows_mach_port_allocate(
 	darling_mach_port_name_t task, darling_mach_port_name_t* name)
 {
@@ -1040,6 +1067,29 @@ extern "C" darling_kern_return_t darling_windows_mach_port_allocate(
 	{
 		std::lock_guard lock(ports_mutex);
 		ports.emplace(*name, std::make_shared<PortQueue>());
+	}
+	{
+		std::lock_guard lock(mach_broker_mutex);
+		if (mach_broker_client) {
+			try {
+			darling::windows_host::MachIpcEnvelope request;
+			request.operation = darling::windows_host::MachIpcOperation::Allocate;
+			request.request_id = mach_broker_request.fetch_add(1, std::memory_order_relaxed);
+			request.session_token = mach_broker_session;
+			const auto response = darling::windows_host::SendMachIpcEnvelope(*mach_broker_client, request);
+			if (response.operation != darling::windows_host::MachIpcOperation::Allocate ||
+				response.request_id != request.request_id || response.port_token == 0) {
+				std::lock_guard ports_lock(ports_mutex);
+				ports.erase(*name);
+				return 4;
+			}
+			mach_ipc_capabilities.Bind(*name, {response.port_token, mach_broker_session});
+			} catch (...) {
+				std::lock_guard ports_lock(ports_mutex);
+				ports.erase(*name);
+				return 4;
+			}
+		}
 	}
 	return 0;
 }

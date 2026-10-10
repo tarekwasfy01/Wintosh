@@ -4,6 +4,7 @@
  */
 
 #include "darwin_windows_process.h"
+#include "darling_windows_mach.h"
 #include "darling_windows_runtime.h"
 
 #include <algorithm>
@@ -78,6 +79,23 @@ int wmain()
 		if (session_token == 0) {
 			return 5;
 		}
+		darling_mach_port_name_t broker_local_port = 0;
+		const auto broker_enable = darling_windows_mach_broker_enable(pipe_name.c_str());
+		const auto broker_allocate = darling_windows_mach_port_allocate(
+			darling_windows_mach_task_self(), &broker_local_port);
+		std::uint64_t broker_capability = 0;
+		std::uint64_t broker_capability_session = 0;
+		const auto broker_lookup = darling_windows_mach_port_lookup_broker(
+			broker_local_port, &broker_capability, &broker_capability_session);
+		const auto broker_disable = darling_windows_mach_broker_disable();
+		std::cout << "BROKER_C_ABI_ALLOCATE=" <<
+			(broker_enable == 0 && broker_allocate == 0 && broker_lookup == 0 &&
+			 broker_capability != 0 && broker_capability_session != 0 ? "PASS" : "FAIL") << "\n";
+		if (broker_local_port != 0)
+			darling_windows_mach_port_destroy(darling_windows_mach_task_self(), broker_local_port);
+		if (broker_enable != 0 || broker_allocate != 0 || broker_lookup != 0 ||
+			broker_disable != 0 || broker_capability == 0 || broker_capability_session == 0)
+			return 6;
 		const auto process_id = static_cast<std::uint32_t>(GetCurrentProcessId());
 		const std::vector<std::uint8_t> process_id_payload{
 			static_cast<std::uint8_t>(process_id),

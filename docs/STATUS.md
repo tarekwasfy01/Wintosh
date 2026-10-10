@@ -193,6 +193,8 @@ covered by `objc_smoke`; this remains a fixed-layout adapter, not general
 aggregate ABI support.
 The corresponding `darling_objc_msgSend_void1_int` bridge for `v@:i` is also
 covered by the same gate.
+The block bridge `darling_objc_msgSend_block1` for `@@:@?` is likewise covered;
+arbitrary block signatures and complete copy/dispose ABI behavior remain open.
 complex numbers, quoted aggregates, and nested pointers.
 
 CoreGraphics now has a separate partial geometry/color adapter with the

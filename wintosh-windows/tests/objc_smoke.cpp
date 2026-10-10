@@ -813,6 +813,9 @@ int main()
 	if (!bridge_callback || block_result.kind != DARLING_OBJC_OBJECT ||
 		block_result.object != reinterpret_cast<id>(bridge_callback))
 		return 31;
+	if (darling_objc_msgSend_block1(object, apply_selector, bridge_callback) !=
+		reinterpret_cast<id>(bridge_callback))
+		return 33;
 	darling_objc_block_release(bridge_callback);
 	if (objc_msgSend(object, self_selector) != object ||
 		objc_msgSend(object, object_selector, object) != object ||

@@ -226,6 +226,22 @@ int main()
 	if (darling_windows_thread_info(thread, darling_thread_sched_fifo_info_flavor, &fifo,
 		&fifo_count) != 0 || fifo_count != darling_thread_sched_fifo_info_count)
 		return 1;
+	darling_thread_extended_policy_info policy{0};
+	std::uint32_t policy_count = 1;
+	if (darling_windows_thread_policy_set(thread, darling_thread_extended_policy,
+		&policy, policy_count) != 0)
+		return 1;
+	darling_thread_precedence_policy_info roundtrip_precedence{};
+	std::uint32_t roundtrip_precedence_count = 1;
+	bool policy_default = true;
+	if (darling_windows_thread_policy_get(thread, darling_thread_precedence_policy,
+		&roundtrip_precedence, &roundtrip_precedence_count, &policy_default) != 0 ||
+		roundtrip_precedence_count != 1 || policy_default || roundtrip_precedence.importance <= 0)
+		return 1;
+	policy.timeshare = 1;
+	if (darling_windows_thread_policy_set(thread, darling_thread_extended_policy,
+		&policy, policy_count) != 0)
+		return 1;
 	const auto host = darling_windows_mach_host_self();
 	darling_exception_mask_t exception_mask = 1, returned_mask = 0;
 	darling_mach_port_name_t returned_handler = 0;

@@ -1,7 +1,11 @@
 [CmdletBinding()]
-param([string]$Root = (Join-Path $PSScriptRoot '..'))
+param([string]$Root)
 
 $ErrorActionPreference = 'Stop'
+if ([string]::IsNullOrWhiteSpace($Root)) {
+	$scriptDirectory = Split-Path -Parent $MyInvocation.MyCommand.Path
+	$Root = Split-Path -Parent $scriptDirectory
+}
 $licenseDir = Join-Path $Root 'licenses'
 $required = @(
     'LICENSE-darling-GPL-3.0.txt',

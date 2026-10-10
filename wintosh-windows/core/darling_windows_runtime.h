@@ -174,7 +174,7 @@ private:
 	std::condition_variable m_condition;
 	std::deque<MachMessage> m_messages;
 	bool m_closed = false;
-	bool m_interrupted = false;
+	std::uint64_t m_interrupt_generation = 0;
 };
 
 class Prefix final {

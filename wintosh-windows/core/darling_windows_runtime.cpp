@@ -541,11 +541,13 @@ bool MachPort::Send(MachMessage message)
 std::optional<MachMessage> MachPort::Receive(DWORD timeout_ms)
 {
 	std::unique_lock lock(m_mutex);
-	const auto ready = [this] { return m_closed || m_interrupted || !m_messages.empty(); };
+	const auto interrupt_generation = m_interrupt_generation;
+	const auto ready = [this, interrupt_generation] {
+		return m_closed || m_interrupt_generation != interrupt_generation || !m_messages.empty();
+	};
 	if (!m_condition.wait_for(lock, std::chrono::milliseconds(timeout_ms), ready))
 		return std::nullopt;
-	if (m_interrupted) {
-		m_interrupted = false;
+	if (m_interrupt_generation != interrupt_generation) {
 		return std::nullopt;
 	}
 	if (m_messages.empty())
@@ -560,7 +562,7 @@ void MachPort::InterruptWaiters() noexcept
 	{
 		std::lock_guard lock(m_mutex);
 		if (m_closed) return;
-		m_interrupted = true;
+		++m_interrupt_generation;
 	}
 	m_condition.notify_all();
 }

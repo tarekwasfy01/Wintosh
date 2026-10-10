@@ -140,13 +140,18 @@ int wmain()
 	std::cout << "MACH_PORT_CLOSE_WAKE=PASS\n";
 	darling::windows_host::MachPort interrupted_port;
 	bool interrupted = false;
+	bool second_interrupted = false;
 	std::thread interrupted_receiver([&] {
 		interrupted = !interrupted_port.Receive(2000).has_value();
+	});
+	std::thread second_interrupted_receiver([&] {
+		second_interrupted = !interrupted_port.Receive(2000).has_value();
 	});
 	Sleep(20);
 	interrupted_port.InterruptWaiters();
 	interrupted_receiver.join();
-	if (!interrupted || interrupted_port.IsClosed()) {
+	second_interrupted_receiver.join();
+	if (!interrupted || !second_interrupted || interrupted_port.IsClosed()) {
 		std::cerr << "MACH_PORT_INTERRUPT=FAIL\n";
 		return 1;
 	}

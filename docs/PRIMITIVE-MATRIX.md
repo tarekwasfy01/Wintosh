@@ -335,6 +335,9 @@ corresponding local sender reference after successful queueing; the Mach smoke
 covers `MOVE_SEND`.
 The same path now consumes one `MACH_MSG_TYPE_MOVE_SEND_ONCE` reference and is
 covered by a second native receive/send-once descriptor case.
+`MACH_MSG_TYPE_COPY_RECEIVE` now increments the referenced local receive-right
+count after queueing and is covered by the descriptor smoke; move-receive and
+cross-task name translation remain open.
 The local ABI distinguishes reference-decrementing `mach_port_deallocate`
 from forced `mach_port_destroy`; the smoke gate also verifies that forced
 destruction closes a blocked receiver and rejects subsequent use. This is a

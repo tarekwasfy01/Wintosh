@@ -1458,11 +1458,17 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 			for (std::uint32_t index = 0; index < body->msgh_descriptor_count; ++index) {
 				if (descriptors[index].type != darling_mach_msg_descriptor_port ||
 					(descriptors[index].disposition != darling_mach_copy_send &&
+						descriptors[index].disposition != darling_mach_copy_receive &&
 						descriptors[index].disposition != darling_mach_move_send &&
 						descriptors[index].disposition != darling_mach_move_send_once) ||
 					descriptors[index].name == 0)
 					return darling_kern_not_supported;
-				if (descriptors[index].disposition != darling_mach_copy_send) {
+				if (descriptors[index].disposition == darling_mach_copy_receive) {
+					std::uint32_t refs = 0;
+					if (darling_windows_mach_port_get_refs(darling_windows_mach_task_self(),
+						descriptors[index].name, darling_mach_port_type_receive, &refs) != 0 || refs == 0)
+						return 3;
+				} else if (descriptors[index].disposition != darling_mach_copy_send) {
 					std::uint32_t refs = 0;
 					const auto right = descriptors[index].disposition == darling_mach_move_send_once ?
 						darling_mach_port_type_send_once : darling_mach_port_type_send;
@@ -1479,7 +1485,10 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 				reinterpret_cast<const std::uint8_t*>(message) + sizeof(darling_mach_msg_header));
 			const auto* descriptors = reinterpret_cast<const darling_mach_msg_port_descriptor*>(body + 1);
 			for (std::uint32_t index = 0; index < body->msgh_descriptor_count; ++index) {
-				if (descriptors[index].disposition == darling_mach_move_send ||
+				if (descriptors[index].disposition == darling_mach_copy_receive) {
+					(void)darling_windows_mach_port_mod_refs(darling_windows_mach_task_self(),
+						descriptors[index].name, darling_mach_port_type_receive, 1);
+				} else if (descriptors[index].disposition == darling_mach_move_send ||
 					descriptors[index].disposition == darling_mach_move_send_once) {
 					const auto right = descriptors[index].disposition == darling_mach_move_send_once ?
 						darling_mach_port_type_send_once : darling_mach_port_type_send;

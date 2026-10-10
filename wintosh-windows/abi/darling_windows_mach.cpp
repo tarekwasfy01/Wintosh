@@ -965,6 +965,7 @@ extern "C" darling_kern_return_t darling_windows_mach_port_deallocate(
 		return 0;
 	std::shared_ptr<PortQueue> port;
 	bool no_senders = false;
+	bool sender_removed = false;
 	bool exhausted = false;
 	{
 		std::lock_guard lock(ports_mutex);
@@ -974,11 +975,11 @@ extern "C" darling_kern_return_t darling_windows_mach_port_deallocate(
 		{
 			std::lock_guard port_lock(port->mutex);
 			if (port->refs == 0) return 3;
-			if (port->send_refs != 0) --port->send_refs;
-			else if (port->send_once_refs != 0) --port->send_once_refs;
+			if (port->send_refs != 0) { --port->send_refs; sender_removed = true; }
+			else if (port->send_once_refs != 0) { --port->send_once_refs; sender_removed = true; }
 			else if (port->receive_refs != 0) --port->receive_refs;
 			else return 3;
-			no_senders = port->send_refs == 0 && port->send_once_refs == 0;
+			no_senders = sender_removed && port->send_refs == 0 && port->send_once_refs == 0;
 			port->refs = port->total_refs();
 			exhausted = port->refs == 0;
 			if (exhausted) {

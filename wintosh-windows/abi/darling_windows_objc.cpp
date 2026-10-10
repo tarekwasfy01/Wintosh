@@ -1342,6 +1342,31 @@ extern "C" IMP method_setImplementation(Method method, IMP implementation)
 	return previous;
 }
 
+extern "C" void method_exchangeImplementations(Method first, Method second)
+{
+	if (!first || !second || !first->owner_class || !second->owner_class)
+		return;
+	std::lock_guard lock(RuntimeMutex());
+	auto implementation_for = [](Method method) -> IMP& {
+		auto& methods = method->class_method ? method->owner_class->class_methods :
+			method->owner_class->methods;
+		return methods.at(method->selector).implementation;
+	};
+	std::swap(implementation_for(first), implementation_for(second));
+	first->implementation = implementation_for(first);
+	second->implementation = implementation_for(second);
+	if (first->class_method && first->owner_class->metaclass) {
+		auto found = first->owner_class->metaclass->methods.find(first->selector);
+		if (found != first->owner_class->metaclass->methods.end())
+			found->second.implementation = first->implementation;
+	}
+	if (second->class_method && second->owner_class->metaclass) {
+		auto found = second->owner_class->metaclass->methods.find(second->selector);
+		if (found != second->owner_class->metaclass->methods.end())
+			found->second.implementation = second->implementation;
+	}
+}
+
 extern "C" const char* method_getTypeEncoding(Method method)
 {
 	return method ? method->types.c_str() : nullptr;

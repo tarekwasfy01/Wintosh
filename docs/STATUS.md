@@ -197,6 +197,9 @@ The block bridge `darling_objc_msgSend_block1` for `@@:@?` is likewise covered;
 arbitrary block signatures and complete copy/dispose ABI behavior remain open.
 The zero-argument object-return bridge `darling_objc_msgSend_object0` for
 `@@:` is covered as well.
+`method_exchangeImplementations` now swaps compatible instance-method IMPs
+and the smoke verifies the swap and restoration; full Apple method-cache,
+concurrency, and arbitrary swizzling semantics remain open.
 complex numbers, quoted aggregates, and nested pointers.
 
 CoreGraphics now has a separate partial geometry/color adapter with the

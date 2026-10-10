@@ -30,6 +30,12 @@ id ReturnArgument(id, SEL, id argument)
 	return argument;
 }
 
+id ReturnFixedArgument(id, SEL, id argument)
+{
+	return argument == nullptr ? nullptr : reinterpret_cast<id>(
+		static_cast<std::uintptr_t>(0x5678));
+}
+
 id ReturnSecondArgument(id, SEL, id, id second)
 {
 	return second;
@@ -256,6 +262,7 @@ int main()
 	if (strong_slot != nullptr)
 		return 35;
 	SEL object_selector = sel_registerName("identity:");
+	SEL exchange_selector = sel_registerName("exchange:");
 	SEL integer_selector = sel_registerName("addSeven:");
 	SEL int_selector = sel_registerName("addFiveInt:");
 	SEL object_pair_selector = sel_registerName("second:");
@@ -264,6 +271,8 @@ int main()
 	SEL void_selector = sel_registerName("mark");
 	if (!class_addMethod(child, object_selector,
 		reinterpret_cast<IMP>(&ReturnArgument), "@@:@") ||
+		!class_addMethod(child, exchange_selector,
+			reinterpret_cast<IMP>(&ReturnFixedArgument), "@@:@") ||
 		!class_addMethod(child, integer_selector,
 			reinterpret_cast<IMP>(&AddSeven), "q@:q") ||
 		!class_addMethod(child, int_selector,
@@ -277,6 +286,18 @@ int main()
 		!class_addMethod(child, void_selector,
 			reinterpret_cast<IMP>(&MarkCalled), "v@:"))
 		return 7;
+	Method exchange_first = class_getInstanceMethod(child, object_selector);
+	Method exchange_second = class_getInstanceMethod(child, exchange_selector);
+	if (!exchange_first || !exchange_second ||
+		darling_objc_msgSend_object1(object, exchange_selector, object) !=
+		reinterpret_cast<id>(static_cast<std::uintptr_t>(0x5678)))
+		return 22;
+	method_exchangeImplementations(exchange_first, exchange_second);
+	if (darling_objc_msgSend_object1(object, object_selector, object) !=
+		reinterpret_cast<id>(static_cast<std::uintptr_t>(0x5678)) ||
+		darling_objc_msgSend_object1(object, exchange_selector, object) != object)
+		return 22;
+	method_exchangeImplementations(exchange_first, exchange_second);
 	if (std::string(class_getMethodTypeEncoding(child, object_selector)) !=
 		"@@:@" || std::string(class_getMethodTypeEncoding(child, integer_selector)) !=
 		"q@:q" || std::string(class_getMethodTypeEncoding(child, void_selector)) !=

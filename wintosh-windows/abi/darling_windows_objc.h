@@ -98,6 +98,7 @@ Method* class_copyMethodList(Class cls, unsigned int* out_count);
 SEL method_getName(Method method);
 IMP method_getImplementation(Method method);
 IMP method_setImplementation(Method method, IMP implementation);
+void method_exchangeImplementations(Method first, Method second);
 const char* method_getTypeEncoding(Method method);
 Ivar class_getInstanceVariable(Class cls, const char* name);
 const char* ivar_getName(Ivar ivar);

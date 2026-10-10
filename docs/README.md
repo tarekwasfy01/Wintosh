@@ -51,6 +51,8 @@ must be implemented and tested family by family.
 - `../PRIMITIVE-MATRIX.csv` / `PRIMITIVE-MATRIX.md` — implementation and test map.
 - `SOURCE-EXTRACTION-MATRIX.md` — cross-project source and idea extraction map.
 - `PORTING-INVENTORY.md` — detailed progress log and remaining gaps.
+- `MACH-OOL-OWNERSHIP-DESIGN.md` — contract for the next native OOL ownership
+  implementation and its explicit safety boundary.
 - `DOCUMENTATION-INDEX.md` — complete documentation map.
 - `docs/porting/README.md` — ordered porting-notes index.
 - `STATUS.md` — evidence-based current status.

@@ -2350,6 +2350,16 @@ extern "C" float darling_objc_msgSend_float1(id receiver, SEL selector, float ar
 	return reinterpret_cast<FloatMethod>(implementation)(receiver, selector, argument);
 }
 
+extern "C" float darling_objc_msgSend_float2(id receiver, SEL selector,
+	float first, float second)
+{
+	const IMP implementation = FindMethod(receiver, selector);
+	const char* types = class_getMethodTypeEncoding(object_getClass(receiver), selector);
+	if (!implementation || !types || std::strcmp(types, "f@:ff") != 0) return 0.0f;
+	using FloatMethod = float (*)(id, SEL, float, float);
+	return reinterpret_cast<FloatMethod>(implementation)(receiver, selector, first, second);
+}
+
 extern "C" void darling_objc_msgSend_void0(id receiver, SEL selector)
 {
 	const IMP implementation = FindMethod(receiver, selector);

@@ -53,6 +53,7 @@ bool ReturnTrue(id, SEL) { return true; }
 double ReturnDouble(id, SEL) { return 3.5; }
 float ReturnFloat(id, SEL) { return 3.5f; }
 float ScaleFloat(id, SEL, float value) { return value * 2.0f; }
+float AddFloats(id, SEL, float first, float second) { return first + second; }
 void* ReturnPointer(id, SEL) {
 	return reinterpret_cast<void*>(static_cast<std::uintptr_t>(0x4321));
 }
@@ -361,6 +362,7 @@ int main()
 	SEL uint_selector = sel_registerName("addUInt32:");
 	SEL float_zero_selector = sel_registerName("floatValue");
 	SEL float_selector = sel_registerName("scaleFloat:");
+	SEL float_pair_selector = sel_registerName("addFloats:");
 	if (!class_addMethod(child, bool_selector,
 		reinterpret_cast<IMP>(&IsPositive), "B@:B") ||
 		!class_addMethod(child, double_selector,
@@ -381,6 +383,7 @@ int main()
 		!class_addMethod(child, uint_selector, reinterpret_cast<IMP>(&AddUInt), "I@:I") ||
 		!class_addMethod(child, float_zero_selector, reinterpret_cast<IMP>(&ReturnFloat), "f@:") ||
 		!class_addMethod(child, float_selector, reinterpret_cast<IMP>(&ScaleFloat), "f@:f") ||
+		!class_addMethod(child, float_pair_selector, reinterpret_cast<IMP>(&AddFloats), "f@:ff") ||
 		!class_addMethod(child, int_zero_selector, reinterpret_cast<IMP>(&ReturnInt), "i@:") ||
 		!class_addMethod(child, bool_zero_selector, reinterpret_cast<IMP>(&ReturnTrue), "B@:") ||
 		!class_addMethod(child, double_zero_selector, reinterpret_cast<IMP>(&ReturnDouble), "d@:") ||
@@ -405,6 +408,7 @@ int main()
 		darling_objc_msgSend_uint1(object, uint_selector, 35) != 42 ||
 		darling_objc_msgSend_float0(object, float_zero_selector) != 3.5f ||
 		darling_objc_msgSend_float1(object, float_selector, 3.5f) != 7.0f ||
+		darling_objc_msgSend_float2(object, float_pair_selector, 1.25f, 2.75f) != 4.0f ||
 		darling_objc_msgSend_int0(object, int_zero_selector) != 42 ||
 		darling_objc_msgSend_int1(object, int_selector, 37) != 42 ||
 		!darling_objc_msgSend_bool0(object, bool_zero_selector) ||

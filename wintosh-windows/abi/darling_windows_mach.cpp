@@ -1249,10 +1249,8 @@ extern "C" darling_kern_return_t darling_windows_mach_port_mod_refs(
 			port->send_refs = static_cast<std::uint32_t>(updated);
 		} else {
 			const auto remove = static_cast<std::uint64_t>(-(static_cast<std::int64_t>(delta)));
-			if (remove > static_cast<std::uint64_t>(port->send_refs) + port->send_once_refs) return 4;
-			const auto from_send = (std::min)(remove, static_cast<std::uint64_t>(port->send_refs));
-			port->send_refs -= static_cast<std::uint32_t>(from_send);
-			port->send_once_refs -= static_cast<std::uint32_t>(remove - from_send);
+			if (remove > port->send_refs) return 4;
+			port->send_refs -= static_cast<std::uint32_t>(remove);
 		}
 		port->refs = port->total_refs();
 		exhausted = port->refs == 0;

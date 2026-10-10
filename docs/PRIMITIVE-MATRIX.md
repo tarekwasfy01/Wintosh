@@ -305,6 +305,8 @@ no-senders notification path is now invoked after the registry lock is
 released, avoiding a native Windows lock cycle.
 Receive-reference mutations no longer emit a no-senders notification because
 they do not change the sender set.
+Normal send-reference decrements likewise no longer consume send-once
+references; each right class now has isolated `mod_refs` accounting.
 All public port calls currently bind to the current Windows process and share
 one process-local registry. Foreign task names are rejected consistently;
 true task-owned namespaces and cross-task name translation remain an

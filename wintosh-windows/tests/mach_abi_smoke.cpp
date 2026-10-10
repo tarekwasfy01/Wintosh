@@ -429,6 +429,26 @@ int main()
 		const auto send_after = darling_windows_mach_port_send(port, "x", 1);
 		return stale == 3 && send_after == 3;
 	}();
+	const auto send_delta_isolated_ok = [&] {
+		darling_mach_port_name_t port = 0;
+		if (darling_windows_mach_port_allocate(task, &port) != 0 ||
+			darling_windows_mach_port_insert_right(task, port, thread,
+				darling_mach_make_send) != 0 ||
+			darling_windows_mach_port_insert_right(task, port, thread,
+				darling_mach_make_send_once) != 0)
+			return false;
+		std::uint32_t send_refs = 0, once_refs = 0;
+		const bool preserved = darling_windows_mach_port_mod_refs(task, port,
+			darling_mach_port_type_send, -2) == 4 &&
+			darling_windows_mach_port_get_refs(task, port, darling_mach_port_type_send,
+			&send_refs) == 0 && send_refs == 1 &&
+			darling_windows_mach_port_get_refs(task, port, darling_mach_port_type_send_once,
+			&once_refs) == 0 && once_refs == 1;
+		const bool removed = darling_windows_mach_port_mod_refs(task, port,
+			darling_mach_port_type_send, -1) == 0;
+		darling_windows_mach_port_destroy(task, port);
+		return preserved && removed;
+	}();
 	const auto extract_right_ok = [&] {
 		darling_mach_port_name_t source = 0;
 		if (darling_windows_mach_port_allocate(task, &source) != 0 ||
@@ -494,7 +514,7 @@ int main()
 		last_deallocate_ok &&
 		local_move_right_ok &&
 		foreign_task_rejected &&
-		mod_refs_lifetime_ok &&
+		mod_refs_lifetime_ok && send_delta_isolated_ok &&
 		extract_right_ok &&
 		darling_windows_host_symbol("mach_task_self") != 0 &&
 		darling_windows_host_symbol("mach_thread_self") != 0 &&

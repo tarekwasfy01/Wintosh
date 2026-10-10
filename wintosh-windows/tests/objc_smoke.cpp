@@ -608,14 +608,20 @@ int main()
 		std::uintptr_t class_properties{};
 	};
 	const char category_method_name[] = "categoryMethod";
+	const char category_class_method_name[] = "categoryClassMethod";
 	const char category_property_name[] = "categoryProperty";
 	const char category_property_attributes[] = "T@,N,V_categoryValue";
 	RawMethodList category_methods{sizeof(RawMethod), 1,
 		{reinterpret_cast<std::uintptr_t>(category_method_name),
 			reinterpret_cast<std::uintptr_t>(image_method_types),
 			reinterpret_cast<std::uintptr_t>(&ImageMethod)}};
+	RawMethodList category_class_methods{sizeof(RawMethod), 1,
+		{reinterpret_cast<std::uintptr_t>(category_class_method_name),
+			reinterpret_cast<std::uintptr_t>(image_method_types),
+			reinterpret_cast<std::uintptr_t>(&ClassIdentity)}};
 	RawCategory category{0, raw_class_address,
-		reinterpret_cast<std::uintptr_t>(&category_methods), 0,
+		reinterpret_cast<std::uintptr_t>(&category_methods),
+		reinterpret_cast<std::uintptr_t>(&category_class_methods),
 		reinterpret_cast<std::uintptr_t>(&category_protocol_list),
 		reinterpret_cast<std::uintptr_t>(&raw_properties), 0};
 	const std::uintptr_t category_address = reinterpret_cast<std::uintptr_t>(&category);
@@ -623,7 +629,14 @@ int main()
 		sizeof(category_address)) != 1 ||
 		class_getMethodImplementation(objc_getClass("ImageRegisteredClass"),
 			sel_registerName(category_method_name)) !=
-		reinterpret_cast<IMP>(&ImageMethod))
+		reinterpret_cast<IMP>(&ImageMethod) ||
+		method_getImplementation(class_getClassMethod(
+			objc_getClass("ImageRegisteredClass"),
+			sel_registerName(category_class_method_name))) !=
+		reinterpret_cast<IMP>(&ClassIdentity) ||
+		darling_objc_msgSend_class0(objc_getClass("ImageRegisteredClass"),
+			sel_registerName(category_class_method_name)) !=
+		reinterpret_cast<id>(objc_getClass("ImageRegisteredClass")))
 		return 23;
 	unsigned int copied_method_count = 0;
 	Method* copied_methods = class_copyMethodList(

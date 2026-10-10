@@ -179,9 +179,18 @@ int wmain()
 			darling_windows_dlclose(handle) == 0 &&
 			darling_windows_dlsym(second_handle, "exported") != nullptr &&
 			darling_windows_dlclose(second_handle) == 0;
+		bool image_removed = true;
+		const auto image_count_final = darling_windows_dyld_image_count();
+		for (std::uint32_t index = 0; index < image_count_final; ++index) {
+			const auto* image_name = darling_windows_dyld_get_image_name(index);
+			if (image_name != nullptr && std::strcmp(image_name, utf8_path.c_str()) == 0) {
+				image_removed = false;
+				break;
+			}
+		}
 		std::error_code error;
 		std::filesystem::remove(path, error);
-		if (!passed || error)
+		if (!passed || !image_removed || error)
 			return 3;
 		const auto concurrent_path = std::filesystem::path(temp_path) /
 			(L"darling-dlopen-concurrent-" + std::to_wstring(GetCurrentProcessId()) + L".dylib");

@@ -73,12 +73,15 @@ token as a kernel handle or reuse it after deallocation. The broker stores
 receive queues and capability-token state, while clients hold opaque tokens.
 Queues are bounded at 1024 messages and one OOL descriptor is supported as a
 Windows shared-mapping approximation.
-The current Stage-1 implementation deliberately uses broker-wide tokens for
-the cross-client transport proof; session identity and capability ownership
-remain a separate unimplemented layer.
+The legacy token-0 transport still deliberately uses broker-wide tokens for
+the cross-client compatibility proof. Nonzero session-owned tokens now have
+ownership checks, explicit `CapabilityTransfer`, stale-session rejection, and
+teardown cleanup; this remains a bounded approximation rather than complete
+Darwin rights ownership.
 Tokens are now generated from the Windows C++ random-device source rather than
 an incrementing counter, so the trivial next-token guessing primitive is gone.
-This is token unpredictability only, not authentication or ownership.
+Legacy token-0 mode has no authentication; nonzero session mode adds scoped
+ownership but is not equivalent to kernel-managed Mach rights.
 Send-right transfer is represented by a broker-issued capability descriptor,
 never by a raw Windows `HANDLE`. A descriptor is consumed exactly once on a
 successful transfer and is invalidated on session teardown.

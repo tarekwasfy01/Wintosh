@@ -1459,11 +1459,13 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 				if (descriptors[index].type != darling_mach_msg_descriptor_port ||
 					(descriptors[index].disposition != darling_mach_copy_send &&
 						descriptors[index].disposition != darling_mach_copy_receive &&
+						descriptors[index].disposition != darling_mach_move_receive &&
 						descriptors[index].disposition != darling_mach_move_send &&
 						descriptors[index].disposition != darling_mach_move_send_once) ||
 					descriptors[index].name == 0)
 					return darling_kern_not_supported;
-				if (descriptors[index].disposition == darling_mach_copy_receive) {
+				if (descriptors[index].disposition == darling_mach_copy_receive ||
+					descriptors[index].disposition == darling_mach_move_receive) {
 					std::uint32_t refs = 0;
 					if (darling_windows_mach_port_get_refs(darling_windows_mach_task_self(),
 						descriptors[index].name, darling_mach_port_type_receive, &refs) != 0 || refs == 0)
@@ -1488,6 +1490,9 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 				if (descriptors[index].disposition == darling_mach_copy_receive) {
 					(void)darling_windows_mach_port_mod_refs(darling_windows_mach_task_self(),
 						descriptors[index].name, darling_mach_port_type_receive, 1);
+				} else if (descriptors[index].disposition == darling_mach_move_receive) {
+					(void)darling_windows_mach_port_mod_refs(darling_windows_mach_task_self(),
+						descriptors[index].name, darling_mach_port_type_receive, -1);
 				} else if (descriptors[index].disposition == darling_mach_move_send ||
 					descriptors[index].disposition == darling_mach_move_send_once) {
 					const auto right = descriptors[index].disposition == darling_mach_move_send_once ?

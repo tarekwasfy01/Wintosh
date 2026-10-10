@@ -573,6 +573,33 @@ void* DynamicImageBase(const DarwinDynamicImage& image) noexcept
 		reinterpret_cast<void*>(image.mapping.Segments().front().address);
 }
 
+bool DynamicImageNearestSymbol(const DarwinDynamicImage& image, const void* address,
+	std::string& name, std::uintptr_t& symbol_address) noexcept
+{
+	const auto target = reinterpret_cast<std::uintptr_t>(address);
+	bool found = false;
+	const auto visit = [&](const MachOImage& candidate,
+		const MachOImage::Mapping& mapping) {
+		for (const auto& symbol : candidate.Symbols()) {
+			std::uintptr_t current = 0;
+			try {
+				current = candidate.SymbolAddress(mapping, symbol.name);
+			} catch (...) {
+				continue;
+			}
+			if (current <= target && (!found || current > symbol_address)) {
+				found = true;
+				symbol_address = current;
+				name = symbol.name;
+			}
+		}
+	};
+	visit(image.image, image.mapping);
+	for (const auto& provider : image.providers)
+		visit(provider.image, provider.mapping);
+	return found;
+}
+
 void CloseDynamicImage(DarwinDynamicImage* image) noexcept
 {
 	if (image == nullptr)

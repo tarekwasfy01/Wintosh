@@ -1026,11 +1026,12 @@ and complete ABI/error parity remain open.
 The dynamic-loader family now resolves normalized `dlopen`, `dlsym`, `dlclose`,
 `dlerror`, and `dladdr` in addition to Darwin-prefixed names. `dladdr` now
 recognizes both Windows modules and addresses inside private Mach-O mappings,
-returning the mapped Darwin image path and base for the latter; the dynamic
-smoke verifies this alongside load, enumeration, and final removal. x64 and
-Win32 dynamic-loader smokes pass, while nearest-symbol reporting, complete
-dyld namespace/framework ABI, and real dependent-code execution semantics
-remain open.
+returning the mapped Darwin image path and base for the latter, plus the
+nearest exported symbol and its address when the Mach-O symbol table provides
+one; the dynamic smoke verifies this alongside load, enumeration, and final
+removal. x64 and Win32 dynamic-loader smokes pass, while complete dyld
+namespace/framework ABI and real dependent-code execution semantics remain
+open.
 
 The path family now also resolves normalized `unlink`, `rmdir`, `link`,
 `symlink`, `readlink`, `access`, `rename`, `chdir`, `getcwd`, and `mkdir`.

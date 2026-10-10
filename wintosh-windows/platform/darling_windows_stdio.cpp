@@ -6541,8 +6541,16 @@ extern "C" int darling_windows_dladdr(const void* address, darling_dl_info* info
 			image_name = darling::windows_host::DynamicImagePath(*entry.second).string();
 			info->dli_fname = image_name.c_str();
 			info->dli_fbase = darling::windows_host::DynamicImageBase(*entry.second);
-			info->dli_sname = nullptr;
-			info->dli_saddr = nullptr;
+			static thread_local std::string symbol_name;
+			std::uintptr_t symbol_address = 0;
+			if (darling::windows_host::DynamicImageNearestSymbol(*entry.second,
+				address, symbol_name, symbol_address)) {
+				info->dli_sname = symbol_name.c_str();
+				info->dli_saddr = reinterpret_cast<void*>(symbol_address);
+			} else {
+				info->dli_sname = nullptr;
+				info->dli_saddr = nullptr;
+			}
 			return info->dli_fbase == nullptr ? 0 : 1;
 		}
 	}

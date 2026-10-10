@@ -170,7 +170,9 @@ int wmain()
 			darling_windows_dladdr(symbol_address, &dynamic_info) == 1 &&
 			dynamic_info.dli_fname != nullptr &&
 			std::strcmp(dynamic_info.dli_fname, utf8_path.c_str()) == 0 &&
-			dynamic_info.dli_fbase != nullptr;
+			dynamic_info.dli_fbase != nullptr && dynamic_info.dli_sname != nullptr &&
+			std::strcmp(dynamic_info.dli_sname, "_exported") == 0 &&
+			dynamic_info.dli_saddr == symbol_address;
 		void* default_symbol_address = darling_windows_dlsym(
 			reinterpret_cast<void*>(static_cast<std::intptr_t>(-2)), "exported");
 		void* process_handle = darling_windows_dlopen(nullptr, 0);

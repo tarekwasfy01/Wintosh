@@ -68,8 +68,10 @@ session.
 `OpenMachIpcSession` now performs the broker session handshake, including the
 current-process validation payload, and the broker smoke uses this helper for
 the authenticated session path. This makes session establishment reusable by
-the future C-ABI routing layer; local Mach port names are not yet automatically
-mapped to broker capability tokens.
+the future C-ABI routing layer. `MachIpcCapabilityTable` now provides the
+thread-safe local-name to broker-token/session-token mapping primitive and is
+covered by `MACH_IPC_CAPABILITY_TABLE=PASS`; automatic population from Mach
+port allocation and automatic use by `mach_msg` are still separate steps.
 Broker receive envelopes carrying a duplicated native mapping handle can now
 be materialized back into OOL bytes through `MachIpcSharedMemory`; the runtime
 smoke covers handle mapping and closure. Descriptor rewriting in the C ABI is

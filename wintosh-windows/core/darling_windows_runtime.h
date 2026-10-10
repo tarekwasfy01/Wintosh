@@ -17,6 +17,7 @@
 #include <optional>
 #include <string>
 #include <vector>
+#include <unordered_map>
 
 namespace darling::windows_host {
 
@@ -241,5 +242,22 @@ private:
 	NamedPipeRpcClient& client, const MachIpcEnvelope& request);
 [[nodiscard]] std::uint64_t OpenMachIpcSession(
 	NamedPipeRpcClient& client, DWORD process_id = GetCurrentProcessId());
+
+struct MachIpcCapability final {
+	std::uint64_t broker_token = 0;
+	std::uint64_t session_token = 0;
+};
+
+class MachIpcCapabilityTable final {
+public:
+	void Bind(std::uint32_t local_name, MachIpcCapability capability);
+	[[nodiscard]] std::optional<MachIpcCapability> Lookup(std::uint32_t local_name) const;
+	[[nodiscard]] bool Unbind(std::uint32_t local_name);
+	void Clear();
+
+private:
+	mutable std::mutex m_mutex;
+	std::unordered_map<std::uint32_t, MachIpcCapability> m_entries;
+};
 
 } // namespace darling::windows_host

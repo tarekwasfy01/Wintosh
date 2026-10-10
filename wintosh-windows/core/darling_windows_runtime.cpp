@@ -808,4 +808,32 @@ std::uint64_t OpenMachIpcSession(NamedPipeRpcClient& client, DWORD process_id)
 	return response.session_token;
 }
 
+void MachIpcCapabilityTable::Bind(std::uint32_t local_name, MachIpcCapability capability)
+{
+	if (local_name == 0 || capability.broker_token == 0 || capability.session_token == 0)
+		throw std::invalid_argument("invalid Mach IPC capability binding");
+	std::lock_guard lock(m_mutex);
+	if (!m_entries.emplace(local_name, capability).second)
+		throw std::invalid_argument("Mach IPC capability already bound");
+}
+
+std::optional<MachIpcCapability> MachIpcCapabilityTable::Lookup(std::uint32_t local_name) const
+{
+	std::lock_guard lock(m_mutex);
+	const auto found = m_entries.find(local_name);
+	return found == m_entries.end() ? std::nullopt : std::optional{found->second};
+}
+
+bool MachIpcCapabilityTable::Unbind(std::uint32_t local_name)
+{
+	std::lock_guard lock(m_mutex);
+	return m_entries.erase(local_name) != 0;
+}
+
+void MachIpcCapabilityTable::Clear()
+{
+	std::lock_guard lock(m_mutex);
+	m_entries.clear();
+}
+
 } // namespace darling::windows_host

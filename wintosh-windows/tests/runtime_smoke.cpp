@@ -427,6 +427,17 @@ int wmain()
 	}
 	std::cout << "MACH_IPC_RPC=PASS\n";
 
+	darling::windows_host::MachIpcCapabilityTable capabilities;
+	capabilities.Bind(0x123, {0x456, 0x789});
+	const auto capability = capabilities.Lookup(0x123);
+	if (!capability || capability->broker_token != 0x456 ||
+		capability->session_token != 0x789 || !capabilities.Unbind(0x123) ||
+		capabilities.Lookup(0x123).has_value()) {
+		std::cerr << "MACH_IPC_CAPABILITY_TABLE=FAIL\n";
+		return 6;
+	}
+	std::cout << "MACH_IPC_CAPABILITY_TABLE=PASS\n";
+
 	std::error_code cleanup_error;
 	std::filesystem::remove_all(prefix.Root(), cleanup_error);
 	std::cout << "PREFIX_CLEANUP=" << (cleanup_error ? "FAIL" : "PASS") << "\n";

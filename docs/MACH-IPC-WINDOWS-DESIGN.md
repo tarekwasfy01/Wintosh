@@ -116,7 +116,8 @@ application execution.
 
 ## Worker-pool implementation contract
 
-The worker pool, controlled shutdown/join, and two-client blocked-wait wakeup
-test are now in place with the existing shared state. Remaining worker
-hardening is cancellation and complete rights semantics. The accept loop owns listening instances; `BrokerState` owns ports,
+The worker pool, controlled shutdown/join, two-client notification wakeup, and
+two-client blocked-receive wakeup test are now in place with the existing
+shared state. Remaining worker hardening is cancellation and complete rights
+semantics. The accept loop owns listening instances; `BrokerState` owns ports,
 queues, OOL mappings, notifications, counters, and the state mutex.

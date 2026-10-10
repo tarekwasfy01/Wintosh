@@ -343,6 +343,37 @@ int wmain()
 			return 5;
 		}
 		std::cout << "BROKER_MACH_RECEIVE_TIMEOUT=PASS\n";
+		std::vector<std::uint8_t> blocked_receive_payload;
+		std::thread blocked_receiver([&] {
+			auto blocked_client = darling::windows_host::NamedPipeRpcClient::Connect(pipe_name);
+			const darling::windows_host::MachIpcEnvelope blocked_request{
+				darling::windows_host::MachIpcOperation::Receive, 118, token, 0,
+				{232, 3, 0, 0}};
+			const auto blocked_bytes = darling::windows_host::EncodeMachIpcEnvelope(blocked_request);
+			blocked_client.Write(std::string(blocked_bytes.begin(), blocked_bytes.end()));
+			const auto blocked_wire = blocked_client.Read();
+			const auto blocked_response = darling::windows_host::DecodeMachIpcEnvelope(
+				std::vector<std::uint8_t>(blocked_wire.begin(), blocked_wire.end()));
+			blocked_receive_payload = blocked_response.payload;
+		});
+		Sleep(50);
+		auto wake_sender = darling::windows_host::NamedPipeRpcClient::Connect(pipe_name);
+		const darling::windows_host::MachIpcEnvelope wake_send{
+			darling::windows_host::MachIpcOperation::Send, 119, token, 0,
+			{'W', 'A', 'K', 'E'}};
+		const auto wake_send_bytes = darling::windows_host::EncodeMachIpcEnvelope(wake_send);
+		wake_sender.Write(std::string(wake_send_bytes.begin(), wake_send_bytes.end()));
+		if (wake_sender.Read().empty()) {
+			blocked_receiver.join();
+			std::cerr << "BROKER_MACH_BLOCKED_RECEIVE_WAKE=FAIL\n";
+			return 5;
+		}
+		blocked_receiver.join();
+		if (blocked_receive_payload != wake_send.payload) {
+			std::cerr << "BROKER_MACH_BLOCKED_RECEIVE_WAKE=FAIL\n";
+			return 5;
+		}
+		std::cout << "BROKER_MACH_BLOCKED_RECEIVE_WAKE=PASS\n";
 		const darling::windows_host::MachIpcEnvelope send_request{
 			darling::windows_host::MachIpcOperation::Send, 101, token, 0,
 			{'B', 'R', 'O', 'K', 'E', 'R'}};

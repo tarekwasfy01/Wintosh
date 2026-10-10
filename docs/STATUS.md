@@ -34,24 +34,24 @@ The first cross-process Mach IPC slice is now implemented as a version-1
 `WIPC` envelope codec. It validates bounded little-endian operation, request,
 port-token, disposition-count, and payload fields. The runtime smoke test
 reports `MACH_IPC_ENVELOPE=PASS` and `MACH_IPC_ENVELOPE_VALIDATION=PASS`.
-This is only the transport-neutral message format; broker-backed port
-allocation and lookup, cross-process send/receive, dispositions, waiters,
-notifications, cancellation, MIG descriptors, out-of-line memory, and
-Mach-compatible error semantics remain unimplemented.
+This is only the transport-neutral message format; full Mach dispositions,
+cancellation, MIG descriptors, and Mach-compatible error semantics remain
+unimplemented.
 
 The broker now consumes the same envelope over a Windows named pipe for the
 first real cross-process operation: `Allocate` creates a broker-owned port
 token and `Deallocate` releases it. The separate-process smoke test passes
 `BROKER_MACH_ALLOCATE` and clean broker shutdown. Cross-process message
 delivery (`Send`/`Receive`) now has a bounded broker FIFO for allocated tokens,
-covered by `BROKER_MACH_SEND_RECEIVE=PASS`. Rights/dispositions,
-notifications, waiters, MIG, out-of-line memory, and a Mach-compatible
-name-space remain open. The lifecycle smoke also proves
+covered by `BROKER_MACH_SEND_RECEIVE=PASS`. The broker also supports bounded
+timed receives and a cross-client blocked-receive wakeup, covered by
+`BROKER_MACH_RECEIVE_TIMEOUT=PASS` and
+`BROKER_MACH_BLOCKED_RECEIVE_WAKE=PASS`. Rights/dispositions, MIG, and a
+Mach-compatible name-space remain open. The lifecycle smoke also proves
 `BROKER_MACH_LIFECYCLE=PASS`: a deallocated token is rejected on later use.
 An empty nonblocking receive now returns the explicit
 `MACH_RECEIVE_WOULD_BLOCK` result (`BROKER_MACH_EMPTY_RECEIVE=PASS`), rather
-than being conflated with malformed input. A blocking waiter/timeout and
-multi-client transport are still unimplemented. The named-pipe frame limit is
+than being conflated with malformed input. The named-pipe frame limit is
 now aligned with the envelope's 4 MiB bounded payload limit; a 2 MiB
 cross-process FIFO round trip passes as `BROKER_MACH_LARGE_PAYLOAD=PASS`.
 This remains inline transport, not Mach out-of-line memory.

@@ -7,6 +7,9 @@
 int main()
 {
 	const auto identity = darling_windows_CGAffineTransformIdentity();
+	if (!darling_windows_CGAffineTransformIsIdentity(identity) ||
+		darling_windows_CGAffineTransformIsIdentity(
+			darling_windows_CGAffineTransformMakeTranslation(1, 0))) return 1;
 	const auto translation = darling_windows_CGAffineTransformMakeTranslation(4, -3);
 	const auto scaling = darling_windows_CGAffineTransformMakeScale(2, 3);
 	const auto rotation = darling_windows_CGAffineTransformMakeRotation(0.5 * 3.14159265358979323846);

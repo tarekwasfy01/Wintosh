@@ -80,6 +80,14 @@ extern "C" darling_windows_CGAffineTransform darling_windows_CGAffineTransformId
 	return {1, 0, 0, 1, 0, 0};
 }
 
+extern "C" bool darling_windows_CGAffineTransformIsIdentity(
+	darling_windows_CGAffineTransform transform)
+{
+	return transform.a == 1.0 && transform.b == 0.0 &&
+		transform.c == 0.0 && transform.d == 1.0 &&
+		transform.tx == 0.0 && transform.ty == 0.0;
+}
+
 extern "C" darling_windows_CGAffineTransform darling_windows_CGAffineTransformMakeTranslation(
 	double tx, double ty)
 {

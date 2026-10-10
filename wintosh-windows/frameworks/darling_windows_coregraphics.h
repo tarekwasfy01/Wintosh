@@ -37,6 +37,8 @@ extern "C" darling_windows_CGVector darling_windows_CGVectorNormalize(
 extern "C" darling_windows_CGAffineTransform darling_windows_CGAffineTransformMake(
 	double a, double b, double c, double d, double tx, double ty);
 extern "C" darling_windows_CGAffineTransform darling_windows_CGAffineTransformIdentity();
+extern "C" bool darling_windows_CGAffineTransformIsIdentity(
+	darling_windows_CGAffineTransform transform);
 extern "C" darling_windows_CGAffineTransform darling_windows_CGAffineTransformMakeTranslation(
 	double tx, double ty);
 extern "C" darling_windows_CGAffineTransform darling_windows_CGAffineTransformMakeScale(

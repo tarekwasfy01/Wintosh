@@ -1,3 +1,8 @@
+/*
+ * Stage 1 pthread synchronization smoke for the Darling Windows adapter.
+ * GPL-3.0-only; see the bundled license and source manifests.
+ */
+
 #include "darling_windows_stdio.h"
 
 #include <iostream>

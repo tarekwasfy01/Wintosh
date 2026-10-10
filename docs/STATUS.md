@@ -1,6 +1,6 @@
 # Wintosh current status
 
-Status date: 2026-10-09
+Status date: 2026-10-10
 
 ## Evidence summary
 

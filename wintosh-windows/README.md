@@ -58,6 +58,12 @@ complete macOS application runtime. It requires a supported Mach-O format and
 architecture, and does not yet provide full Darling framework coverage,
 automatic `.app` discovery, or universal execution of arbitrary macOS apps.
 
+The current loader baseline includes dyld image enumeration, dynamic Mach-O
+`dladdr` symbol lookup, initializer/terminator ordering, and token-scoped
+ownership cleanup for newly registered Objective-C classes and protocols.
+Categories, selector-reference teardown, complete dyld namespace semantics,
+and arbitrary application compatibility remain outside this release boundary.
+
 The detailed build and evidence rules are in `../docs/BUILD-AND-TEST.md`.
 
 ## Installation layout

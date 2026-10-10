@@ -4,15 +4,15 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: Existing release tag to receive the build archives
+        description: Release tag to create or update with the build archives
         required: true
-        default: v0.1.0-dev
+        default: v0.2.0
   push:
     tags:
       - 'v*'
 
 permissions:
-  contents: read
+  contents: write
   id-token: write
   attestations: write
 
@@ -85,3 +85,31 @@ jobs:
           name: Wintosh-${{ matrix.arch }}
           path: package/Wintosh-${{ matrix.arch }}.zip
           if-no-files-found: error
+
+  release:
+    name: Create GitHub release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download x64 package
+        uses: actions/download-artifact@v4
+        with:
+          name: Wintosh-x64
+          path: package
+      - name: Download Win32 package
+        uses: actions/download-artifact@v4
+        with:
+          name: Wintosh-win32
+          path: package
+      - name: Create or update GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+        shell: bash
+        run: |
+          gh release view "$RELEASE_TAG" >/dev/null 2>&1 || \
+            gh release create "$RELEASE_TAG" --title "Wintosh $RELEASE_TAG" \
+              --generate-notes --target "$GITHUB_SHA"
+          gh release upload "$RELEASE_TAG" package/*.zip --clobber

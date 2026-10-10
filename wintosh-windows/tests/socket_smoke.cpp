@@ -1,4 +1,7 @@
-/* Focused Windows socket-family smoke for the Darling ABI adapter. */
+/*
+ * Focused Windows socket-family smoke for the Darling ABI adapter.
+ * GPL-3.0-only; see the bundled license and source manifests.
+ */
 #include "darling_windows_stdio.h"
 
 #include <windows.h>

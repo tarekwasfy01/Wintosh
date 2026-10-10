@@ -10,15 +10,15 @@ implementation on Windows runners for x64 and Win32. Each matrix job:
    `bin/`, with diagnostic smoke executables separated under `tests/`, together
    with `wintosh-windows/`, `docs/`, `licenses/`, and the Wintosh license.
 5. Creates a GitHub artifact and a build-provenance attestation.
-6. Publishes the archive as a workflow artifact for manual attachment to a
-   GitHub Release.
+6. Publishes the archive as a workflow artifact and, after both architecture
+   jobs pass, attaches it to the requested GitHub Release.
 
 The workflow activates the runner's Microsoft C++ toolchain and uses the
 portable Ninja generator, avoiding assumptions about the installed Visual
 Studio generator version. It uses GitHub's official
 `actions/attest-build-provenance@v2` action.
-It deliberately has `contents: read` only and does not modify Releases or
-repository contents automatically.
+The release job uses `contents: write` only to create/update the requested
+Release and upload the two verified archives.
 The repository workflow permissions include `id-token: write` and
 `attestations: write`, which are required for the attestation. The resulting
 attestation is provenance evidence for the archive and build workflow; it is
@@ -29,9 +29,9 @@ not a claim of complete Darling compatibility.
 From the repository's Actions page, start **Wintosh Windows build and
 attestation** with:
 
-`release_tag = v0.1.0-dev`
+`release_tag = v0.2.0`
 
 The workflow can also run automatically for future `v*` tags. Both x64 and
 Win32 jobs must pass before treating the release archives as verified. Download
-the two workflow artifacts and attach them manually to the intended Release;
-the attestations remain associated with the generated artifacts.
+the release job attaches both archives automatically; the attestations remain
+associated with the generated artifacts.

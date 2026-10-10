@@ -1,6 +1,7 @@
 /* Native OOL ownership bookkeeping; GPL-3.0-only. */
 #include "darling_windows_mach_ool.h"
 
+#include <limits>
 #include <mutex>
 #include <unordered_map>
 
@@ -18,6 +19,7 @@ bool MachOolOwnershipTable::RetainQueue(void* address)
 	std::lock_guard lock(mutex_);
 	const auto found = entries_.find(address);
 	if (found == entries_.end()) return false;
+	if (found->second.queue_refs == (std::numeric_limits<std::uint32_t>::max)()) return false;
 	++found->second.queue_refs;
 	return true;
 }
@@ -27,6 +29,7 @@ bool MachOolOwnershipTable::RetainReceiver(void* address)
 	std::lock_guard lock(mutex_);
 	const auto found = entries_.find(address);
 	if (found == entries_.end()) return false;
+	if (found->second.receiver_refs == (std::numeric_limits<std::uint32_t>::max)()) return false;
 	++found->second.receiver_refs;
 	return true;
 }

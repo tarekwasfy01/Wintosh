@@ -8,9 +8,12 @@ int main()
 	darling::windows_host::MachOolOwnershipTable table;
 	int allocation = 0;
 	int releases = 0;
-	if (!table.Register(&allocation, sizeof(allocation), [&](void* value) {
+	if (table.Register(nullptr, sizeof(allocation), {}) ||
+		table.Register(&allocation, 0, {}) ||
+		!table.Register(&allocation, sizeof(allocation), [&](void* value) {
 		if (value == &allocation) ++releases;
-	}) || table.Bytes(&allocation) != sizeof(allocation) ||
+	}) || table.Register(&allocation, sizeof(allocation), {}) ||
+		table.Bytes(&allocation) != sizeof(allocation) || table.Bytes(nullptr) != 0 ||
 		!table.RetainQueue(&allocation) || !table.RetainReceiver(&allocation) ||
 		!table.ReleaseQueue(&allocation) || table.Contains(&allocation) == false ||
 		!table.ReleaseReceiver(&allocation) || table.Contains(&allocation) || releases != 1 ||

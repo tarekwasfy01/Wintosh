@@ -563,3 +563,9 @@ response, unbinds the local capability, and then tears down the local port.
 The same broker smoke covers allocation and destruction before disabling the
 session; send/receive message routing is still a separate family.
 
+For a non-complex message, `mach_msg` now resolves the destination capability
+and sends the complete inline message through the broker `Send` operation,
+with response validation. `darling_windows_broker_smoke` covers this path
+inside `BROKER_C_ABI_ALLOCATE=PASS`. Complex messages with OOL or port
+descriptors remain on the local path until descriptor translation is added.
+

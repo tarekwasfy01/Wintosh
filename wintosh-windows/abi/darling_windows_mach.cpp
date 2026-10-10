@@ -1688,8 +1688,35 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 				}
 			}
 		}
-		auto result = darling_windows_mach_port_send(message->msgh_remote_port,
-			message, send_size);
+		darling_kern_return_t result = 0;
+		bool broker_routed_send = false;
+		if ((message->msgh_bits & darling_mach_msg_complex) == 0) {
+			std::lock_guard broker_lock(mach_broker_mutex);
+			const auto capability = mach_ipc_capabilities.Lookup(message->msgh_remote_port);
+			if (mach_broker_client && capability) {
+				try {
+					darling::windows_host::MachIpcEnvelope request;
+					request.operation = darling::windows_host::MachIpcOperation::Send;
+					request.request_id = mach_broker_request.fetch_add(1, std::memory_order_relaxed);
+					request.port_token = capability->broker_token;
+					request.session_token = capability->session_token;
+					const auto* bytes = reinterpret_cast<const std::uint8_t*>(message);
+					request.payload.assign(bytes, bytes + send_size);
+					const auto response = darling::windows_host::SendMachIpcEnvelope(
+						*mach_broker_client, request);
+					if (response.operation != request.operation ||
+						response.request_id != request.request_id ||
+						response.port_token != request.port_token)
+						return 4;
+					broker_routed_send = true;
+				} catch (...) {
+					return 4;
+				}
+			}
+		}
+		if (!broker_routed_send)
+			result = darling_windows_mach_port_send(message->msgh_remote_port,
+				message, send_size);
 		if (result == 0 && (message->msgh_bits & darling_mach_msg_complex) != 0) {
 			const auto* body = reinterpret_cast<const darling_mach_msg_body*>(
 				reinterpret_cast<const std::uint8_t*>(message) + sizeof(darling_mach_msg_header));

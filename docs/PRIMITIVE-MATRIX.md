@@ -278,6 +278,10 @@ drain-tested; exact Darwin queue-limit/error semantics remain open.
 The local C ABI now tracks receive and send references separately and exposes
 the corresponding type bits; this is still an adapter-level namespace rather
 than Darwin's per-task kernel right table.
+All public port calls currently bind to the current Windows process and share
+one process-local registry. Foreign task names are rejected consistently;
+true task-owned namespaces and cross-task name translation remain an
+architectural gap, not an unimplemented single symbol.
 The named-pipe broker separately covers bounded inline/OOL transport,
 reconnect persistence, joinable connection workers, and a two-client
 send/receive plus notification-wakeup proof. `Receive` also has a bounded

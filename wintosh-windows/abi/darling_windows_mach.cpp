@@ -36,6 +36,9 @@ struct PortQueue final {
 	bool closed = false;
 };
 std::mutex ports_mutex;
+// The current adapter deliberately has one process-local namespace. Public
+// entry points reject foreign task names; replacing this registry with
+// task->namespace ownership is the next kernel-semantics stage.
 std::mutex ports_wait_mutex;
 std::condition_variable ports_condition;
 std::unordered_map<darling_mach_port_name_t, std::shared_ptr<PortQueue>> ports;

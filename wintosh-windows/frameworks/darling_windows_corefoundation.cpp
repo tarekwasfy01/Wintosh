@@ -528,9 +528,12 @@ extern "C" std::uint64_t darling_windows_CFHash(const void* value)
 	case Kind::URL: return mix(static_cast<std::uint64_t>(std::hash<std::string>{}(object->string)));
 	case Kind::Data: return mix(static_cast<std::uint64_t>(std::hash<std::string_view>{}(
 		std::string_view(reinterpret_cast<const char*>(object->data.data()), object->data.size()))));
-	case Kind::Number: return mix(static_cast<std::uint64_t>(std::hash<std::int64_t>{}(object->number)));
+	case Kind::Number:
 	case Kind::Real:
-		return mix(static_cast<std::uint64_t>(std::hash<double>{}(object->real_number)));
+		// CFEqual deliberately treats numerically equal integer and real values as
+		// equal, so both representations must share one hash domain.
+		return 0x4e554d455249435full + static_cast<std::uint64_t>(std::hash<double>{}(
+			object->kind == Kind::Number ? static_cast<double>(object->number) : object->real_number));
 	case Kind::Date: return mix(static_cast<std::uint64_t>(std::hash<double>{}(object->date)));
 	case Kind::Boolean: return mix(object->boolean ? 1 : 0);
 	case Kind::Null: return mix(0);

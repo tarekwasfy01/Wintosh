@@ -118,7 +118,8 @@ int main()
 		darling_windows_CFNumberCompare(real_number, number) < 0;
 	const auto equal_real_number = darling_windows_CFNumberCreateDouble(42.0);
 	const bool numeric_equal_ok = darling_windows_CFEqual(number, equal_real_number) &&
-		!darling_windows_CFEqual(number, real_number);
+		!darling_windows_CFEqual(number, real_number) &&
+		darling_windows_CFHash(number) == darling_windows_CFHash(equal_real_number);
 	const void* keys[] = {string};
 	const void* mapped[] = {number};
 	const auto dictionary = darling_windows_CFDictionaryCreate(keys, mapped, 1);

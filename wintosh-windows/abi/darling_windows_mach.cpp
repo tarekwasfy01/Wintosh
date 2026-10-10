@@ -1447,13 +1447,26 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 		if (send_size < sizeof(darling_mach_msg_header) ||
 			message->msgh_remote_port == 0 || message->msgh_size != send_size) return 4;
 		if ((message->msgh_bits & darling_mach_msg_complex) != 0) {
+			bool ool_descriptor = false;
 			if (send_size < sizeof(darling_mach_msg_header) + sizeof(darling_mach_msg_body)) return 4;
 			const auto* body = reinterpret_cast<const darling_mach_msg_body*>(
 				reinterpret_cast<const std::uint8_t*>(message) + sizeof(darling_mach_msg_header));
+			if (body->msgh_descriptor_count == 0) return 4;
+			const auto* descriptor_bytes_start = reinterpret_cast<const std::uint8_t*>(body + 1);
+			const auto remaining = send_size - sizeof(darling_mach_msg_header) - sizeof(*body);
+			const auto first_type = descriptor_bytes_start[sizeof(darling_mach_port_name_t) + sizeof(std::uint32_t) + 1];
+			if (body->msgh_descriptor_count == 1 && first_type == darling_mach_msg_descriptor_ool) {
+				if (remaining < sizeof(darling_mach_msg_ool_descriptor)) return 4;
+				const auto* descriptor = reinterpret_cast<const darling_mach_msg_ool_descriptor*>(descriptor_bytes_start);
+				if (descriptor->deallocate != 0 || descriptor->copy != 0 ||
+					(descriptor->size != 0 && descriptor->address == 0))
+					return darling_kern_not_supported;
+				ool_descriptor = true;
+			}
+			if (!ool_descriptor) {
 			const auto descriptor_bytes = static_cast<std::uint64_t>(body->msgh_descriptor_count) *
 				sizeof(darling_mach_msg_port_descriptor);
-			if (body->msgh_descriptor_count == 0 ||
-				descriptor_bytes > send_size - sizeof(darling_mach_msg_header) - sizeof(*body)) return 4;
+			if (descriptor_bytes > remaining) return 4;
 			const auto* descriptors = reinterpret_cast<const darling_mach_msg_port_descriptor*>(body + 1);
 			for (std::uint32_t index = 0; index < body->msgh_descriptor_count; ++index) {
 				if (descriptors[index].type != darling_mach_msg_descriptor_port ||
@@ -1479,12 +1492,17 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 						return 3;
 				}
 			}
+			}
 		}
 		auto result = darling_windows_mach_port_send(message->msgh_remote_port,
 			message, send_size);
 		if (result == 0 && (message->msgh_bits & darling_mach_msg_complex) != 0) {
 			const auto* body = reinterpret_cast<const darling_mach_msg_body*>(
 				reinterpret_cast<const std::uint8_t*>(message) + sizeof(darling_mach_msg_header));
+			const auto* descriptor_bytes_start = reinterpret_cast<const std::uint8_t*>(body + 1);
+			const auto first_type = descriptor_bytes_start[sizeof(darling_mach_port_name_t) + sizeof(std::uint32_t) + 1];
+			if (body->msgh_descriptor_count == 1 && first_type == darling_mach_msg_descriptor_ool)
+				goto mach_msg_send_complete;
 			const auto* descriptors = reinterpret_cast<const darling_mach_msg_port_descriptor*>(body + 1);
 			for (std::uint32_t index = 0; index < body->msgh_descriptor_count; ++index) {
 				if (descriptors[index].disposition == darling_mach_copy_receive) {
@@ -1502,6 +1520,7 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 				}
 			}
 		}
+	mach_msg_send_complete:
 		if (result == darling_mach_send_queue_full && (option & darling_mach_send_timeout) != 0) {
 			const auto port = FindPort(message->msgh_remote_port);
 			if (port == nullptr) return 3;

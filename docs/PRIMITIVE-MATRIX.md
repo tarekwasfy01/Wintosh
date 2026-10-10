@@ -339,7 +339,9 @@ covered by a second native receive/send-once descriptor case.
 count after queueing and is covered by the descriptor smoke; move-receive and
 `MACH_MSG_TYPE_MOVE_RECEIVE` now consumes the source receive right after
 queueing and is covered by the descriptor smoke; cross-task name translation
-remains open.
+remains open. A single local `COPY` OOL descriptor is now validated and
+transported without deallocation or cross-process copying; true Mach VM
+ownership and protection transfer remain open.
 The local ABI distinguishes reference-decrementing `mach_port_deallocate`
 from forced `mach_port_destroy`; the smoke gate also verifies that forced
 destruction closes a blocked receiver and rejects subsequent use. This is a

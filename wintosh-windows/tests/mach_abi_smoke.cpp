@@ -919,6 +919,27 @@ int main()
 			descriptor_received.data(), descriptor_received.size(), &move_received_size, 100) == 0;
 		if (move_receive_source != 0) darling_windows_mach_port_destroy(task, move_receive_source);
 		if (!move_receive_send_ok || !move_receive_receive_ok) return 1;
+		std::uint32_t ool_payload = 0x4f4f4c21;
+		darling_mach_msg_ool_descriptor ool_descriptor{
+			static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(&ool_payload)),
+			sizeof(ool_payload), 0, 0, 0, darling_mach_msg_descriptor_ool};
+		darling_mach_msg_header ool_message = descriptor_message;
+		ool_message.msgh_id = 0x4f4f4c31;
+		ool_message.msgh_size = sizeof(ool_message) + sizeof(descriptor_body) + sizeof(ool_descriptor);
+		std::array<std::uint8_t, sizeof(ool_message) + sizeof(descriptor_body) + sizeof(ool_descriptor)> ool_wire{};
+		darling_mach_msg_body ool_body{1};
+		std::memcpy(ool_wire.data(), &ool_message, sizeof(ool_message));
+		std::memcpy(ool_wire.data() + sizeof(ool_message), &ool_body, sizeof(ool_body));
+		std::memcpy(ool_wire.data() + sizeof(ool_message) + sizeof(ool_body), &ool_descriptor, sizeof(ool_descriptor));
+		const bool ool_send_ok = darling_windows_mach_msg(
+			reinterpret_cast<darling_mach_msg_header*>(ool_wire.data()), darling_mach_send_msg,
+			static_cast<std::uint32_t>(ool_wire.size()), 0, 0, 0, 0) == 0;
+		std::array<std::uint8_t, sizeof(ool_wire)> ool_received{};
+		std::uint32_t ool_received_size = 0;
+		const bool ool_receive_ok = darling_windows_mach_port_receive(ns_notify,
+			ool_received.data(), ool_received.size(), &ool_received_size, 100) == 0 &&
+			ool_received_size == ool_wire.size();
+		if (!ool_send_ok || !ool_receive_ok) return 1;
 		if (ns_target != 0) darling_windows_mach_port_destroy(task, ns_target);
 		if (ns_notify != 0) darling_windows_mach_port_destroy(task, ns_notify);
 		darling_mach_port_name_t dead_target = 0, dead_notify = 0, dead_previous = 0xffffffffu;

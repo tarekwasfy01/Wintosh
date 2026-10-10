@@ -271,6 +271,8 @@ is now available, supports replacement/unregister, and is smoke-tested; it uses 
 for the notification id until the full Darwin message header is introduced.
 The local port-set receiver now uses condition-variable wakeups for sends,
 member removal, and set/port destruction, with a cross-thread smoke proof.
+The local `MachPort` also supports an explicit waiter interrupt, covered by
+`runtime_smoke`; this does not yet cancel a broker request across clients.
 The local C ABI now tracks receive and send references separately and exposes
 the corresponding type bits; this is still an adapter-level namespace rather
 than Darwin's per-task kernel right table.

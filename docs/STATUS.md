@@ -90,6 +90,10 @@ delivery on forced destruction; its smoke coverage is limited to that adapter
 contract, while
 full no-senders/dead-name rights and Darwin notification message layouts
 remain open.
+The local `MachPort` adapter also exposes an explicit waiter interrupt;
+`runtime_smoke` proves that a blocked receiver wakes without closing the port.
+This is the local cancellation primitive only; broker request cancellation by
+request ID remains unimplemented.
 Malformed notification wait payloads are rejected and covered by
 `BROKER_MACH_NOTIFICATION_VALIDATION=PASS`.
 The broker also accepts the explicit `Destroy` operation, releasing the

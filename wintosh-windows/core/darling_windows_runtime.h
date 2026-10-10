@@ -165,6 +165,7 @@ public:
 
 	[[nodiscard]] bool Send(MachMessage message);
 	[[nodiscard]] std::optional<MachMessage> Receive(DWORD timeout_ms);
+	void InterruptWaiters() noexcept;
 	void Close() noexcept;
 	[[nodiscard]] bool IsClosed() const noexcept;
 
@@ -173,6 +174,7 @@ private:
 	std::condition_variable m_condition;
 	std::deque<MachMessage> m_messages;
 	bool m_closed = false;
+	bool m_interrupted = false;
 };
 
 class Prefix final {

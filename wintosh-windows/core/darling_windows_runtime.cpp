@@ -541,14 +541,28 @@ bool MachPort::Send(MachMessage message)
 std::optional<MachMessage> MachPort::Receive(DWORD timeout_ms)
 {
 	std::unique_lock lock(m_mutex);
-	const auto ready = [this] { return m_closed || !m_messages.empty(); };
+	const auto ready = [this] { return m_closed || m_interrupted || !m_messages.empty(); };
 	if (!m_condition.wait_for(lock, std::chrono::milliseconds(timeout_ms), ready))
 		return std::nullopt;
+	if (m_interrupted) {
+		m_interrupted = false;
+		return std::nullopt;
+	}
 	if (m_messages.empty())
 		return std::nullopt;
 	auto message = std::move(m_messages.front());
 	m_messages.pop_front();
 	return message;
+}
+
+void MachPort::InterruptWaiters() noexcept
+{
+	{
+		std::lock_guard lock(m_mutex);
+		if (m_closed) return;
+		m_interrupted = true;
+	}
+	m_condition.notify_all();
 }
 
 void MachPort::Close() noexcept

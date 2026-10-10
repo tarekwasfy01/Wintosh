@@ -718,20 +718,30 @@ int main()
 			 ns_once_add == 0 && ns_once_remove == 0;
 		if (!no_senders_ok) return 1;
 		std::cout << "MACH_NOTIFY_NO_SENDERS=PASS\n";
-		darling_mach_port_name_t dealloc_target = 0;
+		darling_mach_port_name_t dealloc_target = 0, dealloc_notify = 0;
+		darling_mach_port_name_t dealloc_previous = 0xffffffffu;
 		std::uint32_t dealloc_once_refs = 0;
 		std::uint32_t dealloc_type = darling_mach_port_type_none;
+		darling_mach_msg_header dealloc_message{};
+		std::uint32_t dealloc_message_size = 0;
 		const bool deallocate_send_once_ok =
 			darling_windows_mach_port_allocate(task, &dealloc_target) == 0 &&
+			darling_windows_mach_port_allocate(task, &dealloc_notify) == 0 &&
 			darling_windows_mach_port_insert_right(task, dealloc_target, dealloc_target,
 				darling_mach_make_send_once) == 0 &&
+			darling_windows_mach_port_request_notification(task, dealloc_target, 0x4a,
+				dealloc_notify, &dealloc_previous) == 0 && dealloc_previous == 0 &&
 			darling_windows_mach_port_deallocate(task, dealloc_target) == 0 &&
 			darling_windows_mach_port_get_refs(task, dealloc_target,
 				darling_mach_port_type_send_once, &dealloc_once_refs) == 0 &&
 			dealloc_once_refs == 0 &&
 			darling_windows_mach_port_type(task, dealloc_target, &dealloc_type) == 0 &&
-			dealloc_type == darling_mach_port_type_receive;
+			dealloc_type == darling_mach_port_type_receive &&
+			darling_windows_mach_port_receive(dealloc_notify, &dealloc_message,
+				sizeof(dealloc_message), &dealloc_message_size, 100) == 0 &&
+			dealloc_message_size == sizeof(dealloc_message) && dealloc_message.msgh_id == 0x4a;
 		if (dealloc_target != 0) darling_windows_mach_port_destroy(task, dealloc_target);
+		if (dealloc_notify != 0) darling_windows_mach_port_destroy(task, dealloc_notify);
 		if (!deallocate_send_once_ok) return 1;
 		darling_mach_port_name_t receive_only = 0, receive_notify = 0, receive_previous = 0xffffffffu;
 		darling_mach_msg_header receive_message{};

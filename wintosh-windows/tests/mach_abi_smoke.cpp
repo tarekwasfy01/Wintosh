@@ -18,10 +18,14 @@ int main()
 	const auto task = darling_windows_mach_task_self();
 	const auto thread = darling_windows_mach_thread_self();
 	darling_thread_precedence_policy_info precedence{};
-	darling_thread_time_constraint_policy_info time_constraint{};
+	darling_thread_time_constraint_policy_info time_constraint{100, 10, 20, 1};
 	if (darling_windows_thread_policy_set(thread, darling_thread_precedence_policy,
 		&precedence, 1) != 0 || darling_windows_thread_policy_set(thread,
 		darling_thread_time_constraint_policy, &time_constraint, 4) != 0)
+		return 1;
+	darling_thread_time_constraint_policy_info invalid_time_constraint{100, 30, 20, 1};
+	if (darling_windows_thread_policy_set(thread, darling_thread_time_constraint_policy,
+		&invalid_time_constraint, 4) == 0)
 		return 1;
 	darling_thread_time_constraint_policy_info time_constraint_read{};
 	std::uint32_t time_constraint_count = 4;

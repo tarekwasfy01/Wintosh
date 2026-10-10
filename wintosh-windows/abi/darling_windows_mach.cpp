@@ -142,6 +142,11 @@ extern "C" darling_kern_return_t darling_windows_thread_policy_set(
 			return 4;
 		}
 		const auto* value = static_cast<const darling_thread_time_constraint_policy_info*>(policy);
+		if (value->period == 0 || value->computation == 0 || value->constraint == 0 ||
+			value->computation > value->constraint || value->preemptible < 0 || value->preemptible > 1) {
+			if (handle != GetCurrentThread()) CloseHandle(handle);
+			return 4;
+		}
 		{
 			std::lock_guard lock(time_constraint_policies_mutex);
 			time_constraint_policies[thread] = *value;

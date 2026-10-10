@@ -39,6 +39,31 @@ int wmain()
 		return 1;
 	}
 	std::cout << "MACH_IPC_MESSAGE_BRIDGE=PASS\n";
+	const HANDLE bridge_mapping = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr,
+		PAGE_READWRITE, 0, 3, nullptr);
+	void* bridge_view = bridge_mapping == nullptr ? nullptr : MapViewOfFile(
+		bridge_mapping, FILE_MAP_ALL_ACCESS, 0, 0, 3);
+	HANDLE bridge_duplicate = nullptr;
+	if (bridge_view == nullptr || !DuplicateHandle(GetCurrentProcess(), bridge_mapping,
+		GetCurrentProcess(), &bridge_duplicate, 0, FALSE, DUPLICATE_SAME_ACCESS)) {
+		if (bridge_view != nullptr) UnmapViewOfFile(bridge_view);
+		if (bridge_mapping != nullptr) CloseHandle(bridge_mapping);
+		std::cerr << "MACH_IPC_NATIVE_HANDLE=FAIL\n";
+		return 1;
+	}
+	std::memcpy(bridge_view, "OOL", 3);
+	UnmapViewOfFile(bridge_view);
+	CloseHandle(bridge_mapping);
+	darling::windows_host::MachIpcEnvelope native_handle_envelope{
+		darling::windows_host::MachIpcOperation::Receive, 52, 8, 1, {}, 77, 3, 11,
+		static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(bridge_duplicate))};
+	const auto native_handle_message = darling::windows_host::DecodeMachMessageFromIpc(
+		native_handle_envelope);
+	if (native_handle_message.out_of_line_data != std::vector<std::uint8_t>{'O', 'O', 'L'}) {
+		std::cerr << "MACH_IPC_NATIVE_HANDLE=FAIL\n";
+		return 1;
+	}
+	std::cout << "MACH_IPC_NATIVE_HANDLE=PASS\n";
 	darling::windows_host::MachIpcEnvelope cancel{
 		darling::windows_host::MachIpcOperation::Cancel, 44, 0, 0, {}, 0, 0, 99};
 	const auto cancel_decoded = darling::windows_host::DecodeMachIpcEnvelope(

@@ -71,6 +71,7 @@ class MachIpcSharedMemory final {
 public:
 	static MachIpcSharedMemory Create(const std::wstring& name, std::size_t size);
 	static MachIpcSharedMemory Open(const std::wstring& name, std::size_t size);
+	static MachIpcSharedMemory FromNativeHandle(HANDLE mapping, std::size_t size);
 	MachIpcSharedMemory(const MachIpcSharedMemory&) = delete;
 	MachIpcSharedMemory& operator=(const MachIpcSharedMemory&) = delete;
 	MachIpcSharedMemory(MachIpcSharedMemory&& other) noexcept;

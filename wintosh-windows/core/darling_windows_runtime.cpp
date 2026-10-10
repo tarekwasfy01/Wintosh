@@ -138,8 +138,17 @@ MachMessage DecodeMachMessageFromIpc(const MachIpcEnvelope& envelope)
 	MachMessage message;
 	if (envelope.disposition_count == 0)
 		message.inline_data = envelope.payload;
-	else
+	else if (!envelope.payload.empty())
 		message.out_of_line_data = envelope.payload;
+	else if (envelope.out_of_line_handle != 0 && envelope.out_of_line_size != 0) {
+		auto mapping = MachIpcSharedMemory::FromNativeHandle(
+			reinterpret_cast<HANDLE>(static_cast<std::uintptr_t>(envelope.out_of_line_handle)),
+			envelope.out_of_line_size);
+		message.out_of_line_data.resize(envelope.out_of_line_size);
+		std::memcpy(message.out_of_line_data.data(), mapping.Data(), mapping.Size());
+	} else {
+		throw std::invalid_argument("Mach IPC OOL envelope has no payload or handle");
+	}
 	return message;
 }
 
@@ -174,6 +183,20 @@ MachIpcSharedMemory MachIpcSharedMemory::Open(const std::wstring& name, std::siz
 		const auto error = GetLastError();
 		CloseHandle(mapping);
 		throw std::system_error(static_cast<int>(error), std::system_category(), "MapViewOfFile");
+	}
+	return MachIpcSharedMemory(mapping, view, size);
+}
+
+MachIpcSharedMemory MachIpcSharedMemory::FromNativeHandle(HANDLE mapping, std::size_t size)
+{
+	if (mapping == nullptr || mapping == INVALID_HANDLE_VALUE || size == 0)
+		throw std::invalid_argument("invalid Mach IPC mapping handle");
+	void* view = MapViewOfFile(mapping, FILE_MAP_READ, 0, 0, size);
+	if (view == nullptr) {
+		const auto error = GetLastError();
+		CloseHandle(mapping);
+		throw std::system_error(static_cast<int>(error), std::system_category(),
+			"MapViewOfFile(native Mach IPC handle)");
 	}
 	return MachIpcSharedMemory(mapping, view, size);
 }

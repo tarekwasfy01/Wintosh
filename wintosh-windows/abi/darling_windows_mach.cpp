@@ -1690,7 +1690,7 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 		}
 		darling_kern_return_t result = 0;
 		bool broker_routed_send = false;
-		if ((message->msgh_bits & darling_mach_msg_complex) == 0 || copied_ool_address != nullptr) {
+		{
 			std::lock_guard broker_lock(mach_broker_mutex);
 			const auto capability = mach_ipc_capabilities.Lookup(message->msgh_remote_port);
 			if (mach_broker_client && capability) {

@@ -587,3 +587,9 @@ and the C-ABI receive reconstructs and releases the local OOL allocation.
 `darling_windows_broker_smoke` reports `BROKER_C_ABI_OOL=PASS`. Mixed inline+OOL
 messages and port descriptors remain unsupported in the broker bridge.
 
+Complex messages containing only port descriptors now use the broker transport
+as a full inline message. The descriptor names intentionally remain local
+names, so this is valid only for a shared local namespace; true cross-process
+capability-token rewriting is still pending. OOL-only messages continue to use
+the dedicated mapping-disposition path above.
+

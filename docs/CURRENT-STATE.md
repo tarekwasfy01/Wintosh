@@ -18,6 +18,14 @@ documentation. The machine-readable inventory is
 - All release documentation is present and linked from
   [DOCUMENTATION-INDEX.md](DOCUMENTATION-INDEX.md).
 
+## Execution boundary
+
+The supported architecture target is the native Windows adapter and runner;
+WSL is optional reference/backend infrastructure, not a runtime prerequisite.
+On the current host, direct WSL probing returns `Wsl/E_ACCESSDENIED`, so no
+WSL-backed Darling execution is claimed or required for the native smoke-test
+suite.
+
 ## What is included in a source release
 
 Include the Windows port source, all documentation, and the `licenses`

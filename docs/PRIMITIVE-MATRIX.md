@@ -377,6 +377,7 @@ containment, intersection, and union operations.
 The Objective-C matrix row includes the current typed Windows dispatch surface:
 object, zero-argument and argument-bearing integer/Boolean/pointer/double,
 including explicit 32-bit `int` and 64-bit integer entry points,
+including unsigned 64-bit (`Q`) zero- and one-argument entry points,
 fixed CGRect, block, and void dispatch
 entry points, plus the tested `method_exchangeImplementations` path. These
 are fixed signatures backed by the custom runtime; they do not claim a

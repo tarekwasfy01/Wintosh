@@ -47,6 +47,8 @@ std::int64_t AddSeven(id, SEL, std::int64_t value)
 }
 
 std::int64_t ReturnInt64(id, SEL) { return 42; }
+std::uint64_t ReturnUInt64(id, SEL) { return 42; }
+std::uint64_t AddUInt64(id, SEL, std::uint64_t value) { return value + 7; }
 bool ReturnTrue(id, SEL) { return true; }
 double ReturnDouble(id, SEL) { return 3.5; }
 void* ReturnPointer(id, SEL) {
@@ -349,6 +351,8 @@ int main()
 	SEL double_zero_selector = sel_registerName("piValue");
 	SEL pointer_zero_selector = sel_registerName("context");
 	SEL int_zero_selector = sel_registerName("answerInt");
+	SEL uint64_zero_selector = sel_registerName("answerUInt");
+	SEL uint64_selector = sel_registerName("addUInt:");
 	if (!class_addMethod(child, bool_selector,
 		reinterpret_cast<IMP>(&IsPositive), "B@:B") ||
 		!class_addMethod(child, double_selector,
@@ -363,6 +367,8 @@ int main()
 		reinterpret_cast<IMP>(&ObserveInt), "v@:i"))
 		return 10;
 	if (!class_addMethod(child, int64_zero_selector, reinterpret_cast<IMP>(&ReturnInt64), "q@:") ||
+		!class_addMethod(child, uint64_zero_selector, reinterpret_cast<IMP>(&ReturnUInt64), "Q@:") ||
+		!class_addMethod(child, uint64_selector, reinterpret_cast<IMP>(&AddUInt64), "Q@:Q") ||
 		!class_addMethod(child, int_zero_selector, reinterpret_cast<IMP>(&ReturnInt), "i@:") ||
 		!class_addMethod(child, bool_zero_selector, reinterpret_cast<IMP>(&ReturnTrue), "B@:") ||
 		!class_addMethod(child, double_zero_selector, reinterpret_cast<IMP>(&ReturnDouble), "d@:") ||
@@ -381,6 +387,8 @@ int main()
 		darling_objc_msgSend_double1(object, double_selector, 3.5) != 7.0 ||
 		darling_objc_msgSend_double2(object, double_pair_selector, 1.25, 2.75) != 4.0 ||
 		darling_objc_msgSend_int64_0(object, int64_zero_selector) != 42 ||
+		darling_objc_msgSend_uint64_0(object, uint64_zero_selector) != 42 ||
+		darling_objc_msgSend_uint64_1(object, uint64_selector, 35) != 42 ||
 		darling_objc_msgSend_int0(object, int_zero_selector) != 42 ||
 		darling_objc_msgSend_int1(object, int_selector, 37) != 42 ||
 		!darling_objc_msgSend_bool0(object, bool_zero_selector) ||

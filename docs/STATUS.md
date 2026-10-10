@@ -179,6 +179,7 @@ properties, and protocols are merged into the target class and verified by
 `objc_smoke`. Selector-reference teardown and full method-cache/swizzling
 semantics remain open.
 The Windows bridge now also exposes ABI-safe typed
+`darling_objc_msgSend_object2` for `@@:@@` and
 `darling_objc_msgSend_int64_2` for `q@:qq`, alongside the existing typed
 `darling_objc_msgSend_bool1` and `darling_objc_msgSend_pointer1` entry points
 for `B@:B` and `^v@:^v`, alongside the floating-point entry points

@@ -151,6 +151,7 @@ id darling_objc_msgSend_class0(Class cls, SEL selector);
 // Typed entry points used by the Windows bridge until a full variadic ABI
 // trampoline is available. The names are deliberately project-specific.
 id darling_objc_msgSend_object1(id receiver, SEL selector, id argument);
+id darling_objc_msgSend_object2(id receiver, SEL selector, id first, id second);
 std::int64_t darling_objc_msgSend_int64_1(id receiver, SEL selector,
 	std::int64_t argument);
 std::int64_t darling_objc_msgSend_int64_2(id receiver, SEL selector,

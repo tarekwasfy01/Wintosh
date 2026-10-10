@@ -279,6 +279,9 @@ int main()
 		reinterpret_cast<id>(child)) !=
 		reinterpret_cast<id>(child))
 		return 92;
+	if (darling_objc_msgSend_object2(object, object_pair_selector, object,
+		reinterpret_cast<id>(child)) != reinterpret_cast<id>(child))
+		return 19;
 	if (objc_msgSendSuper(object, root, super_pair_selector, object,
 		reinterpret_cast<id>(child)) != reinterpret_cast<id>(child))
 		return 93;

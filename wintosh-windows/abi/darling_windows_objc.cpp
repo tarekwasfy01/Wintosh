@@ -2074,6 +2074,19 @@ extern "C" id darling_objc_msgSend_object1(id receiver, SEL selector,
 		argument);
 }
 
+extern "C" id darling_objc_msgSend_object2(id receiver, SEL selector,
+	id first, id second)
+{
+	const IMP implementation = FindMethod(receiver, selector);
+	const char* types = class_getMethodTypeEncoding(object_getClass(receiver),
+		selector);
+	if (!implementation || !types || std::strcmp(types, "@@:@@") != 0)
+		return nullptr;
+	using ObjectMethod = id (*)(id, SEL, id, id);
+	return reinterpret_cast<ObjectMethod>(implementation)(receiver, selector,
+		first, second);
+}
+
 extern "C" std::int64_t darling_objc_msgSend_int64_1(id receiver, SEL selector,
 	std::int64_t argument)
 {

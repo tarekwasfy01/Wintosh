@@ -581,3 +581,9 @@ ownership, and writes a Mach OOL descriptor. This covers the materialization
 primitive; a full C-ABI OOL Send -> Receive test is still pending because the
 current envelope format does not preserve mixed inline-plus-OOL message data.
 
+That OOL-only path is now exercised end-to-end: `mach_msg` sends the copied OOL
+bytes as a broker disposition, the broker returns a duplicated mapping handle,
+and the C-ABI receive reconstructs and releases the local OOL allocation.
+`darling_windows_broker_smoke` reports `BROKER_C_ABI_OOL=PASS`. Mixed inline+OOL
+messages and port descriptors remain unsupported in the broker bridge.
+

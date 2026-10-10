@@ -1690,7 +1690,7 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 		}
 		darling_kern_return_t result = 0;
 		bool broker_routed_send = false;
-		if ((message->msgh_bits & darling_mach_msg_complex) == 0) {
+		if ((message->msgh_bits & darling_mach_msg_complex) == 0 || copied_ool_address != nullptr) {
 			std::lock_guard broker_lock(mach_broker_mutex);
 			const auto capability = mach_ipc_capabilities.Lookup(message->msgh_remote_port);
 			if (mach_broker_client && capability) {
@@ -1700,8 +1700,17 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 					request.request_id = mach_broker_request.fetch_add(1, std::memory_order_relaxed);
 					request.port_token = capability->broker_token;
 					request.session_token = capability->session_token;
-					const auto* bytes = reinterpret_cast<const std::uint8_t*>(message);
-					request.payload.assign(bytes, bytes + send_size);
+					if (copied_ool_address != nullptr) {
+						request.disposition_count = 1;
+						const auto* body = reinterpret_cast<const darling_mach_msg_body*>(
+							reinterpret_cast<const std::uint8_t*>(message) + sizeof(darling_mach_msg_header));
+						const auto* descriptor = reinterpret_cast<const darling_mach_msg_ool_descriptor*>(body + 1);
+						request.payload.assign(reinterpret_cast<const std::uint8_t*>(copied_ool_address),
+							reinterpret_cast<const std::uint8_t*>(copied_ool_address) + descriptor->size);
+					} else {
+						const auto* bytes = reinterpret_cast<const std::uint8_t*>(message);
+						request.payload.assign(bytes, bytes + send_size);
+					}
 					const auto response = darling::windows_host::SendMachIpcEnvelope(
 						*mach_broker_client, request);
 					if (response.operation != request.operation ||
@@ -1831,6 +1840,10 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 							return 8;
 						}
 						std::memcpy(local, mapping.Data(), response.out_of_line_size);
+						if (!mach_ool_ownership.RetainReceiver(local)) {
+							(void)mach_ool_ownership.ReleaseQueue(local);
+							return 8;
+						}
 						message->msgh_bits = darling_mach_msg_complex;
 						message->msgh_size = sizeof(darling_mach_msg_header) + sizeof(darling_mach_msg_body) +
 							sizeof(darling_mach_msg_ool_descriptor);

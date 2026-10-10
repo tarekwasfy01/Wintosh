@@ -8,6 +8,7 @@
 #include "darling_windows_runtime.h"
 
 #include <algorithm>
+#include <array>
 #include <filesystem>
 #include <iostream>
 #include <thread>
@@ -97,15 +98,46 @@ int wmain()
 		const auto broker_receive = darling_windows_mach_msg(
 			&broker_received, darling_mach_receive_msg | darling_mach_receive_timeout,
 			0, sizeof(broker_received), broker_local_port, 1000, 0);
+		std::array<std::uint8_t, 4> broker_ool_payload{0xde, 0xad, 0xbe, 0xef};
+		struct BrokerOolMessage final {
+			darling_mach_msg_header header;
+			darling_mach_msg_body body;
+			darling_mach_msg_ool_descriptor descriptor;
+		} broker_ool_message{};
+		broker_ool_message.header.msgh_bits = darling_mach_msg_complex;
+		broker_ool_message.header.msgh_size = sizeof(broker_ool_message);
+		broker_ool_message.header.msgh_remote_port = broker_local_port;
+		broker_ool_message.header.msgh_id = 0x4343;
+		broker_ool_message.body.msgh_descriptor_count = 1;
+		broker_ool_message.descriptor.address = reinterpret_cast<std::uint64_t>(broker_ool_payload.data());
+		broker_ool_message.descriptor.size = static_cast<std::uint32_t>(broker_ool_payload.size());
+		broker_ool_message.descriptor.type = darling_mach_msg_descriptor_ool;
+		const auto broker_ool_send = darling_windows_mach_msg(
+			&broker_ool_message.header, darling_mach_send_msg, sizeof(broker_ool_message), 0, 0, 0, 0);
+		std::array<std::uint8_t, sizeof(BrokerOolMessage)> broker_ool_received{};
+		const auto broker_ool_receive = darling_windows_mach_msg(
+			reinterpret_cast<darling_mach_msg_header*>(broker_ool_received.data()),
+			darling_mach_receive_msg | darling_mach_receive_timeout, 0,
+			static_cast<std::uint32_t>(broker_ool_received.size()), broker_local_port, 1000, 0);
+		const auto* broker_ool_received_descriptor = reinterpret_cast<const darling_mach_msg_ool_descriptor*>(
+			broker_ool_received.data() + sizeof(darling_mach_msg_header) + sizeof(darling_mach_msg_body));
+		const auto* broker_ool_received_bytes = reinterpret_cast<const std::uint8_t*>(
+			static_cast<std::uintptr_t>(broker_ool_received_descriptor->address));
+		const bool broker_ool_ok = broker_ool_send == 0 && broker_ool_receive == 0 &&
+			broker_ool_received_descriptor->size == broker_ool_payload.size() &&
+			broker_ool_received_bytes != nullptr &&
+			std::equal(broker_ool_payload.begin(), broker_ool_payload.end(), broker_ool_received_bytes) &&
+			darling_windows_mach_ool_release(const_cast<std::uint8_t*>(broker_ool_received_bytes)) == 0;
+		std::cout << "BROKER_C_ABI_OOL=" << (broker_ool_ok ? "PASS" : "FAIL") << "\n";
 		const auto broker_destroy = darling_windows_mach_port_destroy(
 			darling_windows_mach_task_self(), broker_local_port);
 		const auto broker_disable = darling_windows_mach_broker_disable();
 		std::cout << "BROKER_C_ABI_ALLOCATE=" <<
 			(broker_enable == 0 && broker_allocate == 0 && broker_lookup == 0 &&
 			 broker_capability != 0 && broker_capability_session != 0 && broker_send == 0 &&
-			 broker_receive == 0 && broker_received.msgh_id == 0x4242 && broker_destroy == 0 ? "PASS" : "FAIL") << "\n";
+			 broker_receive == 0 && broker_received.msgh_id == 0x4242 && broker_ool_ok && broker_destroy == 0 ? "PASS" : "FAIL") << "\n";
 		if (broker_enable != 0 || broker_allocate != 0 || broker_lookup != 0 ||
-			broker_send != 0 || broker_receive != 0 || broker_received.msgh_id != 0x4242 ||
+			broker_send != 0 || broker_receive != 0 || broker_received.msgh_id != 0x4242 || !broker_ool_ok ||
 			broker_destroy != 0 || broker_disable != 0 || broker_capability == 0 || broker_capability_session == 0)
 			return 6;
 		const auto process_id = static_cast<std::uint32_t>(GetCurrentProcessId());

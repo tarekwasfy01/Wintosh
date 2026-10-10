@@ -293,7 +293,9 @@ the corresponding type bits; this is still an adapter-level namespace rather
 than Darwin's per-task kernel right table.
 Send-once references are now reported by `mach_port_type` through the distinct
 `MACH_PORT_TYPE_SEND_ONCE` bit instead of being folded into ordinary send
-rights; the Mach smoke covers a receive-plus-send-once port.
+rights; `mach_port_get_refs` can query that reference count independently, and
+the Mach smoke covers a receive-plus-send-once port. This remains a
+process-local adapter rather than a complete per-task Darwin right table.
 All public port calls currently bind to the current Windows process and share
 one process-local registry. Foreign task names are rejected consistently;
 true task-owned namespaces and cross-task name translation remain an

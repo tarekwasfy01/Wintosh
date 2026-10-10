@@ -1214,7 +1214,8 @@ extern "C" darling_kern_return_t darling_windows_mach_port_mod_refs(
 	std::uint32_t right, std::int32_t delta)
 {
 	if (task == 0 || task != darling_windows_mach_task_self() || name == 0 || right == 0 || delta == 0) return 4;
-	if (right != darling_mach_port_type_receive && right != darling_mach_port_type_send)
+	if (right != darling_mach_port_type_receive && right != darling_mach_port_type_send &&
+		right != darling_mach_port_type_send_once)
 		return 4;
 	const auto port = FindPort(name);
 	if (port == nullptr) return 3;
@@ -1264,12 +1265,15 @@ extern "C" darling_kern_return_t darling_windows_mach_port_get_refs(
 	std::uint32_t right, std::uint32_t* refs)
 {
 	if (task == 0 || task != darling_windows_mach_task_self() || name == 0 || right == 0 || refs == nullptr) return 4;
-	if (right != darling_mach_port_type_receive && right != darling_mach_port_type_send)
+	if (right != darling_mach_port_type_receive && right != darling_mach_port_type_send &&
+		right != darling_mach_port_type_send_once)
 		return 4;
 	const auto port = FindPort(name);
 	if (port == nullptr) return 3;
 	std::lock_guard lock(port->mutex);
-	*refs = right == darling_mach_port_type_receive ? port->receive_refs : port->send_refs + port->send_once_refs;
+	*refs = right == darling_mach_port_type_receive ? port->receive_refs :
+		right == darling_mach_port_type_send_once ? port->send_once_refs :
+		port->send_refs + port->send_once_refs;
 	return 0;
 }
 

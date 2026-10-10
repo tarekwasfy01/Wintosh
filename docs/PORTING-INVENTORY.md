@@ -3570,12 +3570,12 @@ base implementation on x64 and Win32. Override lookup is therefore covered;
 dynamic dispatch edge cases, swizzling, metaclass overrides, and complete
 Apple runtime method-cache behavior remain open.
 
-The dynamic Mach-O loader now registers Objective-C image sections before
-initializers complete and runs image terminators before unmapping on `dlclose`.
-The registry still lacks owner tokens and safe class/category/protocol removal,
-so an image that contributes Objective-C metadata can leave process-local
-runtime entries after unload; dynamic Objective-C teardown, duplicate-class
-policy, and object-lifetime coordination remain an explicit next family.
+The dynamic Mach-O loader now registers Objective-C image sections under an
+image token and runs image terminators before removing newly owned classes and
+protocols on `dlclose`; removal is skipped when a still-registered subclass
+depends on the class. Categories and selector references remain retain-only,
+and duplicate-class ownership/conflict policy plus object-lifetime coordination
+remain an explicit next family.
 
 The synchronization family now has cross-thread semaphore signaling, move
 ownership checks, shared-memory size/data validation, and shared-memory move

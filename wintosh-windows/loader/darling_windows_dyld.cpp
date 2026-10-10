@@ -51,9 +51,11 @@ bool IsBuiltinDarwinProvider(const std::string& dependency)
 		name == "libobjc.A.dylib" || name == "libobjc.dylib";
 }
 
-void RegisterDynamicObjectiveCSections(const MachOImage& image,
+darling_objc_image_token* RegisterDynamicObjectiveCSections(const MachOImage& image,
 	const MachOImage::Mapping& mapping)
 {
+	auto* token = darling_objc_begin_image_registration();
+	if (token == nullptr) return nullptr;
 	for (const auto& section : image.Sections()) {
 		if (section.section_name != "__objc_classlist" &&
 			section.section_name != "__objc_nlclslist" &&
@@ -75,6 +77,8 @@ void RegisterDynamicObjectiveCSections(const MachOImage& image,
 				reinterpret_cast<const void*>(address),
 				static_cast<std::size_t>(section.size));
 	}
+	darling_objc_end_image_registration(token);
+	return token;
 }
 
 std::vector<std::pair<DarwinTLVDescriptor*, std::size_t>>
@@ -387,6 +391,7 @@ public:
 	std::vector<Provider> providers;
 	std::vector<DyldResolvedBinding> bindings;
 	std::vector<std::pair<DarwinTLVDescriptor*, std::size_t>> tlv_registrations;
+	std::vector<darling_objc_image_token*> objc_tokens;
 
 	~DarwinDynamicImage() noexcept
 	{
@@ -476,7 +481,9 @@ DarwinDynamicImage* OpenDynamicImage(const std::filesystem::path& path)
 				provider.image.ApplyChainedFixups(provider.mapping, result->bindings);
 			}
 			provider.image.ExecuteInitializers(provider.mapping);
-			RegisterDynamicObjectiveCSections(provider.image, provider.mapping);
+			if (auto* token = RegisterDynamicObjectiveCSections(provider.image,
+				provider.mapping))
+				result->objc_tokens.push_back(token);
 		}
 		result->image.ApplyRebaseActions(result->mapping);
 		result->tlv_registrations = InitializeDynamicTLVSections(result->image,
@@ -504,7 +511,8 @@ DarwinDynamicImage* OpenDynamicImage(const std::filesystem::path& path)
 			result->image.ApplyChainedFixups(result->mapping, result->bindings);
 		}
 		result->image.ExecuteInitializers(result->mapping);
-		RegisterDynamicObjectiveCSections(result->image, result->mapping);
+		if (auto* token = RegisterDynamicObjectiveCSections(result->image, result->mapping))
+			result->objc_tokens.push_back(token);
 		return result;
 	} catch (...) {
 		delete result;
@@ -610,6 +618,8 @@ void CloseDynamicImage(DarwinDynamicImage* image) noexcept
 			provider != image->providers.rend(); ++provider) {
 			provider->image.ExecuteTerminators(provider->mapping);
 		}
+		for (auto* token : image->objc_tokens)
+			darling_objc_unregister_image(token);
 	} catch (...) {
 	}
 	delete image;

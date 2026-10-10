@@ -77,6 +77,11 @@ struct objc_protocol final {
 	bool registered{};
 };
 
+struct darling_objc_image_token final {
+	std::vector<Class> classes;
+	std::vector<Protocol> protocols;
+};
+
 struct objc_object final {
 	Class isa{};
 	std::atomic<std::uint32_t> retain_count{1};
@@ -115,6 +120,8 @@ id AppleBlockInvoke(void* raw_block, id argument)
 }
 
 namespace {
+
+thread_local darling_objc_image_token* active_image_token = nullptr;
 
 // The low-level libclosure entry points receive the compiler's block literal,
 // not the bridge-only DarlingObjcAppleBlock wrapper.  Keep ownership state for
@@ -760,6 +767,8 @@ extern "C" std::size_t darling_objc_register_macho_classlist(
 		if (cls) {
 			if (is_new_class) {
 				objc_registerClassPair(cls);
+				if (active_image_token)
+					active_image_token->classes.push_back(cls);
 				++registered;
 			}
 			std::uintptr_t method_list_address = 0;
@@ -1044,6 +1053,52 @@ extern "C" void objc_registerProtocol(Protocol protocol)
 	std::lock_guard lock(RuntimeMutex());
 	Protocols()[protocol->name] = protocol;
 	protocol->registered = true;
+	if (active_image_token)
+		active_image_token->protocols.push_back(protocol);
+}
+
+extern "C" darling_objc_image_token* darling_objc_begin_image_registration()
+{
+	if (active_image_token != nullptr)
+		return nullptr;
+	auto* token = new darling_objc_image_token;
+	active_image_token = token;
+	return token;
+}
+
+extern "C" void darling_objc_end_image_registration(darling_objc_image_token* token)
+{
+	if (active_image_token == token)
+		active_image_token = nullptr;
+}
+
+extern "C" void darling_objc_unregister_image(darling_objc_image_token* token)
+{
+	if (token == nullptr)
+		return;
+	std::lock_guard lock(RuntimeMutex());
+	for (Class cls : token->classes) {
+		if (cls == nullptr) continue;
+		bool referenced = false;
+		for (const auto& entry : Classes()) {
+			if (entry.second != cls && entry.second->superclass == cls) {
+				referenced = true;
+				break;
+			}
+		}
+		if (!referenced) {
+			auto found = Classes().find(cls->name);
+			if (found != Classes().end() && found->second == cls)
+				Classes().erase(found);
+		}
+	}
+	for (Protocol protocol : token->protocols) {
+		if (protocol == nullptr) continue;
+		auto found = Protocols().find(protocol->name);
+		if (found != Protocols().end() && found->second == protocol)
+			Protocols().erase(found);
+	}
+	delete token;
 }
 
 extern "C" bool class_addProtocol(Class cls, Protocol protocol)

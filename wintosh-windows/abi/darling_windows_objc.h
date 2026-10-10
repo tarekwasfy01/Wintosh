@@ -61,6 +61,10 @@ std::size_t darling_objc_register_macho_categories(const void* categories,
 	std::size_t bytes);
 std::size_t darling_objc_register_macho_selrefs(const void* selrefs,
 	std::size_t bytes);
+struct darling_objc_image_token;
+darling_objc_image_token* darling_objc_begin_image_registration();
+void darling_objc_end_image_registration(darling_objc_image_token* token);
+void darling_objc_unregister_image(darling_objc_image_token* token);
 Protocol objc_allocateProtocol(const char* name);
 Protocol objc_getProtocol(const char* name);
 const char* protocol_getName(Protocol protocol);

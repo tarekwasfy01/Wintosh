@@ -1268,7 +1268,7 @@ extern "C" Method class_getClassMethod(Class cls, SEL selector)
 		auto method = method_map.find(selector);
 		if (method != method_map.end())
 			return MakeMethodView(current->is_metaclass ? current->owner_class : current,
-				selector, method->second, current->is_metaclass);
+				selector, method->second, true);
 	}
 	return nullptr;
 }

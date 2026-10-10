@@ -100,6 +100,11 @@ id ClassIdentity(Class cls, SEL)
 	return reinterpret_cast<id>(cls);
 }
 
+id ClassNull(Class, SEL)
+{
+	return nullptr;
+}
+
 id CallbackIdentity(void*, id argument)
 {
 	return argument;
@@ -419,6 +424,21 @@ int main()
 		darling_objc_msgSend_class0(child, factory_selector) !=
 		reinterpret_cast<id>(child))
 		return 16;
+	SEL swapped_factory_selector = sel_registerName("swappedFactory");
+	if (!class_addClassMethod(child, swapped_factory_selector,
+		reinterpret_cast<IMP>(&ClassNull), "@@:"))
+		return 16;
+	Method factory_method = class_getClassMethod(child, factory_selector);
+	Method swapped_factory_method = class_getClassMethod(child, swapped_factory_selector);
+	if (!factory_method || !swapped_factory_method ||
+		darling_objc_msgSend_class0(child, swapped_factory_selector) != nullptr)
+		return 22;
+	method_exchangeImplementations(factory_method, swapped_factory_method);
+	if (darling_objc_msgSend_class0(child, factory_selector) != nullptr ||
+		darling_objc_msgSend_class0(child, swapped_factory_selector) !=
+		reinterpret_cast<id>(child))
+		return 22;
+	method_exchangeImplementations(factory_method, swapped_factory_method);
 	SEL inherited_factory_selector = sel_registerName("inheritedFactory");
 	if (!class_addClassMethod(root, inherited_factory_selector,
 		reinterpret_cast<IMP>(&ClassIdentity), "@@:") ||

@@ -1665,6 +1665,13 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 			receive_size, &actual_size, receive_timeout);
 		if (result != 0) return result;
 		message->msgh_size = actual_size;
+		if (receive_size >= actual_size + sizeof(darling_mach_msg_trailer)) {
+			auto* trailer = reinterpret_cast<darling_mach_msg_trailer*>(
+				reinterpret_cast<std::uint8_t*>(message) + actual_size);
+			trailer->type = darling_mach_msg_trailer_none;
+			trailer->size = sizeof(darling_mach_msg_trailer);
+			message->msgh_size = actual_size + sizeof(darling_mach_msg_trailer);
+		}
 	}
 	return 0;
 }

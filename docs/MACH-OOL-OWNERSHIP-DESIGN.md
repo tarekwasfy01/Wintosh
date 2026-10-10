@@ -48,8 +48,10 @@ are gone. A raw guest pointer must never be passed to `VirtualFree`.
 ## Explicit non-goals
 
 This contract does not yet implement Darwin VM protection, copy-on-write,
-inheritance, purgeable memory, wired memory, Mach trailers, MIG, or complete
-cross-task name translation. Those remain separate matrix rows.
+inheritance, purgeable memory, wired memory, credential/audit Mach trailers,
+MIG, or complete cross-task name translation. The basic `trailer_none` layout
+is emitted when a receive buffer explicitly provides room for it. Those other
+features remain separate matrix rows.
 
 The first implementation slice is now present as
 `MachOolOwnershipTable`: it tracks queue and receiver references under a

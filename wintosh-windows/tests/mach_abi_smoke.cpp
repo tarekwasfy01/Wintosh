@@ -689,6 +689,8 @@ int main()
 		const auto ns_alloc_notify = darling_windows_mach_port_allocate(task, &ns_notify);
 		const auto ns_insert = darling_windows_mach_port_insert_right(task, ns_target, ns_target,
 			darling_mach_make_send_once);
+	std::uint32_t ns_type = darling_mach_port_type_none;
+	const auto ns_type_result = darling_windows_mach_port_type(task, ns_target, &ns_type);
 		const auto ns_request = darling_windows_mach_port_request_notification(task, ns_target,
 			0x4a, ns_notify, &ns_previous);
 		darling_mach_port_name_t ns_disposed_right = 0;
@@ -703,7 +705,8 @@ int main()
 			ns_insert == 0 && ns_request == 0 && ns_previous == 0 && ns_mod == 0 &&
 			ns_disposed_right == 0 &&
 			ns_receive == 0 && ns_size == sizeof(ns_message) &&
-			 ns_message.msgh_id == 0x4a;
+			 ns_message.msgh_id == 0x4a && ns_type_result == 0 &&
+			 ns_type == (darling_mach_port_type_receive | darling_mach_port_type_send_once);
 		if (!no_senders_ok) return 1;
 		std::cout << "MACH_NOTIFY_NO_SENDERS=PASS\n";
 		if (ns_target != 0) darling_windows_mach_port_destroy(task, ns_target);

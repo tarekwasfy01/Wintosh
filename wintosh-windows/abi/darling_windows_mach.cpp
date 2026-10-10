@@ -1285,7 +1285,8 @@ extern "C" darling_kern_return_t darling_windows_mach_port_type(
 	}
 	std::lock_guard lock(port->mutex);
 	*type = (port->receive_refs != 0 ? darling_mach_port_type_receive : 0) |
-		(port->send_refs + port->send_once_refs != 0 ? darling_mach_port_type_send : 0);
+		(port->send_refs != 0 ? darling_mach_port_type_send : 0) |
+		(port->send_once_refs != 0 ? darling_mach_port_type_send_once : 0);
 	return 0;
 }
 

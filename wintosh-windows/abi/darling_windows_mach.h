@@ -49,6 +49,7 @@ struct darling_mach_vm_region_basic_info final {
 constexpr std::uint32_t darling_mach_port_type_none = 0;
 constexpr std::uint32_t darling_mach_port_type_receive = 1;
 constexpr std::uint32_t darling_mach_port_type_send = 2;
+constexpr std::uint32_t darling_mach_port_type_send_once = 4;
 // Darwin mach_msg disposition values used by the minimal host ABI.
 constexpr std::uint32_t darling_mach_move_receive = 16;
 constexpr std::uint32_t darling_mach_move_send_once = 17;

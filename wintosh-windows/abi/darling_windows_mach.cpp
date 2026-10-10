@@ -1505,7 +1505,9 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 			if (body->msgh_descriptor_count == 1 && first_ool_type == darling_mach_msg_descriptor_ool) {
 				if (remaining < sizeof(darling_mach_msg_ool_descriptor)) return 4;
 				const auto* descriptor = reinterpret_cast<const darling_mach_msg_ool_descriptor*>(descriptor_bytes_start);
-				if (descriptor->deallocate != 0 || descriptor->copy != 0 ||
+				if (descriptor->copy != 0 ||
+					(descriptor->deallocate != 0 && !mach_ool_ownership.Contains(
+						reinterpret_cast<void*>(static_cast<std::uintptr_t>(descriptor->address)))) ||
 					(descriptor->size != 0 && descriptor->address == 0))
 					return darling_kern_not_supported;
 				ool_descriptor = true;
@@ -1547,6 +1549,7 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 		}
 		std::uint64_t original_ool_address = 0;
 		void* copied_ool_address = nullptr;
+		bool release_ool_source = false;
 		if ((message->msgh_bits & darling_mach_msg_complex) != 0) {
 			const auto* body = reinterpret_cast<const darling_mach_msg_body*>(
 				reinterpret_cast<const std::uint8_t*>(message) + sizeof(darling_mach_msg_header));
@@ -1557,6 +1560,7 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 					const_cast<std::uint8_t*>(descriptor_bytes));
 				if (descriptor->size != 0) {
 					original_ool_address = descriptor->address;
+					release_ool_source = descriptor->deallocate != 0;
 					if (!ReadableRange(reinterpret_cast<const void*>(static_cast<std::uintptr_t>(original_ool_address)),
 						descriptor->size)) return 4;
 					copied_ool_address = VirtualAlloc(nullptr, descriptor->size,
@@ -1646,6 +1650,9 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 			auto* descriptor = reinterpret_cast<darling_mach_msg_ool_descriptor*>(
 				const_cast<std::uint8_t*>(reinterpret_cast<const std::uint8_t*>(body + 1)));
 			descriptor->address = original_ool_address;
+			if (release_ool_source)
+				(void)mach_ool_ownership.ReleaseReceiver(reinterpret_cast<void*>(
+					static_cast<std::uintptr_t>(original_ool_address)));
 		}
 	}
 	if ((option & darling_mach_receive_msg) != 0) {

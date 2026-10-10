@@ -352,9 +352,9 @@ after the final reference is dropped. The local `mach_msg` path now copies the
 payload into a `VirtualAlloc` block after a checked readable-range walk,
 transfers queue ownership to either receive API,
 and exposes explicit release through the native ABI. Raw guest mappings,
-protection transfer, physical-copy/deallocation-request semantics, and
-cross-process transfer remain open. Negative smoke cases explicitly reject
-OOL deallocation and physical-copy requests.
+protection transfer, physical-copy semantics, and cross-process transfer remain
+open. Deallocation is accepted only for an already-owned local mapping; raw
+unmanaged deallocation requests and physical-copy requests remain rejected.
 The local ABI distinguishes reference-decrementing `mach_port_deallocate`
 from forced `mach_port_destroy`; the smoke gate also verifies that forced
 destruction closes a blocked receiver and rejects subsequent use. This is a

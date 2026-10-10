@@ -406,8 +406,14 @@ int wmain(int argc, wchar_t** argv)
 							throw std::runtime_error("Mach IPC receive would block");
 						}
 					}
-					if (queue.empty())
+					if (queue.empty()) {
+						// A non-timed receive can still register a cancellation
+						// request. Remove it before returning the immediate
+						// would-block error, otherwise the request table retains a
+						// stale entry for the lifetime of the broker.
+						if (cancellation) active_requests.erase(envelope.request_id);
 						throw std::runtime_error("Mach IPC receive would block");
+					}
 					if (cancellation) active_requests.erase(envelope.request_id);
 					std::uint32_t maximum_inline_size = UINT32_MAX;
 					if (envelope.payload.size() == 8) {

@@ -412,6 +412,16 @@ int wmain()
 			return 5;
 		}
 		std::cout << "BROKER_MACH_SEND_RECEIVE=PASS\n";
+		const darling::windows_host::MachIpcEnvelope immediate_receive{
+			darling::windows_host::MachIpcOperation::Receive, 122, token, 0, {}};
+		const auto immediate_receive_bytes = darling::windows_host::EncodeMachIpcEnvelope(
+			immediate_receive);
+		client.Write(std::string(immediate_receive_bytes.begin(), immediate_receive_bytes.end()));
+		if (client.Read() != "MACH_RECEIVE_WOULD_BLOCK") {
+			std::cerr << "BROKER_MACH_IMMEDIATE_RECEIVE=FAIL\n";
+			return 5;
+		}
+		std::cout << "BROKER_MACH_IMMEDIATE_RECEIVE=PASS\n";
 		const darling::windows_host::MachIpcEnvelope invalid_ready_receive{
 			darling::windows_host::MachIpcOperation::Receive, 116, token, 0, {1}};
 		const auto invalid_ready_receive_bytes = darling::windows_host::EncodeMachIpcEnvelope(

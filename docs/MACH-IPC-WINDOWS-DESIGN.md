@@ -128,7 +128,10 @@ application execution.
 The worker pool, controlled shutdown/join, two-client notification wakeup, and
 two-client blocked-receive wakeup test are now in place with the existing
 shared state. The local Mach ABI now emits a tested `MACH_NOTIFY_NO_SENDERS`
-message when the last send right is removed. Remaining worker hardening is
+message when the last send right is removed. Its compact header keeps the
+existing 32-bit slot size and exposes that slot as both `msgh_reserved` and
+Darwin-compatible `msgh_id`; the full Darwin 64-bit header still remains open.
+Remaining worker hardening is
 complete rights semantics; the local ABI also has a tested `MACH_NOTIFY_DEAD_NAME`
 delivery on port destruction. The accept loop owns listening instances; `BrokerState` owns ports,
 queues, OOL mappings, notifications, counters, and the state mutex.

@@ -21,7 +21,10 @@ struct darling_mach_msg_header final {
 	std::uint32_t msgh_size;
 	darling_mach_port_name_t msgh_remote_port;
 	darling_mach_port_name_t msgh_local_port;
-	std::uint32_t msgh_reserved;
+	union {
+		std::uint32_t msgh_reserved;
+		darling_mach_msg_id_t msgh_id;
+	};
 };
 
 constexpr std::uint32_t darling_mach_send_msg = 0x00000001;

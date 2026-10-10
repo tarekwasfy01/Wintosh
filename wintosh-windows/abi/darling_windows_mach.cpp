@@ -77,10 +77,8 @@ void DeliverPortNotification(darling_mach_port_name_t name)
 	darling_mach_msg_header message{};
 	message.msgh_size = sizeof(message);
 	message.msgh_remote_port = notification.notify;
-	// The minimal legacy header has no dedicated msgh_id field; preserve the
-	// notification id in its reserved word until the full Darwin header ABI is
-	// introduced.
-	message.msgh_reserved = static_cast<std::uint32_t>(notification.msgid);
+	// Preserve the compact 32-bit layout while exposing the Darwin name.
+	message.msgh_id = notification.msgid;
 	(void)darling_windows_mach_port_send(notification.notify, &message, sizeof(message));
 }
 
@@ -98,7 +96,7 @@ void DeliverNoSendersNotification(darling_mach_port_name_t name)
 	darling_mach_msg_header message{};
 	message.msgh_size = sizeof(message);
 	message.msgh_remote_port = notification.notify;
-	message.msgh_reserved = static_cast<std::uint32_t>(notification.msgid);
+	message.msgh_id = notification.msgid;
 	(void)darling_windows_mach_port_send(notification.notify, &message, sizeof(message));
 }
 }

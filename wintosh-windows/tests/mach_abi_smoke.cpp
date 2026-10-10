@@ -627,7 +627,7 @@ int main()
 			ok = darling_windows_mach_port_receive(replacement_notification_port, &notification_message,
 				sizeof(notification_message), &notification_size, 100) == 0 &&
 				notification_size == sizeof(notification_message) &&
-				notification_message.msgh_reserved == 0x4e544659 &&
+				notification_message.msgh_id == 0x4e544659 &&
 				darling_windows_mach_port_receive(notification_port, &notification_message,
 					sizeof(notification_message), &notification_size, 1) == 268;
 		}
@@ -648,7 +648,7 @@ int main()
 		const bool no_senders_ok = ns_alloc_target == 0 && ns_alloc_notify == 0 &&
 			ns_insert == 0 && ns_request == 0 && ns_previous == 0 && ns_mod == 0 &&
 			ns_receive == 0 && ns_size == sizeof(ns_message) &&
-			ns_message.msgh_reserved == 0x4a;
+			 ns_message.msgh_id == 0x4a;
 		if (!no_senders_ok) return 1;
 		std::cout << "MACH_NOTIFY_NO_SENDERS=PASS\n";
 		if (ns_target != 0) darling_windows_mach_port_destroy(task, ns_target);
@@ -666,7 +666,7 @@ int main()
 		const bool dead_name_ok = dead_alloc_target == 0 && dead_alloc_notify == 0 &&
 			dead_request == 0 && dead_previous == 0 && dead_destroy == 0 &&
 			dead_receive == 0 && dead_size == sizeof(dead_message) &&
-			dead_message.msgh_reserved == 0x48;
+			dead_message.msgh_id == 0x48;
 		if (!dead_name_ok) return 1;
 		std::cout << "MACH_NOTIFY_DEAD_NAME=PASS\n";
 		if (dead_notify != 0) darling_windows_mach_port_destroy(task, dead_notify);

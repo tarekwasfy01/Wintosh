@@ -52,7 +52,7 @@ jobs:
 
       - name: Run complete CTest smoke suite
         shell: pwsh
-        run: ctest --test-dir build-${{ matrix.arch }} -C Release --output-on-failure --parallel 2
+        run: ctest --test-dir build-${{ matrix.arch }} -C Release --output-on-failure --parallel 1
 
       - name: Package implementation, tests, documentation and licenses
         shell: pwsh

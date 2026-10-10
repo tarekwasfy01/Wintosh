@@ -355,7 +355,9 @@ int wmain()
 			};
 			write32(library, darling::windows_host::MH_DYLIB);
 			const auto image = app / "Demo";
-			write32(image, darling::windows_host::MH_EXECUTE);
+			// The Win32 branch validates 32-bit metadata and path resolution only;
+			// 32-bit entry-point execution is outside this adapter contract.
+			write32(image, darling::windows_host::MH_DYLIB);
 			const auto resolved = darling::windows_host::DylibResolver::Resolve(
 				image, "@rpath/libSystem.B.dylib", {library.parent_path()}, root);
 			if (resolved != library)

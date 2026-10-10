@@ -24,6 +24,12 @@ Studio aggregate build target can
 still stall during orchestration, so the reproducible fallback is to build
 the generated targets individually; this does not represent a test failure.
 
+The Win32 build now fails closed for x64-only Windows `CONTEXT` register
+flavors and the Win32 Mach ABI smoke reports that boundary explicitly; the
+remaining 32-bit metadata and host primitive tests still pass. CI runs the
+complete suite serially because filesystem, path and ConPTY fixtures share
+process-global Windows state.
+
 The first cross-process Mach IPC slice is now implemented as a version-1
 `WIPC` envelope codec. It validates bounded little-endian operation, request,
 port-token, disposition-count, and payload fields. The runtime smoke test

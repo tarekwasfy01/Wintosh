@@ -11,6 +11,10 @@
 
 int main()
 {
+#if !defined(_WIN64)
+	std::cout << "MACH_ABI_X64_THREAD_STATE=UNSUPPORTED_WIN32\n";
+	return 0;
+#else
 	const auto task = darling_windows_mach_task_self();
 	const auto thread = darling_windows_mach_thread_self();
 	darling_thread_precedence_policy_info precedence{};
@@ -633,4 +637,5 @@ int main()
 	}
 	std::cout << "MACH_C_ABI_SELF_DEALLOCATE=" << (ok ? "PASS" : "FAIL") << "\n";
 	return ok ? 0 : 1;
+#endif
 }

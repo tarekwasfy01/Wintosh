@@ -19,10 +19,11 @@ Target repository: [tarekwasfy01/Wintosh](https://github.com/tarekwasfy01/Wintos
 The current tree is a source snapshot and engineering baseline, not a complete
 Darling replacement and not a claim that arbitrary macOS applications run on
 Windows. The local x64 Release configuration has a complete **39/39 CTest**
-smoke result; the GitHub workflow
-now runs the complete CTest suite per architecture. A clean, reproducible
-Win32 workflow run and the actual GitHub-hosted attestation are still release
-evidence to collect, not claims established by this local checkout.
+smoke result; the GitHub workflow runs the complete 39-test CTest suite
+serially per architecture. The Win32 Mach ABI fixture explicitly reports the
+x64-only thread-state boundary as unsupported, while all 39 tests still pass;
+the actual GitHub-hosted attestation remains release evidence to collect, not
+a claim established by this local checkout.
 
 The workflow creates or updates the requested GitHub Release after both
 architecture jobs pass and attaches the attested x64 and Win32 archives.

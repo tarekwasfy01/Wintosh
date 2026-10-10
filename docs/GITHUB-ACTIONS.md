@@ -5,7 +5,8 @@ implementation on Windows runners for x64 and Win32. Each matrix job:
 
 1. Configures the standalone `wintosh-windows/CMakeLists.txt` project.
 2. Builds all Wintosh targets.
-3. Runs the complete CTest smoke suite.
+3. Runs the complete CTest smoke suite serially; several filesystem and
+   ConPTY checks intentionally share process-global Windows state.
 4. Packages the main `bin/wintosh.exe` CLI and `bin/wintosh_broker.exe` under
    `bin/`, with diagnostic smoke executables separated under `tests/`, together
    with `wintosh-windows/`, `docs/`, `licenses/`, and the Wintosh license.
@@ -29,7 +30,7 @@ not a claim of complete Darling compatibility.
 From the repository's Actions page, start **Wintosh Windows build and
 attestation** with:
 
-`release_tag = v0.2.0`
+`release_tag = v0.2.1`
 
 The workflow can also run automatically for future `v*` tags. Both x64 and
 Win32 jobs must pass before treating the release archives as verified. Download

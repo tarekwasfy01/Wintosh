@@ -205,6 +205,13 @@ extern "C" darling_kern_return_t darling_windows_thread_get_state(
 	darling_mach_port_name_t thread, std::uint32_t flavor, void* state,
 	std::uint32_t* count)
 {
+#ifndef _WIN64
+	(void)thread;
+	(void)flavor;
+	(void)state;
+	(void)count;
+	return darling_kern_not_supported;
+#else
 	if (thread == 0 || state == nullptr || count == nullptr ||
 		(flavor != darling_x86_thread_state64_flavor && flavor != darling_x86_float_state64_flavor && flavor != darling_x86_avx_state64_flavor && flavor != darling_x86_avx512_state64_flavor && flavor != darling_x86_exception_state64_flavor && flavor != darling_x86_debug_state64_flavor) ||
 		*count < (flavor == darling_x86_thread_state64_flavor ? darling_x86_thread_state64_count : flavor == darling_x86_float_state64_flavor ? darling_x86_float_state64_count : flavor == darling_x86_avx_state64_flavor ? darling_x86_avx_state64_count : flavor == darling_x86_avx512_state64_flavor ? darling_x86_avx512_state64_count : flavor == darling_x86_exception_state64_flavor ? darling_x86_exception_state64_count : darling_x86_debug_state64_count))
@@ -328,12 +335,20 @@ extern "C" darling_kern_return_t darling_windows_thread_get_state(
 	if (suspended) ResumeThread(handle);
 	if (owned) CloseHandle(handle);
 	return 0;
+#endif
 }
 
 extern "C" darling_kern_return_t darling_windows_thread_set_state(
 	darling_mach_port_name_t thread, std::uint32_t flavor, const void* state,
 	std::uint32_t count)
 {
+#ifndef _WIN64
+	(void)thread;
+	(void)flavor;
+	(void)state;
+	(void)count;
+	return darling_kern_not_supported;
+#else
 	if (thread == 0 ||
 		(flavor != darling_x86_thread_state64_flavor && flavor != darling_x86_float_state64_flavor && flavor != darling_x86_debug_state64_flavor) || state == nullptr ||
 		count < (flavor == darling_x86_thread_state64_flavor ? darling_x86_thread_state64_count : flavor == darling_x86_float_state64_flavor ? darling_x86_float_state64_count : darling_x86_debug_state64_count))
@@ -387,6 +402,7 @@ extern "C" darling_kern_return_t darling_windows_thread_set_state(
 	ResumeThread(handle);
 	CloseHandle(handle);
 	return applied ? 0 : 4;
+#endif
 }
 
 extern "C" darling_kern_return_t darling_windows_thread_set_exception_ports(

@@ -382,6 +382,8 @@ int wmain(int argc, wchar_t** argv)
 					auto& queue = port_queues.at(envelope.port_token);
 					std::shared_ptr<std::atomic_bool> cancellation;
 					if (envelope.session_token != 0 && envelope.request_id != 0) {
+						if (active_requests.contains(envelope.request_id))
+							throw std::invalid_argument("duplicate active Mach IPC request ID");
 						cancellation = std::make_shared<std::atomic_bool>(false);
 						active_requests[envelope.request_id] = cancellation;
 					}

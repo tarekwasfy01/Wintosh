@@ -1294,7 +1294,7 @@ extern "C" darling_kern_return_t darling_windows_mach_port_get_refs(
 	std::lock_guard lock(port->mutex);
 	*refs = right == darling_mach_port_type_receive ? port->receive_refs :
 		right == darling_mach_port_type_send_once ? port->send_once_refs :
-		port->send_refs + port->send_once_refs;
+		port->send_refs;
 	return 0;
 }
 

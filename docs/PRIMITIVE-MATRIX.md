@@ -297,8 +297,8 @@ the corresponding type bits; this is still an adapter-level namespace rather
 than Darwin's per-task kernel right table.
 Send-once references are now reported by `mach_port_type` through the distinct
 `MACH_PORT_TYPE_SEND_ONCE` bit instead of being folded into ordinary send
-rights; `mach_port_get_refs` can query that reference count independently, and
-the Mach smoke covers a receive-plus-send-once port. This remains a
+rights; `mach_port_get_refs` now reports ordinary-send and send-once counts
+independently, and the Mach smoke covers a receive-plus-send-once port. This remains a
 process-local adapter rather than a complete per-task Darwin right table.
 `mach_port_mod_refs` now applies positive and negative deltas to the send-once
 counter independently, including underflow rejection.

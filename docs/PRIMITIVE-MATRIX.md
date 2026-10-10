@@ -569,3 +569,9 @@ with response validation. `darling_windows_broker_smoke` covers this path
 inside `BROKER_C_ABI_ALLOCATE=PASS`. Complex messages with OOL or port
 descriptors remain on the local path until descriptor translation is added.
 
+The matching simple `Receive` path is now broker-backed as well: the C ABI
+sends timeout and receive-capacity metadata, copies the returned inline bytes
+into the caller buffer, and appends the supported basic trailer. The broker
+smoke verifies Send -> Receive -> Destroy; OOL and descriptor responses still
+require dedicated translation.
+

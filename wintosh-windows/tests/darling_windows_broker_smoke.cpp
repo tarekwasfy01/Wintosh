@@ -93,14 +93,20 @@ int wmain()
 		broker_message.msgh_id = 0x4242;
 		const auto broker_send = darling_windows_mach_msg(
 			&broker_message, darling_mach_send_msg, sizeof(broker_message), 0, 0, 0, 0);
+		darling_mach_msg_header broker_received{};
+		const auto broker_receive = darling_windows_mach_msg(
+			&broker_received, darling_mach_receive_msg | darling_mach_receive_timeout,
+			0, sizeof(broker_received), broker_local_port, 1000, 0);
 		const auto broker_destroy = darling_windows_mach_port_destroy(
 			darling_windows_mach_task_self(), broker_local_port);
 		const auto broker_disable = darling_windows_mach_broker_disable();
 		std::cout << "BROKER_C_ABI_ALLOCATE=" <<
 			(broker_enable == 0 && broker_allocate == 0 && broker_lookup == 0 &&
-			 broker_capability != 0 && broker_capability_session != 0 && broker_send == 0 && broker_destroy == 0 ? "PASS" : "FAIL") << "\n";
+			 broker_capability != 0 && broker_capability_session != 0 && broker_send == 0 &&
+			 broker_receive == 0 && broker_received.msgh_id == 0x4242 && broker_destroy == 0 ? "PASS" : "FAIL") << "\n";
 		if (broker_enable != 0 || broker_allocate != 0 || broker_lookup != 0 ||
-			broker_send != 0 || broker_destroy != 0 || broker_disable != 0 || broker_capability == 0 || broker_capability_session == 0)
+			broker_send != 0 || broker_receive != 0 || broker_received.msgh_id != 0x4242 ||
+			broker_destroy != 0 || broker_disable != 0 || broker_capability == 0 || broker_capability_session == 0)
 			return 6;
 		const auto process_id = static_cast<std::uint32_t>(GetCurrentProcessId());
 		const std::vector<std::uint8_t> process_id_payload{

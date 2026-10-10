@@ -1789,6 +1789,48 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 	if ((option & darling_mach_receive_msg) != 0) {
 		if (receive_size < sizeof(darling_mach_msg_header) || receive_name == 0)
 			return 4;
+		{
+			std::lock_guard broker_lock(mach_broker_mutex);
+			const auto capability = mach_ipc_capabilities.Lookup(receive_name);
+			if (mach_broker_client && capability) {
+				try {
+					darling::windows_host::MachIpcEnvelope request;
+					request.operation = darling::windows_host::MachIpcOperation::Receive;
+					request.request_id = mach_broker_request.fetch_add(1, std::memory_order_relaxed);
+					request.port_token = capability->broker_token;
+					request.session_token = capability->session_token;
+					const auto effective_timeout = (option & darling_mach_receive_timeout) != 0 ?
+						timeout_ms : (std::numeric_limits<std::uint32_t>::max)();
+					request.payload.resize(8);
+					for (unsigned shift = 0; shift != 32; shift += 8) {
+						request.payload[shift / 8] = static_cast<std::uint8_t>(effective_timeout >> shift);
+						request.payload[4 + shift / 8] = static_cast<std::uint8_t>(receive_size >> shift);
+					}
+					const auto response = darling::windows_host::SendMachIpcEnvelope(
+						*mach_broker_client, request);
+					if (response.operation != request.operation ||
+						response.request_id != request.request_id ||
+						response.port_token != request.port_token ||
+						response.disposition_count != 0 ||
+						response.out_of_line_token != 0 ||
+						response.out_of_line_handle != 0 ||
+						response.payload.size() > receive_size)
+						return 0x10004003;
+					std::memcpy(message, response.payload.data(), response.payload.size());
+					message->msgh_size = static_cast<std::uint32_t>(response.payload.size());
+					if (receive_size >= message->msgh_size + sizeof(darling_mach_msg_trailer)) {
+						auto* trailer = reinterpret_cast<darling_mach_msg_trailer*>(
+							reinterpret_cast<std::uint8_t*>(message) + message->msgh_size);
+						trailer->type = darling_mach_msg_trailer_none;
+						trailer->size = sizeof(darling_mach_msg_trailer);
+						message->msgh_size += sizeof(darling_mach_msg_trailer);
+					}
+					return 0;
+				} catch (...) {
+					return 268;
+				}
+			}
+		}
 		std::uint32_t actual_size = 0;
 		const auto receive_timeout = (option & darling_mach_receive_timeout) != 0 ?
 			timeout_ms : (std::numeric_limits<std::uint32_t>::max)();

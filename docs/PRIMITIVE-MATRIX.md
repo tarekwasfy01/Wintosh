@@ -350,7 +350,7 @@ ownership slice is now available as `MachOolOwnershipTable`: it tracks queue
 and receiver references under a mutex and invokes a release callback only
 after the final reference is dropped. The local `mach_msg` path now copies the
 payload into a `VirtualAlloc` block after a checked readable-range walk,
-transfers queue ownership to a receiver,
+transfers queue ownership to either receive API,
 and exposes explicit release through the native ABI. Raw guest mappings,
 protection transfer, physical-copy/deallocation-request semantics, and
 cross-process transfer remain open. Negative smoke cases explicitly reject

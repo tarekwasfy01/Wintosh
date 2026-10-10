@@ -965,6 +965,26 @@ int main()
 			darling_windows_mach_ool_release(const_cast<void*>(
 				reinterpret_cast<const void*>(received_ool_payload))) == 0;
 		if (!ool_send_ok || !ool_receive_ok || !ool_copy_ok) return 1;
+		ool_descriptor.address = static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(&ool_payload));
+		ool_descriptor.copy = 0;
+		std::memcpy(ool_wire.data() + sizeof(ool_message) + sizeof(ool_body), &ool_descriptor, sizeof(ool_descriptor));
+		const bool ool_direct_send_ok = darling_windows_mach_msg(
+			reinterpret_cast<darling_mach_msg_header*>(ool_wire.data()), darling_mach_send_msg,
+			static_cast<std::uint32_t>(ool_wire.size()), 0, 0, 0, 0) == 0;
+		std::array<std::uint8_t, sizeof(ool_wire)> ool_direct_received{};
+		std::uint32_t ool_direct_size = 0;
+		const bool ool_direct_receive_ok = darling_windows_mach_port_receive(ns_notify,
+			ool_direct_received.data(), ool_direct_received.size(), &ool_direct_size, 100) == 0 &&
+			ool_direct_size == ool_wire.size();
+		const auto* direct_descriptor = reinterpret_cast<const darling_mach_msg_ool_descriptor*>(
+			ool_direct_received.data() + sizeof(darling_mach_msg_header) + sizeof(darling_mach_msg_body));
+		const auto* direct_payload = reinterpret_cast<const std::uint32_t*>(
+			static_cast<std::uintptr_t>(direct_descriptor->address));
+		const bool ool_direct_copy_ok = ool_direct_receive_ok && direct_descriptor->address != 0 &&
+			direct_payload != nullptr && *direct_payload == ool_payload &&
+			darling_windows_mach_ool_release(const_cast<void*>(
+				reinterpret_cast<const void*>(direct_payload))) == 0;
+		if (!ool_direct_send_ok || !ool_direct_copy_ok) return 1;
 		ool_descriptor.deallocate = 1;
 		std::memcpy(ool_wire.data() + sizeof(ool_message) + sizeof(ool_body), &ool_descriptor, sizeof(ool_descriptor));
 		const bool ool_deallocate_rejected = darling_windows_mach_msg(

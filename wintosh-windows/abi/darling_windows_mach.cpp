@@ -1458,6 +1458,24 @@ extern "C" darling_kern_return_t darling_windows_mach_port_receive(
 	port->messages.pop_front();
 	std::memcpy(data, message.data(), message.size());
 	*size = static_cast<std::uint32_t>(message.size());
+	if (message.size() >= sizeof(darling_mach_msg_header) + sizeof(darling_mach_msg_body)) {
+		const auto* header = reinterpret_cast<const darling_mach_msg_header*>(data);
+		if ((header->msgh_bits & darling_mach_msg_complex) != 0) {
+			const auto* body = reinterpret_cast<const darling_mach_msg_body*>(
+				reinterpret_cast<const std::uint8_t*>(data) + sizeof(darling_mach_msg_header));
+			const auto* descriptor_bytes = reinterpret_cast<const std::uint8_t*>(body + 1);
+			const auto first_ool_type = descriptor_bytes[offsetof(darling_mach_msg_ool_descriptor, type)];
+			if (body->msgh_descriptor_count == 1 && first_ool_type == darling_mach_msg_descriptor_ool &&
+				message.size() >= sizeof(darling_mach_msg_header) + sizeof(*body) + sizeof(darling_mach_msg_ool_descriptor)) {
+				const auto* descriptor = reinterpret_cast<const darling_mach_msg_ool_descriptor*>(descriptor_bytes);
+				if (descriptor->address != 0) {
+					void* address = reinterpret_cast<void*>(static_cast<std::uintptr_t>(descriptor->address));
+					if (mach_ool_ownership.RetainReceiver(address))
+						(void)mach_ool_ownership.ReleaseQueue(address);
+				}
+			}
+		}
+	}
 	port->condition.notify_all();
 	return 0;
 }
@@ -1640,21 +1658,6 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 			receive_size, &actual_size, receive_timeout);
 		if (result != 0) return result;
 		message->msgh_size = actual_size;
-		if ((message->msgh_bits & darling_mach_msg_complex) != 0) {
-			const auto* body = reinterpret_cast<const darling_mach_msg_body*>(
-				reinterpret_cast<const std::uint8_t*>(message) + sizeof(darling_mach_msg_header));
-			const auto* descriptor_bytes = reinterpret_cast<const std::uint8_t*>(body + 1);
-			const auto first_ool_type = descriptor_bytes[offsetof(darling_mach_msg_ool_descriptor, type)];
-			if (body->msgh_descriptor_count == 1 && first_ool_type == darling_mach_msg_descriptor_ool) {
-				auto* descriptor = reinterpret_cast<darling_mach_msg_ool_descriptor*>(
-					const_cast<std::uint8_t*>(descriptor_bytes));
-				if (descriptor->address != 0) {
-					void* address = reinterpret_cast<void*>(static_cast<std::uintptr_t>(descriptor->address));
-					if (mach_ool_ownership.RetainReceiver(address))
-						(void)mach_ool_ownership.ReleaseQueue(address);
-				}
-			}
-		}
 	}
 	return 0;
 }

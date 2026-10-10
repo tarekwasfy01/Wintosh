@@ -106,17 +106,16 @@ code remains subject to the repository's documented GPL boundary.
 
 ## Current gaps
 
-The following are still unimplemented or approximated: authenticated
-session ownership and explicit capability transfer, per-task
-rights/disposition transfer, true
-Windows handle passing, OOL protection/lifetime semantics, request
-cancellation, MIG descriptors, and full Mach error-code parity. The current
-broker gates prove bounded transport primitives, not an unmodified Darling
-Mach runtime or arbitrary macOS application execution.
+The following are still unimplemented or approximated: per-task
+rights/disposition transfer, full Windows handle-lifetime equivalence, OOL
+protection/lifetime semantics, request cancellation, MIG descriptors, and
+full Mach error-code parity. The current broker gates prove bounded transport
+primitives, not an unmodified Darling Mach runtime or arbitrary macOS
+application execution.
 
 ## Worker-pool implementation contract
 
 The worker pool, controlled shutdown/join, and two-client blocked-wait wakeup
 test are now in place with the existing shared state. Remaining worker
-hardening is authenticated session ownership. The accept loop owns listening instances; `BrokerState` owns ports,
+hardening is cancellation and complete rights semantics. The accept loop owns listening instances; `BrokerState` owns ports,
 queues, OOL mappings, notifications, counters, and the state mutex.

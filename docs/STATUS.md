@@ -98,12 +98,11 @@ Each port FIFO is bounded to 1024 queued messages and reports
 `MACH_SEND_QUEUE_FULL` instead of allowing unbounded broker memory growth;
 the boundary is exercised by the broker smoke as
 `BROKER_MACH_QUEUE_LIMIT=PASS`.
-The named-pipe transport now reserves up to eight server instances, preparing
-the endpoint for concurrent client workers; the current broker loop still
-serves one connected client and does not yet claim multi-client semantics.
-The shared broker state is now protected by a mutex at the request boundary,
-so the existing port/OOL/notification tables have an explicit synchronization
-contract for the upcoming worker split.
+The named-pipe transport reserves up to eight server instances and the broker
+accept loop dispatches each connection to a joinable worker. The shared broker
+state is protected by a mutex at the request boundary, so the existing
+port/OOL/notification tables have an explicit synchronization contract for
+bounded multi-client transport.
 
 The platform path adapter now provides lexical `AbsolutePath` resolution and
 handle-based `CanonicalPath` resolution through Windows final-name lookup,
@@ -229,12 +228,12 @@ or the Darling userland execute on Windows.
 
 ## Broker reconnect boundary (2026-10-09)
 
-The broker no longer terminates its Mach namespace when the current named-pipe
-client disconnects.  It recreates the listening pipe instance and accepts a
-subsequent client while retaining allocated port tokens, queued messages,
-out-of-line shared-memory regions, and notification objects.  This closes the
-previous single-connection lifetime hole; it is deliberately a sequential
-reconnect path, not yet a concurrent multi-client dispatcher.
+The broker no longer terminates its Mach namespace when a named-pipe client
+disconnects.  It recreates listening pipe instances and accepts subsequent
+clients while retaining allocated port tokens, queued messages, out-of-line
+shared-memory regions, and notification objects.  Accepted connections run in
+joinable workers, so this covers both reconnect and bounded concurrent-client
+transport.
 
 Current verification:
 
@@ -262,9 +261,7 @@ administrative lifecycle operations cannot smuggle message descriptors.
 
 Broker notification objects are now shared independently of the state-map
 lock, and `NotificationWait` releases that lock while waiting.  This removes
-the notification wait as a serialization bottleneck for the planned worker
-pool; the broker still uses a single connection loop, so concurrent client
-execution is not yet proven.
+the notification wait as a serialization bottleneck for the worker pool.
 
 The broker now accepts each connection on a worker while the main loop creates
 the next listening instance.  The broker smoke gate proves two simultaneous
@@ -343,9 +340,10 @@ returns the native handle value in the version-2 envelope; the smoke verifies
 and closes that handle after a capability transfer. This is the first real
 Windows handle-passing primitive, not yet full Mach VM lifetime semantics.
 
-Remaining broker gaps are concurrent client workers, a cross-client wakeup
-test for a blocked receiver, complete Mach rights/dispositions, true kernel
-handle passing, and real unmodified Darling/Mach-O application execution.
+Remaining broker gaps are request cancellation, complete Mach
+rights/dispositions, true kernel-equivalent handle passing and OOL lifetime
+semantics, MIG descriptors, full Mach error-code parity, and real unmodified
+Darling/Mach-O application execution.
 
 The local C Mach ABI now validates the four supported basic right dispositions
 (`MOVE_RECEIVE`, `COPY_SEND`, `MOVE_SEND`, and `MAKE_SEND`) and rejects unknown

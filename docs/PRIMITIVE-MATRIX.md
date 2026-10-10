@@ -274,9 +274,12 @@ member removal, and set/port destruction, with a cross-thread smoke proof.
 The local C ABI now tracks receive and send references separately and exposes
 the corresponding type bits; this is still an adapter-level namespace rather
 than Darwin's per-task kernel right table.
-The named-pipe broker separately covers bounded inline/OOL transport and
-reconnect persistence; it is still sequential per client rather than a
-concurrent Mach dispatcher.
+The named-pipe broker separately covers bounded inline/OOL transport,
+reconnect persistence, joinable connection workers, and a two-client
+send/receive plus notification-wakeup proof. `Receive` also has a bounded
+inline-capacity response that preserves an oversized queued message for retry.
+Request cancellation, complete rights/disposition semantics, and full Mach
+message descriptors remain open.
 The local ABI distinguishes reference-decrementing `mach_port_deallocate`
 from forced `mach_port_destroy`; the smoke gate also verifies that forced
 destruction closes a blocked receiver and rejects subsequent use. This is a

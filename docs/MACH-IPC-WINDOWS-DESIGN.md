@@ -85,9 +85,10 @@ successful transfer and is invalidated on session teardown.
 
 ## Receive and failure semantics
 
-Receive supports bounded timeout, cancellation by request ID, and an explicit
-`MACH_RCV_TOO_LARGE`-style response containing the required size without
-consuming the message. Queue shutdown returns a stable port-dead result.
+Receive supports bounded timeout and an explicit `MACH_RCV_TOO_LARGE`-style
+response containing the required inline size without consuming the message.
+Queue shutdown returns a stable port-dead result. Request cancellation by
+request ID is still unimplemented.
 Broker reconnect preserves the shared namespace, and the current broker uses a
 joinable worker per accepted connection. The smoke gate proves a two-client
 send/receive through one shared port token. Workers preserve the shared state

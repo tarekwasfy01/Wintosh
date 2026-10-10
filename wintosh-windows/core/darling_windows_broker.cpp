@@ -357,7 +357,8 @@ int wmain(int argc, wchar_t** argv)
 					if (envelope.disposition_count != 0 || envelope.out_of_line_token != 0 ||
 						envelope.out_of_line_size != 0)
 						throw std::invalid_argument("invalid Mach IPC receive descriptors");
-					if (!envelope.payload.empty() && envelope.payload.size() != 4)
+					if (!envelope.payload.empty() && envelope.payload.size() != 4 &&
+						envelope.payload.size() != 8)
 						throw std::invalid_argument("invalid Mach IPC receive timeout");
 					auto& queue = port_queues.at(envelope.port_token);
 					if (queue.empty() && !envelope.payload.empty()) {
@@ -376,6 +377,25 @@ int wmain(int argc, wchar_t** argv)
 					}
 					if (queue.empty())
 						throw std::runtime_error("Mach IPC receive would block");
+					std::uint32_t maximum_inline_size = UINT32_MAX;
+					if (envelope.payload.size() == 8) {
+						maximum_inline_size = static_cast<std::uint32_t>(envelope.payload[4]) |
+							(static_cast<std::uint32_t>(envelope.payload[5]) << 8) |
+							(static_cast<std::uint32_t>(envelope.payload[6]) << 16) |
+							(static_cast<std::uint32_t>(envelope.payload[7]) << 24);
+					}
+					if (queue.front().payload.size() > maximum_inline_size) {
+						const auto required_size = static_cast<std::uint32_t>(queue.front().payload.size());
+						std::vector<std::uint8_t> required_payload(4);
+						for (unsigned shift = 0; shift != 32; shift += 8)
+							required_payload[shift / 8] = static_cast<std::uint8_t>(required_size >> shift);
+						darling::windows_host::MachIpcEnvelope response{
+							darling::windows_host::MachIpcOperation::Receive,
+							envelope.request_id, envelope.port_token, 0,
+							std::move(required_payload)};
+						server.Write(AsString(darling::windows_host::EncodeMachIpcEnvelope(response)));
+						continue;
+					}
 					auto message = std::move(queue.front());
 					queue.pop_front();
 					// Receiving an OOL descriptor transfers the broker's owning

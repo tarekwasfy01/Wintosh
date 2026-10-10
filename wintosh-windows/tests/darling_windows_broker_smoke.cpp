@@ -401,6 +401,41 @@ int wmain()
 			return 5;
 		}
 		std::cout << "BROKER_MACH_SEND_DESCRIPTOR_VALIDATION=PASS\n";
+		const darling::windows_host::MachIpcEnvelope too_large_send{
+			darling::windows_host::MachIpcOperation::Send, 119, token, 0,
+			{'T', 'O', 'O', 'L', 'A', 'R', 'G', 'E'}};
+		const auto too_large_send_bytes = darling::windows_host::EncodeMachIpcEnvelope(
+			too_large_send);
+		client.Write(std::string(too_large_send_bytes.begin(), too_large_send_bytes.end()));
+		(void)client.Read();
+		const darling::windows_host::MachIpcEnvelope too_large_receive{
+			darling::windows_host::MachIpcOperation::Receive, 120, token, 0,
+			{0, 0, 0, 0, 1, 0, 0, 0}};
+		const auto too_large_receive_bytes = darling::windows_host::EncodeMachIpcEnvelope(
+			too_large_receive);
+		client.Write(std::string(too_large_receive_bytes.begin(), too_large_receive_bytes.end()));
+		const auto too_large_wire = client.Read();
+		const auto too_large_response = darling::windows_host::DecodeMachIpcEnvelope(
+			std::vector<std::uint8_t>(too_large_wire.begin(), too_large_wire.end()));
+		if (too_large_response.operation != darling::windows_host::MachIpcOperation::Receive ||
+			too_large_response.request_id != 120 || too_large_response.payload !=
+				std::vector<std::uint8_t>({8, 0, 0, 0})) {
+			std::cerr << "BROKER_MACH_RECEIVE_TOO_LARGE=FAIL\n";
+			return 5;
+		}
+		const darling::windows_host::MachIpcEnvelope too_large_retry{
+			darling::windows_host::MachIpcOperation::Receive, 121, token, 0, {}};
+		const auto too_large_retry_bytes = darling::windows_host::EncodeMachIpcEnvelope(
+			too_large_retry);
+		client.Write(std::string(too_large_retry_bytes.begin(), too_large_retry_bytes.end()));
+		const auto too_large_retry_wire = client.Read();
+		const auto too_large_retry_response = darling::windows_host::DecodeMachIpcEnvelope(
+			std::vector<std::uint8_t>(too_large_retry_wire.begin(), too_large_retry_wire.end()));
+		if (too_large_retry_response.payload != too_large_send.payload) {
+			std::cerr << "BROKER_MACH_RECEIVE_TOO_LARGE_RETRY=FAIL\n";
+			return 5;
+		}
+		std::cout << "BROKER_MACH_RECEIVE_TOO_LARGE=PASS\n";
 		const darling::windows_host::MachIpcEnvelope large_send_request{
 			darling::windows_host::MachIpcOperation::Send, 105, token, 0,
 			std::vector<std::uint8_t>(2 * 1024 * 1024, 0x5a)};

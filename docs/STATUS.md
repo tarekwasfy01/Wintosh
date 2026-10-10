@@ -248,6 +248,12 @@ The broker now also accepts a four-byte millisecond timeout on `Receive` and
 waits on a condition variable until a message arrives, the port is destroyed,
 or the timeout expires.  An empty payload preserves the nonblocking probe.
 The smoke gate covers the timeout-expiry path.
+`Receive` also accepts an eight-byte timeout-plus-inline-capacity request. If
+the queued message exceeds that capacity, the broker returns a Receive
+response containing the required inline size without consuming the message;
+the broker smoke covers the too-large response and successful retry. This is
+the adapter's bounded `MACH_RCV_TOO_LARGE`-style primitive, not yet complete
+Mach message descriptor or trailer semantics.
 Receive timeout payloads are validated even when a message is already queued;
 malformed timeout requests cannot bypass validation by taking the fast path.
 Receive requests also reject nonzero disposition and OOL descriptor fields;

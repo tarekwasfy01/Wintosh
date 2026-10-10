@@ -52,6 +52,8 @@ also removed before the WinSock call; the former sets the native nonblocking
 mode and the latter is retained in the descriptor flag model. Full Darwin
 message-flag, alignment, truncation, and descriptor lifetime parity remains
 open.
+The same type modifiers are now applied to both ends of the native `socketpair`
+adapter and covered by `syscalls_smoke`.
 
 The process row also covers the four-word Darwin signal-set constructors and
 membership operations, verified by `signals_smoke`; this does not establish

@@ -935,6 +935,10 @@ int DarwinSyscalls::Socket(int domain, int type, int protocol)
 
 void DarwinSyscalls::SocketPair(int domain, int type, int protocol, int descriptors[2])
 {
+	constexpr int darwin_sock_nonblock = 0x20000000;
+	constexpr int darwin_sock_cloexec = 0x10000000;
+	const bool nonblocking = (type & darwin_sock_nonblock) != 0;
+	const bool close_on_exec = (type & darwin_sock_cloexec) != 0;
 	if (descriptors == nullptr || (type & 0x0f) != SOCK_STREAM ||
 		(domain != AF_UNIX && domain != AF_INET) || (protocol != 0 && protocol != IPPROTO_TCP)) {
 		DarwinErrno::Set(22);
@@ -963,6 +967,14 @@ void DarwinSyscalls::SocketPair(int domain, int type, int protocol, int descript
 			std::scoped_lock lock(m_mutex);
 			m_socket_peers[descriptors[0]] = descriptors[1];
 			m_socket_peers[descriptors[1]] = descriptors[0];
+		}
+		if (nonblocking) {
+			SetDescriptorFlags(descriptors[0], 0x0004);
+			SetDescriptorFlags(descriptors[1], 0x0004);
+		}
+		if (close_on_exec) {
+			SetDescriptorFdFlags(descriptors[0], 1);
+			SetDescriptorFdFlags(descriptors[1], 1);
 		}
 	} catch (...) {
 		if (listener >= 0) {

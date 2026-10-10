@@ -271,7 +271,14 @@ int wmain()
 			syscalls.Close(pipe_descriptors[0]);
 			syscalls.Close(pipe_descriptors[1]);
 			int socket_pair[2]{};
-			if (darling_windows_socketpair(1, 1, 0, socket_pair) != 0) {
+			constexpr int darwin_sock_cloexec = 0x10000000;
+			constexpr int darwin_sock_nonblock = 0x20000000;
+			if (darling_windows_socketpair(1, 1 | darwin_sock_cloexec | darwin_sock_nonblock,
+				0, socket_pair) != 0 ||
+				(darling_windows_fcntl(socket_pair[0], 3) & 0x0004) == 0 ||
+				(darling_windows_fcntl(socket_pair[1], 3) & 0x0004) == 0 ||
+				(darling_windows_fcntl(socket_pair[0], 1) & 1) == 0 ||
+				(darling_windows_fcntl(socket_pair[1], 1) & 1) == 0) {
 				throw std::runtime_error("Darwin socketpair creation failed");
 			}
 			const char socket_payload = 'S';

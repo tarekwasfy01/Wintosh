@@ -225,6 +225,7 @@ native loader path on x64 Windows:
 |---|---|---|
 | `wintosh.exe` build | pass | CMake Release target `wintosh` |
 | Mach-O entry execution | pass | `wintosh_runner_smoke=0` |
+| `.app` bundle resolution | pass | native runner smoke resolves `Contents/MacOS/<bundle-name>` |
 | Host `_getenv` binding and `envp` | pass | `wintosh_runner_env_smoke=0` |
 | Dylib graph, RPATH, bind/rebase/chained paths | pass | `wintosh_dyld_smoke=0` |
 | Objective-C registry/runtime | pass | `wintosh_objc_smoke=0`, `wintosh_objc_runtime_smoke=0` |

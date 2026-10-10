@@ -94,6 +94,11 @@ int wmain()
 		const auto image = std::filesystem::path(temp_path) /
 			(L"darling-runner-argc-" + std::to_wstring(GetCurrentProcessId()) + L".macho");
 		WriteArgcMachO(image);
+		const auto bundle = std::filesystem::path(temp_path) /
+			(L"DarlingRunnerSmoke-" + std::to_wstring(GetCurrentProcessId()) + L".app");
+		const auto bundle_image = bundle / L"Contents" / L"MacOS" / bundle.stem();
+		std::filesystem::create_directories(bundle_image.parent_path());
+		WriteArgcMachO(bundle_image);
 		wchar_t executable[MAX_PATH]{};
 		const DWORD executable_length = GetModuleFileNameW(nullptr, executable, MAX_PATH);
 		if (executable_length == 0 || executable_length >= MAX_PATH) {
@@ -139,8 +144,22 @@ int wmain()
 			inspect_queried = GetExitCodeProcess(inspect_process.hProcess, &inspect_status);
 			CloseHandle(inspect_process.hProcess);
 		}
+		const std::wstring bundle_command_line = L"\"" + runner.wstring() + L"\" --inspect \"" + bundle.wstring() + L"\"";
+		auto bundle_command = CommandLine(bundle_command_line);
+		PROCESS_INFORMATION bundle_process{};
+		DWORD bundle_status = 1;
+		BOOL bundle_queried = FALSE;
+		if (CreateProcessW(nullptr, bundle_command.data(), nullptr, nullptr, FALSE,
+			CREATE_NO_WINDOW, nullptr, nullptr, &startup, &bundle_process) != FALSE) {
+			CloseHandle(bundle_process.hThread);
+			WaitForSingleObject(bundle_process.hProcess, 5000);
+			bundle_queried = GetExitCodeProcess(bundle_process.hProcess, &bundle_status);
+			CloseHandle(bundle_process.hProcess);
+		}
 		std::filesystem::remove(image);
-		return queried != FALSE && status == 3 && inspect_queried != FALSE && inspect_status == 0 ? 0 : 4;
+		std::filesystem::remove_all(bundle);
+		return queried != FALSE && status == 3 && inspect_queried != FALSE && inspect_status == 0 &&
+			bundle_queried != FALSE && bundle_status == 0 ? 0 : 4;
 	} catch (...) {
 		return 5;
 	}

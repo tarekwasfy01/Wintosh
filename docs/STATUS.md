@@ -174,6 +174,10 @@ with serialized attribute pairs and verified lookup. The machine-readable matrix
 and metaclass mutation. The DYLD resolver now combines caller-provided
 `@rpath` roots with embedded `LC_RPATH` entries even when the caller already
 provided search paths; `DYLD_COMBINED_RPATH=PASS` covers this behavior.
+Mach-O category registration is also covered: category instance/class methods,
+properties, and protocols are merged into the target class and verified by
+`objc_smoke`. Selector-reference teardown and full method-cache/swizzling
+semantics remain open.
 complex numbers, quoted aggregates, and nested pointers.
 
 CoreGraphics now has a separate partial geometry/color adapter with the

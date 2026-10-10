@@ -322,6 +322,8 @@ int main()
 		objc_msgSend(object, two_selector, static_cast<std::int64_t>(19),
 			static_cast<std::int64_t>(23)))) != 42)
 		return 13;
+	if (darling_objc_msgSend_int64_2(object, two_selector, 19, 23) != 42)
+		return 18;
 	int association_key = 0;
 	id associated = class_createInstance(child, 0);
 	objc_setAssociatedObject(object, &association_key, associated,

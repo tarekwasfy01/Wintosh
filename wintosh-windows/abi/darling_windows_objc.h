@@ -153,6 +153,8 @@ id darling_objc_msgSend_class0(Class cls, SEL selector);
 id darling_objc_msgSend_object1(id receiver, SEL selector, id argument);
 std::int64_t darling_objc_msgSend_int64_1(id receiver, SEL selector,
 	std::int64_t argument);
+std::int64_t darling_objc_msgSend_int64_2(id receiver, SEL selector,
+	std::int64_t first, std::int64_t second);
 bool darling_objc_msgSend_bool1(id receiver, SEL selector, bool argument);
 void* darling_objc_msgSend_pointer1(id receiver, SEL selector, void* argument);
 double darling_objc_msgSend_double1(id receiver, SEL selector, double argument);

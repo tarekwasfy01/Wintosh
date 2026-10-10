@@ -3118,7 +3118,8 @@ extern "C" int darling_windows_pthread_mutexattr_setprioceiling(void* attributes
 {
 	auto* value = PthreadMutexAttributesFromValue(attributes);
 	if (value == nullptr || ceiling < 0) return 22;
-	return 95;
+	value->priority_ceiling = ceiling;
+	return 0;
 }
 
 extern "C" int darling_windows_pthread_mutex_init(void* mutex, const void* attributes)
@@ -3130,7 +3131,10 @@ extern "C" int darling_windows_pthread_mutex_init(void* mutex, const void* attri
 	const int type = attr == nullptr ? 0 : attr->type;
 	*reinterpret_cast<DarlingPthreadMutex**>(mutex) =
 		new (std::nothrow) DarlingPthreadMutex(type);
-	return *reinterpret_cast<DarlingPthreadMutex**>(mutex) == nullptr ? 12 : 0;
+	if (*reinterpret_cast<DarlingPthreadMutex**>(mutex) == nullptr) return 12;
+	if (attr != nullptr)
+		(*reinterpret_cast<DarlingPthreadMutex**>(mutex))->priority_ceiling = attr->priority_ceiling;
+	return 0;
 }
 
 extern "C" int darling_windows_pthread_mutex_destroy(void* mutex)
@@ -3203,7 +3207,9 @@ extern "C" int darling_windows_pthread_mutex_setprioceiling(void* mutex, int cei
 {
 	auto* value = PthreadMutexFromStorage(mutex);
 	if (value == nullptr || ceiling < 0) return 22;
-	return 95;
+	const int previous = value->priority_ceiling;
+	value->priority_ceiling = ceiling;
+	return previous;
 }
 
 extern "C" int darling_windows_pthread_spin_init(void* lock, int process_shared)

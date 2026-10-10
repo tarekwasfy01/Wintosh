@@ -1205,7 +1205,7 @@ int main()
 		darling_windows_host_symbol("pthread_mutexattr_setprioceiling") != 0 &&
 		darling_windows_pthread_mutexattr_getprioceiling(pthread_mutex_attributes,
 		&pthread_mutex_ceiling) == 0 && pthread_mutex_ceiling == 0 &&
-		darling_windows_pthread_mutexattr_setprioceiling(pthread_mutex_attributes, 1) == 95 &&
+			darling_windows_pthread_mutexattr_setprioceiling(pthread_mutex_attributes, 1) == 0 &&
 		darling_windows_pthread_mutexattr_settype(pthread_mutex_attributes, 1) == 0 &&
 		darling_windows_pthread_mutex_init(&recursive_mutex_storage,
 		pthread_mutex_attributes) == 0 &&

@@ -575,3 +575,9 @@ into the caller buffer, and appends the supported basic trailer. The broker
 smoke verifies Send -> Receive -> Destroy; OOL and descriptor responses still
 require dedicated translation.
 
+The C-ABI receive path now also accepts a broker response carrying a duplicated
+native mapping handle, copies it into locally owned memory, registers the OOL
+ownership, and writes a Mach OOL descriptor. This covers the materialization
+primitive; a full C-ABI OOL Send -> Receive test is still pending because the
+current envelope format does not preserve mixed inline-plus-OOL message data.
+

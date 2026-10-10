@@ -1810,10 +1810,42 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 						*mach_broker_client, request);
 					if (response.operation != request.operation ||
 						response.request_id != request.request_id ||
-						response.port_token != request.port_token ||
-						response.disposition_count != 0 ||
-						response.out_of_line_token != 0 ||
-						response.out_of_line_handle != 0 ||
+						response.port_token != request.port_token)
+						return 0x10004003;
+					if (response.out_of_line_handle != 0 || response.out_of_line_size != 0) {
+						if (!response.payload.empty() || response.out_of_line_handle == 0 ||
+							response.out_of_line_size == 0 ||
+							receive_size < sizeof(darling_mach_msg_header) +
+								sizeof(darling_mach_msg_body) + sizeof(darling_mach_msg_ool_descriptor))
+							return 0x10004003;
+						auto mapping = darling::windows_host::MachIpcSharedMemory::FromNativeHandle(
+							reinterpret_cast<HANDLE>(static_cast<std::uintptr_t>(response.out_of_line_handle)),
+							response.out_of_line_size);
+						void* local = VirtualAlloc(nullptr, response.out_of_line_size,
+							MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+						if (local == nullptr || !mach_ool_ownership.Register(local,
+							response.out_of_line_size, [](void* address) {
+								VirtualFree(address, 0, MEM_RELEASE);
+							})) {
+							if (local != nullptr) VirtualFree(local, 0, MEM_RELEASE);
+							return 8;
+						}
+						std::memcpy(local, mapping.Data(), response.out_of_line_size);
+						message->msgh_bits = darling_mach_msg_complex;
+						message->msgh_size = sizeof(darling_mach_msg_header) + sizeof(darling_mach_msg_body) +
+							sizeof(darling_mach_msg_ool_descriptor);
+						message->msgh_remote_port = receive_name;
+						message->msgh_local_port = 0;
+						message->msgh_id = 0;
+						auto* body = reinterpret_cast<darling_mach_msg_body*>(
+							reinterpret_cast<std::uint8_t*>(message) + sizeof(darling_mach_msg_header));
+						body->msgh_descriptor_count = 1;
+						auto* descriptor = reinterpret_cast<darling_mach_msg_ool_descriptor*>(body + 1);
+						*descriptor = {static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(local)),
+							response.out_of_line_size, 0, 0, 0, darling_mach_msg_descriptor_ool};
+						return 0;
+					}
+					if (response.disposition_count != 0 || response.out_of_line_token != 0 ||
 						response.payload.size() > receive_size)
 						return 0x10004003;
 					std::memcpy(message, response.payload.data(), response.payload.size());

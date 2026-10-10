@@ -322,8 +322,10 @@ The named-pipe broker separately covers bounded inline/OOL transport,
 reconnect persistence, joinable connection workers, and a two-client
 send/receive plus notification-wakeup proof. `Receive` also has a bounded
 inline-capacity response that preserves an oversized queued message for retry.
-Request cancellation, complete rights/disposition semantics, and full Mach
-message descriptors remain open.
+Request cancellation, complete rights/disposition semantics, and descriptor
+ownership remain open. The native ABI now carries layout-checked Darwin 64-bit
+body, port-descriptor, OOL-descriptor, and basic trailer structures; this is a
+layout foundation only and does not yet transfer descriptor rights or memory.
 The local ABI distinguishes reference-decrementing `mach_port_deallocate`
 from forced `mach_port_destroy`; the smoke gate also verifies that forced
 destruction closes a blocked receiver and rejects subsequent use. This is a

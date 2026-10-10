@@ -27,6 +27,38 @@ struct darling_mach_msg_header final {
 	};
 };
 
+// Darwin 64-bit mach_msg descriptor/trailer layouts. These are ABI data
+// structures only; descriptor ownership transfer is implemented separately.
+struct darling_mach_msg_body final {
+	std::uint32_t msgh_descriptor_count;
+};
+
+struct darling_mach_msg_port_descriptor final {
+	darling_mach_port_name_t name;
+	std::uint32_t pad1;
+	std::uint8_t disposition;
+	std::uint8_t type;
+	std::uint16_t pad2;
+};
+
+struct darling_mach_msg_ool_descriptor final {
+	std::uint64_t address;
+	std::uint32_t size;
+	std::uint8_t deallocate;
+	std::uint8_t copy;
+	std::uint16_t pad1;
+	std::uint32_t type;
+};
+
+struct darling_mach_msg_trailer final {
+	std::uint32_t type;
+	std::uint32_t size;
+};
+
+constexpr std::uint32_t darling_mach_msg_descriptor_port = 0;
+constexpr std::uint32_t darling_mach_msg_descriptor_ool = 1;
+constexpr std::uint32_t darling_mach_msg_trailer_none = 0;
+
 constexpr std::uint32_t darling_mach_send_msg = 0x00000001;
 constexpr std::uint32_t darling_mach_receive_msg = 0x00000002;
 constexpr std::uint32_t darling_mach_send_timeout = 0x00000010;

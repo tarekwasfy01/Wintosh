@@ -15,6 +15,10 @@ int main()
 	std::cout << "MACH_ABI_X64_THREAD_STATE=UNSUPPORTED_WIN32\n";
 	return 0;
 #else
+	static_assert(sizeof(darling_mach_msg_body) == 4);
+	static_assert(sizeof(darling_mach_msg_port_descriptor) == 12);
+	static_assert(sizeof(darling_mach_msg_ool_descriptor) == 24);
+	static_assert(sizeof(darling_mach_msg_trailer) == 8);
 	const auto task = darling_windows_mach_task_self();
 	const auto thread = darling_windows_mach_thread_self();
 	darling_thread_precedence_policy_info precedence{};

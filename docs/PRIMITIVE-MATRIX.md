@@ -329,8 +329,10 @@ layout foundation only and does not yet transfer descriptor rights or memory.
 The first functional slice now accepts complex inline messages containing one or
 more valid port descriptors with `MACH_MSG_TYPE_COPY_SEND` and transports the
 descriptor bytes through the local native queue. Move dispositions, OOL
-descriptors, descriptor ownership mutation, and trailers remain explicitly
-unsupported.
+descriptors, and trailers remain explicitly unsupported. `MOVE_SEND` and
+`MOVE_SEND_ONCE` are now accepted for inline port descriptors and consume the
+corresponding local sender reference after successful queueing; the Mach smoke
+covers `MOVE_SEND`.
 The local ABI distinguishes reference-decrementing `mach_port_deallocate`
 from forced `mach_port_destroy`; the smoke gate also verifies that forced
 destruction closes a blocked receiver and rejects subsequent use. This is a

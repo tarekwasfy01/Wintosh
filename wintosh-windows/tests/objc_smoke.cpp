@@ -300,6 +300,7 @@ int main()
 	const DarlingObjcValue void_result = darling_objc_invoke0(object,
 		void_selector);
 	if (bool_result.kind != DARLING_OBJC_BOOL || !bool_result.boolean ||
+		darling_objc_msgSend_bool1(object, bool_selector, true) != true ||
 		double_result.kind != DARLING_OBJC_DOUBLE ||
 		double_result.floating != 5.0 ||
 		darling_objc_msgSend_double1(object, double_selector, 3.5) != 7.0 ||
@@ -313,6 +314,10 @@ int main()
 		!class_addMethod(child, two_selector,
 			reinterpret_cast<IMP>(&AddTwo), "q@:qq"))
 		return 12;
+	void* pointer_marker = reinterpret_cast<void*>(static_cast<std::uintptr_t>(0x1234));
+	if (darling_objc_msgSend_pointer1(object, pointer_selector, pointer_marker) !=
+		pointer_marker)
+		return 13;
 	if (static_cast<std::int64_t>(reinterpret_cast<std::uintptr_t>(
 		objc_msgSend(object, two_selector, static_cast<std::int64_t>(19),
 			static_cast<std::int64_t>(23)))) != 42)

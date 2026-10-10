@@ -2087,6 +2087,32 @@ extern "C" std::int64_t darling_objc_msgSend_int64_1(id receiver, SEL selector,
 		argument);
 }
 
+extern "C" bool darling_objc_msgSend_bool1(id receiver, SEL selector,
+	bool argument)
+{
+	const IMP implementation = FindMethod(receiver, selector);
+	const char* types = class_getMethodTypeEncoding(object_getClass(receiver),
+		selector);
+	if (!implementation || !types || std::strcmp(types, "B@:B") != 0)
+		return false;
+	using BoolMethod = bool (*)(id, SEL, bool);
+	return reinterpret_cast<BoolMethod>(implementation)(receiver, selector,
+		argument);
+}
+
+extern "C" void* darling_objc_msgSend_pointer1(id receiver, SEL selector,
+	void* argument)
+{
+	const IMP implementation = FindMethod(receiver, selector);
+	const char* types = class_getMethodTypeEncoding(object_getClass(receiver),
+		selector);
+	if (!implementation || !types || std::strcmp(types, "^v@:^v") != 0)
+		return nullptr;
+	using PointerMethod = void* (*)(id, SEL, void*);
+	return reinterpret_cast<PointerMethod>(implementation)(receiver, selector,
+		argument);
+}
+
 extern "C" double darling_objc_msgSend_double1(id receiver, SEL selector,
 	double argument)
 {

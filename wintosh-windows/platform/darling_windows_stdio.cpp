@@ -1854,7 +1854,7 @@ extern "C" std::int64_t darling_windows_sendmsg(int descriptor,
 	try {
 		std::vector<int> rights;
 		if (!DecodeSocketRights(*message, rights)) {
-			darling::windows_host::DarwinErrno::Set(95);
+			darling::windows_host::DarwinErrno::Set(22);
 			return -1;
 		}
 		if (!rights.empty() && global_syscalls.SocketPeerDescriptor(descriptor) < 0) {

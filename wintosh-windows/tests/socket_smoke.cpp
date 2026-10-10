@@ -98,7 +98,9 @@ int main()
 	unsupported_message.msg_control = &unsupported_type;
 	unsupported_message.msg_controllen = sizeof(unsupported_type);
 	const bool malformed_control_ok = darling_windows_sendmsg(client, &malformed_message, 0) < 0 &&
-		darling_windows_sendmsg(client, &unsupported_message, 0) < 0;
+		*darling_windows_errno() == 22 &&
+		darling_windows_sendmsg(client, &unsupported_message, 0) < 0 &&
+		*darling_windows_errno() == 22;
 	unsigned char ipv6_address[16]{};
 	char ipv6_text[46]{};
 	const bool ipv6_ok = darling_windows_inet_pton(AF_INET6, "2001:db8::17",

@@ -45,7 +45,10 @@ exercises additional exception-data and resolver combinations; the focused test
 also verifies IPv6 `inet_pton`/`inet_ntop`. Those remaining combinations stay
 separate coverage. The specialized `syscalls_smoke` additionally exercises
 `SCM_RIGHTS` descriptor transfer and malformed-control rejection in five
-successful runs.
+successful runs. The native receive path translates Winsock's `MSG_PARTIAL`
+result into Darwin's `MSG_TRUNC` bit instead of exposing a Winsock bit value to
+the guest ABI. Full Darwin message-flag, alignment, truncation, and descriptor
+lifetime parity remains open.
 
 The process row also covers the four-word Darwin signal-set constructors and
 membership operations, verified by `signals_smoke`; this does not establish

@@ -56,6 +56,20 @@ namespace {
 	return native;
 }
 
+[[nodiscard]] int DarwinSocketResultFlags(int flags)
+{
+	constexpr int darwin_msg_oob = 0x0001;
+	constexpr int darwin_msg_peek = 0x0002;
+	constexpr int darwin_msg_trunc = 0x0010;
+	int darwin = 0;
+	if ((flags & MSG_OOB) != 0) darwin |= darwin_msg_oob;
+	if ((flags & MSG_PEEK) != 0) darwin |= darwin_msg_peek;
+#ifdef MSG_PARTIAL
+	if ((flags & MSG_PARTIAL) != 0) darwin |= darwin_msg_trunc;
+#endif
+	return darwin;
+}
+
 class TemporarySocketNonblocking final {
 public:
 	TemporarySocketNonblocking(SOCKET socket, bool requested, bool already_nonblocking)
@@ -1178,7 +1192,7 @@ std::size_t DarwinSyscalls::ReceiveMessage(int descriptor, WSABUF* buffers, DWOR
 		throw std::system_error(error, std::system_category(), "WSARecv message");
 	}
 	if (flags != nullptr)
-		*flags = static_cast<int>(native_flags);
+		*flags = DarwinSocketResultFlags(static_cast<int>(native_flags));
 	return transferred;
 }
 

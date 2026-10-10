@@ -1058,6 +1058,7 @@ extern "C" darling_kern_return_t darling_windows_mach_port_insert_right(
 {
 	if (task == 0 || task != darling_windows_mach_task_self() || name == 0 || right == 0 || disposition == 0) return 4;
 	if (disposition != darling_mach_move_receive &&
+		disposition != darling_mach_copy_receive &&
 		disposition != darling_mach_move_send_once &&
 		disposition != darling_mach_copy_send &&
 		disposition != darling_mach_move_send &&
@@ -1075,7 +1076,7 @@ extern "C" darling_kern_return_t darling_windows_mach_port_insert_right(
 			disposition == darling_mach_make_send_once || disposition == darling_mach_make_send) {
 			std::lock_guard lock(port->mutex);
 			if (port->refs == (std::numeric_limits<std::uint32_t>::max)()) return 3;
-			if (disposition == darling_mach_move_receive)
+			if (disposition == darling_mach_move_receive || disposition == darling_mach_copy_receive)
 				++port->receive_refs;
 			else
 				++port->send_refs;
@@ -1131,6 +1132,7 @@ extern "C" darling_kern_return_t darling_windows_mach_port_extract_right(
 		right == nullptr || right_disposition == nullptr)
 		return 4;
 	if (disposition != darling_mach_move_receive &&
+		disposition != darling_mach_copy_receive &&
 		disposition != darling_mach_move_send_once &&
 		disposition != darling_mach_copy_send &&
 		disposition != darling_mach_move_send &&
@@ -1151,7 +1153,7 @@ extern "C" darling_kern_return_t darling_windows_mach_port_extract_right(
 		} else if (disposition == darling_mach_dispose_send || disposition == darling_mach_dispose_send_once) {
 			if (port->send_refs == 0) return 3;
 			--port->send_refs;
-		} else if (disposition == darling_mach_move_receive) {
+		} else if (disposition == darling_mach_move_receive || disposition == darling_mach_copy_receive) {
 			if (port->receive_refs == 0) return 3;
 			--port->receive_refs;
 		} else if (disposition == darling_mach_move_send || disposition == darling_mach_move_send_once) {

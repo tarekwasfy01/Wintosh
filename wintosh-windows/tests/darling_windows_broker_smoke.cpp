@@ -180,6 +180,16 @@ int wmain()
 			const auto transfer_session_wire = transfer_client.Read();
 			const auto transfer_session_response = darling::windows_host::DecodeMachIpcEnvelope(
 				std::vector<std::uint8_t>(transfer_session_wire.begin(), transfer_session_wire.end()));
+			darling::windows_host::MachIpcEnvelope unauthorized_receive{
+				darling::windows_host::MachIpcOperation::Receive, 9701,
+				transfer_allocate_response.port_token, 0, {}};
+			unauthorized_receive.session_token = transfer_session_response.session_token;
+			const auto unauthorized_receive_bytes = darling::windows_host::EncodeMachIpcEnvelope(
+				unauthorized_receive);
+			transfer_client.Write(std::string(unauthorized_receive_bytes.begin(),
+				unauthorized_receive_bytes.end()));
+			if (transfer_client.Read() != "INVALID_MACH_IPC_REQUEST") return 19;
+			std::cout << "BROKER_MACH_OOL_OWNERSHIP_RETAINED=PASS\n";
 			std::vector<std::uint8_t> target_session_payload(8);
 			for (unsigned shift = 0; shift < 64; shift += 8)
 				target_session_payload[shift / 8] = static_cast<std::uint8_t>(

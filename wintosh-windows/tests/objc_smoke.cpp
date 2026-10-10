@@ -56,6 +56,11 @@ double Scale(id, SEL, double value)
 	return value * 2.0;
 }
 
+double AddDoubles(id, SEL, double first, double second)
+{
+	return first + second;
+}
+
 void* EchoPointer(id, SEL, void* value)
 {
 	return value;
@@ -280,10 +285,13 @@ int main()
 	darling_objc_msgSend_void0(object, void_selector);
 	SEL bool_selector = sel_registerName("positive:");
 	SEL double_selector = sel_registerName("scale:");
+	SEL double_pair_selector = sel_registerName("addDoubles:");
 	if (!class_addMethod(child, bool_selector,
 		reinterpret_cast<IMP>(&IsPositive), "B@:B") ||
 		!class_addMethod(child, double_selector,
-			reinterpret_cast<IMP>(&Scale), "d@:d"))
+			reinterpret_cast<IMP>(&Scale), "d@:d") ||
+		!class_addMethod(child, double_pair_selector,
+			reinterpret_cast<IMP>(&AddDoubles), "d@:dd"))
 		return 10;
 	const DarlingObjcValue bool_result = darling_objc_invoke1(object,
 		bool_selector, DarlingObjcValue{DARLING_OBJC_BOOL, {.boolean = true}});
@@ -295,6 +303,7 @@ int main()
 		double_result.kind != DARLING_OBJC_DOUBLE ||
 		double_result.floating != 5.0 ||
 		darling_objc_msgSend_double1(object, double_selector, 3.5) != 7.0 ||
+		darling_objc_msgSend_double2(object, double_pair_selector, 1.25, 2.75) != 4.0 ||
 		void_result.kind != DARLING_OBJC_VOID)
 		return 11;
 	SEL pointer_selector = sel_registerName("pointer:");

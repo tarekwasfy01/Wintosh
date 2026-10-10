@@ -154,6 +154,8 @@ id darling_objc_msgSend_object1(id receiver, SEL selector, id argument);
 std::int64_t darling_objc_msgSend_int64_1(id receiver, SEL selector,
 	std::int64_t argument);
 double darling_objc_msgSend_double1(id receiver, SEL selector, double argument);
+double darling_objc_msgSend_double2(id receiver, SEL selector, double first,
+	double second);
 void darling_objc_msgSend_void0(id receiver, SEL selector);
 
 enum DarlingObjcValueKind : std::uint32_t {

@@ -2087,6 +2087,19 @@ extern "C" std::int64_t darling_objc_msgSend_int64_1(id receiver, SEL selector,
 		argument);
 }
 
+extern "C" double darling_objc_msgSend_double1(id receiver, SEL selector,
+	double argument)
+{
+	const IMP implementation = FindMethod(receiver, selector);
+	const char* types = class_getMethodTypeEncoding(object_getClass(receiver),
+		selector);
+	if (!implementation || !types || std::strcmp(types, "d@:d") != 0)
+		return 0.0;
+	using DoubleMethod = double (*)(id, SEL, double);
+	return reinterpret_cast<DoubleMethod>(implementation)(receiver, selector,
+		argument);
+}
+
 extern "C" void darling_objc_msgSend_void0(id receiver, SEL selector)
 {
 	const IMP implementation = FindMethod(receiver, selector);

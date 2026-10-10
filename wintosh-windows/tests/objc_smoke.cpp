@@ -293,7 +293,9 @@ int main()
 		void_selector);
 	if (bool_result.kind != DARLING_OBJC_BOOL || !bool_result.boolean ||
 		double_result.kind != DARLING_OBJC_DOUBLE ||
-		double_result.floating != 5.0 || void_result.kind != DARLING_OBJC_VOID)
+		double_result.floating != 5.0 ||
+		darling_objc_msgSend_double1(object, double_selector, 3.5) != 7.0 ||
+		void_result.kind != DARLING_OBJC_VOID)
 		return 11;
 	SEL pointer_selector = sel_registerName("pointer:");
 	SEL two_selector = sel_registerName("addTwo:");

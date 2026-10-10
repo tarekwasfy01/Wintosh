@@ -22,6 +22,13 @@ adapter layer, with the corresponding source and license provenance retained.
 
 The machine-readable source is [PRIMITIVE-MATRIX.csv](../PRIMITIVE-MATRIX.csv).
 The consolidated cross-source extraction is [SOURCE-EXTRACTION-MATRIX.md](SOURCE-EXTRACTION-MATRIX.md).
+
+The Windows host adapter exposes a tested Darwin `rename` primitive through
+`DarwinFilesystem::Rename` and the public `darling_windows_rename` ABI. It uses
+`MoveFileExW` with replacement semantics and a narrowly scoped copy/delete
+fallback for Windows volumes that reject the write-through move. Atomicity is
+guaranteed only on the native move path; the fallback remains an explicit
+emulation boundary.
 The repository-wide navigation map is [DOCUMENTATION-INDEX.md](DOCUMENTATION-INDEX.md),
 and the current evidence snapshot is [STATUS.md](STATUS.md).
 Current verified low-level families include libc/file descriptors, sockets,

@@ -115,7 +115,8 @@ The platform path adapter now provides lexical `AbsolutePath` resolution and
 handle-based `CanonicalPath` resolution through Windows final-name lookup,
 with an explicit absolute-path fallback when the host denies that query.
 Filesystem smoke coverage also exercises stat/lstat, timestamps, symlinks,
-hard links, vector I/O, locks, and filesystem enumeration. ACLs, xattrs,
+hard links, vector I/O, locks, filesystem enumeration, and host-backed Darwin
+`rename` including the Windows access-denied fallback. ACLs, xattrs,
 resource forks, mount namespaces, and full reparse-tag fidelity remain open.
 
 The CoreFoundation run-loop and signal-registry smoke tests are marked

@@ -398,6 +398,13 @@ int wmain(int argc, wchar_t** argv)
 						server.Write(AsString(darling::windows_host::EncodeMachIpcEnvelope(response)));
 						continue;
 					}
+					if (queue.front().out_of_line_token != 0) {
+						const auto ool_owner = out_of_line_session_owners.find(
+							queue.front().out_of_line_token);
+						if (ool_owner != out_of_line_session_owners.end() &&
+							ool_owner->second != envelope.session_token)
+							throw std::invalid_argument("Mach IPC OOL mapping belongs to another session");
+					}
 					auto message = std::move(queue.front());
 					queue.pop_front();
 					// Receiving an OOL descriptor transfers the broker's owning

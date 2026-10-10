@@ -180,6 +180,8 @@ double darling_objc_msgSend_double1(id receiver, SEL selector, double argument);
 double darling_objc_msgSend_double0(id receiver, SEL selector);
 double darling_objc_msgSend_double2(id receiver, SEL selector, double first,
 	double second);
+float darling_objc_msgSend_float0(id receiver, SEL selector);
+float darling_objc_msgSend_float1(id receiver, SEL selector, float argument);
 void darling_objc_msgSend_void0(id receiver, SEL selector);
 enum DarlingObjcValueKind : std::uint32_t {
 	DARLING_OBJC_VOID = 0,

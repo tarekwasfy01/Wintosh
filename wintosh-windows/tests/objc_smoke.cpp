@@ -51,6 +51,8 @@ std::uint64_t ReturnUInt64(id, SEL) { return 42; }
 std::uint64_t AddUInt64(id, SEL, std::uint64_t value) { return value + 7; }
 bool ReturnTrue(id, SEL) { return true; }
 double ReturnDouble(id, SEL) { return 3.5; }
+float ReturnFloat(id, SEL) { return 3.5f; }
+float ScaleFloat(id, SEL, float value) { return value * 2.0f; }
 void* ReturnPointer(id, SEL) {
 	return reinterpret_cast<void*>(static_cast<std::uintptr_t>(0x4321));
 }
@@ -357,6 +359,8 @@ int main()
 	SEL uint64_selector = sel_registerName("addUInt:");
 	SEL uint_zero_selector = sel_registerName("answerUInt32");
 	SEL uint_selector = sel_registerName("addUInt32:");
+	SEL float_zero_selector = sel_registerName("floatValue");
+	SEL float_selector = sel_registerName("scaleFloat:");
 	if (!class_addMethod(child, bool_selector,
 		reinterpret_cast<IMP>(&IsPositive), "B@:B") ||
 		!class_addMethod(child, double_selector,
@@ -375,6 +379,8 @@ int main()
 		!class_addMethod(child, uint64_selector, reinterpret_cast<IMP>(&AddUInt64), "Q@:Q") ||
 		!class_addMethod(child, uint_zero_selector, reinterpret_cast<IMP>(&ReturnUInt), "I@:") ||
 		!class_addMethod(child, uint_selector, reinterpret_cast<IMP>(&AddUInt), "I@:I") ||
+		!class_addMethod(child, float_zero_selector, reinterpret_cast<IMP>(&ReturnFloat), "f@:") ||
+		!class_addMethod(child, float_selector, reinterpret_cast<IMP>(&ScaleFloat), "f@:f") ||
 		!class_addMethod(child, int_zero_selector, reinterpret_cast<IMP>(&ReturnInt), "i@:") ||
 		!class_addMethod(child, bool_zero_selector, reinterpret_cast<IMP>(&ReturnTrue), "B@:") ||
 		!class_addMethod(child, double_zero_selector, reinterpret_cast<IMP>(&ReturnDouble), "d@:") ||
@@ -397,6 +403,8 @@ int main()
 		darling_objc_msgSend_uint64_1(object, uint64_selector, 35) != 42 ||
 		darling_objc_msgSend_uint0(object, uint_zero_selector) != 42 ||
 		darling_objc_msgSend_uint1(object, uint_selector, 35) != 42 ||
+		darling_objc_msgSend_float0(object, float_zero_selector) != 3.5f ||
+		darling_objc_msgSend_float1(object, float_selector, 3.5f) != 7.0f ||
 		darling_objc_msgSend_int0(object, int_zero_selector) != 42 ||
 		darling_objc_msgSend_int1(object, int_selector, 37) != 42 ||
 		!darling_objc_msgSend_bool0(object, bool_zero_selector) ||

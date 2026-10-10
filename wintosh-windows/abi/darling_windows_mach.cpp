@@ -1456,8 +1456,8 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 			if (body->msgh_descriptor_count == 0) return 4;
 			const auto* descriptor_bytes_start = reinterpret_cast<const std::uint8_t*>(body + 1);
 			const auto remaining = send_size - sizeof(darling_mach_msg_header) - sizeof(*body);
-			const auto first_type = descriptor_bytes_start[sizeof(darling_mach_port_name_t) + sizeof(std::uint32_t) + 1];
-			if (body->msgh_descriptor_count == 1 && first_type == darling_mach_msg_descriptor_ool) {
+			const auto first_ool_type = descriptor_bytes_start[offsetof(darling_mach_msg_ool_descriptor, type)];
+			if (body->msgh_descriptor_count == 1 && first_ool_type == darling_mach_msg_descriptor_ool) {
 				if (remaining < sizeof(darling_mach_msg_ool_descriptor)) return 4;
 				const auto* descriptor = reinterpret_cast<const darling_mach_msg_ool_descriptor*>(descriptor_bytes_start);
 				if (descriptor->deallocate != 0 || descriptor->copy != 0 ||
@@ -1506,8 +1506,8 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 			const auto* body = reinterpret_cast<const darling_mach_msg_body*>(
 				reinterpret_cast<const std::uint8_t*>(message) + sizeof(darling_mach_msg_header));
 			const auto* descriptor_bytes_start = reinterpret_cast<const std::uint8_t*>(body + 1);
-			const auto first_type = descriptor_bytes_start[sizeof(darling_mach_port_name_t) + sizeof(std::uint32_t) + 1];
-			if (body->msgh_descriptor_count == 1 && first_type == darling_mach_msg_descriptor_ool)
+			const auto first_ool_type = descriptor_bytes_start[offsetof(darling_mach_msg_ool_descriptor, type)];
+			if (body->msgh_descriptor_count == 1 && first_ool_type == darling_mach_msg_descriptor_ool)
 				goto mach_msg_send_complete;
 			const auto* descriptors = reinterpret_cast<const darling_mach_msg_port_descriptor*>(body + 1);
 			for (std::uint32_t index = 0; index < body->msgh_descriptor_count; ++index) {

@@ -343,8 +343,9 @@ count after queueing and is covered by the descriptor smoke; move-receive and
 queueing and is covered by the descriptor smoke; cross-task name translation
 remains open. `MACH_MSG_TYPE_MAKE_SEND` and `MAKE_SEND_ONCE` now add the
 corresponding local sender reference while retaining the receive right. A
-single local `COPY` OOL descriptor is now validated and
-transported without deallocation or cross-process copying. The first native
+single local `COPY` OOL descriptor is now identified using its native ABI
+`type` offset, validated, and transported without deallocation or
+cross-process copying. The first native
 ownership slice is now available as `MachOolOwnershipTable`: it tracks queue
 and receiver references under a mutex and invokes a release callback only
 after the final reference is dropped. It is covered by

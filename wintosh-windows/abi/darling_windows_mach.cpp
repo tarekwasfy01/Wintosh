@@ -30,6 +30,31 @@ constexpr std::size_t max_port_queue_depth = 1024;
 constexpr std::size_t max_inline_message_size = 4 * 1024 * 1024;
 constexpr darling_mach_msg_id_t mach_notify_dead_name = 0x48;
 constexpr darling_mach_msg_id_t mach_notify_no_senders = 0x4a;
+
+bool ReadableRange(const void* address, std::size_t bytes)
+{
+	if (address == nullptr || bytes == 0) return false;
+	const auto begin = reinterpret_cast<std::uintptr_t>(address);
+	if (bytes > (std::numeric_limits<std::uintptr_t>::max)() - begin) return false;
+	const auto end = begin + bytes;
+	auto cursor = begin;
+	while (cursor < end) {
+		MEMORY_BASIC_INFORMATION information{};
+		if (VirtualQuery(reinterpret_cast<const void*>(cursor), &information, sizeof(information)) == 0 ||
+			information.State != MEM_COMMIT || (information.Protect & (PAGE_NOACCESS | PAGE_GUARD)) != 0)
+			return false;
+		const auto protection = information.Protect & 0xffu;
+		if (protection != PAGE_READONLY && protection != PAGE_READWRITE &&
+			protection != PAGE_WRITECOPY && protection != PAGE_EXECUTE_READ &&
+			protection != PAGE_EXECUTE_READWRITE && protection != PAGE_EXECUTE_WRITECOPY)
+			return false;
+		const auto region_begin = reinterpret_cast<std::uintptr_t>(information.BaseAddress);
+		const auto region_end = region_begin + information.RegionSize;
+		if (region_end <= cursor) return false;
+		cursor = (std::min)(region_end, end);
+	}
+	return true;
+}
 struct PortQueue final {
 	std::mutex mutex;
 	std::condition_variable condition;
@@ -1514,6 +1539,8 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 					const_cast<std::uint8_t*>(descriptor_bytes));
 				if (descriptor->size != 0) {
 					original_ool_address = descriptor->address;
+					if (!ReadableRange(reinterpret_cast<const void*>(static_cast<std::uintptr_t>(original_ool_address)),
+						descriptor->size)) return 4;
 					copied_ool_address = VirtualAlloc(nullptr, descriptor->size,
 						MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 					if (copied_ool_address == nullptr || !mach_ool_ownership.Register(

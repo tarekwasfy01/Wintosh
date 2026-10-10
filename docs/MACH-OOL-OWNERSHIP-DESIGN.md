@@ -7,7 +7,8 @@ full Darwin VM contract is already implemented.
 ## Current boundary
 
 Wintosh currently accepts one local virtual-copy OOL descriptor, validates its
-address and size, copies the payload into a native `VirtualAlloc` block, and
+address with a checked, page-aware `VirtualQuery` readability walk, copies the
+payload into a native `VirtualAlloc` block, and
 transports the rewritten descriptor through the local Mach queue. The receiver
 obtains an explicit ownership reference and releases it through the native ABI
 helper. OOL deallocation and physical-copy requests are rejected.

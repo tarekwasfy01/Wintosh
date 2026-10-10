@@ -976,7 +976,13 @@ int main()
 		const bool ool_physical_copy_rejected = darling_windows_mach_msg(
 			reinterpret_cast<darling_mach_msg_header*>(ool_wire.data()), darling_mach_send_msg,
 			static_cast<std::uint32_t>(ool_wire.size()), 0, 0, 0, 0) == darling_kern_not_supported;
-		if (!ool_deallocate_rejected || !ool_physical_copy_rejected) return 1;
+		ool_descriptor.copy = 0;
+		ool_descriptor.address = 1;
+		std::memcpy(ool_wire.data() + sizeof(ool_message) + sizeof(ool_body), &ool_descriptor, sizeof(ool_descriptor));
+		const bool ool_invalid_address_rejected = darling_windows_mach_msg(
+			reinterpret_cast<darling_mach_msg_header*>(ool_wire.data()), darling_mach_send_msg,
+			static_cast<std::uint32_t>(ool_wire.size()), 0, 0, 0, 0) == 4;
+		if (!ool_deallocate_rejected || !ool_physical_copy_rejected || !ool_invalid_address_rejected) return 1;
 		if (ns_target != 0) darling_windows_mach_port_destroy(task, ns_target);
 		if (ns_notify != 0) darling_windows_mach_port_destroy(task, ns_notify);
 		darling_mach_port_name_t dead_target = 0, dead_notify = 0, dead_previous = 0xffffffffu;

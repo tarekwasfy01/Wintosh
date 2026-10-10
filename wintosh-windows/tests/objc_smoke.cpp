@@ -372,8 +372,11 @@ int main()
 		return 17;
 	const DarlingObjcRect rect = darling_objc_invoke_rect0(object,
 		rect_selector);
+	const DarlingObjcRect direct_rect = darling_objc_msgSend_rect0(object,
+		rect_selector);
 	if (rect.x != 1.0 || rect.y != 2.0 || rect.width != 320.0 ||
-		rect.height != 240.0)
+		rect.height != 240.0 || direct_rect.x != 1.0 || direct_rect.y != 2.0 ||
+		direct_rect.width != 320.0 || direct_rect.height != 240.0)
 			return 18;
 	SEL factory_selector = sel_registerName("factory");
 	if (!class_addClassMethod(child, factory_selector,

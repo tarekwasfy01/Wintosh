@@ -2188,6 +2188,19 @@ extern "C" void darling_objc_msgSend_void0(id receiver, SEL selector)
 	reinterpret_cast<VoidMethod>(implementation)(receiver, selector);
 }
 
+extern "C" DarlingObjcRect darling_objc_msgSend_rect0(id receiver, SEL selector)
+{
+	const DarlingObjcRect empty{};
+	const IMP implementation = FindMethod(receiver, selector);
+	const char* types = class_getMethodTypeEncoding(object_getClass(receiver),
+		selector);
+	if (!implementation || !types || std::strcmp(types,
+		"{CGRect={CGPoint=dd}{CGSize=dd}}@:") != 0)
+		return empty;
+	using RectMethod = DarlingObjcRect (*)(id, SEL);
+	return reinterpret_cast<RectMethod>(implementation)(receiver, selector);
+}
+
 extern "C" DarlingObjcValue darling_objc_invoke0(id receiver, SEL selector)
 {
 	DarlingObjcValue result{DARLING_OBJC_VOID, {}};

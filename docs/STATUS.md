@@ -187,7 +187,10 @@ for `B@:B` and `^v@:^v`, alongside the floating-point entry points
 for the supported `d@:d` and `d@:dd` signatures; `objc_smoke` verifies the
 native floating-point call paths. The bridge also exposes
 `darling_objc_msgSend_void1_int64` for `v@:q`. This does not make
-the variadic `objc_msgSend` ABI-complete for arbitrary signatures.
+the variadic `objc_msgSend` ABI-complete for arbitrary signatures. The
+CGRect-compatible `darling_objc_msgSend_rect0` typed struct return is also
+covered by `objc_smoke`; this remains a fixed-layout adapter, not general
+aggregate ABI support.
 complex numbers, quoted aggregates, and nested pointers.
 
 CoreGraphics now has a separate partial geometry/color adapter with the

@@ -164,7 +164,6 @@ double darling_objc_msgSend_double1(id receiver, SEL selector, double argument);
 double darling_objc_msgSend_double2(id receiver, SEL selector, double first,
 	double second);
 void darling_objc_msgSend_void0(id receiver, SEL selector);
-
 enum DarlingObjcValueKind : std::uint32_t {
 	DARLING_OBJC_VOID = 0,
 	DARLING_OBJC_OBJECT = 1,
@@ -193,6 +192,8 @@ struct DarlingObjcRect final {
 	double width;
 	double height;
 };
+
+DarlingObjcRect darling_objc_msgSend_rect0(id receiver, SEL selector);
 
 using DarlingObjcCallback1 = id (*)(void* context, id argument);
 

@@ -309,6 +309,9 @@ Normal send-reference decrements likewise no longer consume send-once
 references; each right class now has isolated `mod_refs` accounting.
 `mach_port_deallocate` also suppresses No-Senders for receive-only release;
 the regression covers both receive mutation paths.
+Forced `mach_port_destroy` now records whether sender rights existed and emits
+the matching No-Senders notification after destruction; the native Mach smoke
+covers a Send-once right destroyed through this path.
 All public port calls currently bind to the current Windows process and share
 one process-local registry. Foreign task names are rejected consistently;
 true task-owned namespaces and cross-task name translation remain an

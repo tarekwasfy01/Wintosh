@@ -1024,8 +1024,10 @@ extern "C" darling_kern_return_t darling_windows_mach_port_destroy(
 		name == darling_windows_mach_host_self()) return 0;
 	const auto port = FindPort(name);
 	if (port == nullptr) return 3;
+	bool had_senders = false;
 	{
 		std::lock_guard lock(port->mutex);
+		had_senders = port->send_refs != 0 || port->send_once_refs != 0;
 		port->receive_refs = 1;
 		port->send_refs = 0;
 		port->send_once_refs = 0;
@@ -1040,7 +1042,9 @@ extern "C" darling_kern_return_t darling_windows_mach_port_destroy(
 			if (entries.empty()) it = exception_ports.erase(it); else ++it;
 		}
 	}
-	return darling_windows_mach_port_deallocate(task, name);
+	const auto result = darling_windows_mach_port_deallocate(task, name);
+	if (result == 0 && had_senders) DeliverNoSendersNotification(name);
+	return result;
 }
 
 extern "C" darling_kern_return_t darling_windows_mach_port_request_notification(

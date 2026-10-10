@@ -799,6 +799,23 @@ int main()
 		if (receive_dealloc_notify != 0)
 			darling_windows_mach_port_destroy(task, receive_dealloc_notify);
 		if (!receive_dealloc_ok) return 1;
+		darling_mach_port_name_t destroy_target = 0, destroy_notify = 0;
+		std::uint32_t destroy_previous = 0xffffffffu, destroy_size = 0;
+		darling_mach_msg_header destroy_message{};
+		const bool destroy_sender_notify_ok =
+			darling_windows_mach_port_allocate(task, &destroy_target) == 0 &&
+			darling_windows_mach_port_allocate(task, &destroy_notify) == 0 &&
+			darling_windows_mach_port_insert_right(task, destroy_target, destroy_target,
+				darling_mach_make_send_once) == 0 &&
+			darling_windows_mach_port_request_notification(task, destroy_target, 0x4a,
+				destroy_notify, &destroy_previous) == 0 && destroy_previous == 0 &&
+			darling_windows_mach_port_destroy(task, destroy_target) == 0 &&
+			darling_windows_mach_port_receive(destroy_notify, &destroy_message,
+				sizeof(destroy_message), &destroy_size, 100) == 0 &&
+			destroy_size == sizeof(destroy_message) && destroy_message.msgh_id == 0x4a;
+		if (destroy_target != 0) darling_windows_mach_port_destroy(task, destroy_target);
+		if (destroy_notify != 0) darling_windows_mach_port_destroy(task, destroy_notify);
+		if (!destroy_sender_notify_ok) return 1;
 		if (ns_target != 0) darling_windows_mach_port_destroy(task, ns_target);
 		if (ns_notify != 0) darling_windows_mach_port_destroy(task, ns_notify);
 		darling_mach_port_name_t dead_target = 0, dead_notify = 0, dead_previous = 0xffffffffu;

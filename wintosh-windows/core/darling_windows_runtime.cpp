@@ -530,7 +530,7 @@ bool MachPort::Send(MachMessage message)
 {
 	{
 		std::lock_guard lock(m_mutex);
-		if (m_closed)
+		if (m_closed || m_messages.size() >= 1024)
 			return false;
 		m_messages.push_back(std::move(message));
 	}

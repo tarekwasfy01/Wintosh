@@ -94,6 +94,9 @@ The local `MachPort` adapter also exposes an explicit waiter interrupt;
 `runtime_smoke` proves that a blocked receiver wakes without closing the port.
 This is the local cancellation primitive only; broker request cancellation by
 request ID remains unimplemented.
+Its local FIFO is also bounded at 1024 messages; the smoke fills, rejects, and
+drains that boundary. This bounds adapter memory growth but is not yet the
+full Darwin queue-right policy.
 Malformed notification wait payloads are rejected and covered by
 `BROKER_MACH_NOTIFICATION_VALIDATION=PASS`.
 The broker also accepts the explicit `Destroy` operation, releasing the

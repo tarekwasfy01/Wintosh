@@ -115,6 +115,24 @@ int wmain()
 	}
 	std::cout << "MACH_PORT_MESSAGE=PASS\n";
 	std::cout << "MACH_PORT_OUT_OF_LINE=PASS\n";
+	darling::windows_host::MachPort bounded_port;
+	for (std::size_t index = 0; index != 1024; ++index) {
+		if (!bounded_port.Send({{static_cast<std::uint8_t>(index & 0xff)}, {}})) {
+			std::cerr << "MACH_PORT_QUEUE_LIMIT=FAIL\n";
+			return 1;
+		}
+	}
+	if (bounded_port.Send({{0xff}, {}})) {
+		std::cerr << "MACH_PORT_QUEUE_LIMIT=FAIL\n";
+		return 1;
+	}
+	for (std::size_t index = 0; index != 1024; ++index) {
+		if (!bounded_port.Receive(1).has_value()) {
+			std::cerr << "MACH_PORT_QUEUE_DRAIN=FAIL\n";
+			return 1;
+		}
+	}
+	std::cout << "MACH_PORT_QUEUE_LIMIT=PASS\n";
 	port.Close();
 	if (!port.IsClosed() || port.Send({})) {
 		std::cerr << "MACH_PORT_CLOSE=FAIL\n";

@@ -47,8 +47,11 @@ separate coverage. The specialized `syscalls_smoke` additionally exercises
 `SCM_RIGHTS` descriptor transfer and malformed-control rejection in five
 successful runs. The native receive path translates Winsock's `MSG_PARTIAL`
 result into Darwin's `MSG_TRUNC` bit instead of exposing a Winsock bit value to
-the guest ABI. Full Darwin message-flag, alignment, truncation, and descriptor
-lifetime parity remains open.
+the guest ABI. Socket type modifiers `SOCK_NONBLOCK` and `SOCK_CLOEXEC` are
+also removed before the WinSock call; the former sets the native nonblocking
+mode and the latter is retained in the descriptor flag model. Full Darwin
+message-flag, alignment, truncation, and descriptor lifetime parity remains
+open.
 
 The process row also covers the four-word Darwin signal-set constructors and
 membership operations, verified by `signals_smoke`; this does not establish

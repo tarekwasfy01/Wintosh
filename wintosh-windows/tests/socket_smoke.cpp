@@ -11,12 +11,20 @@
 
 int main()
 {
+	constexpr int darwin_sock_cloexec = 0x10000000;
+	constexpr int darwin_sock_nonblock = 0x20000000;
 	if (darling_windows_host_symbol("socket") == 0 ||
 		darling_windows_host_symbol("bind") == 0 ||
 		darling_windows_host_symbol("listen") == 0 ||
 		darling_windows_host_symbol("connect") == 0 ||
 		darling_windows_host_symbol("accept") == 0)
 		return 1;
+	const int flagged_socket = darling_windows_socket(AF_INET,
+		SOCK_STREAM | darwin_sock_cloexec | darwin_sock_nonblock, IPPROTO_TCP);
+	const bool flagged_socket_ok = flagged_socket >= 0 &&
+		(darling_windows_fcntl(flagged_socket, 3) & 0x0004) != 0 &&
+		(darling_windows_fcntl(flagged_socket, 1) & 1) != 0;
+	if (flagged_socket >= 0) darling_windows_close(flagged_socket);
 	int listener = darling_windows_socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 	if (listener < 0) return 2;
 	sockaddr_in address{};
@@ -111,7 +119,7 @@ int main()
 	if (duplicate >= 0) darling_windows_close(duplicate);
 	darling_windows_close(client);
 	darling_windows_close(listener);
-	if (!io_ok || !message_ok || !malformed_control_ok || !ipv6_ok || !options_ok || !duplicate_ok) return 6;
+	if (!flagged_socket_ok || !io_ok || !message_ok || !malformed_control_ok || !ipv6_ok || !options_ok || !duplicate_ok) return 6;
 	std::cout << "DARWIN_SOCKET_SMOKE=PASS\n";
 	return 0;
 }

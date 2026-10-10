@@ -887,6 +887,13 @@ bool DarwinSyscalls::IsNonblocking(int descriptor) const
 
 int DarwinSyscalls::Socket(int domain, int type, int protocol)
 {
+	// Darwin exposes these as type-word modifiers; Winsock expects the base
+	// socket kind only and has no equivalent close-on-exec socket flag.
+	constexpr int darwin_sock_nonblock = 0x20000000;
+	constexpr int darwin_sock_cloexec = 0x10000000;
+	const bool nonblocking = (type & darwin_sock_nonblock) != 0;
+	const bool close_on_exec = (type & darwin_sock_cloexec) != 0;
+	type &= ~(darwin_sock_nonblock | darwin_sock_cloexec);
 	static std::once_flag winsock_once;
 	std::call_once(winsock_once, [] {
 		WSADATA data{};
@@ -899,17 +906,30 @@ int DarwinSyscalls::Socket(int domain, int type, int protocol)
 		DarwinErrno::Set(error);
 		throw std::system_error(error, std::system_category(), "socket");
 	}
+	if (nonblocking) {
+		u_long mode = 1;
+		if (ioctlsocket(socket, FIONBIO, &mode) != 0) {
+			const int error = WSAGetLastError();
+			closesocket(socket);
+			DarwinErrno::Set(error);
+			throw std::system_error(error, std::system_category(), "ioctlsocket(SOCK_NONBLOCK)");
+		}
+	}
 	std::scoped_lock lock(m_mutex);
 	for (int descriptor = 3; descriptor < static_cast<int>(m_handles.size()); ++descriptor) {
 		if (m_handles[descriptor] == nullptr) {
 			m_handles[descriptor] = reinterpret_cast<HANDLE>(static_cast<ULONG_PTR>(1));
 			m_sockets.emplace(descriptor, socket);
+			if (nonblocking) m_nonblocking_descriptors.insert(descriptor);
+			if (close_on_exec) m_cloexec_descriptors.insert(descriptor);
 			return descriptor;
 		}
 	}
 	m_handles.push_back(reinterpret_cast<HANDLE>(static_cast<ULONG_PTR>(1)));
 	const int descriptor = static_cast<int>(m_handles.size() - 1);
 	m_sockets.emplace(descriptor, socket);
+	if (nonblocking) m_nonblocking_descriptors.insert(descriptor);
+	if (close_on_exec) m_cloexec_descriptors.insert(descriptor);
 	return descriptor;
 }
 

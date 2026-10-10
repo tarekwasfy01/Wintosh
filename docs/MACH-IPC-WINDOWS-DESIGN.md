@@ -94,7 +94,9 @@ Queue shutdown returns a stable port-dead result. Session-authenticated request
 cancellation is now available through the `Cancel` operation with envelope
 validation and round-trip coverage: a blocked `Receive` registers its nonzero
 request ID, a matching session can wake it, and the worker returns
-`MACH_REQUEST_CANCELLED`; a stable cross-client broker proof is still open.
+`MACH_REQUEST_CANCELLED`. The smoke gate now proves this across two
+authenticated clients; requests are also cancelled and removed when their
+owning session disconnects.
 Broker reconnect preserves the shared namespace, and the current broker uses a
 joinable worker per accepted connection. The smoke gate proves a two-client
 send/receive through one shared port token. Workers preserve the shared state
@@ -115,7 +117,7 @@ code remains subject to the repository's documented GPL boundary.
 
 The following are still unimplemented or approximated: per-task
 rights/disposition transfer, full Windows handle-lifetime equivalence, OOL
-protection/lifetime semantics, robust cross-client request cancellation, MIG descriptors, and
+protection/lifetime semantics, MIG descriptors, and
 full Mach error-code parity. The current broker gates prove bounded transport
 primitives, not an unmodified Darling Mach runtime or arbitrary macOS
 application execution.
@@ -124,6 +126,6 @@ application execution.
 
 The worker pool, controlled shutdown/join, two-client notification wakeup, and
 two-client blocked-receive wakeup test are now in place with the existing
-shared state. Remaining worker hardening is the cross-client cancellation proof
-and complete rights semantics. The accept loop owns listening instances; `BrokerState` owns ports,
+shared state. Remaining worker hardening is complete rights semantics and
+explicit port-death/no-senders parity. The accept loop owns listening instances; `BrokerState` owns ports,
 queues, OOL mappings, notifications, counters, and the state mutex.

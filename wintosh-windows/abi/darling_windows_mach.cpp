@@ -1154,6 +1154,7 @@ extern "C" darling_kern_return_t darling_windows_mach_port_extract_right(
 	const auto port = FindPort(name);
 	if (port == nullptr) return 3;
 	bool exhausted = false;
+	bool no_senders = false;
 	{
 		std::lock_guard lock(port->mutex);
 		if (disposition == darling_mach_dispose_receive) {
@@ -1185,8 +1186,10 @@ extern "C" darling_kern_return_t darling_windows_mach_port_extract_right(
 		}
 		port->refs = port->total_refs();
 		exhausted = port->refs == 0;
+		no_senders = port->send_refs == 0 && port->send_once_refs == 0;
 		if (exhausted) port->closed = true;
 	}
+	if (no_senders && !exhausted) DeliverNoSendersNotification(name);
 	*right = (disposition == darling_mach_dispose_receive ||
 		disposition == darling_mach_dispose_send || disposition == darling_mach_dispose_send_once) ? 0 : name;
 	*right_disposition = disposition;

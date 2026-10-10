@@ -51,9 +51,11 @@ constexpr std::uint32_t darling_mach_port_type_receive = 1;
 constexpr std::uint32_t darling_mach_port_type_send = 2;
 // Darwin mach_msg disposition values used by the minimal host ABI.
 constexpr std::uint32_t darling_mach_move_receive = 16;
+constexpr std::uint32_t darling_mach_move_send_once = 17;
 constexpr std::uint32_t darling_mach_copy_send = 19;
 constexpr std::uint32_t darling_mach_move_send = 20;
 constexpr std::uint32_t darling_mach_make_send = 21;
+constexpr std::uint32_t darling_mach_copy_send_once = 23;
 constexpr darling_kern_return_t darling_mach_send_queue_full = 0x10004002;
 
 extern "C" darling_mach_port_name_t darling_windows_mach_task_self();

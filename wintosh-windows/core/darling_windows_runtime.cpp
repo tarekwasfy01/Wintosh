@@ -788,4 +788,24 @@ MachIpcEnvelope SendMachIpcEnvelope(NamedPipeRpcClient& client,
 	return DecodeMachIpcEnvelope(std::vector<std::uint8_t>(response.begin(), response.end()));
 }
 
+std::uint64_t OpenMachIpcSession(NamedPipeRpcClient& client, DWORD process_id)
+{
+	static std::atomic<std::uint64_t> next_request{0x100000};
+	if (process_id == 0) throw std::invalid_argument("invalid Mach IPC session process");
+	const auto request_id = next_request.fetch_add(1, std::memory_order_relaxed);
+	MachIpcEnvelope request;
+	request.operation = MachIpcOperation::SessionOpen;
+	request.request_id = request_id;
+	request.payload = {
+		static_cast<std::uint8_t>(process_id),
+		static_cast<std::uint8_t>(process_id >> 8),
+		static_cast<std::uint8_t>(process_id >> 16),
+		static_cast<std::uint8_t>(process_id >> 24)};
+	const auto response = SendMachIpcEnvelope(client, request);
+	if (response.operation != MachIpcOperation::SessionOpen ||
+		response.request_id != request_id || response.session_token == 0)
+		throw std::runtime_error("invalid Mach IPC session response");
+	return response.session_token;
+}
+
 } // namespace darling::windows_host

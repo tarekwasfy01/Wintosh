@@ -239,5 +239,7 @@ private:
 
 [[nodiscard]] MachIpcEnvelope SendMachIpcEnvelope(
 	NamedPipeRpcClient& client, const MachIpcEnvelope& request);
+[[nodiscard]] std::uint64_t OpenMachIpcSession(
+	NamedPipeRpcClient& client, DWORD process_id = GetCurrentProcessId());
 
 } // namespace darling::windows_host

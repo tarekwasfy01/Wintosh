@@ -64,6 +64,12 @@ request/response exchange over the native Named Pipe transport and is covered
 by `MACH_IPC_RPC=PASS`. This is the operational serialization bridge, not yet
 automatic routing of the local C `mach_msg` entry point through the broker
 session.
+
+`OpenMachIpcSession` now performs the broker session handshake, including the
+current-process validation payload, and the broker smoke uses this helper for
+the authenticated session path. This makes session establishment reusable by
+the future C-ABI routing layer; local Mach port names are not yet automatically
+mapped to broker capability tokens.
 Broker receive envelopes carrying a duplicated native mapping handle can now
 be materialized back into OOL bytes through `MachIpcSharedMemory`; the runtime
 smoke covers handle mapping and closure. Descriptor rewriting in the C ABI is

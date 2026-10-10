@@ -73,23 +73,21 @@ int wmain()
 		if (ping != "PONG") {
 			return 4;
 		}
+		const auto session_token = darling::windows_host::OpenMachIpcSession(client);
+		std::cout << "BROKER_SESSION_OPEN=" << session_token << "\n";
+		if (session_token == 0) {
+			return 5;
+		}
 		const auto process_id = static_cast<std::uint32_t>(GetCurrentProcessId());
 		const std::vector<std::uint8_t> process_id_payload{
 			static_cast<std::uint8_t>(process_id),
 			static_cast<std::uint8_t>(process_id >> 8),
 			static_cast<std::uint8_t>(process_id >> 16),
 			static_cast<std::uint8_t>(process_id >> 24)};
-		const darling::windows_host::MachIpcEnvelope session_open{
-			darling::windows_host::MachIpcOperation::SessionOpen, 90, 0, 0, process_id_payload};
-		const auto session_open_bytes = darling::windows_host::EncodeMachIpcEnvelope(session_open);
-		client.Write(std::string(session_open_bytes.begin(), session_open_bytes.end()));
-		const auto session_response = darling::windows_host::DecodeMachIpcEnvelope(
-			[&] { const auto value = client.Read(); return std::vector<std::uint8_t>(value.begin(), value.end()); }());
-		std::cout << "BROKER_SESSION_OPEN=" << session_response.session_token << "\n";
-		if (session_response.operation != darling::windows_host::MachIpcOperation::SessionOpen ||
-			session_response.request_id != 90 || session_response.session_token == 0) {
-			return 5;
-		}
+		darling::windows_host::MachIpcEnvelope session_response;
+		session_response.operation = darling::windows_host::MachIpcOperation::SessionOpen;
+		session_response.request_id = 90;
+		session_response.session_token = session_token;
 		{
 			auto invalid_pid_client = darling::windows_host::NamedPipeRpcClient::Connect(pipe_name);
 			const darling::windows_host::MachIpcEnvelope invalid_pid_open{

@@ -115,7 +115,7 @@ code remains subject to the repository's documented GPL boundary.
 
 The following are still unimplemented or approximated: per-task
 rights/disposition transfer, full Windows handle-lifetime equivalence, OOL
-protection/lifetime semantics, request cancellation, MIG descriptors, and
+protection/lifetime semantics, robust cross-client request cancellation, MIG descriptors, and
 full Mach error-code parity. The current broker gates prove bounded transport
 primitives, not an unmodified Darling Mach runtime or arbitrary macOS
 application execution.
@@ -124,6 +124,6 @@ application execution.
 
 The worker pool, controlled shutdown/join, two-client notification wakeup, and
 two-client blocked-receive wakeup test are now in place with the existing
-shared state. Remaining worker hardening is cancellation and complete rights
-semantics. The accept loop owns listening instances; `BrokerState` owns ports,
+shared state. Remaining worker hardening is the cross-client cancellation proof
+and complete rights semantics. The accept loop owns listening instances; `BrokerState` owns ports,
 queues, OOL mappings, notifications, counters, and the state mutex.

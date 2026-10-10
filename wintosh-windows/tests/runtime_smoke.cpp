@@ -127,7 +127,9 @@ int wmain()
 		return 1;
 	}
 	for (std::size_t index = 0; index != 1024; ++index) {
-		if (!bounded_port.Receive(1).has_value()) {
+		const auto queued_message = bounded_port.Receive(1);
+		if (!queued_message || queued_message->inline_data.size() != 1 ||
+			queued_message->inline_data.front() != static_cast<std::uint8_t>(index & 0xff)) {
 			std::cerr << "MACH_PORT_QUEUE_DRAIN=FAIL\n";
 			return 1;
 		}

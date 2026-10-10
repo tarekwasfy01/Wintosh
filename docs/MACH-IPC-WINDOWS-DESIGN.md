@@ -129,5 +129,6 @@ The worker pool, controlled shutdown/join, two-client notification wakeup, and
 two-client blocked-receive wakeup test are now in place with the existing
 shared state. The local Mach ABI now emits a tested `MACH_NOTIFY_NO_SENDERS`
 message when the last send right is removed. Remaining worker hardening is
-complete rights semantics and explicit dead-name parity. The accept loop owns listening instances; `BrokerState` owns ports,
+complete rights semantics; the local ABI also has a tested `MACH_NOTIFY_DEAD_NAME`
+delivery on port destruction. The accept loop owns listening instances; `BrokerState` owns ports,
 queues, OOL mappings, notifications, counters, and the state mutex.

@@ -653,6 +653,23 @@ int main()
 		std::cout << "MACH_NOTIFY_NO_SENDERS=PASS\n";
 		if (ns_target != 0) darling_windows_mach_port_destroy(task, ns_target);
 		if (ns_notify != 0) darling_windows_mach_port_destroy(task, ns_notify);
+		darling_mach_port_name_t dead_target = 0, dead_notify = 0, dead_previous = 0xffffffffu;
+		const auto dead_alloc_target = darling_windows_mach_port_allocate(task, &dead_target);
+		const auto dead_alloc_notify = darling_windows_mach_port_allocate(task, &dead_notify);
+		const auto dead_request = darling_windows_mach_port_request_notification(task, dead_target,
+			0x48, dead_notify, &dead_previous);
+		const auto dead_destroy = darling_windows_mach_port_destroy(task, dead_target);
+		darling_mach_msg_header dead_message{};
+		std::uint32_t dead_size = 0;
+		const auto dead_receive = darling_windows_mach_port_receive(dead_notify, &dead_message,
+			sizeof(dead_message), &dead_size, 100);
+		const bool dead_name_ok = dead_alloc_target == 0 && dead_alloc_notify == 0 &&
+			dead_request == 0 && dead_previous == 0 && dead_destroy == 0 &&
+			dead_receive == 0 && dead_size == sizeof(dead_message) &&
+			dead_message.msgh_reserved == 0x48;
+		if (!dead_name_ok) return 1;
+		std::cout << "MACH_NOTIFY_DEAD_NAME=PASS\n";
+		if (dead_notify != 0) darling_windows_mach_port_destroy(task, dead_notify);
 		if (notification_port != 0) darling_windows_mach_port_destroy(task, notification_port);
 		if (replacement_notification_port != 0)
 			darling_windows_mach_port_destroy(task, replacement_notification_port);

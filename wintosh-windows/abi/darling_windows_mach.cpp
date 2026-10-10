@@ -26,6 +26,7 @@ namespace {
 std::atomic<darling_mach_port_name_t> next_port{0x100};
 constexpr std::size_t max_port_queue_depth = 1024;
 constexpr std::size_t max_inline_message_size = 4 * 1024 * 1024;
+constexpr darling_mach_msg_id_t mach_notify_dead_name = 0x48;
 constexpr darling_mach_msg_id_t mach_notify_no_senders = 0x4a;
 struct PortQueue final {
 	std::mutex mutex;

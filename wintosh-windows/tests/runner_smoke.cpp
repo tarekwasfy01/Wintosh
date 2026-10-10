@@ -122,8 +122,25 @@ int wmain()
 		DWORD status = 0;
 		const BOOL queried = GetExitCodeProcess(process.hProcess, &status);
 		CloseHandle(process.hProcess);
+		const std::wstring inspect_command_line = L"\"" + runner.wstring() + L"\" --inspect \"" + image.wstring() + L"\"";
+		auto inspect_command = CommandLine(inspect_command_line);
+		PROCESS_INFORMATION inspect_process{};
+		const BOOL inspect_started = CreateProcessW(nullptr, inspect_command.data(), nullptr, nullptr,
+			FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &startup, &inspect_process);
+		DWORD inspect_status = 1;
+		BOOL inspect_queried = FALSE;
+		if (inspect_started != FALSE) {
+			CloseHandle(inspect_process.hThread);
+			const DWORD inspect_wait = WaitForSingleObject(inspect_process.hProcess, 5000);
+			if (inspect_wait == WAIT_TIMEOUT) {
+				TerminateProcess(inspect_process.hProcess, 8);
+				WaitForSingleObject(inspect_process.hProcess, INFINITE);
+			}
+			inspect_queried = GetExitCodeProcess(inspect_process.hProcess, &inspect_status);
+			CloseHandle(inspect_process.hProcess);
+		}
 		std::filesystem::remove(image);
-		return queried != FALSE && status == 3 ? 0 : 4;
+		return queried != FALSE && status == 3 && inspect_queried != FALSE && inspect_status == 0 ? 0 : 4;
 	} catch (...) {
 		return 5;
 	}

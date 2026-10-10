@@ -23,6 +23,8 @@ using darling_windows_CFRunLoopBlock = void (*)(void* context);
 using darling_windows_CFNotificationCallback = void (*)(const void* observer,
 	const char* name, const void* object);
 
+using darling_windows_CFTypeID = std::uint64_t;
+
 extern "C" darling_windows_CFRange darling_windows_CFRangeMake(
 	darling_windows_CFIndex location, darling_windows_CFIndex length);
 extern "C" darling_windows_CFIndex darling_windows_CFRangeGetMax(
@@ -30,6 +32,8 @@ extern "C" darling_windows_CFIndex darling_windows_CFRangeGetMax(
 
 extern "C" void* darling_windows_CFRetain(const void* value);
 extern "C" void darling_windows_CFRelease(const void* value);
+extern "C" darling_windows_CFTypeID darling_windows_CFGetTypeID(const void* value);
+extern "C" std::uint64_t darling_windows_CFHash(const void* value);
 extern "C" bool darling_windows_CFEqual(const void* left, const void* right);
 extern "C" darling_windows_CFStringRef darling_windows_CFStringCreateWithCString(
 	const char* value);

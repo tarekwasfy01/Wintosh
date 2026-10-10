@@ -7,6 +7,7 @@
 #include <cctype>
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <vector>
 #include <chrono>
 #include <condition_variable>
@@ -21,6 +22,10 @@
 
 namespace {
 enum class Kind { String, Data, Array, Number, Real, Dictionary, Set, Date, URL, Boolean, Null };
+constexpr darling_windows_CFTypeID TypeId(Kind kind)
+{
+	return static_cast<darling_windows_CFTypeID>(kind) + 1;
+}
 struct Object {
 	std::atomic<std::size_t> references{1};
 	bool immortal = false;
@@ -501,6 +506,36 @@ extern "C" void* darling_windows_CFRetain(const void* value)
 extern "C" void darling_windows_CFRelease(const void* value)
 {
 	ReleaseOwned(As(value));
+}
+
+extern "C" darling_windows_CFTypeID darling_windows_CFGetTypeID(const void* value)
+{
+	const auto* object = static_cast<const Object*>(value);
+	return object == nullptr ? 0 : TypeId(object->kind);
+}
+
+extern "C" std::uint64_t darling_windows_CFHash(const void* value)
+{
+	const auto* object = static_cast<const Object*>(value);
+	if (object == nullptr) return 0;
+	const auto seed = static_cast<std::uint64_t>(TypeId(object->kind)) * 0x9e3779b97f4a7c15ULL;
+	const auto mix = [seed](std::uint64_t hash) {
+		hash += seed + 0x9e3779b97f4a7c15ULL + (hash << 6) + (hash >> 2);
+		return hash;
+	};
+	switch (object->kind) {
+	case Kind::String:
+	case Kind::URL: return mix(static_cast<std::uint64_t>(std::hash<std::string>{}(object->string)));
+	case Kind::Data: return mix(static_cast<std::uint64_t>(std::hash<std::string_view>{}(
+		std::string_view(reinterpret_cast<const char*>(object->data.data()), object->data.size()))));
+	case Kind::Number: return mix(static_cast<std::uint64_t>(std::hash<std::int64_t>{}(object->number)));
+	case Kind::Real:
+		return mix(static_cast<std::uint64_t>(std::hash<double>{}(object->real_number)));
+	case Kind::Date: return mix(static_cast<std::uint64_t>(std::hash<double>{}(object->date)));
+	case Kind::Boolean: return mix(object->boolean ? 1 : 0);
+	case Kind::Null: return mix(0);
+	default: return mix(static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(value)));
+	}
 }
 
 extern "C" bool darling_windows_CFEqual(const void* left, const void* right)

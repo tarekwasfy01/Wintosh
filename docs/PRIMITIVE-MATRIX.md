@@ -299,6 +299,8 @@ Receive-/Send-right values.
 The framework layer now also has a deliberately small CoreFoundation ABI
 adapter for retain/release, UTF-8 strings with limited mutable operations, byte data, arrays, integer
 integer/real numbers, dictionaries, sets, dates, filesystem URLs, booleans, null values,
+stable nonzero type identifiers through `CFGetTypeID`, and deterministic scalar `CFHash`
+values for equal strings/data/numbers/dates/booleans,
 RunLoop callbacks/timers, date and number comparison, date interval creation/difference, and process-local notifications with named and wildcard observers, including global observer removal. It also has a
 minimal XML property-list serializer with XML escaping, nested arrays,
 Base64 data nodes, and ISO-8601 date nodes. Its

@@ -29,6 +29,12 @@ extern "C" darling_windows_CGRect darling_windows_CGRectStandardize(
 	return rect;
 }
 
+extern "C" darling_windows_CGRect darling_windows_CGRectGetBoundingBox(
+	darling_windows_CGRect rect)
+{
+	return darling_windows_CGRectStandardize(rect);
+}
+
 extern "C" darling_windows_CGVector darling_windows_CGVectorMake(double dx, double dy)
 {
 	return {dx, dy};

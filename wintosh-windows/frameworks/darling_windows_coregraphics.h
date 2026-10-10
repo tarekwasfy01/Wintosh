@@ -23,6 +23,8 @@ extern "C" darling_windows_CGRect darling_windows_CGRectMake(double x, double y,
 	double width, double height);
 extern "C" darling_windows_CGRect darling_windows_CGRectStandardize(
 	darling_windows_CGRect rect);
+extern "C" darling_windows_CGRect darling_windows_CGRectGetBoundingBox(
+	darling_windows_CGRect rect);
 extern "C" darling_windows_CGVector darling_windows_CGVectorMake(double dx, double dy);
 extern "C" darling_windows_CGPoint darling_windows_CGPointAdd(
 	darling_windows_CGPoint point, darling_windows_CGVector vector);

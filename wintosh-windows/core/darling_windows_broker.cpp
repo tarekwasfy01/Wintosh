@@ -75,6 +75,7 @@ int wmain(int argc, wchar_t** argv)
 		std::vector<std::thread> workers;
 		std::unordered_set<std::uint64_t> active_sessions;
 		std::unordered_map<std::uint64_t, DWORD> session_process_ids;
+		std::unordered_map<std::uint64_t, std::shared_ptr<std::atomic_bool>> active_requests;
 
 		// Keep the broker state alive across client reconnects.  A disconnected
 		// client must not destroy the emulated Mach namespace.
@@ -205,6 +206,22 @@ int wmain(int argc, wchar_t** argv)
 					}
 					darling::windows_host::MachIpcEnvelope response{
 						envelope.operation, envelope.request_id, envelope.port_token, 0, {}};
+					server.Write(AsString(darling::windows_host::EncodeMachIpcEnvelope(response)));
+					continue;
+				}
+				if (envelope.operation == darling::windows_host::MachIpcOperation::Cancel) {
+					if (envelope.session_token == 0 || envelope.request_id == 0 ||
+						!envelope.payload.empty() || envelope.port_token != 0 ||
+						envelope.disposition_count != 0 || envelope.out_of_line_token != 0 ||
+						envelope.out_of_line_size != 0)
+						throw std::invalid_argument("invalid Mach IPC cancellation");
+					auto pending = active_requests.find(envelope.request_id);
+					if (pending == active_requests.end())
+						throw std::invalid_argument("unknown Mach IPC request");
+					pending->second->store(true);
+					broker_state_condition.notify_all();
+					darling::windows_host::MachIpcEnvelope response{
+						envelope.operation, envelope.request_id, 0, 0, {}};
 					server.Write(AsString(darling::windows_host::EncodeMachIpcEnvelope(response)));
 					continue;
 				}
@@ -363,6 +380,11 @@ int wmain(int argc, wchar_t** argv)
 						envelope.payload.size() != 8)
 						throw std::invalid_argument("invalid Mach IPC receive timeout");
 					auto& queue = port_queues.at(envelope.port_token);
+					std::shared_ptr<std::atomic_bool> cancellation;
+					if (envelope.session_token != 0 && envelope.request_id != 0) {
+						cancellation = std::make_shared<std::atomic_bool>(false);
+						active_requests[envelope.request_id] = cancellation;
+					}
 					if (queue.empty() && !envelope.payload.empty()) {
 						const auto timeout = static_cast<std::uint32_t>(envelope.payload[0]) |
 							(static_cast<std::uint32_t>(envelope.payload[1]) << 8) |
@@ -371,14 +393,22 @@ int wmain(int argc, wchar_t** argv)
 						const auto ready = broker_state_condition.wait_for(
 							state_lock, std::chrono::milliseconds(timeout), [&] {
 								return !allocated_ports.contains(envelope.port_token) ||
-									!port_queues.at(envelope.port_token).empty();
+									!port_queues.at(envelope.port_token).empty() ||
+									(cancellation && cancellation->load());
 							});
+					if (cancellation && cancellation->load()) {
+						active_requests.erase(envelope.request_id);
+						throw std::runtime_error("Mach IPC request cancelled");
+					}
 						if (!ready || !allocated_ports.contains(envelope.port_token) ||
-							port_queues.at(envelope.port_token).empty())
+							port_queues.at(envelope.port_token).empty()) {
+							if (cancellation) active_requests.erase(envelope.request_id);
 							throw std::runtime_error("Mach IPC receive would block");
+						}
 					}
 					if (queue.empty())
 						throw std::runtime_error("Mach IPC receive would block");
+					if (cancellation) active_requests.erase(envelope.request_id);
 					std::uint32_t maximum_inline_size = UINT32_MAX;
 					if (envelope.payload.size() == 8) {
 						maximum_inline_size = static_cast<std::uint32_t>(envelope.payload[4]) |
@@ -449,6 +479,8 @@ int wmain(int argc, wchar_t** argv)
 			} catch (const std::runtime_error& error) {
 				if (std::string(error.what()) == "Mach IPC receive would block") {
 					server.Write("MACH_RECEIVE_WOULD_BLOCK");
+				} else if (std::string(error.what()) == "Mach IPC request cancelled") {
+					server.Write("MACH_REQUEST_CANCELLED");
 				} else if (std::string(error.what()) == "Mach IPC send queue is full") {
 					server.Write("MACH_SEND_QUEUE_FULL");
 				} else {

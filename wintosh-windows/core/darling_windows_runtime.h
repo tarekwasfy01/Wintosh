@@ -38,6 +38,8 @@ enum class MachIpcOperation : std::uint16_t {
 	NotificationDestroy = 10,
 	SessionOpen = 11,
 	CapabilityTransfer = 12
+	,
+	Cancel = 13
 };
 
 struct MachIpcEnvelope final {

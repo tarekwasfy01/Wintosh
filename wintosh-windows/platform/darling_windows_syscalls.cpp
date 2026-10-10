@@ -1215,6 +1215,35 @@ std::size_t DarwinSyscalls::ReceiveMessage(int descriptor, WSABUF* buffers, DWOR
 	DWORD native_flags = flags == nullptr ? 0 : static_cast<DWORD>(*flags);
 	if (flags != nullptr)
 		native_flags = static_cast<DWORD>(DarwinSocketFlags(*flags));
+	if (flags != nullptr && ((*flags & 0x0040) != 0) && address == nullptr) {
+		// Windows' WSARecv does not provide a portable MSG_WAITALL contract.
+		// Consume the requested WSABUF span explicitly until it is complete.
+		const DWORD waitall_flags = native_flags & ~static_cast<DWORD>(MSG_WAITALL);
+		for (DWORD index = 0; index < count; ++index) {
+			DWORD buffer_offset = 0;
+			while (buffer_offset < buffers[index].len) {
+				WSABUF slice = buffers[index];
+				slice.buf += buffer_offset;
+				slice.len -= buffer_offset;
+				DWORD received = 0;
+				DWORD call_flags = waitall_flags;
+				const int wait_result = WSARecv(socket, &slice, 1, &received,
+					&call_flags, nullptr, nullptr);
+				if (wait_result != 0) {
+					const int error = WSAGetLastError();
+					DarwinErrno::Set(error);
+					throw std::system_error(error, std::system_category(), "WSARecv MSG_WAITALL");
+				}
+				transferred += received;
+				buffer_offset += received;
+				if (received == 0) break;
+			}
+			if (buffer_offset < buffers[index].len) break;
+		}
+		if (flags != nullptr)
+			*flags = DarwinSocketResultFlags(static_cast<int>(native_flags));
+		return transferred;
+	}
 	const int result = address == nullptr ? WSARecv(socket, buffers, count, &transferred,
 		&native_flags, nullptr, nullptr) : WSARecvFrom(socket, buffers, count,
 		&transferred, &native_flags, address, address_length, nullptr, nullptr);

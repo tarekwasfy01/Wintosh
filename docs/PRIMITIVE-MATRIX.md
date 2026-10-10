@@ -51,7 +51,9 @@ the guest ABI. Socket type modifiers `SOCK_NONBLOCK` and `SOCK_CLOEXEC` are
 also removed before the WinSock call; the former sets the native nonblocking
 mode and the latter is retained in the descriptor flag model. Full Darwin
 message-flag, alignment, truncation, and descriptor lifetime parity remains
-open.
+open. `MSG_WAITALL` now has a native Windows fallback that explicitly drains
+the requested `WSABUF` span when Winsock does not honor the flag contract;
+addressed receive variants and full interruption parity remain open.
 The same type modifiers are now applied to both ends of the native `socketpair`
 adapter and covered by `syscalls_smoke`.
 

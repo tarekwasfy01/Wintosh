@@ -718,6 +718,21 @@ int main()
 			 ns_once_add == 0 && ns_once_remove == 0;
 		if (!no_senders_ok) return 1;
 		std::cout << "MACH_NOTIFY_NO_SENDERS=PASS\n";
+		darling_mach_port_name_t dealloc_target = 0;
+		std::uint32_t dealloc_once_refs = 0;
+		std::uint32_t dealloc_type = darling_mach_port_type_none;
+		const bool deallocate_send_once_ok =
+			darling_windows_mach_port_allocate(task, &dealloc_target) == 0 &&
+			darling_windows_mach_port_insert_right(task, dealloc_target, dealloc_target,
+				darling_mach_make_send_once) == 0 &&
+			darling_windows_mach_port_deallocate(task, dealloc_target) == 0 &&
+			darling_windows_mach_port_get_refs(task, dealloc_target,
+				darling_mach_port_type_send_once, &dealloc_once_refs) == 0 &&
+			dealloc_once_refs == 0 &&
+			darling_windows_mach_port_type(task, dealloc_target, &dealloc_type) == 0 &&
+			dealloc_type == darling_mach_port_type_receive;
+		if (dealloc_target != 0) darling_windows_mach_port_destroy(task, dealloc_target);
+		if (!deallocate_send_once_ok) return 1;
 		if (ns_target != 0) darling_windows_mach_port_destroy(task, ns_target);
 		if (ns_notify != 0) darling_windows_mach_port_destroy(task, ns_notify);
 		darling_mach_port_name_t dead_target = 0, dead_notify = 0, dead_previous = 0xffffffffu;

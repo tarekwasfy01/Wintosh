@@ -973,6 +973,7 @@ extern "C" darling_kern_return_t darling_windows_mach_port_deallocate(
 			std::lock_guard port_lock(port->mutex);
 			if (port->refs == 0) return 3;
 			if (port->send_refs != 0) --port->send_refs;
+			else if (port->send_once_refs != 0) --port->send_once_refs;
 			else if (port->receive_refs != 0) --port->receive_refs;
 			else return 3;
 			port->refs = port->total_refs();

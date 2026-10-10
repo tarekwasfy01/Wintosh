@@ -30,6 +30,10 @@ The current release contains the native Windows loader/bootstrap path and is
 still an experimental compatibility layer; it does not yet provide complete
 Darwin framework or arbitrary macOS application compatibility.
 
+The native runner does not require WSL. WSL is documented separately as an
+optional reference/backend experiment; the Windows ABI, Mach broker, loader,
+and smoke tests in this directory execute through Win32/MSVC directly.
+
 ### CLI examples
 
 Run a supported Mach-O image and pass arguments to its entry point:

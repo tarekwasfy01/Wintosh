@@ -1219,20 +1219,27 @@ extern "C" darling_kern_return_t darling_windows_mach_port_mod_refs(
 	const auto port = FindPort(name);
 	if (port == nullptr) return 3;
 	bool exhausted = false;
+	bool no_senders = false;
 	{
 		std::lock_guard lock(port->mutex);
-		const auto current = static_cast<std::int64_t>(
-			right == darling_mach_port_type_receive ? port->receive_refs : port->send_refs);
-		const auto change = static_cast<std::int64_t>(delta);
-		const auto updated = current + change;
-		if (updated < 0 || updated > static_cast<std::int64_t>(
-			(std::numeric_limits<std::uint32_t>::max)())) return 4;
-		if (right == darling_mach_port_type_receive)
+		if (right == darling_mach_port_type_receive) {
+			const auto updated = static_cast<std::int64_t>(port->receive_refs) + delta;
+			if (updated < 0 || updated > static_cast<std::int64_t>((std::numeric_limits<std::uint32_t>::max)())) return 4;
 			port->receive_refs = static_cast<std::uint32_t>(updated);
-		else
+		} else if (delta >= 0) {
+			const auto updated = static_cast<std::int64_t>(port->send_refs) + delta;
+			if (updated > static_cast<std::int64_t>((std::numeric_limits<std::uint32_t>::max)())) return 4;
 			port->send_refs = static_cast<std::uint32_t>(updated);
+		} else {
+			const auto remove = static_cast<std::uint64_t>(-(static_cast<std::int64_t>(delta)));
+			if (remove > static_cast<std::uint64_t>(port->send_refs) + port->send_once_refs) return 4;
+			const auto from_send = (std::min)(remove, static_cast<std::uint64_t>(port->send_refs));
+			port->send_refs -= static_cast<std::uint32_t>(from_send);
+			port->send_once_refs -= static_cast<std::uint32_t>(remove - from_send);
+		}
 		port->refs = port->total_refs();
 		exhausted = port->refs == 0;
+		no_senders = port->send_refs == 0 && port->send_once_refs == 0;
 		if (exhausted) port->closed = true;
 	}
 	if (exhausted) {
@@ -1248,7 +1255,7 @@ extern "C" darling_kern_return_t darling_windows_mach_port_mod_refs(
 		port->condition.notify_all();
 		ports_condition.notify_all();
 	}
-	if (port->send_refs == 0 && port->send_once_refs == 0) DeliverNoSendersNotification(name);
+	if (no_senders) DeliverNoSendersNotification(name);
 	return 0;
 }
 

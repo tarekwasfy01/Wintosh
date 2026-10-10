@@ -173,6 +173,7 @@ bool darling_objc_msgSend_bool1(id receiver, SEL selector, bool argument);
 bool darling_objc_msgSend_bool0(id receiver, SEL selector);
 void* darling_objc_msgSend_pointer1(id receiver, SEL selector, void* argument);
 void* darling_objc_msgSend_pointer0(id receiver, SEL selector);
+void darling_objc_msgSend_void1_pointer(id receiver, SEL selector, void* argument);
 void darling_objc_msgSend_void1_int64(id receiver, SEL selector,
 	std::int64_t argument);
 void darling_objc_msgSend_void1_int(id receiver, SEL selector, int argument);

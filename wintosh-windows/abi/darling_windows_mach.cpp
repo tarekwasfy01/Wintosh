@@ -1446,6 +1446,22 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 	if ((option & darling_mach_send_msg) != 0) {
 		if (send_size < sizeof(darling_mach_msg_header) ||
 			message->msgh_remote_port == 0 || message->msgh_size != send_size) return 4;
+		if ((message->msgh_bits & darling_mach_msg_complex) != 0) {
+			if (send_size < sizeof(darling_mach_msg_header) + sizeof(darling_mach_msg_body)) return 4;
+			const auto* body = reinterpret_cast<const darling_mach_msg_body*>(
+				reinterpret_cast<const std::uint8_t*>(message) + sizeof(darling_mach_msg_header));
+			const auto descriptor_bytes = static_cast<std::uint64_t>(body->msgh_descriptor_count) *
+				sizeof(darling_mach_msg_port_descriptor);
+			if (body->msgh_descriptor_count == 0 ||
+				descriptor_bytes > send_size - sizeof(darling_mach_msg_header) - sizeof(*body)) return 4;
+			const auto* descriptors = reinterpret_cast<const darling_mach_msg_port_descriptor*>(body + 1);
+			for (std::uint32_t index = 0; index < body->msgh_descriptor_count; ++index) {
+				if (descriptors[index].type != darling_mach_msg_descriptor_port ||
+					descriptors[index].disposition != darling_mach_copy_send ||
+					descriptors[index].name == 0)
+					return darling_kern_not_supported;
+			}
+		}
 		auto result = darling_windows_mach_port_send(message->msgh_remote_port,
 			message, send_size);
 		if (result == darling_mach_send_queue_full && (option & darling_mach_send_timeout) != 0) {

@@ -4,6 +4,7 @@
 
 #include <iostream>
 #include <atomic>
+#include <array>
 #include <chrono>
 #include <cstring>
 #include <limits>
@@ -820,6 +821,29 @@ int main()
 		if (destroy_target != 0) darling_windows_mach_port_destroy(task, destroy_target);
 		if (destroy_notify != 0) darling_windows_mach_port_destroy(task, destroy_notify);
 		if (!destroy_sender_notify_ok) return 1;
+		darling_mach_msg_header descriptor_message{};
+		darling_mach_msg_body descriptor_body{1};
+		darling_mach_msg_port_descriptor descriptor{thread, 0, 19, 0, 0};
+		descriptor_message.msgh_bits = darling_mach_msg_complex;
+		descriptor_message.msgh_size = sizeof(descriptor_message) + sizeof(descriptor_body) + sizeof(descriptor);
+		descriptor_message.msgh_remote_port = ns_notify;
+		descriptor_message.msgh_id = 0x44455343;
+		std::array<std::uint8_t, sizeof(descriptor_body) + sizeof(descriptor)> descriptor_payload{};
+		std::memcpy(descriptor_payload.data(), &descriptor_body, sizeof(descriptor_body));
+		std::memcpy(descriptor_payload.data() + sizeof(descriptor_body), &descriptor, sizeof(descriptor));
+		std::array<std::uint8_t, sizeof(descriptor_message) + sizeof(descriptor_payload)> wire{};
+		std::memcpy(wire.data(), &descriptor_message, sizeof(descriptor_message));
+		std::memcpy(wire.data() + sizeof(descriptor_message), descriptor_payload.data(), descriptor_payload.size());
+		const bool descriptor_send_ok = darling_windows_mach_msg(
+			reinterpret_cast<darling_mach_msg_header*>(wire.data()), darling_mach_send_msg,
+			static_cast<std::uint32_t>(wire.size()), 0, 0, 0, 0) == 0;
+		std::array<std::uint8_t, 128> descriptor_received{};
+		std::uint32_t descriptor_received_size = 0;
+		const bool descriptor_receive_ok = darling_windows_mach_port_receive(ns_notify,
+			descriptor_received.data(), descriptor_received.size(), &descriptor_received_size, 100) == 0 &&
+			descriptor_received_size == wire.size() &&
+			std::memcmp(descriptor_received.data(), wire.data(), wire.size()) == 0;
+		if (!descriptor_send_ok || !descriptor_receive_ok) return 1;
 		if (ns_target != 0) darling_windows_mach_port_destroy(task, ns_target);
 		if (ns_notify != 0) darling_windows_mach_port_destroy(task, ns_notify);
 		darling_mach_port_name_t dead_target = 0, dead_notify = 0, dead_previous = 0xffffffffu;

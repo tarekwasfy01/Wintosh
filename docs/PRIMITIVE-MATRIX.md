@@ -326,6 +326,11 @@ Request cancellation, complete rights/disposition semantics, and descriptor
 ownership remain open. The native ABI now carries layout-checked Darwin 64-bit
 body, port-descriptor, OOL-descriptor, and basic trailer structures; this is a
 layout foundation only and does not yet transfer descriptor rights or memory.
+The first functional slice now accepts complex inline messages containing one or
+more valid port descriptors with `MACH_MSG_TYPE_COPY_SEND` and transports the
+descriptor bytes through the local native queue. Move dispositions, OOL
+descriptors, descriptor ownership mutation, and trailers remain explicitly
+unsupported.
 The local ABI distinguishes reference-decrementing `mach_port_deallocate`
 from forced `mach_port_destroy`; the smoke gate also verifies that forced
 destruction closes a blocked receiver and rejects subsequent use. This is a

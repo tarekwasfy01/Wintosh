@@ -60,6 +60,7 @@ constexpr std::uint32_t darling_mach_msg_descriptor_ool = 1;
 constexpr std::uint32_t darling_mach_msg_trailer_none = 0;
 
 constexpr std::uint32_t darling_mach_send_msg = 0x00000001;
+constexpr std::uint32_t darling_mach_msg_complex = 0x80000000;
 constexpr std::uint32_t darling_mach_receive_msg = 0x00000002;
 constexpr std::uint32_t darling_mach_send_timeout = 0x00000010;
 constexpr std::uint32_t darling_mach_receive_timeout = 0x00000100;

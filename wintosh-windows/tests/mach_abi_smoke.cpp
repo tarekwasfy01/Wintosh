@@ -1045,6 +1045,16 @@ int main()
 		if (notification_port != 0) darling_windows_mach_port_destroy(task, notification_port);
 		if (replacement_notification_port != 0)
 			darling_windows_mach_port_destroy(task, replacement_notification_port);
+		std::uint64_t broker_token = 0;
+		std::uint64_t session_token = 0;
+		const auto capability_bind = darling_windows_mach_port_bind_broker(
+			0x7fff, 0x456, 0x789);
+		const auto capability_lookup = darling_windows_mach_port_lookup_broker(
+			0x7fff, &broker_token, &session_token);
+		const auto capability_unbind = darling_windows_mach_port_unbind_broker(0x7fff);
+		if (capability_bind != 0 || capability_lookup != 0 || broker_token != 0x456 ||
+			session_token != 0x789 || capability_unbind != 0) return 1;
+		std::cout << "MACH_C_ABI_BROKER_CAPABILITY=PASS\n";
 	}
 	std::cout << "MACH_C_ABI_SELF_DEALLOCATE=" << (ok ? "PASS" : "FAIL") << "\n";
 	return ok ? 0 : 1;

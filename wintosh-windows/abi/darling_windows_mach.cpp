@@ -4,6 +4,7 @@
  */
 #include "darling_windows_mach.h"
 #include "darling_windows_mach_ool.h"
+#include "darling_windows_runtime.h"
 #include "darling_windows_stdio.h"
 
 #include <windows.h>
@@ -26,6 +27,7 @@
 namespace {
 std::atomic<darling_mach_port_name_t> next_port{0x100};
 darling::windows_host::MachOolOwnershipTable mach_ool_ownership;
+darling::windows_host::MachIpcCapabilityTable mach_ipc_capabilities;
 constexpr std::size_t max_port_queue_depth = 1024;
 constexpr std::size_t max_inline_message_size = 4 * 1024 * 1024;
 constexpr darling_mach_msg_id_t mach_notify_dead_name = 0x48;
@@ -1417,6 +1419,36 @@ extern "C" darling_kern_return_t darling_windows_mach_port_set_receive(
 		std::unique_lock wait_lock(ports_wait_mutex);
 		ports_condition.wait_until(wait_lock, deadline);
 	}
+}
+
+extern "C" darling_kern_return_t darling_windows_mach_port_bind_broker(
+	darling_mach_port_name_t local_name, std::uint64_t broker_token,
+	std::uint64_t session_token)
+{
+	try {
+		mach_ipc_capabilities.Bind(local_name, {broker_token, session_token});
+		return 0;
+	} catch (...) {
+		return 4;
+	}
+}
+
+extern "C" darling_kern_return_t darling_windows_mach_port_lookup_broker(
+	darling_mach_port_name_t local_name, std::uint64_t* broker_token,
+	std::uint64_t* session_token)
+{
+	if (broker_token == nullptr || session_token == nullptr) return 4;
+	const auto capability = mach_ipc_capabilities.Lookup(local_name);
+	if (!capability) return 4;
+	*broker_token = capability->broker_token;
+	*session_token = capability->session_token;
+	return 0;
+}
+
+extern "C" darling_kern_return_t darling_windows_mach_port_unbind_broker(
+	darling_mach_port_name_t local_name)
+{
+	return mach_ipc_capabilities.Unbind(local_name) ? 0 : 4;
 }
 
 extern "C" darling_kern_return_t darling_windows_mach_port_send(

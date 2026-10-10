@@ -347,4 +347,12 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 	std::uint32_t send_size, std::uint32_t receive_size,
 	darling_mach_port_name_t receive_name, std::uint32_t timeout_ms,
 	darling_mach_port_name_t notify);
+extern "C" darling_kern_return_t darling_windows_mach_port_bind_broker(
+	darling_mach_port_name_t local_name, std::uint64_t broker_token,
+	std::uint64_t session_token);
+extern "C" darling_kern_return_t darling_windows_mach_port_lookup_broker(
+	darling_mach_port_name_t local_name, std::uint64_t* broker_token,
+	std::uint64_t* session_token);
+extern "C" darling_kern_return_t darling_windows_mach_port_unbind_broker(
+	darling_mach_port_name_t local_name);
 extern "C" darling_kern_return_t darling_windows_mach_ool_release(void* address);

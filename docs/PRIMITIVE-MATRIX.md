@@ -546,3 +546,9 @@ Linux/WSL references are compatibility evidence and test material, not a new
 license grant. PureDarwin, Darling and external components remain catalogued in
 `licenses/`; Apple/XNU/libSystem and framework code is not copied into the
 Windows adapter without component-level review.
+The C Mach ABI now exposes explicit broker-capability binding, lookup, and
+unbind entry points backed by the shared capability table; `mach_abi_smoke`
+reports `MACH_C_ABI_BROKER_CAPABILITY=PASS`. This is an integration seam for
+port allocation and descriptor rewriting, not yet automatic broker allocation
+or automatic routing of `mach_msg`.
+

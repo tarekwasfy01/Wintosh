@@ -303,6 +303,8 @@ to a receive right, with the behavior covered by the Mach smoke.
 When that release removes the final send or send-once reference, the existing
 no-senders notification path is now invoked after the registry lock is
 released, avoiding a native Windows lock cycle.
+Receive-reference mutations no longer emit a no-senders notification because
+they do not change the sender set.
 All public port calls currently bind to the current Windows process and share
 one process-local registry. Foreign task names are rejected consistently;
 true task-owned namespaces and cross-task name translation remain an

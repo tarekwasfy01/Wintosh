@@ -1193,7 +1193,8 @@ extern "C" darling_kern_return_t darling_windows_mach_port_extract_right(
 		}
 		port->refs = port->total_refs();
 		exhausted = port->refs == 0;
-		no_senders = port->send_refs == 0 && port->send_once_refs == 0;
+		no_senders = right != darling_mach_port_type_receive &&
+			port->send_refs == 0 && port->send_once_refs == 0;
 		if (exhausted) port->closed = true;
 	}
 	if (no_senders && !exhausted) DeliverNoSendersNotification(name);

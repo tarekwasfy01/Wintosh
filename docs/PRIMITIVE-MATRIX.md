@@ -558,3 +558,8 @@ request and records the returned capability. The broker smoke verifies this
 complete path with `BROKER_C_ABI_ALLOCATE=PASS`. Local allocation remains the
 fallback when the broker context is disabled.
 
+The corresponding destruction path now sends broker `Destroy`, validates the
+response, unbinds the local capability, and then tears down the local port.
+The same broker smoke covers allocation and destruction before disabling the
+session; send/receive message routing is still a separate family.
+

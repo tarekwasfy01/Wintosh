@@ -1121,6 +1121,28 @@ extern "C" darling_kern_return_t darling_windows_mach_port_destroy(
 			if (entries.empty()) it = exception_ports.erase(it); else ++it;
 		}
 	}
+	{
+		std::lock_guard broker_lock(mach_broker_mutex);
+		const auto capability = mach_ipc_capabilities.Lookup(name);
+		if (mach_broker_client && capability) {
+			try {
+				darling::windows_host::MachIpcEnvelope request;
+				request.operation = darling::windows_host::MachIpcOperation::Destroy;
+				request.request_id = mach_broker_request.fetch_add(1, std::memory_order_relaxed);
+				request.port_token = capability->broker_token;
+				request.session_token = capability->session_token;
+				const auto response = darling::windows_host::SendMachIpcEnvelope(
+					*mach_broker_client, request);
+				if (response.operation != request.operation ||
+					response.request_id != request.request_id ||
+					response.port_token != request.port_token)
+					return 4;
+				(void)mach_ipc_capabilities.Unbind(name);
+			} catch (...) {
+				return 4;
+			}
+		}
+	}
 	const auto result = darling_windows_mach_port_deallocate(task, name);
 	if (result == 0 && had_senders) DeliverNoSendersNotification(name);
 	return result;

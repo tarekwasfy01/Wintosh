@@ -87,14 +87,14 @@ int wmain()
 		std::uint64_t broker_capability_session = 0;
 		const auto broker_lookup = darling_windows_mach_port_lookup_broker(
 			broker_local_port, &broker_capability, &broker_capability_session);
+		const auto broker_destroy = darling_windows_mach_port_destroy(
+			darling_windows_mach_task_self(), broker_local_port);
 		const auto broker_disable = darling_windows_mach_broker_disable();
 		std::cout << "BROKER_C_ABI_ALLOCATE=" <<
 			(broker_enable == 0 && broker_allocate == 0 && broker_lookup == 0 &&
-			 broker_capability != 0 && broker_capability_session != 0 ? "PASS" : "FAIL") << "\n";
-		if (broker_local_port != 0)
-			darling_windows_mach_port_destroy(darling_windows_mach_task_self(), broker_local_port);
+			 broker_capability != 0 && broker_capability_session != 0 && broker_destroy == 0 ? "PASS" : "FAIL") << "\n";
 		if (broker_enable != 0 || broker_allocate != 0 || broker_lookup != 0 ||
-			broker_disable != 0 || broker_capability == 0 || broker_capability_session == 0)
+			broker_destroy != 0 || broker_disable != 0 || broker_capability == 0 || broker_capability_session == 0)
 			return 6;
 		const auto process_id = static_cast<std::uint32_t>(GetCurrentProcessId());
 		const std::vector<std::uint8_t> process_id_payload{

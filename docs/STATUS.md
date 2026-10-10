@@ -249,7 +249,7 @@ Current verification:
 | Broker Release rebuild | pass | `wintosh_broker` and `wintosh_darling_windows_broker_smoke` built in `build-windows-current` |
 | Broker smoke | pass | CTest `darling_windows_broker_smoke`, 1/1 |
 | Reconnect smoke | pass | broker smoke explicitly destroys the first client, reconnects, verifies `PING/PONG`, then shuts down |
-| Full configured Release suite | pass | CTest Release suite, 38/38 |
+| Full configured Release suite | pass | CTest Release suite, 39/39 |
 
 The broker now also accepts a four-byte millisecond timeout on `Receive` and
 waits on a condition variable until a message arrives, the port is destroyed,

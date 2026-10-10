@@ -113,6 +113,11 @@ DarlingObjcRect MakeRect(id, SEL)
 	return {1.0, 2.0, 320.0, 240.0};
 }
 
+DarlingObjcRect EchoRect(id, SEL, DarlingObjcRect value)
+{
+	return {value.x + 1.0, value.y + 1.0, value.width, value.height};
+}
+
 id ClassIdentity(Class cls, SEL)
 {
 	return reinterpret_cast<id>(cls);
@@ -477,9 +482,13 @@ int main()
 		two_result.integer != 42)
 		return 16;
 	SEL rect_selector = sel_registerName("frame");
+	SEL rect_argument_selector = sel_registerName("offsetFrame:");
 	if (!class_addMethod(child, rect_selector,
 		reinterpret_cast<IMP>(&MakeRect),
 		"{CGRect={CGPoint=dd}{CGSize=dd}}@:"))
+		return 17;
+	if (!class_addMethod(child, rect_argument_selector, reinterpret_cast<IMP>(&EchoRect),
+		"{CGRect={CGPoint=dd}{CGSize=dd}}@:{CGRect={CGPoint=dd}{CGSize=dd}}"))
 		return 17;
 	const DarlingObjcRect rect = darling_objc_invoke_rect0(object,
 		rect_selector);
@@ -516,6 +525,11 @@ int main()
 		reinterpret_cast<IMP>(&ClassIdentity), "@@:") ||
 		darling_objc_msgSend_class0(child, inherited_factory_selector) !=
 		reinterpret_cast<id>(child))
+		return 17;
+	const auto rect_argument = darling_objc_msgSend_rect1(object,
+		rect_argument_selector, DarlingObjcRect{4.0, 5.0, 6.0, 7.0});
+	if (rect_argument.x != 5.0 || rect_argument.y != 6.0 ||
+		rect_argument.width != 6.0 || rect_argument.height != 7.0)
 		return 17;
 	const int class_count = objc_getClassList(nullptr, 0);
 	if (class_count < 2)

@@ -217,6 +217,8 @@ struct DarlingObjcRect final {
 };
 
 DarlingObjcRect darling_objc_msgSend_rect0(id receiver, SEL selector);
+DarlingObjcRect darling_objc_msgSend_rect1(id receiver, SEL selector,
+	DarlingObjcRect argument);
 
 using DarlingObjcCallback1 = id (*)(void* context, id argument);
 

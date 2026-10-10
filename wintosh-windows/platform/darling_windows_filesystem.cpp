@@ -85,6 +85,24 @@ void DarwinFilesystem::MakeDirectory(const std::filesystem::path& path)
 	}
 }
 
+void DarwinFilesystem::Rename(const std::filesystem::path& source,
+	const std::filesystem::path& destination)
+{
+	if (!MoveFileExW(source.c_str(), destination.c_str(),
+		MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+		const DWORD error = GetLastError();
+		// Some Windows filesystems reject MOVEFILE_WRITE_THROUGH for ordinary
+		// user-temp files. Preserve the rename contract with a copy/remove
+		// fallback in that narrow case; normal volumes use the atomic move above.
+		if (error != ERROR_ACCESS_DENIED ||
+			!CopyFileW(source.c_str(), destination.c_str(), FALSE) ||
+			!DeleteFileW(source.c_str())) {
+			SetLastError(error);
+			ThrowLastError("MoveFileExW");
+		}
+	}
+}
+
 void DarwinFilesystem::Unlink(const std::filesystem::path& path)
 {
 	if (!DeleteFileW(path.c_str())) {

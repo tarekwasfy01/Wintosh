@@ -27,6 +27,8 @@ public:
 	[[nodiscard]] static std::vector<std::wstring> ListDirectory(
 		const std::filesystem::path& path);
 	static void MakeDirectory(const std::filesystem::path& path);
+	static void Rename(const std::filesystem::path& source,
+		const std::filesystem::path& destination);
 	static void Unlink(const std::filesystem::path& path);
 };
 

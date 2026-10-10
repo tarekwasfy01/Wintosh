@@ -357,6 +357,18 @@ int wmain()
 		if (std::filesystem::exists(nested)) {
 			throw std::runtime_error("unlink did not remove file");
 		}
+		const auto rename_source = directory / L"rename-source.txt";
+		const auto rename_destination = directory / L"rename-destination.txt";
+		{
+			std::ofstream output(rename_source, std::ios::binary);
+			output << "RENAME";
+		}
+		darling::windows_host::DarwinFilesystem::Rename(rename_source, rename_destination);
+		if (std::filesystem::exists(rename_source) ||
+			!std::filesystem::exists(rename_destination)) {
+			throw std::runtime_error("rename did not move file");
+		}
+		darling::windows_host::DarwinFilesystem::Unlink(rename_destination);
 		if (darling_windows_rmdir(directory.string().c_str()) != 0) {
 			throw std::runtime_error("temporary directory cleanup failed");
 		}

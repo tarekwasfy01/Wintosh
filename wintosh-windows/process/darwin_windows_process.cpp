@@ -27,16 +27,18 @@ namespace {
 } // namespace
 
 Process::Process(HANDLE process, HANDLE thread, HANDLE job, bool owns_job) noexcept :
-	m_process(process), m_thread(thread), m_job(job), m_owns_job(owns_job)
+	m_process(process), m_thread(thread), m_thread_id(thread == nullptr ? 0 : GetThreadId(thread)),
+	m_job(job), m_owns_job(owns_job)
 {
 }
 
 Process::Process(Process&& other) noexcept :
 	m_process(other.m_process), m_thread(other.m_thread)
-	, m_job(other.m_job), m_owns_job(other.m_owns_job)
+	, m_thread_id(other.m_thread_id), m_job(other.m_job), m_owns_job(other.m_owns_job)
 {
 	other.m_process = nullptr;
 	other.m_thread = nullptr;
+	other.m_thread_id = 0;
 	other.m_job = nullptr;
 	other.m_owns_job = false;
 }
@@ -47,10 +49,12 @@ Process& Process::operator=(Process&& other) noexcept
 		Reset();
 		m_process = other.m_process;
 		m_thread = other.m_thread;
+		m_thread_id = other.m_thread_id;
 		m_job = other.m_job;
 		m_owns_job = other.m_owns_job;
 		other.m_process = nullptr;
 		other.m_thread = nullptr;
+		other.m_thread_id = 0;
 		other.m_job = nullptr;
 		other.m_owns_job = false;
 	}
@@ -238,6 +242,7 @@ void Process::Reset() noexcept
 		CloseHandle(m_thread);
 		m_thread = nullptr;
 	}
+	m_thread_id = 0;
 	if (m_process != nullptr) {
 		CloseHandle(m_process);
 		m_process = nullptr;

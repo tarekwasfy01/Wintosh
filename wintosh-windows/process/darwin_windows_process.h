@@ -48,6 +48,7 @@ public:
 	[[nodiscard]] DWORD Wait(DWORD timeout_ms = INFINITE) const noexcept;
 	[[nodiscard]] DWORD ExitCode() const noexcept;
 	[[nodiscard]] DWORD ProcessId() const noexcept;
+	[[nodiscard]] DWORD ThreadId() const noexcept { return m_thread_id; }
 	[[nodiscard]] DWORD Suspend() noexcept;
 	[[nodiscard]] DWORD Resume() noexcept;
 	void Terminate(UINT exit_code = 1) noexcept;
@@ -59,6 +60,7 @@ private:
 
 	HANDLE m_process = nullptr;
 	HANDLE m_thread = nullptr;
+	DWORD m_thread_id = 0;
 	HANDLE m_job = nullptr;
 	bool m_owns_job = false;
 };

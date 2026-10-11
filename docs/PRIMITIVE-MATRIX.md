@@ -925,6 +925,10 @@ launch-suspended resume and running-process suspend/resume on x64 and Win32.
 This is a snapshot preparation primitive only; it does not clone or provide
 copy-on-write semantics for the suspended address space.
 
+The process wrapper also preserves the primary thread ID across `Resume()`.
+This gives a future register-context snapshot a stable thread target without
+keeping a stale Windows thread handle alive.
+
 The broker also exposes an atomic `CapabilityTransferBatch` operation. The
 client serializes the target session and complete broker-token list; the broker
 validates every current owner before changing any owner and moves associated

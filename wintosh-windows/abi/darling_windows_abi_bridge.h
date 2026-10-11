@@ -28,8 +28,8 @@ using GuestFn = DARLING_SYSV R (*)(A...);
 
 using GuestVoidFn = GuestFn<void>;
 
-extern "C" int darling_windows_abi_puts(const char* value);
-extern "C" [[noreturn]] void darling_windows_abi_exit(int status);
+extern "C" DARLING_SYSV int darling_windows_abi_puts(const char* value);
+extern "C" DARLING_SYSV [[noreturn]] void darling_windows_abi_exit(int status);
 
 } // namespace darling::windows_host::abi
 

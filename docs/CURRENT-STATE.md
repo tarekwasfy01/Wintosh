@@ -116,6 +116,10 @@ pick up the new source file, `wintosh_host_api_smoke` and `wintosh_dyld_smoke`
 both pass.  These exports are ready for Clang/System-V guest calls; the
 default MSVC build still uses the compatibility ABI fallback, so this is not
 yet evidence that a real Mach-O import call has executed.
+The bridge translation unit also compiles successfully to a Windows object
+with `clang-cl` after matching the ABI attribute on declarations and
+definitions; full Clang linking is still blocked by this host's missing
+Windows resource compiler/CMake linker setup.
 
 The dyld resolver now also checks `Contents/Frameworks` and `Contents/PlugIns`
 as scoped fallbacks for `@rpath/...` dependencies of a bundle executable when

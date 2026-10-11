@@ -114,12 +114,11 @@ void WriteTLVProviderMachO(const std::filesystem::path& path, bool executable = 
 		main.entry_offset = 0x300;
 		std::memcpy(bytes.data() + sizeof(header) + sizeof(segment) +
 			section_count * sizeof(Section64), &main, sizeof(main));
-		// xor eax,eax; ret.  Full TLV section initialization occurs before
-		// this repository-owned entry.  Mach-O-side descriptor access remains a
-		// separate ABI-trampoline task and is covered only by native TLV tests.
-		bytes[0x300] = 0x31;
-		bytes[0x301] = 0xc0;
-		bytes[0x302] = 0xc3;
+		// xor eax,eax; ret.  The entry address itself is covered separately by
+		// the Mach-O runner fixture; TLS template bytes live in per-thread storage
+		// and are not ordinary global data at this address.
+		const std::uint8_t entry[] = {0x31, 0xc0, 0xc3};
+		std::memcpy(bytes.data() + 0x300, entry, sizeof(entry));
 	}
 	std::ofstream output(path, std::ios::binary | std::ios::trunc);
 	output.write(reinterpret_cast<const char*>(bytes.data()),

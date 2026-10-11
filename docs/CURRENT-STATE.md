@@ -72,6 +72,13 @@ continues to cover the thunk and per-thread resolution directly.  The next
 required step is an ABI trampoline with a verified Windows x64 call frame,
 followed by a Mach-O-side value and second-thread isolation assertion.
 
+An independent entry sentinel (`mov eax,42; ret`) returned 42 from the loaded
+`TLVClient.macho`, confirming that its `LC_MAIN` address is executed.  A
+RIP-relative read of the `__thread_data` template did not return the template
+byte; that template is copied into per-thread storage and is not ordinary
+global data at the section address.  The remaining ABI work is therefore to
+reach the per-thread object through the descriptor thunk from Mach-O code.
+
 ## What is included in a source release
 
 Include the Windows port source, all documentation, and the `licenses`

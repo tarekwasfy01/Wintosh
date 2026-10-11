@@ -22,6 +22,15 @@ is rejected on x86_64 Windows because no CPU translation layer is included.
 The runner is therefore an adapter/loader milestone, not a complete Darling
 root filesystem or a full macOS framework runtime.
 
+`DarwinBootstrap::Run` currently performs the verified native preparation
+sequence: dependency-graph resolution, segment mapping/protection, rebases,
+classic and chained bindings, relocations, TLV setup, Objective-C section
+registration, initializers, entry invocation, and reverse-order terminators.
+It does not yet create a Darwin process image with real `dyld` startup frames,
+Mach kernel syscalls, per-process namespaces, or complete Apple framework
+state; those are separate porting families and are intentionally not hidden
+behind the current CLI success path.
+
 The parser and loader retain Darling-compatible GPL provenance; see the
 repository license inventory and the upstream Darling project:
 https://github.com/darlinghq/darling

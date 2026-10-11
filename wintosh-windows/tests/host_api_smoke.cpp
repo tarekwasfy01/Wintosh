@@ -206,6 +206,13 @@ int main()
 		(stack_protector_symbols ? "PASS" : "FAIL") << "\n";
 	if (!stack_protector_symbols)
 		return 1;
+	const bool mach_peek_symbols =
+		darling_windows_host_symbol("mach_port_peek") != 0 &&
+		darling_windows_host_symbol("_mach_port_peek") != 0;
+	std::cout << "DARWIN_MACH_PEEK_SYMBOLS=" <<
+		(mach_peek_symbols ? "PASS" : "FAIL") << "\n";
+	if (!mach_peek_symbols)
+		return 1;
 	using CxaGuardAcquire = int (*)(std::uint64_t*);
 	using CxaGuardRelease = void (*)(std::uint64_t*);
 	using CxaGuardAbort = void (*)(std::uint64_t*);

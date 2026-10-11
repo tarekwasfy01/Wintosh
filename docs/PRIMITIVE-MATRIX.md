@@ -825,6 +825,8 @@ The resolver family additionally covers the legacy BSD IPv4 helpers
 parsing remains outside this bridge.
 The companion `inet_makeaddr`, `inet_lnaof`, and `inet_netof` helpers cover the
 classic class-A-style address decomposition used by legacy callers.
+Legacy text conversion is also available through `inet_ntoa` and
+`inet_ntoa_r`; broader historical formatting quirks remain open.
 `flsll`; `timingsafe_bcmp` provides the constant-time byte comparison subset.
 The array helpers reject multiplication overflow before calling the Windows
 heap, while `strsep` preserves empty fields. Host API smoke coverage verifies

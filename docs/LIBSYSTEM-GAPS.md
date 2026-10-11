@@ -65,6 +65,8 @@ following families with Windows-backed implementations:
 - The companion address decomposition/construction helpers `inet_makeaddr`,
   `inet_lnaof`, and `inet_netof` are also host-symbol-resolvable for the
   classic class-A-style compatibility subset.
+- Legacy textual conversion through `inet_ntoa` and `inet_ntoa_r` is covered,
+  including bounded output failure handling for the reentrant form.
 - C++ static-initialization guard entry points `___cxa_guard_acquire`,
   `___cxa_guard_release`, and `___cxa_guard_abort`, backed by atomic
   Windows-host state transitions; acquire/release/abort behavior is covered

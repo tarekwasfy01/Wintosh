@@ -1733,6 +1733,19 @@ extern "C" std::uint32_t darling_windows_inet_netof(std::uint32_t address)
 	return (ntohl(address) >> 24) & 0xffu;
 }
 
+extern "C" const char* darling_windows_inet_ntoa(std::uint32_t address)
+{
+	static thread_local char text[INET_ADDRSTRLEN]{};
+	return darling_windows_inet_ntop(AF_INET, &address, text, sizeof(text));
+}
+
+extern "C" int darling_windows_inet_ntoa_r(std::uint32_t address, char* destination,
+	std::size_t destination_length)
+{
+	return darling_windows_inet_ntop(AF_INET, &address, destination, destination_length) != nullptr ?
+		0 : -1;
+}
+
 extern "C" int darling_windows_select(int nfds, darling_fd_set* read_set,
 	darling_fd_set* write_set, darling_fd_set* exception_set, darling_timeval* timeout)
 {
@@ -4901,6 +4914,12 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 	}
 	if (std::strcmp(name, "_inet_netof") == 0 || std::strcmp(name, "inet_netof") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_inet_netof);
+	}
+	if (std::strcmp(name, "_inet_ntoa") == 0 || std::strcmp(name, "inet_ntoa") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_inet_ntoa);
+	}
+	if (std::strcmp(name, "_inet_ntoa_r") == 0 || std::strcmp(name, "inet_ntoa_r") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_inet_ntoa_r);
 	}
 	if (std::strcmp(name, "_select") == 0 || std::strcmp(name, "select") == 0 ||
 		std::strcmp(name, "_select_nocancel") == 0 ||

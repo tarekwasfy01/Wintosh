@@ -934,6 +934,15 @@ int main()
 		std::cerr << "HOST_API_SMOKE_ERROR=legacy_inet_parts\n";
 		return 1;
 	}
+	char legacy_text[INET_ADDRSTRLEN]{};
+	const bool legacy_text_ok = std::strcmp(darling_windows_inet_ntoa(legacy_address), "127.0.0.1") == 0 &&
+		darling_windows_inet_ntoa_r(legacy_address, legacy_text, sizeof(legacy_text)) == 0 &&
+		std::strcmp(legacy_text, "127.0.0.1") == 0 &&
+		darling_windows_host_symbol("inet_ntoa") != 0 && darling_windows_host_symbol("inet_ntoa_r") != 0;
+	if (!legacy_text_ok) {
+		std::cerr << "HOST_API_SMOKE_ERROR=legacy_inet_text\n";
+		return 1;
+	}
 	const bool file_values_ok = file_written == 3 && duplicate_written == 3 && file_end == 6 && file_start == 0 && truncate_ok;
 	const bool file_access_ok = darling_windows_access(file_path.c_str(), 0) == 0;
 	(void)DeleteFileA(renamed_file_path.c_str());

@@ -588,6 +588,10 @@ read-only, then restores read/write protection before continuing; this proves
 enforcement, not merely successful API return values.
 Unknown protection bits are now rejected before reaching `VirtualProtectEx`,
 so unsupported Darwin flags cannot silently become a Windows protection mode.
+`set_maximum` is now tracked per task/address pair: after a maximum is set,
+later protection requests cannot add rights beyond it. The smoke verifies a
+read-only maximum rejects a later read/write expansion; this is a bounded
+maximum-rights model, not full Darwin inheritance or COW.
 The x64 smoke also verifies `mach_vm_copy` between two remote allocations by
 comparing the copied bytes after a remote read. This is an explicit copy
 operation; it must not be confused with Darwin VM copy-on-write sharing or

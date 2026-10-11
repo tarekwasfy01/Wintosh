@@ -161,6 +161,22 @@ std::unordered_map<darling_mach_port_name_t, darling_thread_time_constraint_poli
 void* exception_handler_cookie = nullptr;
 std::mutex read_buffers_mutex;
 std::unordered_map<darling_mach_vm_address_t, SIZE_T> read_buffers;
+struct VmMaximumProtectionKey final {
+	darling_mach_port_name_t task = 0;
+	darling_mach_vm_address_t address = 0;
+	bool operator==(const VmMaximumProtectionKey& other) const noexcept {
+		return task == other.task && address == other.address;
+	}
+};
+struct VmMaximumProtectionHash final {
+	std::size_t operator()(const VmMaximumProtectionKey& key) const noexcept {
+		return std::hash<std::uint64_t>{}(key.address ^
+			(static_cast<std::uint64_t>(key.task) << 32));
+	}
+};
+std::mutex vm_maximum_protections_mutex;
+std::unordered_map<VmMaximumProtectionKey, std::uint32_t, VmMaximumProtectionHash>
+	vm_maximum_protections;
 
 std::shared_ptr<PortQueue> FindPort(darling_mach_port_name_t name)
 {
@@ -1065,10 +1081,16 @@ extern "C" darling_kern_return_t darling_windows_mach_vm_protect(
 	darling_mach_port_name_t task, darling_mach_vm_address_t address,
 	darling_mach_vm_size_t size, bool set_maximum, std::uint32_t protection)
 {
-	(void)set_maximum;
 	if (task == 0 || address == 0 || size == 0 || size > (std::numeric_limits<SIZE_T>::max)() ||
 		(protection & ~(darling_vm_prot_read | darling_vm_prot_write | darling_vm_prot_execute)) != 0)
 		return 4;
+	const VmMaximumProtectionKey protection_key{task, address};
+	if (!set_maximum) {
+		std::lock_guard lock(vm_maximum_protections_mutex);
+		const auto found = vm_maximum_protections.find(protection_key);
+		if (found != vm_maximum_protections.end() && (protection & ~found->second) != 0)
+			return 4;
+	}
 	bool owned = false;
 	const HANDLE process = OpenVmProcess(task, PROCESS_VM_OPERATION, owned);
 	if (process == nullptr) return 4;
@@ -1077,6 +1099,10 @@ extern "C" darling_kern_return_t darling_windows_mach_vm_protect(
 		reinterpret_cast<void*>(static_cast<std::uintptr_t>(address)),
 		static_cast<SIZE_T>(size), VmProtection(protection), &old_protection);
 	CloseVmProcess(process, owned);
+	if (protected_ok && set_maximum) {
+		std::lock_guard lock(vm_maximum_protections_mutex);
+		vm_maximum_protections[protection_key] = protection;
+	}
 	return protected_ok ? 0 : 4;
 }
 

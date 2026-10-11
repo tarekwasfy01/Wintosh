@@ -792,6 +792,17 @@ int main()
 					&depth, &region_info, &region_count) == 0 && depth == 0;
 		})() &&
 		darling_windows_mach_vm_protect(task, vm_address, page_size, false, 8) != 0 &&
+		[&] {
+			darling_mach_vm_address_t maximum_address = 0;
+			if (darling_windows_mach_vm_allocate(task, &maximum_address, page_size, 0) != 0)
+				return false;
+			const bool bounded = darling_windows_mach_vm_protect(task, maximum_address,
+				page_size, true, darling_vm_prot_read) == 0 &&
+				darling_windows_mach_vm_protect(task, maximum_address, page_size, false,
+					darling_vm_prot_read | darling_vm_prot_write) != 0;
+			(void)darling_windows_mach_vm_deallocate(task, maximum_address, page_size);
+			return bounded;
+		}() &&
 		darling_windows_mach_vm_protect(task, vm_address, page_size, false,
 		 darling_vm_prot_read) == 0 &&
 		darling_windows_mach_vm_deallocate(task, vm_copy_address, page_size) == 0 &&

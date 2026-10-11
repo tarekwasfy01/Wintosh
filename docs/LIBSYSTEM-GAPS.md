@@ -29,6 +29,8 @@ following families with Windows-backed implementations:
   matching the bridge's fail-closed host behavior;
 - `strspn`, `strcspn`, and `strpbrk` now apply the same null-safe host policy;
 - `strchr` and `strrchr` now also reject null input without dereferencing it;
+- `memchr` now rejects null input for nonempty ranges while preserving the
+  empty-range result;
 - BSD/Darwin reverse byte search `memrchr` is now Windows-backed and
   host-symbol-resolvable, including bounded reverse scanning;
 - BSD/Darwin first-set-bit primitive `ffs` is now Windows-backed and

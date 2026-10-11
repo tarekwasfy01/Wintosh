@@ -761,6 +761,8 @@ int main()
 	const bool memory_search_ok = darling_windows_strnlen("darling", 4) == 4 &&
 		darling_windows_strnlen("darling", 32) == 7 &&
 		darling_windows_memchr(binary_data, 0x40, sizeof(binary_data)) == binary_data + 3 &&
+		darling_windows_memchr(nullptr, 0x40, 0) == nullptr &&
+		darling_windows_memchr(nullptr, 0x40, 1) == nullptr &&
 		darling_windows_memrchr(binary_data, 0x20, sizeof(binary_data)) == binary_data + 1 &&
 		darling_windows_memrchr(binary_data, 0x7f, sizeof(binary_data)) == nullptr &&
 		darling_windows_memmem(binary_data, sizeof(binary_data), binary_needle, sizeof(binary_needle)) == binary_data + 2;

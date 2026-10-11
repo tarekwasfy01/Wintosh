@@ -8052,7 +8052,8 @@ extern "C" std::size_t darling_windows_strnlen(const char* value, std::size_t li
 
 extern "C" const void* darling_windows_memchr(const void* value, int byte, std::size_t bytes)
 {
-	return std::memchr(value, byte, bytes);
+	if (bytes == 0) return nullptr;
+	return value != nullptr ? std::memchr(value, byte, bytes) : nullptr;
 }
 
 extern "C" const void* darling_windows_memrchr(const void* value, int byte, std::size_t bytes)

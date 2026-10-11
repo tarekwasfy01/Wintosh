@@ -74,6 +74,13 @@ int main()
 			darling_windows_CFRangeMake(1, 4), 0) &&
 		std::strcmp(darling_windows_CFStringGetCStringPtr(scoped_replace), "x/a:b") == 0;
 	const auto unicode_mutable = darling_windows_CFStringCreateWithCString("A\xF0\x9F\x98\x80Z");
+	const auto case_source = darling_windows_CFStringCreateWithCString("MiXeD-\xC3\xA4");
+	const auto case_string = darling_windows_CFStringCreateMutableCopy(case_source, 0);
+	const bool case_conversion_ok = case_source != nullptr && case_string != nullptr &&
+		darling_windows_CFStringLowercase(case_string, nullptr) &&
+		std::strcmp(darling_windows_CFStringGetCStringPtr(case_string), "mixed-\xC3\xA4") == 0 &&
+		darling_windows_CFStringUppercase(case_string, nullptr) &&
+		std::strcmp(darling_windows_CFStringGetCStringPtr(case_string), "MIXED-\xC3\xA4") == 0;
 	const bool unicode_replace_ok = unicode_mutable != nullptr &&
 		darling_windows_CFStringReplaceRange(unicode_mutable, 1, 2, "Q") &&
 		std::strcmp(darling_windows_CFStringGetCStringPtr(unicode_mutable), "AQZ") == 0;
@@ -865,8 +872,10 @@ int main()
 	if (!string_number_ok || !system_encoding_ok || !maximum_encoding_size_ok || !mutable_creation_ok || !find_replace_ok || !scoped_find_replace_ok || !unicode_replace_ok || !unicode_bytes_ok || !utf16_characters_ok || !utf16_character_at_index_ok || !backwards_find_ok || !unicode_find_range_ok || !pascal_rejection_ok || !characters_creation_ok || !filesystem_string_ok || !filesystem_representation_ok || !string_split_ok) return 1;
 	if (!identity_ok) return 1;
 	if (!bytes_string_ok) return 1;
-	if (!url_extension_ok || !url_path_ok || !url_query_ok || !url_scheme_ok) return 1;
+	if (!url_extension_ok || !url_path_ok || !url_query_ok || !url_scheme_ok || !case_conversion_ok) return 1;
 	darling_windows_CFRelease(unicode_string);
 	darling_windows_CFRelease(unicode_whitespace);
+	darling_windows_CFRelease(case_source);
+	darling_windows_CFRelease(case_string);
 	return string_ok && formatted_string_ok && substring_ok && string_match_ok && string_find_ok && unicode_length_ok && unicode_trim_ok && equal_ok && mutable_string_ok && string_bytes_ok && trim_ok && semantic_lookup_ok && array_search_ok && data_ok && data_slice_ok && array_ok && array_values_ok && array_overlap_copy_ok && array_empty_range_ok && number_ok && real_number_ok && number_conversion_ok && real_conversion_ok && number_compare_ok && numeric_equal_ok && dictionary_ok && duplicate_dictionary_ok && dictionary_values_ok && set_ok && set_values_ok && date_url_ok && url_xml_ok && date_compare_ok && date_interval_ok && negative_date_ok && date_rounding_ok && scalar_ok && singleton_lifetime_ok && singleton_still_valid && runloop_ok && callback_ok && queued_sources && one_source_ok && source_queue_ok && drain_sources_ok && timer_ok && notification_ok && wildcard_notification_ok && notification_global_remove_ok && notification_missing_remove_ok && delivered && plist_ok && array_plist_ok && data_plist_ok && date_plist_ok && real_plist_ok && escaping_ok && plist_parse_ok && plist_dict_parse_ok && plist_data_parse_ok && plist_date_parse_ok && plist_fractional_date_ok && plist_offset_date_ok && binary_plist_ok && binary_dictionary_ok && binary_utf16_ok && binary_extended_ok && binary_data_ok && binary_date_ok && binary_real_ok && binary_uid_ok && mutable_array_ok && mutable_dictionary_ok && mutable_set_ok && mutable_data_ok && mutable_data_alias_ok && data_overlap_copy_ok ? 0 : 1;
 }

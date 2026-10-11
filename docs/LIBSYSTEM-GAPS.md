@@ -112,6 +112,9 @@ Its lookup is now restricted to the supplied UTF-16 range even when an earlier
 matching substring exists outside that range.
 `CFStringReplaceRange` now converts its location and length from UTF-16 units
 to UTF-8 storage offsets, including surrogate-pair-safe replacement.
+`CFStringLowercase` and `CFStringUppercase` provide safe ASCII case conversion
+for mutable strings; non-ASCII UTF-8 bytes are preserved until full
+locale-aware Unicode mappings are added.
 `CFStringGetBytes` now uses the same UTF-16 range model while returning the
 UTF-8 byte count required by the Windows bridge.
 `CFStringCreateMutableCopy` now returns an independent mutable string; its

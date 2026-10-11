@@ -110,6 +110,10 @@ extern "C" darling_windows_CFIndex darling_windows_CFStringGetBytes(
 	darling_windows_CFStringRef value, darling_windows_CFIndex location,
 	darling_windows_CFIndex length, char* output, darling_windows_CFIndex capacity);
 extern "C" bool darling_windows_CFStringTrimWhitespace(darling_windows_CFStringRef value);
+extern "C" bool darling_windows_CFStringLowercase(darling_windows_CFStringRef value,
+	const void* locale);
+extern "C" bool darling_windows_CFStringUppercase(darling_windows_CFStringRef value,
+	const void* locale);
 extern "C" darling_windows_CFDataRef darling_windows_CFDataCreate(
 	const void* bytes, darling_windows_CFIndex length);
 extern "C" darling_windows_CFDataRef darling_windows_CFDataCreateCopy(

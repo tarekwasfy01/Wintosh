@@ -1127,6 +1127,28 @@ extern "C" darling_windows_CFIndex darling_windows_CFStringGetBytes(
 	return static_cast<darling_windows_CFIndex>(copied);
 }
 
+extern "C" bool darling_windows_CFStringLowercase(darling_windows_CFStringRef value,
+	const void* locale)
+{
+	(void)locale;
+	auto* object = As(value);
+	if (object == nullptr || object->kind != Kind::String) return false;
+	for (auto& byte : object->string)
+		if (byte >= 'A' && byte <= 'Z') byte = static_cast<char>(byte - 'A' + 'a');
+	return true;
+}
+
+extern "C" bool darling_windows_CFStringUppercase(darling_windows_CFStringRef value,
+	const void* locale)
+{
+	(void)locale;
+	auto* object = As(value);
+	if (object == nullptr || object->kind != Kind::String) return false;
+	for (auto& byte : object->string)
+		if (byte >= 'a' && byte <= 'z') byte = static_cast<char>(byte - 'a' + 'A');
+	return true;
+}
+
 extern "C" bool darling_windows_CFStringTrimWhitespace(darling_windows_CFStringRef value)
 {
 	auto* object = As(value);

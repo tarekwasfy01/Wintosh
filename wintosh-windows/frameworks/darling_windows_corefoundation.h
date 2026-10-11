@@ -207,8 +207,10 @@ extern "C" bool darling_windows_CFURLGetFileSystemRepresentation(
 	darling_windows_CFURLRef value, bool resolve_against_base, unsigned char* buffer,
 	darling_windows_CFIndex buffer_capacity);
 extern "C" darling_windows_CFBooleanRef darling_windows_CFBooleanGetValue(bool value);
+extern "C" darling_windows_CFTypeID darling_windows_CFBooleanGetTypeID();
 extern "C" bool darling_windows_CFBooleanIsTrue(darling_windows_CFBooleanRef value);
 extern "C" darling_windows_CFTypeRef darling_windows_CFNullGetValue();
+extern "C" darling_windows_CFTypeID darling_windows_CFNullGetTypeID();
 extern "C" darling_windows_CFStringRef darling_windows_CFPropertyListCreateXML(
 	darling_windows_CFTypeRef value);
 extern "C" darling_windows_CFTypeRef darling_windows_CFPropertyListCreateFromXML(

@@ -278,7 +278,10 @@ int main()
 	const auto true_value = darling_windows_CFBooleanGetValue(true);
 	const auto false_value = darling_windows_CFBooleanGetValue(false);
 	const auto null_value = darling_windows_CFNullGetValue();
-	const bool scalar_ok = true_value != false_value && darling_windows_CFBooleanIsTrue(true_value) &&
+	const bool scalar_ok = true_value != false_value &&
+		darling_windows_CFBooleanGetTypeID() == darling_windows_CFGetTypeID(true_value) &&
+		darling_windows_CFNullGetTypeID() == darling_windows_CFGetTypeID(null_value) &&
+		darling_windows_CFBooleanIsTrue(true_value) &&
 		!darling_windows_CFBooleanIsTrue(false_value) && null_value != nullptr;
 	const bool singleton_lifetime_ok = darling_windows_CFRetain(true_value) == true_value &&
 		darling_windows_CFRetain(null_value) == null_value;

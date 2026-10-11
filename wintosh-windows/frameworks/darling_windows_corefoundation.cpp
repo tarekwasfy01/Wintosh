@@ -1618,6 +1618,8 @@ extern "C" bool darling_windows_CFBooleanIsTrue(darling_windows_CFBooleanRef val
 	return object != nullptr && object->kind == Kind::Boolean && object->boolean;
 }
 
+extern "C" darling_windows_CFTypeID darling_windows_CFBooleanGetTypeID() { return TypeId(Kind::Boolean); }
+
 extern "C" darling_windows_CFTypeRef darling_windows_CFNullGetValue()
 {
 	static Object null_value{};
@@ -1625,6 +1627,8 @@ extern "C" darling_windows_CFTypeRef darling_windows_CFNullGetValue()
 	(void)initialized;
 	return &null_value;
 }
+
+extern "C" darling_windows_CFTypeID darling_windows_CFNullGetTypeID() { return TypeId(Kind::Null); }
 
 extern "C" darling_windows_CFStringRef darling_windows_CFPropertyListCreateXML(
 	darling_windows_CFTypeRef value)

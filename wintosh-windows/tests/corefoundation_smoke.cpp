@@ -214,6 +214,7 @@ int main()
 	const auto earlier_date = darling_windows_CFDateCreate(1234.0);
 	const auto later_date = darling_windows_CFDateCreate(1235.0);
 	const auto url = darling_windows_CFURLCreateWithFileSystemPath("C:/Wintosh/app");
+	const auto directory_url = darling_windows_CFURLCreateWithFileSystemPath("C:/Wintosh/");
 	const unsigned char url_bytes[] = "C:/Wintosh/app";
 	const auto url_from_bytes = darling_windows_CFURLCreateFromFileSystemRepresentation(
 		url_bytes, static_cast<darling_windows_CFIndex>(sizeof(url_bytes) - 1), false);
@@ -230,6 +231,8 @@ int main()
 	const bool date_url_ok = date != nullptr && date_copy != nullptr && url_from_bytes != nullptr &&
 		absolute_url != nullptr &&
 		url_string != nullptr &&
+		!darling_windows_CFURLHasDirectoryPath(url) &&
+		darling_windows_CFURLHasDirectoryPath(directory_url) &&
 		darling_windows_CFEqual(date, date_copy) &&
 		darling_windows_CFEqual(url, url_from_bytes) &&
 		darling_windows_CFEqual(url, absolute_url) &&
@@ -646,6 +649,7 @@ int main()
 	darling_windows_CFRelease(url_from_bytes);
 	darling_windows_CFRelease(absolute_url);
 	darling_windows_CFRelease(url_string);
+	darling_windows_CFRelease(directory_url);
 	darling_windows_CFRelease(url);
 	darling_windows_CFRelease(date);
 	darling_windows_CFRelease(date_copy);

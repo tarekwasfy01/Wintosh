@@ -61,6 +61,8 @@ following families with Windows-backed implementations:
   current filesystem-path URL value on x64 and Win32.
 - CoreFoundation URL string extraction through `CFURLGetString`, with URL /
   string equality checked on x64 and Win32.
+- CoreFoundation directory-path detection through `CFURLHasDirectoryPath`,
+  including file-vs-directory path checks on x64 and Win32.
 
 These are native Windows compatibility primitives. They are not a copied or
 relicensed Apple libSystem binary.

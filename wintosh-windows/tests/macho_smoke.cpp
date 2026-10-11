@@ -528,6 +528,18 @@ int wmain()
 				return 18;
 			}
 			std::cout << "MACHO_ARM64_RELOCATIONS=PASS\n";
+			#if defined(_WIN64) && !defined(_M_ARM64)
+			bool arm64_execution_rejected = false;
+			try {
+				arm64_image.ExecuteEntryNoArgs(arm64_mapping);
+			} catch (const std::exception& error) {
+				arm64_execution_rejected = std::string(error.what()).find(
+					"ARM64 Mach-O execution is not implemented") != std::string::npos;
+			}
+			if (!arm64_execution_rejected)
+				return 19;
+			std::cout << "MACHO_ARM64_EXECUTION_FAIL_CLOSED=PASS\n";
+			#endif
 			std::cout << "MACHO_ARM64_POINTER_TO_GOT=PASS\n";
 			std::cout << "MACHO_ARM64_TLV_RELOCATIONS=PASS\n";
 			std::cout << "MACHO_CHAINED_PTR_64_OFFSET=PASS\n";

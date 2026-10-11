@@ -287,3 +287,10 @@ complete Foundation, notification-center, scheduler, or Objective-C ABI.
 The Release Clang build currently passes 60/60 CTest entries, including the
 Mach-O printf bundle end-to-end test. The latest five local commits are ahead
 of the configured remote and have not been pushed in this work cycle.
+
+The Mach-O smoke also verifies the ARM64 execution boundary on x86_64 Windows:
+ARM64 headers, relocation records, and chained fixups are parsed and patched,
+but `ExecuteEntryNoArgs` rejects ARM64 with a deterministic fail-closed error.
+This is an execution-boundary test, not ARM64 runtime support; native ARM64
+execution still requires an ARM64 Windows backend and a valid executable
+fixture.

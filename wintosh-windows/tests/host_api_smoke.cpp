@@ -970,6 +970,21 @@ int main()
 		std::cerr << "HOST_API_SMOKE_ERROR=gethostbyname2\n";
 		return 1;
 	}
+	hostent reentrant_host{};
+	hostent* reentrant_result = nullptr;
+	int reentrant_error = 0;
+	char reentrant_buffer[256]{};
+	const bool reentrant_host_ok = darling_windows_gethostbyname_r("127.0.0.1", &reentrant_host,
+		reentrant_buffer, sizeof(reentrant_buffer), &reentrant_result, &reentrant_error) == 0 &&
+		reentrant_result == &reentrant_host && reentrant_host.h_addrtype == AF_INET &&
+		reentrant_host.h_addr_list != nullptr && reentrant_error == 0 &&
+		darling_windows_gethostbyname_r("127.0.0.1", &reentrant_host, reentrant_buffer, 8,
+			&reentrant_result, &reentrant_error) == 34 && reentrant_result == nullptr &&
+		darling_windows_host_symbol("gethostbyname_r") != 0;
+	if (!reentrant_host_ok) {
+		std::cerr << "HOST_API_SMOKE_ERROR=gethostbyname_r\n";
+		return 1;
+	}
 	IN_ADDR reverse_address{};
 	reverse_address.S_un.S_addr = htonl(0x7f000001u);
 	const auto* reverse_entry = darling_windows_gethostbyaddr(&reverse_address,

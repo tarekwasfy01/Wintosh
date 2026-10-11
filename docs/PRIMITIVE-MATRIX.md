@@ -833,6 +833,9 @@ thread-safety and the remaining historical hostent variants remain open.
 `gethostbyname2` now covers AF_INET and AF_INET6 through a thread-local
 `hostent` view; the returned structure is valid only until the next call on
 the same thread.
+The Darwin-style `gethostbyname_r` copy path is covered for caller-owned IPv4
+storage and insufficient-buffer `ERANGE`; reentrant IPv6 and multi-address
+alias copying remain open.
 The reverse `gethostbyaddr` ABI and invalid-input path are covered for IPv4;
 successful PTR resolution remains environment-dependent, while IPv6-specific
 and fully reentrant hostent variants remain open.

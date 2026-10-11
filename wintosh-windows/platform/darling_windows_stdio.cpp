@@ -1709,6 +1709,51 @@ extern "C" hostent* darling_windows_gethostbyname2(const char* name, int address
 	return &storage.value;
 }
 
+extern "C" int darling_windows_gethostbyname_r(const char* name, hostent* result,
+	char* buffer, std::size_t buffer_length, hostent** result_pointer, int* error_number)
+{
+	if (result_pointer != nullptr) *result_pointer = nullptr;
+	if (error_number != nullptr) *error_number = 0;
+	if (name == nullptr || result == nullptr || buffer == nullptr || buffer_length == 0 ||
+		result_pointer == nullptr) {
+		if (error_number != nullptr) *error_number = 22;
+		return 22;
+	}
+	const auto* source = darling_windows_gethostbyname(name);
+	if (source == nullptr || source->h_addr_list == nullptr || source->h_addr_list[0] == nullptr) {
+		if (error_number != nullptr) *error_number = 1;
+		return 1;
+	}
+	void* aligned = buffer;
+	std::size_t remaining = buffer_length;
+	if (std::align(alignof(char*), sizeof(char*) * 3, aligned, remaining) == nullptr) {
+		if (error_number != nullptr) *error_number = 34;
+		return 34;
+	}
+	auto** pointer_area = static_cast<char**>(aligned);
+	const auto pointer_bytes = sizeof(char*) * 3;
+	char* data = static_cast<char*>(aligned) + pointer_bytes;
+	remaining -= pointer_bytes;
+	const auto name_length = std::strlen(source->h_name) + 1;
+	const auto address_length = static_cast<std::size_t>(source->h_length);
+	if (remaining < name_length + address_length) {
+		if (error_number != nullptr) *error_number = 34;
+		return 34;
+	}
+	std::memcpy(data, source->h_name, name_length);
+	std::memcpy(data + name_length, source->h_addr_list[0], address_length);
+	result->h_name = data;
+	result->h_aliases = pointer_area;
+	result->h_addrtype = source->h_addrtype;
+	result->h_length = source->h_length;
+	result->h_addr_list = pointer_area + 1;
+	pointer_area[0] = nullptr;
+	pointer_area[1] = data + name_length;
+	pointer_area[2] = nullptr;
+	*result_pointer = result;
+	return 0;
+}
+
 extern "C" hostent* darling_windows_gethostbyaddr(const void* address, int length, int type)
 {
 	if (address == nullptr || length <= 0) {
@@ -5015,6 +5060,9 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 	}
 	if (std::strcmp(name, "_gethostbyname2") == 0 || std::strcmp(name, "gethostbyname2") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_gethostbyname2);
+	}
+	if (std::strcmp(name, "_gethostbyname_r") == 0 || std::strcmp(name, "gethostbyname_r") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_gethostbyname_r);
 	}
 	if (std::strcmp(name, "_gethostbyaddr") == 0 || std::strcmp(name, "gethostbyaddr") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_gethostbyaddr);

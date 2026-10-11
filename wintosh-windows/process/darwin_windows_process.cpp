@@ -278,6 +278,50 @@ bool Process::WriteMemory(std::uintptr_t address, const void* buffer, std::size_
 	return result != FALSE && transferred == size;
 }
 
+std::uintptr_t Process::AllocateMemory(std::size_t size, DWORD protection) const noexcept
+{
+	if (m_process == nullptr || size == 0)
+		return 0;
+	const HANDLE query_process = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_OPERATION,
+		FALSE, GetProcessId(m_process));
+	if (query_process == nullptr)
+		return 0;
+	void* allocation = VirtualAllocEx(query_process, nullptr, size,
+		MEM_RESERVE | MEM_COMMIT, protection);
+	CloseHandle(query_process);
+	return reinterpret_cast<std::uintptr_t>(allocation);
+}
+
+bool Process::ProtectMemory(std::uintptr_t address, std::size_t size,
+	DWORD protection) const noexcept
+{
+	if (m_process == nullptr || address == 0 || size == 0)
+		return false;
+	const HANDLE query_process = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_OPERATION,
+		FALSE, GetProcessId(m_process));
+	if (query_process == nullptr)
+		return false;
+	DWORD previous = 0;
+	const BOOL result = VirtualProtectEx(query_process, reinterpret_cast<void*>(address),
+		size, protection, &previous);
+	CloseHandle(query_process);
+	return result != FALSE;
+}
+
+bool Process::FreeMemory(std::uintptr_t address) const noexcept
+{
+	if (m_process == nullptr || address == 0)
+		return false;
+	const HANDLE query_process = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_OPERATION,
+		FALSE, GetProcessId(m_process));
+	if (query_process == nullptr)
+		return false;
+	const BOOL result = VirtualFreeEx(query_process, reinterpret_cast<void*>(address),
+		0, MEM_RELEASE);
+	CloseHandle(query_process);
+	return result != FALSE;
+}
+
 bool Process::GetPrimaryThreadContext(CONTEXT& context) const noexcept
 {
 	return GetThreadContext(m_thread_id, context);

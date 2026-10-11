@@ -127,6 +127,10 @@ int wmain()
 		if (suspended_process.ReadMemory(1, &memory_probe, sizeof(memory_probe)) ||
 			suspended_process.WriteMemory(1, &memory_probe, sizeof(memory_probe)))
 			throw std::runtime_error("invalid Darwin child memory access was accepted");
+		if (suspended_process.AllocateMemory(0) != 0 ||
+			suspended_process.ProtectMemory(0, 1, PAGE_READONLY) ||
+			suspended_process.FreeMemory(0))
+			throw std::runtime_error("invalid Darwin child VM operation was accepted");
 		for (const auto thread_id : child_thread_ids) {
 			CONTEXT thread_context{};
 			(void)suspended_process.GetThreadContext(thread_id, thread_context);

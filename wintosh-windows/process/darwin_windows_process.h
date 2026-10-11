@@ -73,6 +73,11 @@ public:
 		std::size_t size) const noexcept;
 	[[nodiscard]] bool WriteMemory(std::uintptr_t address, const void* buffer,
 		std::size_t size) const noexcept;
+	[[nodiscard]] std::uintptr_t AllocateMemory(std::size_t size,
+		DWORD protection = PAGE_READWRITE) const noexcept;
+	[[nodiscard]] bool ProtectMemory(std::uintptr_t address, std::size_t size,
+		DWORD protection) const noexcept;
+	[[nodiscard]] bool FreeMemory(std::uintptr_t address) const noexcept;
 	[[nodiscard]] bool GetPrimaryThreadContext(CONTEXT& context) const noexcept;
 	[[nodiscard]] bool SetPrimaryThreadContext(const CONTEXT& context) const noexcept;
 	[[nodiscard]] bool GetThreadContext(DWORD thread_id, CONTEXT& context) const noexcept;

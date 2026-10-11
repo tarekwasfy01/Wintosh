@@ -518,6 +518,10 @@ boundary used by a future snapshot copier. Both reject null/zero/invalid
 requests and reopen the child with the required Windows VM rights; the current
 smoke verifies invalid-address rejection only because the managed host denies
 valid cross-process VM access.
+The same boundary now exposes `AllocateMemory`, `ProtectMemory`, and
+`FreeMemory`, completing the basic remote-VM operation shape needed by a future
+restore path. The smoke covers invalid-operation rejection; successful remote
+allocation and writes remain unverified under the current host policy.
 Quoted aggregate field names are skipped while parsing, matching common
 Objective-C runtime encodings.
 Quoted object class names (`@"NSString"`) and pointers to nested encodings

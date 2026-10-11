@@ -220,8 +220,15 @@ std::filesystem::path DylibResolver::Resolve(
 		const auto rooted = dependency.substr(1);
 		const auto rooted_path = std::filesystem::path(rooted);
 		if (rooted_path.parent_path().filename() == "Frameworks")
+		{
 			AddFrameworkCandidates(candidates, prefix / rooted_path.parent_path(),
 				rooted_path.filename().string());
+			// Keep the two Darwin framework domains distinct: the system domain
+			// is rooted at /System/Library, while /Library is the local domain.
+			if (rooted_path.parent_path() == std::filesystem::path("Library") / "Frameworks")
+				AddFrameworkCandidates(candidates, prefix / "Library" / "Frameworks",
+					rooted_path.filename().string());
+		}
 		else
 			AddCandidate(candidates, prefix / rooted);
 	} else {
@@ -229,6 +236,8 @@ std::filesystem::path DylibResolver::Resolve(
 		AddCandidate(candidates, prefix / "usr" / "lib" / dependency);
 		AddFrameworkCandidates(candidates,
 			prefix / "System" / "Library" / "Frameworks", dependency);
+		AddFrameworkCandidates(candidates,
+			prefix / "Library" / "Frameworks", dependency);
 	}
 
 	for (const auto& candidate : candidates) {

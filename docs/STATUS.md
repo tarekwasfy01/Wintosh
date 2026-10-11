@@ -194,7 +194,13 @@ registered classes, class-method lookup through those metaclasses, and runtime
 with serialized attribute pairs and verified lookup. The machine-readable matrix records the same coverage for LP64, blocks,
 and metaclass mutation. The DYLD resolver now combines caller-provided
 `@rpath` roots with embedded `LC_RPATH` entries even when the caller already
-provided search paths; `DYLD_COMBINED_RPATH=PASS` covers this behavior.
+provided search paths; `DYLD_COMBINED_RPATH=PASS` covers this behavior. The
+native prefix also creates the Apple-documented `Library` data roots
+(`Application Support`, `Caches`, `Frameworks`, `Logs`, `Preferences`, and
+`Saved Application State`) plus `System/Library/Frameworks` and `usr/lib`.
+`runtime_smoke` verifies the layout and `dyld_smoke` verifies system and local
+framework shorthand resolution. This remains a path/layout boundary; it does
+not provide Apple framework binaries or their full ABI.
 Mach-O category registration is also covered: category instance/class methods,
 properties, and protocols are merged into the target class and verified by
 `objc_smoke`. Selector-reference teardown and full method-cache/swizzling

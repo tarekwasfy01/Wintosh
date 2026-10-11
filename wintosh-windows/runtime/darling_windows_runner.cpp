@@ -396,6 +396,25 @@ int wmain(int argc, wchar_t** argv)
 			options.arguments.front() = Utf8(image.c_str());
 		if (options.prefix.empty())
 			options.prefix = DefaultPrefix(image);
+	// Keep Darwin's home namespace inside the relocatable prefix. An explicit
+	// --env HOME=... remains authoritative for callers that provide their own
+	// guest layout.
+	const auto has_environment = [&options](std::string_view key) {
+		return std::any_of(options.environment.begin(), options.environment.end(),
+			[key](const std::string& entry) {
+				return entry.size() > key.size() && entry.compare(0, key.size(), key) == 0 &&
+					entry[key.size()] == '=';
+			});
+	};
+	if (!has_environment("HOME"))
+		SetEnvironment(options.environment, "HOME=/Users/Default");
+	if (!has_environment("TMPDIR"))
+		SetEnvironment(options.environment, "TMPDIR=/private/tmp");
+	if (!has_environment("CFFIXED_USER_HOME"))
+		SetEnvironment(options.environment, "CFFIXED_USER_HOME=/Users/Default");
+	if (!SetEnvironmentVariableW(L"WINTOSH_GUEST_PREFIX", options.prefix.c_str()))
+		throw std::system_error(static_cast<int>(GetLastError()),
+			std::system_category(), "SetEnvironmentVariableW(WINTOSH_GUEST_PREFIX)");
 		if (inspect) {
 			const auto inspected = darling::windows_host::MachOImage::Open(image.wstring());
 			const auto& header = inspected.Header();

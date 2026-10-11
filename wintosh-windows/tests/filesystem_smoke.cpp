@@ -46,6 +46,52 @@ int wmain()
 		}
 		const auto native_path = nested.string();
 		const auto native_directory = directory.string();
+		const auto guest_prefix = directory.parent_path() / L"darling-guest-prefix";
+		std::filesystem::remove_all(guest_prefix);
+		const auto guest_file = guest_prefix / L"Users" / L"Default" /
+			L"Library" / L"Caches" / L"mapping.txt";
+		std::filesystem::create_directories(guest_file.parent_path());
+		{
+			std::ofstream output(guest_file, std::ios::binary);
+			output << "GUEST";
+		}
+		if (!SetEnvironmentVariableW(L"WINTOSH_GUEST_PREFIX", guest_prefix.c_str()))
+			throw std::runtime_error("guest prefix environment setup failed");
+		darling_darwin_stat guest_path_stat{};
+		if (darling_windows_stat("/Users/Default/Library/Caches/mapping.txt",
+			&guest_path_stat) != 0 || guest_path_stat.st_size != 5) {
+			SetEnvironmentVariableW(L"WINTOSH_GUEST_PREFIX", nullptr);
+			throw std::runtime_error("absolute Darwin prefix mapping failed");
+		}
+		const auto guest_link = guest_prefix / L"Users" / L"Default" /
+			L"Library" / L"Caches" / L"mapping-link";
+		const bool guest_symlink_created = darling_windows_symlink(
+			"/Users/Default/Library/Caches/mapping.txt", guest_link.string().c_str()) == 0;
+		if (guest_symlink_created) {
+			char guest_link_target[4096]{};
+			const auto guest_link_length = darling_windows_readlink(
+				"/Users/Default/Library/Caches/mapping-link", guest_link_target,
+				sizeof(guest_link_target));
+			if (guest_link_length <= 0 ||
+				std::string(guest_link_target, static_cast<std::size_t>(guest_link_length)) !=
+					"/Users/Default/Library/Caches/mapping.txt") {
+				SetEnvironmentVariableW(L"WINTOSH_GUEST_PREFIX", nullptr);
+				throw std::runtime_error("readlink did not preserve the Darwin namespace");
+			}
+		}
+		char guest_resolved_path[4096]{};
+		if (darling_windows_realpath("/Users/Default/Library/Caches/mapping.txt",
+			guest_resolved_path) == nullptr ||
+			std::string(guest_resolved_path) != "/Users/Default/Library/Caches/mapping.txt") {
+			SetEnvironmentVariableW(L"WINTOSH_GUEST_PREFIX", nullptr);
+			throw std::runtime_error("realpath did not preserve the Darwin namespace");
+		}
+		SetEnvironmentVariableW(L"WINTOSH_GUEST_PREFIX", nullptr);
+		std::filesystem::remove_all(guest_prefix);
+		std::cout << "DARWIN_PREFIX_PATH_MAPPING=PASS\n";
+		std::cout << "DARWIN_REALPATH_NAMESPACE=PASS\n";
+		std::cout << "DARWIN_READLINK_NAMESPACE=" <<
+			(guest_symlink_created ? "PASS" : "SKIP") << "\n";
 		darling_darwin_stat path_stat{};
 		if (darling_windows_stat(native_path.c_str(), &path_stat) != 0 ||
 			path_stat.st_size != 4 || path_stat.st_mtimespec.tv_sec == 0) {

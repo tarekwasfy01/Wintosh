@@ -677,7 +677,24 @@ Prefix Prefix::Create(const std::wstring& root)
 	EnsureDirectory(prefix / L"private" / L"var" / L"run");
 	EnsureDirectory(prefix / L"private" / L"tmp");
 	EnsureDirectory(prefix / L"usr" / L"local");
+	EnsureDirectory(prefix / L"usr" / L"lib");
+	EnsureDirectory(prefix / L"System" / L"Library" / L"Frameworks");
+	EnsureDirectory(prefix / L"Library" / L"Application Support");
+	EnsureDirectory(prefix / L"Library" / L"Caches");
+	EnsureDirectory(prefix / L"Library" / L"Frameworks");
+	EnsureDirectory(prefix / L"Library" / L"Logs");
 	EnsureDirectory(prefix / L"Library" / L"Preferences");
+	EnsureDirectory(prefix / L"Library" / L"Saved Application State");
+	// The relocatable user domain is intentionally inside the prefix.  It
+	// avoids leaking Darwin paths into the host profile while preserving the
+	// conventional ~/Library shape for callers that opt into this domain.
+	const auto user_library = prefix / L"Users" / L"Default" / L"Library";
+	EnsureDirectory(user_library / L"Application Support");
+	EnsureDirectory(user_library / L"Caches");
+	EnsureDirectory(user_library / L"Logs");
+	EnsureDirectory(user_library / L"Preferences");
+	EnsureDirectory(user_library / L"Saved Application State");
+	EnsureDirectory(user_library / L"Containers");
 	return Prefix(prefix.lexically_normal().wstring());
 }
 

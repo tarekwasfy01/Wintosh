@@ -5,6 +5,7 @@
 
 #include "darling_windows_runtime.h"
 
+#include <array>
 #include <chrono>
 #include <atomic>
 #include <cstring>
@@ -389,6 +390,31 @@ int wmain()
 		(L"darling-stage1-" + std::to_wstring(GetCurrentProcessId()));
 	const auto prefix = darling::windows_host::Prefix::Create(root.wstring());
 	std::cout << "PREFIX_CREATE=PASS\n";
+	const auto prefix_root = std::filesystem::path(prefix.Root());
+	const auto required_prefix_directories = std::array<std::filesystem::path, 17>{
+		prefix_root / L"private" / L"etc",
+		prefix_root / L"private" / L"var" / L"run",
+		prefix_root / L"private" / L"tmp",
+		prefix_root / L"usr" / L"lib",
+		prefix_root / L"System" / L"Library" / L"Frameworks",
+		prefix_root / L"Library" / L"Application Support",
+		prefix_root / L"Library" / L"Caches",
+		prefix_root / L"Library" / L"Frameworks",
+		prefix_root / L"Library" / L"Logs",
+		prefix_root / L"Library" / L"Preferences",
+		prefix_root / L"Library" / L"Saved Application State",
+		prefix_root / L"Users" / L"Default" / L"Library" / L"Application Support",
+		prefix_root / L"Users" / L"Default" / L"Library" / L"Caches",
+		prefix_root / L"Users" / L"Default" / L"Library" / L"Logs",
+		prefix_root / L"Users" / L"Default" / L"Library" / L"Preferences",
+		prefix_root / L"Users" / L"Default" / L"Library" / L"Saved Application State",
+		prefix_root / L"Users" / L"Default" / L"Library" / L"Containers"};
+	if (std::any_of(required_prefix_directories.begin(), required_prefix_directories.end(),
+			[](const auto& directory) { return !std::filesystem::is_directory(directory); })) {
+		std::cerr << "PREFIX_MACOS_DIRECTORIES=FAIL\n";
+		return 10;
+	}
+	std::cout << "PREFIX_MACOS_DIRECTORIES=PASS\n";
 
 	auto pipe = darling::windows_host::NamedPipeRpcServer::Create(
 		L"darling-stage1-" + std::to_wstring(GetCurrentProcessId()));

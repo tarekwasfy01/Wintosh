@@ -603,10 +603,19 @@ int wmain(int argc, wchar_t** argv)
 				image, "/System/Library/Frameworks/Foundation", {}, root);
 			if (absolute_framework != system_framework)
 				throw std::runtime_error("absolute framework shorthand did not resolve");
+			const auto local_framework = root / "Library" / "Frameworks" /
+				"Local.framework" / "Local";
+			std::filesystem::create_directories(local_framework.parent_path());
+			WriteMachO(local_framework, nullptr, true, false);
+			const auto absolute_local_framework = darling::windows_host::DylibResolver::Resolve(
+				image, "/Library/Frameworks/Local", {}, root);
+			if (absolute_local_framework != local_framework)
+				throw std::runtime_error("local framework shorthand did not resolve");
 		}
 		std::cout << "DYLD_FRAMEWORK_SHORTHAND=PASS\n";
 		std::cout << "DYLD_VERSIONED_FRAMEWORK=PASS\n";
 		std::cout << "DYLD_ABSOLUTE_FRAMEWORK=PASS\n";
+		std::cout << "DYLD_LOCAL_FRAMEWORK=PASS\n";
 		{
 			const auto app_image = darling::windows_host::MachOImage::Open(image.wstring());
 			const auto library_image = darling::windows_host::MachOImage::Open(library.wstring());

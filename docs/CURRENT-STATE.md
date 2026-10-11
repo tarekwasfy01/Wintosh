@@ -34,8 +34,10 @@ Mach-O fixture is now bundled, so `--inspect` and native execution are proven
 for that controlled fixture; arbitrary macOS binaries remain unclaimed.
 
 The runner also provides `--init-prefix <directory>`, which creates the
-minimal Darwin directory layout without downloading or fabricating Apple
-libraries.  The repository-owned x86_64 fixture now proves `--inspect` and
+documented Darwin directory layout (`System/Library/Frameworks`, `usr/lib`,
+and the relevant `Library` data roots) without downloading or fabricating
+Apple libraries. See [MACOS-DIRECTORY-MAP.md](MACOS-DIRECTORY-MAP.md). The
+repository-owned x86_64 fixture now proves `--inspect` and
 native execution; real system dylibs and frameworks are still not bundled.
 
 The runtime-provider fixture now verifies a three-image provider chain:

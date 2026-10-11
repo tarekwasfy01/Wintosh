@@ -36,6 +36,10 @@ The implementation itself is documented at
   out reference tree and its license boundary.
 - [BUILD-AND-TEST.md](BUILD-AND-TEST.md) — reproducible build and smoke-test
   commands with evidence boundaries.
+- [MACOS-DIRECTORY-MAP.md](MACOS-DIRECTORY-MAP.md) — Apple-derived Darwin
+  prefix layout, framework lookup roots, and explicit implementation limits.
+- [PREFERENCES-SUBSET.md](PREFERENCES-SUBSET.md) — prefix-relative preference
+  persistence ABI, storage contract, test gate, and remaining Foundation gaps.
 
 ## Reference-project analysis
 

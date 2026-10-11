@@ -457,6 +457,18 @@ std::filesystem::path Utf8Path(const char* value)
 		return {};
 	}
 	wide.resize(static_cast<std::size_t>(length - 1));
+	// The native runner exposes a relocatable Darwin root for guest absolute
+	// paths. Relative paths intentionally retain the host working-directory
+	// behavior used by the existing POSIX adapter and synthetic fixtures.
+	if (!wide.empty() && wide.front() == L'/') {
+		wchar_t prefix_buffer[32768]{};
+		const DWORD prefix_length = GetEnvironmentVariableW(L"WINTOSH_GUEST_PREFIX",
+			prefix_buffer, static_cast<DWORD>(std::size(prefix_buffer)));
+		if (prefix_length != 0 && prefix_length < std::size(prefix_buffer)) {
+			const std::filesystem::path prefix(prefix_buffer, prefix_buffer + prefix_length);
+			return prefix / std::filesystem::path(wide.substr(1));
+		}
+	}
 	return std::filesystem::path(wide);
 }
 
@@ -2555,7 +2567,18 @@ extern "C" std::int64_t darling_windows_readlink(const char* path, char* buffer,
 			link.SubstituteNameLength / sizeof(wchar_t));
 		const std::wstring normalized = target.rfind(L"\\??\\", 0) == 0 ?
 			target.substr(4) : target;
-		const auto utf8 = Utf8String(normalized);
+		std::wstring guest_target = normalized;
+		wchar_t prefix_buffer[32768]{};
+		const DWORD prefix_length = GetEnvironmentVariableW(L"WINTOSH_GUEST_PREFIX",
+			prefix_buffer, static_cast<DWORD>(std::size(prefix_buffer)));
+		if (prefix_length != 0 && prefix_length < std::size(prefix_buffer)) {
+			const auto prefix = std::filesystem::path(prefix_buffer,
+				prefix_buffer + prefix_length).lexically_normal();
+			const auto relative = std::filesystem::path(normalized).lexically_normal().lexically_relative(prefix);
+			if (!relative.empty() && relative.native().rfind(L"..", 0) != 0)
+				guest_target = (std::filesystem::path(L"/") / relative.generic_string()).wstring();
+		}
+		const auto utf8 = Utf8String(guest_target);
 		if (size != 0) {
 			const auto copied = (std::min)(size, utf8.size());
 			std::memcpy(buffer, utf8.data(), copied);
@@ -4242,9 +4265,23 @@ extern "C" char* darling_windows_realpath(const char* path, char* resolved)
 		if (wide_path.empty()) {
 			return nullptr;
 		}
+		auto GuestResultPath = [](const std::filesystem::path& host_path) {
+			wchar_t prefix_buffer[32768]{};
+			const DWORD prefix_length = GetEnvironmentVariableW(L"WINTOSH_GUEST_PREFIX",
+				prefix_buffer, static_cast<DWORD>(std::size(prefix_buffer)));
+			if (prefix_length == 0 || prefix_length >= std::size(prefix_buffer))
+				return host_path;
+			const auto prefix = std::filesystem::path(prefix_buffer,
+				prefix_buffer + prefix_length).lexically_normal();
+			const auto normalized = host_path.lexically_normal();
+			const auto relative = normalized.lexically_relative(prefix);
+			if (relative.empty() || relative.native().rfind(L"..", 0) == 0)
+				return host_path;
+			return std::filesystem::path(L"/") / relative.generic_string();
+		};
 		auto fallback_absolute = [&]() -> char* {
 			const auto absolute = std::filesystem::absolute(wide_path).lexically_normal();
-			const auto utf8_result = Utf8String(absolute.wstring());
+			const auto utf8_result = Utf8String(GuestResultPath(absolute).wstring());
 			if (utf8_result.empty())
 				return static_cast<char*>(nullptr);
 			std::memcpy(resolved, utf8_result.c_str(), utf8_result.size() + 1);
@@ -4277,7 +4314,7 @@ extern "C" char* darling_windows_realpath(const char* path, char* resolved)
 		} else if (normalized.rfind(L"\\\\?\\", 0) == 0) {
 			normalized.erase(0, 4);
 		}
-		const auto utf8_result = Utf8String(normalized);
+		const auto utf8_result = Utf8String(GuestResultPath(normalized).wstring());
 		if (utf8_result.empty()) {
 			return nullptr;
 		}

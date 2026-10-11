@@ -8176,7 +8176,7 @@ extern "C" int darling_windows_strncasecmp(const char* left, const char* right,
 
 extern "C" char* darling_windows_strcpy(char* destination, const char* source)
 {
-	return std::strcpy(destination, source);
+	return destination != nullptr && source != nullptr ? std::strcpy(destination, source) : nullptr;
 }
 
 extern "C" char* darling_windows_strncpy(char* destination, const char* source,
@@ -8187,7 +8187,7 @@ extern "C" char* darling_windows_strncpy(char* destination, const char* source,
 
 extern "C" char* darling_windows_strcat(char* destination, const char* source)
 {
-	return std::strcat(destination, source);
+	return destination != nullptr && source != nullptr ? std::strcat(destination, source) : nullptr;
 }
 
 extern "C" char* darling_windows_strncat(char* destination, const char* source,

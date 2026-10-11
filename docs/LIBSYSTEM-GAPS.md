@@ -39,6 +39,8 @@ following families with Windows-backed implementations:
   entering the CRT, while preserving bounded-copy return lengths for valid input;
 - `strcasecmp` and `strncasecmp` now use the same null-safe ordering as the
   bridge's `strcmp` implementation;
+- `strcpy` and `strcat` now reject null source/destination pointers without
+  entering the CRT;
 - BSD/Darwin reverse byte search `memrchr` is now Windows-backed and
   host-symbol-resolvable, including bounded reverse scanning;
 - BSD/Darwin first-set-bit primitive `ffs` is now Windows-backed and

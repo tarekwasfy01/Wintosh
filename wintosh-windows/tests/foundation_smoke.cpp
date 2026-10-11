@@ -10,6 +10,8 @@ int main()
 	const auto second = darling_windows_NSMakeRange(8, 8);
 	const auto intersection = darling_windows_NSIntersectionRange(first, second);
 	const auto united = darling_windows_NSUnionRange(first, second);
+	const auto offset = darling_windows_NSOffsetRange(first, -2);
+	const auto inset = darling_windows_NSInsetRange(first, 2);
 	if (darling_windows_NSMaxRange(first) != 10 ||
 		!darling_windows_NSEqualRanges(first, darling_windows_NSMakeRange(4, 6)) ||
 		darling_windows_NSEqualRanges(first, second) ||
@@ -18,6 +20,10 @@ int main()
 		intersection.location != 8 || intersection.length != 2 ||
 		united.location != 4 || united.length != 12) {
 		std::cerr << "FOUNDATION_NS_RANGE=FAIL\n";
+		return 1;
+	}
+	if (offset.location != 2 || offset.length != 6 || inset.location != 6 || inset.length != 2) {
+		std::cerr << "FOUNDATION_NS_RANGE_TRANSFORM=FAIL\n";
 		return 1;
 	}
 	std::size_t size = 0;

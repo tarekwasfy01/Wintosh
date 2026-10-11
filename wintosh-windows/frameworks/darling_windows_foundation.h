@@ -19,6 +19,10 @@ extern "C" darling_windows_NSRange darling_windows_NSIntersectionRange(
 	darling_windows_NSRange left, darling_windows_NSRange right);
 extern "C" darling_windows_NSRange darling_windows_NSUnionRange(
 	darling_windows_NSRange left, darling_windows_NSRange right);
+extern "C" darling_windows_NSRange darling_windows_NSOffsetRange(
+	darling_windows_NSRange range, std::ptrdiff_t offset);
+extern "C" darling_windows_NSRange darling_windows_NSInsetRange(
+	darling_windows_NSRange range, std::size_t inset);
 
 extern "C" const char* darling_windows_NSGetSizeAndAlignment(
 	const char* type, std::size_t* size, std::size_t* alignment);

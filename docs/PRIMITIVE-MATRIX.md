@@ -751,6 +751,9 @@ The dyld smoke now launches the real `wintosh.exe` with only the temporary
 provider directory in `DYLD_LIBRARY_PATH`; `DYLD_CLI_LIBRARY_PATH=PASS`
 confirms the CLI-to-resolver-to-entry path.
 
+The Foundation range family now also covers `NSOffsetRange` and
+`NSInsetRange`, including negative offsets, saturation, and inset validation.
+
 The current local Release verification snapshot is `46/46` CTest tests
 passing. The added `wintosh_indirect_call_smoke` reports
 `INDIRECT_CALL_ABI=PASS` for a native Windows x64 executable-memory indirect

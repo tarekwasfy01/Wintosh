@@ -81,6 +81,26 @@ extern "C" darling_windows_NSRange darling_windows_NSUnionRange(
 	return { start, end >= start ? end - start : 0 };
 }
 
+extern "C" darling_windows_NSRange darling_windows_NSOffsetRange(
+	darling_windows_NSRange range, std::ptrdiff_t offset)
+{
+	if (offset >= 0) {
+		const auto amount = static_cast<std::size_t>(offset);
+		if (range.location > (std::numeric_limits<std::size_t>::max)() - amount)
+			return { (std::numeric_limits<std::size_t>::max)(), 0 };
+		return { range.location + amount, range.length };
+	}
+	const auto amount = static_cast<std::size_t>(-(offset + 1)) + 1;
+	return { amount > range.location ? 0 : range.location - amount, range.length };
+}
+
+extern "C" darling_windows_NSRange darling_windows_NSInsetRange(
+	darling_windows_NSRange range, std::size_t inset)
+{
+	if (inset > range.length / 2) return { range.location + range.length / 2, 0 };
+	return { range.location + inset, range.length - inset * 2 };
+}
+
 extern "C" const char* darling_windows_NSGetSizeAndAlignment(
 	const char* type, std::size_t* size, std::size_t* alignment)
 {

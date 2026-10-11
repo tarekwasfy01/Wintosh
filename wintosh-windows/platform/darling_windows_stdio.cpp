@@ -8222,7 +8222,7 @@ extern "C" const char* darling_windows_strrchr(const char* value, int character)
 
 extern "C" const char* darling_windows_strstr(const char* value, const char* search)
 {
-	return std::strstr(value, search);
+	return value != nullptr && search != nullptr ? std::strstr(value, search) : nullptr;
 }
 
 extern "C" const char* darling_windows_strnstr(const char* value, const char* search,
@@ -8241,6 +8241,7 @@ extern "C" const char* darling_windows_strnstr(const char* value, const char* se
 
 extern "C" const char* darling_windows_strcasestr(const char* value, const char* search)
 {
+	if (value == nullptr || search == nullptr) return nullptr;
 	if (*search == '\0') return value;
 	for (; *value != '\0'; ++value) {
 		const char* left = value;

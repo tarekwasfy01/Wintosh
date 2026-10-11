@@ -25,6 +25,8 @@ following families with Windows-backed implementations:
   delimiter fields, are now Windows-backed and host-symbol-resolvable;
 - BSD/Darwin bounded substring search `strnstr` is now Windows-backed and
   host-symbol-resolvable, including limit enforcement and empty-needle behavior;
+- `strstr` and `strcasestr` now reject null inputs without dereferencing them,
+  matching the bridge's fail-closed host behavior;
 - BSD/Darwin reverse byte search `memrchr` is now Windows-backed and
   host-symbol-resolvable, including bounded reverse scanning;
 - BSD/Darwin first-set-bit primitive `ffs` is now Windows-backed and

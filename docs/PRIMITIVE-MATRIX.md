@@ -563,6 +563,10 @@ The termination path now snapshots the child's thread IDs before exit and
 removes their thread-level exception registrations as well, preventing stale
 per-thread owners. Global port objects and unrelated namespaces still require
 the future task-port lifecycle model.
+The x64 Mach smoke now consumes every returned `task_threads` entry through
+`thread_get_state` before deallocation, proving the enumeration-to-thread-state
+chain for the current task. This still does not create durable Mach thread-port
+objects.
 Task-level `task_set_exception_ports` and `task_get_exception_ports` now reuse
 the existing owner-keyed exception registry, so task and thread registrations
 have identical mask/filter behavior. Delivery is still only wired through the

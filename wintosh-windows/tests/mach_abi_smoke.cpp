@@ -39,6 +39,17 @@ int main()
 	std::uint32_t task_thread_count = 0;
 	if (darling_windows_task_threads(task, &task_threads, &task_thread_count) != 0 ||
 		task_threads == nullptr || task_thread_count == 0 ||
+		[&]() {
+			for (std::uint32_t index = 0; index < task_thread_count; ++index) {
+				darling_x86_thread_state64 enumerated_state{};
+				std::uint32_t enumerated_count = darling_x86_thread_state64_count;
+				if (darling_windows_thread_get_state(task_threads[index],
+					darling_x86_thread_state64_flavor, &enumerated_state,
+					&enumerated_count) != 0 || enumerated_count != darling_x86_thread_state64_count)
+					return false;
+			}
+			return true;
+		}() == false ||
 		darling_windows_mach_vm_deallocate(task,
 			reinterpret_cast<darling_mach_vm_address_t>(task_threads),
 			task_thread_count * sizeof(*task_threads)) != 0)

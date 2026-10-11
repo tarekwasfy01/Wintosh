@@ -93,7 +93,19 @@ int main() {
     const bool effective_ok = effective && darling_windows_preferences_get_string(effective, "Policy", effective_policy, sizeof effective_policy) &&
         std::string(effective_policy) == "enforced" && !darling_windows_preferences_set_string(effective, "Policy", "changed");
     darling_windows_preferences_close(effective);
+    const auto recovery_path = root / "Users" / "Default" / "Library" / "Preferences" / "com.wintosh.recovery.plist";
+    std::filesystem::create_directories(recovery_path.parent_path(), ec);
+    std::ofstream recovery_tmp(recovery_path.wstring() + L".tmp");
+    recovery_tmp << "<plist><dict><key>Recovered</key><string>yes</string></dict></plist>";
+    recovery_tmp.close();
+    std::filesystem::remove(recovery_path, ec);
+    auto recovery = darling_windows_preferences_open("com.wintosh.recovery");
+    char recovered_value[16]{};
+    const bool recovery_ok = recovery && darling_windows_preferences_get_string(recovery, "Recovered", recovered_value, sizeof recovered_value) &&
+        std::string(recovered_value) == "yes";
+    darling_windows_preferences_close(recovery);
     std::cout << "DARWIN_PREFERENCES_MANAGED=" << (managed_ok ? "PASS" : "FAIL") << "\n";
     std::cout << "DARWIN_PREFERENCES_EFFECTIVE=" << (application_policy_ok && effective_ok ? "PASS" : "FAIL") << "\n";
-    return ok && path_ok && initial_poll && queue_drained && external_write && external_queue && external_wait && notifications_ok && suite_ok && registration_ok && registration_types_ok && arguments_ok && arguments_read_only && managed_ok && application_policy_ok && effective_ok ? 0 : 1;
+    std::cout << "DARWIN_PREFERENCES_RECOVERY=" << (recovery_ok ? "PASS" : "FAIL") << "\n";
+    return ok && path_ok && initial_poll && queue_drained && external_write && external_queue && external_wait && notifications_ok && suite_ok && registration_ok && registration_types_ok && arguments_ok && arguments_read_only && managed_ok && application_policy_ok && effective_ok && recovery_ok ? 0 : 1;
 }

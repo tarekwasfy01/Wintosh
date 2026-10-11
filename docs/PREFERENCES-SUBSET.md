@@ -59,8 +59,13 @@ adapter rather than the complete Darwin notification-center ABI: payload
 values, crash-proof transaction journals, and cross-machine delivery remain
 outside this subset.
 
+If the process is interrupted after the temporary plist is flushed but before
+the destination is replaced, opening the domain can recover the `.tmp` content.
+Normal replacement uses `MoveFileExW` with `MOVEFILE_WRITE_THROUGH`; the smoke
+fixture exercises the orphaned-temporary-file recovery path.
+
 This does not yet implement argument-domain mutation/removal, crash-proof
-notification transactions, or callback-safe reentrancy,
+multi-file notification transactions, or callback-safe reentrancy,
 defaults notification delivery, managed preferences, binary-plist output, or
 the Objective-C `NSUserDefaults` class ABI. Those remain separate work items.
 

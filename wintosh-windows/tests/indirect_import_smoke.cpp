@@ -154,12 +154,12 @@ int wmain()
 		const auto mapping = image.MapSegments();
 		const std::uintptr_t target = 0x123456789abcdef0ull;
 		image.ApplyIndirectImportBindings(mapping, {{"_probe", target}});
-		const auto slot_address = static_cast<std::intptr_t>(slots.front()) + mapping.Slide();
+		const auto slot_address = static_cast<std::intptr_t>(slots.front().address) + mapping.Slide();
 		const auto bound_value = *reinterpret_cast<const std::uintptr_t*>(slot_address);
-		const auto weak_slot_address = static_cast<std::intptr_t>(slots.back()) + mapping.Slide();
+		const auto weak_slot_address = static_cast<std::intptr_t>(slots.back().address) + mapping.Slide();
 		const auto weak_value = *reinterpret_cast<const std::uintptr_t*>(weak_slot_address);
 		const bool ok = indirect.size() == 2 && indirect.front() == 0 && indirect.back() == 1 &&
-			slots.size() == 2 && slots.front() == 0x1100 && slots.back() == 0x1108 &&
+			slots.size() == 2 && slots.front().address == 0x1100 && slots.back().address == 0x1108 &&
 			bound_value == target &&
 			weak_value == 0 && image.UndefinedSymbols().size() == 2 &&
 			image.UndefinedSymbols().front().name == "_probe";

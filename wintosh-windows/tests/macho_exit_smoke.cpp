@@ -67,10 +67,10 @@ void WriteExitMachO(const std::filesystem::path& path)
 	const auto dyld_info_offset = dysymtab_offset + sizeof(dysymtab);
 	DyldInfoCommand dyld_info{};
 	dyld_info.header = {LC_DYLD_INFO, static_cast<std::uint32_t>(sizeof(dyld_info))};
-	dyld_info.lazy_binding_offset = 0x300;
+	dyld_info.binding_offset = 0x300;
 	const std::uint8_t bind_stream[] = {
 		0x11, 0x40, '_', 'e', 'x', 'i', 't', 0, 0x51, 0x70, 0x40, 0x90, 0x00};
-	dyld_info.lazy_binding_size = sizeof(bind_stream);
+	dyld_info.binding_size = sizeof(bind_stream);
 	std::memcpy(data.data() + dyld_info_offset, &dyld_info, sizeof(dyld_info));
 	std::memcpy(data.data() + dyld_info.binding_offset, bind_stream, sizeof(bind_stream));
 
@@ -159,12 +159,12 @@ void WritePrintfMachO(const std::filesystem::path& path)
 	const auto dyld_info_offset = dysymtab_offset + sizeof(dysymtab);
 	DyldInfoCommand dyld_info{};
 	dyld_info.header = {LC_DYLD_INFO, static_cast<std::uint32_t>(sizeof(dyld_info))};
-	dyld_info.binding_offset = 0x300;
+	dyld_info.lazy_binding_offset = 0x300;
 	const std::uint8_t bind_stream[] = {
 		0x11, 0x40, '_', 'p', 'r', 'i', 'n', 't', 'f', 0, 0x51, 0x70, 0x40, 0x90, 0x00};
-	dyld_info.binding_size = sizeof(bind_stream);
+	dyld_info.lazy_binding_size = sizeof(bind_stream);
 	std::memcpy(data.data() + dyld_info_offset, &dyld_info, sizeof(dyld_info));
-	std::memcpy(data.data() + dyld_info.binding_offset, bind_stream, sizeof(bind_stream));
+	std::memcpy(data.data() + dyld_info.lazy_binding_offset, bind_stream, sizeof(bind_stream));
 
 	NList64 symbol{};
 	symbol.name_offset = 1;

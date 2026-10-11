@@ -959,6 +959,17 @@ int main()
 		std::cerr << "HOST_API_SMOKE_ERROR=gethostbyname\n";
 		return 1;
 	}
+	const auto* hostent_v4 = darling_windows_gethostbyname2("127.0.0.1", AF_INET);
+	const auto* hostent_v6 = darling_windows_gethostbyname2("::1", AF_INET6);
+	const bool hostent_family_ok = hostent_v4 != nullptr && hostent_v4->h_addrtype == AF_INET &&
+		hostent_v4->h_addr_list != nullptr &&
+		(hostent_v6 == nullptr || hostent_v6->h_addrtype == AF_INET6) &&
+		darling_windows_gethostbyname2("127.0.0.1", 9999) == nullptr &&
+		darling_windows_host_symbol("gethostbyname2") != 0;
+	if (!hostent_family_ok) {
+		std::cerr << "HOST_API_SMOKE_ERROR=gethostbyname2\n";
+		return 1;
+	}
 	IN_ADDR reverse_address{};
 	reverse_address.S_un.S_addr = htonl(0x7f000001u);
 	const auto* reverse_entry = darling_windows_gethostbyaddr(&reverse_address,

@@ -1659,6 +1659,56 @@ extern "C" hostent* darling_windows_gethostbyname(const char* name)
 	return ::gethostbyname(name);
 }
 
+extern "C" hostent* darling_windows_gethostbyname2(const char* name, int address_family)
+{
+	if (name == nullptr || name[0] == '\0' ||
+		(address_family != AF_INET && address_family != AF_INET6)) {
+		darling::windows_host::DarwinErrno::Set(22);
+		return nullptr;
+	}
+	static std::once_flag winsock_once;
+	static int winsock_status = 0;
+	std::call_once(winsock_once, [] {
+		WSADATA data{};
+		winsock_status = WSAStartup(MAKEWORD(2, 2), &data);
+	});
+	if (winsock_status != 0) {
+		darling::windows_host::DarwinErrno::SetFromWin32(winsock_status);
+		return nullptr;
+	}
+	if (address_family == AF_INET)
+		return ::gethostbyname(name);
+	struct LegacyHostentStorage {
+		hostent value{};
+		char name[NI_MAXHOST]{};
+		char* aliases[1]{};
+		char* addresses[2]{};
+		sockaddr_storage address{};
+	};
+	static thread_local LegacyHostentStorage storage;
+	addrinfo hints{};
+	hints.ai_family = address_family;
+	addrinfo* result = nullptr;
+	const int error = ::getaddrinfo(name, nullptr, &hints, &result);
+	if (error != 0 || result == nullptr) return nullptr;
+	const auto* selected = result;
+	std::memset(&storage, 0, sizeof(storage));
+	std::memcpy(&storage.address, selected->ai_addr,
+		std::min<std::size_t>(selected->ai_addrlen, sizeof(storage.address)));
+	if (selected->ai_canonname != nullptr)
+		std::strncpy(storage.name, selected->ai_canonname, sizeof(storage.name) - 1);
+	else
+		std::strncpy(storage.name, name, sizeof(storage.name) - 1);
+	storage.value.h_name = storage.name;
+	storage.value.h_aliases = storage.aliases;
+	storage.value.h_addrtype = address_family;
+	storage.value.h_length = address_family == AF_INET ? sizeof(IN_ADDR) : sizeof(IN6_ADDR);
+	storage.addresses[0] = reinterpret_cast<char*>(&storage.address);
+	storage.value.h_addr_list = storage.addresses;
+	::freeaddrinfo(result);
+	return &storage.value;
+}
+
 extern "C" hostent* darling_windows_gethostbyaddr(const void* address, int length, int type)
 {
 	if (address == nullptr || length <= 0) {
@@ -4948,6 +4998,9 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 	}
 	if (std::strcmp(name, "_gethostbyname") == 0 || std::strcmp(name, "gethostbyname") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_gethostbyname);
+	}
+	if (std::strcmp(name, "_gethostbyname2") == 0 || std::strcmp(name, "gethostbyname2") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_gethostbyname2);
 	}
 	if (std::strcmp(name, "_gethostbyaddr") == 0 || std::strcmp(name, "gethostbyaddr") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_gethostbyaddr);

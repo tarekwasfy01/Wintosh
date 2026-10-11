@@ -830,6 +830,9 @@ Legacy text conversion is also available through `inet_ntoa` and
 `inet_ntoa_r`; broader historical formatting quirks remain open.
 The legacy `gethostbyname` entry point is also bridged; resolver-global
 thread-safety and the remaining historical hostent variants remain open.
+`gethostbyname2` now covers AF_INET and AF_INET6 through a thread-local
+`hostent` view; the returned structure is valid only until the next call on
+the same thread.
 The reverse `gethostbyaddr` ABI and invalid-input path are covered for IPv4;
 successful PTR resolution remains environment-dependent, while IPv6-specific
 and fully reentrant hostent variants remain open.

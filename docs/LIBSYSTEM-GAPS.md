@@ -69,6 +69,8 @@ following families with Windows-backed implementations:
   including bounded output failure handling for the reentrant form.
 - The legacy `gethostbyname` resolver entry point now delegates to the native
   Windows host resolver with null-input rejection and host-symbol coverage.
+- `gethostbyname2` now presents a thread-local Darwin-compatible `hostent`
+  view for AF_INET and AF_INET6 using the native `getaddrinfo` backend.
 - The reverse legacy lookup `gethostbyaddr` is also bridged with input
   validation and IPv4 hostent ABI coverage; successful reverse DNS remains
   environment-dependent and is not claimed by the smoke test.

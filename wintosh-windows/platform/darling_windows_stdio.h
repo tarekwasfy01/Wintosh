@@ -207,6 +207,7 @@ extern "C" int darling_windows_getaddrinfo(const char* node, const char* service
 	const darling_addrinfo* hints, darling_addrinfo** result);
 extern "C" void darling_windows_freeaddrinfo(darling_addrinfo* result);
 extern "C" hostent* darling_windows_gethostbyname(const char* name);
+extern "C" hostent* darling_windows_gethostbyname2(const char* name, int address_family);
 extern "C" hostent* darling_windows_gethostbyaddr(const void* address, int length, int type);
 extern "C" servent* darling_windows_getservbyname(const char* name, const char* protocol);
 extern "C" servent* darling_windows_getservbyport(int port, const char* protocol);

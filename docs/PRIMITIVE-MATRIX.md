@@ -641,6 +641,9 @@ description, not a Windows kernel handle or a transferable Darwin right.
 The smoke test also covers copying a managed task send right into an allocated
 local receive port through `mach_port_insert_right`; the local port then
 reports the expected send reference before cleanup.
+Local `MACH_MSG_TYPE_COPY_SEND` descriptors now increment the transferred
+send-right reference after successful queueing; the Mach smoke verifies that a
+source with one send reference reports two until the namespace is destroyed.
 Thread lifecycle cleanup now also removes adapter suspend counters for every
 thread discovered during task termination, and `thread_info(BASIC)` reports
 the tracked suspend count instead of always returning zero. The scheduler and

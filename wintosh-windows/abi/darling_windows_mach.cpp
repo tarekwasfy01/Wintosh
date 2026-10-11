@@ -2345,7 +2345,12 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 				goto mach_msg_send_complete;
 			const auto* descriptors = reinterpret_cast<const darling_mach_msg_port_descriptor*>(body + 1);
 			for (std::uint32_t index = 0; index < body->msgh_descriptor_count; ++index) {
-				if (descriptors[index].disposition == darling_mach_copy_receive) {
+				if (descriptors[index].disposition == darling_mach_copy_send) {
+					// COPY_SEND creates an additional receiver-held send right;
+					// the sender's right remains in place.
+					(void)darling_windows_mach_port_mod_refs(darling_windows_mach_task_self(),
+						descriptors[index].name, darling_mach_port_type_send, 1);
+				} else if (descriptors[index].disposition == darling_mach_copy_receive) {
 					(void)darling_windows_mach_port_mod_refs(darling_windows_mach_task_self(),
 						descriptors[index].name, darling_mach_port_type_receive, 1);
 				} else if (descriptors[index].disposition == darling_mach_make_send ||

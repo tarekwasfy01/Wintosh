@@ -840,7 +840,8 @@ literal and bracket-class comparisons; locale-specific collation remains open.
 backslash path separators are supported when `FNM_NOESCAPE` is set. UNC- and
 device-path-specific leading-directory semantics remain open.
 ASCII POSIX bracket classes `digit`, `alpha`, `alnum`, `lower`, `upper`,
-`xdigit`, and `space` are now recognized in `[[:class:]]` expressions.
+`xdigit`, `blank`, `space`, `cntrl`, `graph`, `print`, and `punct` are now
+recognized in `[[:class:]]` expressions.
 The path-string family also includes `basename` and `dirname` for common
 slash-separated, backslash-separated, and drive-letter cases; UNC/device-path
 edge semantics remain open.

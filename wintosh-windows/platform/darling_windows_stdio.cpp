@@ -8883,8 +8883,16 @@ bool DarlingFnmatchClass(const char*& pattern, char value, int flags)
 			else if (class_name == "xdigit") class_match =
 				(value >= '0' && value <= '9') || (value >= 'a' && value <= 'f') ||
 				(value >= 'A' && value <= 'F');
+			else if (class_name == "blank") class_match = value == ' ' || value == '\t';
 			else if (class_name == "space") class_match = value == ' ' || value == '\t' ||
 				value == '\n' || value == '\r' || value == '\f' || value == '\v';
+			else if (class_name == "cntrl") class_match =
+				(value >= 0 && value <= 31) || value == 127;
+			else if (class_name == "graph") class_match = value >= 33 && value <= 126;
+			else if (class_name == "print") class_match = value >= 32 && value <= 126;
+			else if (class_name == "punct") class_match =
+				(value >= 33 && value <= 47) || (value >= 58 && value <= 64) ||
+				(value >= 91 && value <= 96) || (value >= 123 && value <= 126);
 			pattern = class_end + 3;
 			return inverted ? !class_match : class_match;
 		}

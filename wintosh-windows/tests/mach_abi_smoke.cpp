@@ -228,6 +228,17 @@ int main()
 				darling_windows_mach_port_get_refs(darling_windows_mach_task_self(), value,
 					darling_mach_port_type_send, &refs) == 0 && refs == 1;
 		}(released_task) &&
+		[task] (darling_mach_port_name_t value) {
+			darling_mach_port_name_t local_port = 0;
+			std::uint32_t refs = 0;
+			const bool inserted = darling_windows_mach_port_allocate(task, &local_port) == 0 &&
+				darling_windows_mach_port_insert_right(task, local_port, value,
+					darling_mach_copy_send) == 0 &&
+				darling_windows_mach_port_get_refs(task, local_port,
+					darling_mach_port_type_send, &refs) == 0 && refs == 1;
+			if (local_port != 0) (void)darling_windows_mach_port_destroy(task, local_port);
+			return inserted;
+		}(released_task) &&
 		darling_windows_mach_port_deallocate(task, released_task) == 0;
 	darling_task_basic_info released_info{};
 	std::uint32_t released_info_count = darling_task_basic_info_count;

@@ -732,6 +732,13 @@ extern "C" darling_windows_CFStringRef darling_windows_CFStringCreateCopy(
 	return darling_windows_CFStringCreateWithCString(object->string.c_str());
 }
 
+extern "C" darling_windows_CFStringRef darling_windows_CFStringCreateMutableCopy(
+	darling_windows_CFStringRef value, darling_windows_CFIndex capacity)
+{
+	(void)capacity;
+	return darling_windows_CFStringCreateCopy(value);
+}
+
 extern "C" darling_windows_CFStringRef darling_windows_CFStringCreateWithSubstring(
 	darling_windows_CFStringRef value, darling_windows_CFRange range)
 {

@@ -54,6 +54,7 @@ int main()
 	std::cout << "COREFOUNDATION_RANGE_OVERFLOW=PASS\n";
 	const auto string = darling_windows_CFStringCreateWithCString("Wintosh");
 	const auto string_copy = darling_windows_CFStringCreateCopy(string);
+	const auto mutable_copy = darling_windows_CFStringCreateMutableCopy(string, 64);
 	const unsigned char formatted_input_bytes[] = {'B', 'y', 't', 'e', 's'};
 	const auto bytes_string = darling_windows_CFStringCreateWithBytes(formatted_input_bytes, 5, 1, false);
 	const std::uint8_t pascal_input[] = {6, 'W', 'i', 'n', 't', 'o', 's', 'h'};
@@ -97,7 +98,7 @@ int main()
 		darling_windows_CFStringGetDoubleValue(invalid_number_string) == 0.0;
 	const bool system_encoding_ok = darling_windows_CFStringGetSystemEncoding() == 1;
 	char buffer[32]{};
-	const bool string_ok = string != nullptr && string_copy != nullptr && bytes_string != nullptr &&
+	const bool string_ok = string != nullptr && string_copy != nullptr && mutable_copy != nullptr && bytes_string != nullptr &&
 		pascal_string != nullptr && darling_windows_CFStringGetLength(pascal_string) == 6 &&
 		darling_windows_CFEqual(string, string_copy) &&
 		darling_windows_CFStringGetLength(string) == 7 &&

@@ -86,6 +86,10 @@ and aligned context layouts on x64 and Win32; the context field is serialized
 at its Darwin-compatible 8-byte-aligned offset. Broker PID/TID fields are
 Windows host metadata, while complete Darwin credentials and peek error parity
 remain open.
+The regular broker-backed `mach_msg` receive path still appends trailers in the
+client ABI after transport; a focused x64 follow-up exposed an unresolved
+interaction with the subsequent port-descriptor receive sequence, so full
+receive-trailer plus descriptor/OOL ordering is not yet marked verified.
 `MACH_RCV_LARGE` and `MACH_RCV_LARGE_IDENTITY` are now accepted at the option
 boundary and retain the queue-preserving Too-Large behavior; Darwin's complete
 large-message identity payload remains open.

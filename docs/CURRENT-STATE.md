@@ -75,6 +75,12 @@ includes surrounding whitespace and an attribute on the `<string>` tag,
 covering these common plist formatting variants without claiming to be a
 complete property-list parser.
 
+The runner also reads the common `bplist00` binary format for the
+`CFBundleExecutable` string (ASCII and basic UTF-16 strings) and retains the
+directory-name fallback for unsupported or malformed plists.  The runner
+smoke covers both the formatted XML path and a binary-plist bundle path; this
+is intentionally a focused key reader, not a general Foundation plist API.
+
 The dyld resolver now also checks `Contents/Frameworks` and `Contents/PlugIns`
 as scoped fallbacks for `@rpath/...` dependencies of a bundle executable when
 the image has no explicit `LC_RPATH`.  The dyld smoke fixture proves the

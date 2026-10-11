@@ -18,6 +18,7 @@
 #include <fstream>
 #include <iostream>
 #include <limits>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -25,6 +26,81 @@
 #include <vector>
 
 namespace {
+
+std::uint64_t ReadBigEndian(const std::vector<std::uint8_t>& bytes,
+	std::size_t offset, std::size_t width)
+{
+	if (width == 0 || width > sizeof(std::uint64_t) || offset > bytes.size() ||
+		width > bytes.size() - offset)
+		throw std::runtime_error("invalid binary plist integer");
+	std::uint64_t value = 0;
+	for (std::size_t index = 0; index < width; ++index)
+		value = (value << 8) | bytes[offset + index];
+	return value;
+}
+
+std::optional<std::string> BinaryPlistExecutable(const std::vector<std::uint8_t>& bytes)
+{
+	if (bytes.size() < 40 || std::string(bytes.begin(), bytes.begin() + 8) != "bplist00")
+		return std::nullopt;
+	const auto offset_size = bytes[6];
+	const auto reference_size = bytes[7];
+	const auto object_count = ReadBigEndian(bytes, bytes.size() - 32, 8);
+	const auto top_object = ReadBigEndian(bytes, bytes.size() - 24, 8);
+	const auto offset_table = ReadBigEndian(bytes, bytes.size() - 8, 8);
+	if (offset_size == 0 || reference_size == 0 || object_count == 0 ||
+		top_object >= object_count || offset_table >= bytes.size() ||
+		object_count > (bytes.size() - offset_table) / offset_size)
+		return std::nullopt;
+	auto object_offset = [&](std::uint64_t index) {
+		return ReadBigEndian(bytes, static_cast<std::size_t>(offset_table + index * offset_size),
+			offset_size);
+	};
+	auto object_string = [&](std::uint64_t index) -> std::optional<std::string> {
+		const auto offset = object_offset(index);
+		if (offset >= offset_table || offset >= bytes.size()) return std::nullopt;
+		const auto marker = bytes[static_cast<std::size_t>(offset)];
+		const auto type = marker >> 4;
+		std::uint64_t count = marker & 0x0f;
+		std::size_t cursor = static_cast<std::size_t>(offset + 1);
+		if (count == 0x0f) {
+			if (cursor >= bytes.size() || bytes[cursor] >> 4 != 0x1) return std::nullopt;
+			const auto width = std::size_t(1) << (bytes[cursor] & 0x0f);
+			count = ReadBigEndian(bytes, cursor + 1, width);
+			cursor += 1 + width;
+		}
+		if (type == 0x5 && count <= bytes.size() - cursor)
+			return std::string(reinterpret_cast<const char*>(bytes.data() + cursor),
+				static_cast<std::size_t>(count));
+		if (type == 0x6 && count <= (bytes.size() - cursor) / 2) {
+			std::string result;
+			result.reserve(static_cast<std::size_t>(count));
+			for (std::uint64_t index = 0; index < count; ++index) {
+				const auto code = ReadBigEndian(bytes, cursor + index * 2, 2);
+				if (code > 0x7f) return std::nullopt;
+				result.push_back(static_cast<char>(code));
+			}
+			return result;
+		}
+		return std::nullopt;
+	};
+	const auto root_offset = object_offset(top_object);
+	if (root_offset >= bytes.size() || (bytes[static_cast<std::size_t>(root_offset)] >> 4) != 0xd)
+		return std::nullopt;
+	const auto root_marker = bytes[static_cast<std::size_t>(root_offset)];
+	const auto pair_count = std::uint64_t(root_marker & 0x0f);
+	const auto refs = static_cast<std::size_t>(root_offset + 1);
+	if (pair_count > (bytes.size() - refs) / (2 * reference_size)) return std::nullopt;
+	for (std::uint64_t index = 0; index < pair_count; ++index) {
+		const auto key = ReadBigEndian(bytes, refs + static_cast<std::size_t>(index * reference_size),
+			reference_size);
+		const auto value = ReadBigEndian(bytes, refs + static_cast<std::size_t>(
+			(pair_count + index) * reference_size), reference_size);
+		if (object_string(key) == std::optional<std::string>("CFBundleExecutable"))
+			return object_string(value);
+	}
+	return std::nullopt;
+}
 
 std::string Utf8(const wchar_t* value)
 {
@@ -171,7 +247,13 @@ std::filesystem::path ResolveImage(std::filesystem::path image)
 	const auto plist = image / L"Contents" / L"Info.plist";
 	std::ifstream plist_input(plist, std::ios::binary);
 	if (plist_input) {
-		const std::string contents((std::istreambuf_iterator<char>(plist_input)), {});
+		const std::vector<std::uint8_t> bytes((std::istreambuf_iterator<char>(plist_input)), {});
+		if (const auto binary_value = BinaryPlistExecutable(bytes); binary_value.has_value() &&
+			!binary_value->empty() && binary_value->find('/') == std::string::npos &&
+			binary_value->find('\\') == std::string::npos) {
+			executable_name = std::filesystem::path(*binary_value);
+		}
+		const std::string contents(bytes.begin(), bytes.end());
 		const auto key_position = contents.find("CFBundleExecutable");
 		if (key_position != std::string::npos) {
 			const auto string_tag_start = contents.find("<string", key_position);

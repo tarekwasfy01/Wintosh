@@ -74,6 +74,42 @@ void WriteArgcMachO(const std::filesystem::path& path)
 	}
 }
 
+void WriteBinaryExecutablePlist(const std::filesystem::path& path,
+	const std::string& executable)
+{
+	std::vector<std::uint8_t> bytes{'b','p','l','i','s','t','0','0'};
+	std::vector<std::uint8_t> objects;
+	auto append_string = [&objects](const std::string& value) {
+		objects.push_back(0x5f);
+		objects.push_back(0x10);
+		objects.push_back(static_cast<std::uint8_t>(value.size()));
+		objects.insert(objects.end(), value.begin(), value.end());
+	};
+	const std::string key = "CFBundleExecutable";
+	append_string(key);
+	append_string(executable);
+	const std::uint8_t dictionary[] = {0xd1, 0x01, 0x02};
+	const auto dictionary_offset = bytes.size();
+	bytes.insert(bytes.end(), dictionary, dictionary + sizeof(dictionary));
+	const auto key_offset = bytes.size();
+	bytes.insert(bytes.end(), objects.begin(), objects.begin() + 2 + key.size());
+	const auto value_offset = bytes.size();
+	bytes.insert(bytes.end(), objects.begin() + 2 + key.size(), objects.end());
+	const auto offsets_offset = bytes.size();
+	bytes.push_back(static_cast<std::uint8_t>(dictionary_offset));
+	bytes.push_back(static_cast<std::uint8_t>(key_offset));
+	bytes.push_back(static_cast<std::uint8_t>(value_offset));
+	std::vector<std::uint8_t> trailer(32, 0);
+	trailer[6] = 1;
+	trailer[7] = 1;
+	trailer[15] = 3;
+	trailer[23] = static_cast<std::uint8_t>(offsets_offset);
+	bytes.insert(bytes.end(), trailer.begin(), trailer.end());
+	std::ofstream output(path, std::ios::binary);
+	output.write(reinterpret_cast<const char*>(bytes.data()),
+		static_cast<std::streamsize>(bytes.size()));
+}
+
 std::vector<wchar_t> CommandLine(const std::wstring& value)
 {
 	std::vector<wchar_t> result(value.begin(), value.end());
@@ -163,6 +199,9 @@ int wmain()
 			bundle_queried = GetExitCodeProcess(bundle_process.hProcess, &bundle_status);
 			CloseHandle(bundle_process.hProcess);
 		}
+		const auto binary_bundle_image = bundle / L"Contents" / L"MacOS" / L"BinaryExecutable";
+		WriteArgcMachO(binary_bundle_image);
+		WriteBinaryExecutablePlist(bundle / L"Contents" / L"Info.plist", "BinaryExecutable");
 		const std::wstring bundle_run_command_line = L"\"" + runner.wstring() + L"\" \"" +
 			bundle.wstring() + L"\"";
 		auto bundle_run_command = CommandLine(bundle_run_command_line);

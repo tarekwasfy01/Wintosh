@@ -48,3 +48,34 @@ complete notice set are pinned.
 Reproducibility check: 150 CSV rows, status counts `present=2`,
 `header-evidence=1`, `review-required=147`; SHA-256
 `FE5638CFCDC9BABF0E62EC70D7E6ACCDFE7675AE6B1B4335E90BAB889D493A12`.
+
+## Candidate batch breakdown (2026-10-11)
+
+The stored upstream candidate set contains 43 fetched license or notice files
+for the 147 review-required components. The marker grouping below is only a
+search heuristic over candidate text; it is not a legal classification and it
+does not change any component's status in the provenance CSV.
+
+| Candidate marker group | Files |
+| --- | ---: |
+| Copyright/notice markers only | 18 |
+| GPL, LGPL, and copyright/notice markers | 8 |
+| Apache, GPL, LGPL, MIT, BSD, MPL, and copyright/notice markers | 3 |
+| BSD and copyright/notice markers | 3 |
+| No recognized marker | 2 |
+| Apache and copyright/notice markers | 2 |
+| GPL and copyright/notice markers | 2 |
+| Apache and BSD markers | 1 |
+| GPL marker only | 1 |
+| GPL, LGPL, MPL, and copyright/notice markers | 1 |
+| MIT, BSD, and copyright/notice markers | 1 |
+| MIT and copyright/notice markers | 1 |
+
+The first manual pass should prioritize the 22 files with multiple license
+markers, especially candidates containing GPL/LGPL/MPL together with permissive
+markers. For each component, the reviewer must identify the exact upstream
+repository and version, inspect the complete license and notice set (including
+subdirectories and generated files), record the decision and provenance, and
+only then move that component out of `review-required`. A marker match alone
+must never be used to add a license file, change compatibility, or relicense
+Darling-derived code.

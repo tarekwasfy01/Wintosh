@@ -1593,6 +1593,14 @@ extern "C" bool darling_windows_CFURLGetFileSystemRepresentation(
 	return true;
 }
 
+extern "C" darling_windows_CFTypeID darling_windows_CFStringGetTypeID() { return TypeId(Kind::String); }
+extern "C" darling_windows_CFTypeID darling_windows_CFDataGetTypeID() { return TypeId(Kind::Data); }
+extern "C" darling_windows_CFTypeID darling_windows_CFArrayGetTypeID() { return TypeId(Kind::Array); }
+extern "C" darling_windows_CFTypeID darling_windows_CFDictionaryGetTypeID() { return TypeId(Kind::Dictionary); }
+extern "C" darling_windows_CFTypeID darling_windows_CFSetGetTypeID() { return TypeId(Kind::Set); }
+extern "C" darling_windows_CFTypeID darling_windows_CFNumberGetTypeID() { return TypeId(Kind::Number); }
+extern "C" darling_windows_CFTypeID darling_windows_CFDateGetTypeID() { return TypeId(Kind::Date); }
+
 extern "C" darling_windows_CFBooleanRef darling_windows_CFBooleanGetValue(bool value)
 {
 	static Object false_value{};

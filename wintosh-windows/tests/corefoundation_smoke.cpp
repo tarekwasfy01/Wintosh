@@ -238,6 +238,13 @@ int main()
 		darling_windows_CFEqual(url, url_from_bytes) &&
 		darling_windows_CFEqual(url, absolute_url) &&
 		darling_windows_CFEqual(url_path, url_string) &&
+		darling_windows_CFStringGetTypeID() == darling_windows_CFGetTypeID(string) &&
+		darling_windows_CFDataGetTypeID() == darling_windows_CFGetTypeID(data) &&
+		darling_windows_CFArrayGetTypeID() == darling_windows_CFGetTypeID(array) &&
+		darling_windows_CFDictionaryGetTypeID() == darling_windows_CFGetTypeID(dictionary) &&
+		darling_windows_CFSetGetTypeID() == darling_windows_CFGetTypeID(set) &&
+		darling_windows_CFNumberGetTypeID() == darling_windows_CFGetTypeID(number) &&
+		darling_windows_CFDateGetTypeID() == darling_windows_CFGetTypeID(date) &&
 		url_representation_ok &&
 		darling_windows_CFDateGetAbsoluteTime(date) == 1234.5 && url != nullptr &&
 		url_path != nullptr && darling_windows_CFStringGetCString(url_path, url_buffer, sizeof(url_buffer)) &&

@@ -65,6 +65,8 @@ following families with Windows-backed implementations:
   including file-vs-directory path checks on x64 and Win32.
 - CoreFoundation URL type identification through `CFURLGetTypeID`, matching
   generic `CFGetTypeID` results on x64 and Win32.
+- CoreFoundation type-ID accessors for strings, data, arrays, dictionaries,
+  sets, numbers, and dates, each matching `CFGetTypeID` on x64 and Win32.
 
 These are native Windows compatibility primitives. They are not a copied or
 relicensed Apple libSystem binary.

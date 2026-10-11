@@ -29,6 +29,22 @@ foreach ($row in $rows) {
             }
         }
     } catch { }
+    if (-not $found) {
+        foreach ($branch in @('main', 'master')) {
+            if ($found) { break }
+            $uri = "https://raw.githubusercontent.com/$owner/$repo/$branch/LICENSE"
+            try {
+                $response = Invoke-WebRequest -Uri $uri -Headers $headers -UseBasicParsing -TimeoutSec 5
+                if ($response.StatusCode -eq 200 -and -not [string]::IsNullOrWhiteSpace($response.Content)) {
+                    $safe = ($row.component -replace '[^A-Za-z0-9_.-]', '_')
+                    $destination = Join-Path $OutputDirectory "$safe-LICENSE"
+                    [System.IO.File]::WriteAllText($destination, $response.Content, [System.Text.Encoding]::UTF8)
+                    $results += [pscustomobject]@{ component=$row.component; status='candidate-found'; license_file=$destination; source_url=$uri; sha256=(Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash }
+                    $found = $true
+                }
+            } catch { }
+        }
+    }
     if (-not $found) { $results += [pscustomobject]@{ component=$row.component; status='not-found'; license_file=''; source_url=''; sha256='' } }
 }
 $results | Export-Csv -LiteralPath (Join-Path $OutputDirectory 'CANDIDATE-INVENTORY.csv') -NoTypeInformation -Encoding UTF8

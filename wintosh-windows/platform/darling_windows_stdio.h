@@ -565,6 +565,7 @@ extern "C" int darling_windows_ffs(int value);
 extern "C" int darling_windows_fls(int value);
 extern "C" int darling_windows_ffsll(long long value);
 extern "C" int darling_windows_flsll(long long value);
+extern "C" int darling_windows_timingsafe_bcmp(const void* left, const void* right, std::size_t bytes);
 extern "C" int darling_windows_strncasecmp(const char* left, const char* right, std::size_t bytes);
 extern "C" char* darling_windows_strcpy(char* destination, const char* source);
 extern "C" char* darling_windows_strncpy(char* destination, const char* source, std::size_t bytes);

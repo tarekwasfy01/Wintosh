@@ -5691,6 +5691,9 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 	if (std::strcmp(name, "_flsll") == 0 || std::strcmp(name, "flsll") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_flsll);
 	}
+	if (std::strcmp(name, "_timingsafe_bcmp") == 0 || std::strcmp(name, "timingsafe_bcmp") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_timingsafe_bcmp);
+	}
 	if (std::strcmp(name, "_strncasecmp") == 0 || std::strcmp(name, "strncasecmp") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_strncasecmp);
 	}
@@ -8131,6 +8134,18 @@ extern "C" int darling_windows_flsll(long long value)
 	int position = 0;
 	for (auto remaining = bits; remaining != 0; remaining >>= 1) ++position;
 	return position;
+}
+
+extern "C" int darling_windows_timingsafe_bcmp(const void* left, const void* right,
+	std::size_t bytes)
+{
+	if (bytes == 0) return 0;
+	if (left == nullptr || right == nullptr) return 1;
+	const auto* lhs = static_cast<const unsigned char*>(left);
+	const auto* rhs = static_cast<const unsigned char*>(right);
+	unsigned char difference = 0;
+	for (std::size_t index = 0; index < bytes; ++index) difference |= lhs[index] ^ rhs[index];
+	return difference == 0 ? 0 : 1;
 }
 
 extern "C" int darling_windows_strncasecmp(const char* left, const char* right,

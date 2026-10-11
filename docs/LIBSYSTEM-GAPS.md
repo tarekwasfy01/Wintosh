@@ -80,6 +80,7 @@ The CoreFoundation string family now also includes the numeric accessors
 validation and bounded integer conversion on x64 and Win32.
 `CFStringGetCharacters` now exposes UTF-16 code units, including surrogate
 pairs for non-BMP code points, with range validation on both targets.
+`CFStringGetCharacterAtIndex` uses the same validated UTF-16 indexing.
 The URL family also includes last-component extraction and parent-path copies,
 covering path operations used by Darling's CoreAudio helpers.
 

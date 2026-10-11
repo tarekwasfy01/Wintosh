@@ -100,6 +100,11 @@ int main()
 		utf16_characters[0] == 0xd83d && utf16_characters[1] == 0xde00 &&
 		!darling_windows_CFStringGetCharacters(unicode_string,
 			darling_windows_CFRangeMake(0, 99), utf16_characters);
+	const bool utf16_character_at_index_ok =
+		darling_windows_CFStringGetCharacterAtIndex(unicode_string, 0) == 'A' &&
+		darling_windows_CFStringGetCharacterAtIndex(unicode_string, 1) == 0xd83d &&
+		darling_windows_CFStringGetCharacterAtIndex(unicode_string, 2) == 0xde00 &&
+		darling_windows_CFStringGetCharacterAtIndex(unicode_string, 99) == 0;
 	char substring_buffer[32]{};
 	const bool substring_ok = substring != nullptr && unicode_substring != nullptr &&
 		darling_windows_CFStringGetCString(substring, substring_buffer, sizeof(substring_buffer)) &&
@@ -734,7 +739,7 @@ int main()
 	if (!dictionary_hash_ok || !set_hash_ok) return 1;
 	std::cout << "DARWIN_COREF_FOUNDATION=\"" <<
 		(string_ok && formatted_string_ok && substring_ok && string_match_ok && string_find_ok && equal_ok && semantic_lookup_ok && collection_equal_ok && array_search_ok && data_ok && data_slice_ok && array_ok && array_values_ok && number_ok && real_number_ok && number_conversion_ok && dictionary_ok && dictionary_values_ok && set_ok && set_values_ok && date_url_ok && url_xml_ok && scalar_ok && runloop_ok && callback_ok && timer_ok && drain_sources_ok && notification_ok && delivered && plist_ok && array_plist_ok && data_plist_ok && date_plist_ok && real_plist_ok && escaping_ok && plist_parse_ok && plist_dict_parse_ok && plist_data_parse_ok && plist_date_parse_ok && plist_fractional_date_ok && plist_offset_date_ok && binary_plist_ok && binary_dictionary_ok && binary_utf16_ok && binary_extended_ok && binary_data_ok && binary_date_ok && binary_real_ok && binary_uid_ok && mutable_array_ok && mutable_dictionary_ok && mutable_set_ok && mutable_data_ok ? "PASS" : "FAIL") << "\n";
-	if (!string_number_ok || !utf16_characters_ok) return 1;
+	if (!string_number_ok || !utf16_characters_ok || !utf16_character_at_index_ok) return 1;
 	if (!identity_ok) return 1;
 	if (!bytes_string_ok) return 1;
 	darling_windows_CFRelease(unicode_string);

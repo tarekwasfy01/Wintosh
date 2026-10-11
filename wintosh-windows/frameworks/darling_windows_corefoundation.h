@@ -53,6 +53,8 @@ extern "C" darling_windows_CFIndex darling_windows_CFStringGetLength(
 	darling_windows_CFStringRef value);
 extern "C" bool darling_windows_CFStringGetCharacters(
 	darling_windows_CFStringRef value, darling_windows_CFRange range, std::uint16_t* output);
+extern "C" std::uint16_t darling_windows_CFStringGetCharacterAtIndex(
+	darling_windows_CFStringRef value, darling_windows_CFIndex index);
 extern "C" std::int32_t darling_windows_CFStringGetIntValue(
 	darling_windows_CFStringRef value);
 extern "C" double darling_windows_CFStringGetDoubleValue(

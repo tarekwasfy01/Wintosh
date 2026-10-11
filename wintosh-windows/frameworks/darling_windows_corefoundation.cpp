@@ -768,6 +768,13 @@ extern "C" bool darling_windows_CFStringGetCharacters(
 	return output_index == range.length;
 }
 
+extern "C" std::uint16_t darling_windows_CFStringGetCharacterAtIndex(
+	darling_windows_CFStringRef value, darling_windows_CFIndex index)
+{
+	std::uint16_t character = 0;
+	return darling_windows_CFStringGetCharacters(value, {index, 1}, &character) ? character : 0;
+}
+
 extern "C" std::int32_t darling_windows_CFStringGetIntValue(
 	darling_windows_CFStringRef value)
 {

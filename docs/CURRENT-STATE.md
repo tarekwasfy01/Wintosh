@@ -84,6 +84,7 @@ Binary dictionaries with an extended object count are accepted as well, while
 the implementation deliberately remains bounded to the executable lookup.
 Malformed binary-plist count metadata is rejected safely and uses the normal
 bundle-name fallback rather than being treated as executable metadata.
+The runner smoke now executes that malformed-plist fallback path end-to-end.
 
 `MachOImage::HasCodeSignature()` and `wintosh --inspect` now expose whether an
 `LC_CODE_SIGNATURE` load command is present.  This is metadata detection only:

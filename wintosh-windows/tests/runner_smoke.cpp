@@ -219,11 +219,31 @@ int wmain()
 			bundle_run_queried = GetExitCodeProcess(bundle_run_process.hProcess, &bundle_run_status);
 			CloseHandle(bundle_run_process.hProcess);
 		}
+		const auto fallback_bundle_image = bundle / L"Contents" / L"MacOS" / bundle.stem();
+		WriteArgcMachO(fallback_bundle_image);
+		{
+			std::ofstream malformed_plist(bundle / L"Contents" / L"Info.plist", std::ios::binary);
+			malformed_plist.write("bplist00", 8);
+		}
+		PROCESS_INFORMATION fallback_process{};
+		DWORD fallback_status = 1;
+		BOOL fallback_queried = FALSE;
+		if (CreateProcessW(nullptr, bundle_run_command.data(), nullptr, nullptr, FALSE,
+			CREATE_NO_WINDOW, nullptr, nullptr, &startup, &fallback_process) != FALSE) {
+			CloseHandle(fallback_process.hThread);
+			const DWORD fallback_wait = WaitForSingleObject(fallback_process.hProcess, 5000);
+			if (fallback_wait == WAIT_TIMEOUT) {
+				TerminateProcess(fallback_process.hProcess, 8);
+				WaitForSingleObject(fallback_process.hProcess, INFINITE);
+			}
+			fallback_queried = GetExitCodeProcess(fallback_process.hProcess, &fallback_status);
+			CloseHandle(fallback_process.hProcess);
+		}
 		std::filesystem::remove(image);
 		std::filesystem::remove_all(bundle);
 		return queried != FALSE && status == 3 && inspect_queried != FALSE && inspect_status == 0 &&
 			bundle_queried != FALSE && bundle_status == 0 && bundle_run_queried != FALSE &&
-			bundle_run_status == 1 ? 0 : 4;
+			bundle_run_status == 1 && fallback_queried != FALSE && fallback_status == 1 ? 0 : 4;
 	} catch (...) {
 		return 5;
 	}

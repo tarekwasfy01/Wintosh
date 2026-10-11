@@ -62,6 +62,13 @@ all pass (6/6).  This is evidence for the Windows host bridge and loader
 paths, not evidence that an arbitrary Apple pthread implementation can already
 be loaded.
 
+The adjacent startup/POSIX boundary set also passes 5/5 on Release:
+`wintosh_errno_smoke`, `wintosh_signals_smoke`,
+`wintosh_startup_trampoline_smoke`, `wintosh_macho_entry32_smoke`, and
+`wintosh_runner_smoke`.  This verifies the current Windows-backed errno and
+signal bridges, the tested startup trampoline, 32-bit entry dispatch, and
+runner argument handling; it does not expand Mach-O TLS thunk support.
+
 The executable `TLVClient.macho` currently proves the safe path: all four
 Darwin TLS sections are initialized before its entry returns, and the runner
 exits with code 0.  A hand-written Mach-O-side call through the initialized

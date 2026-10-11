@@ -31,6 +31,8 @@ following families with Windows-backed implementations:
 - `strchr` and `strrchr` now also reject null input without dereferencing it;
 - `memchr` now rejects null input for nonempty ranges while preserving the
   empty-range result;
+- `memcpy`, `memmove`, `memset`, `memcmp`, and `bzero` now handle empty ranges
+  without dereferencing null pointers and reject invalid nonempty ranges;
 - BSD/Darwin reverse byte search `memrchr` is now Windows-backed and
   host-symbol-resolvable, including bounded reverse scanning;
 - BSD/Darwin first-set-bit primitive `ffs` is now Windows-backed and

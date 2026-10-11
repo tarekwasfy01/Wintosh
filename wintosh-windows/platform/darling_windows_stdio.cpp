@@ -7872,30 +7872,34 @@ extern "C" void darling_windows_free(void* address)
 extern "C" void* darling_windows_memcpy(void* destination, const void* source,
 	std::size_t bytes)
 {
-	return std::memcpy(destination, source, bytes);
+	if (bytes == 0) return destination;
+	return destination != nullptr && source != nullptr ? std::memcpy(destination, source, bytes) : nullptr;
 }
 
 extern "C" void* darling_windows_memset(void* destination, int value,
 	std::size_t bytes)
 {
-	return std::memset(destination, value, bytes);
+	if (bytes == 0) return destination;
+	return destination != nullptr ? std::memset(destination, value, bytes) : nullptr;
 }
 
 extern "C" void* darling_windows_memmove(void* destination, const void* source,
 	std::size_t bytes)
 {
-	return std::memmove(destination, source, bytes);
+	if (bytes == 0) return destination;
+	return destination != nullptr && source != nullptr ? std::memmove(destination, source, bytes) : nullptr;
 }
 
 extern "C" int darling_windows_memcmp(const void* left, const void* right,
 	std::size_t bytes)
 {
-	return std::memcmp(left, right, bytes);
+	if (bytes == 0) return 0;
+	return left != nullptr && right != nullptr ? std::memcmp(left, right, bytes) : 1;
 }
 
 extern "C" void darling_windows_bzero(void* destination, std::size_t bytes)
 {
-	std::memset(destination, 0, bytes);
+	if (destination != nullptr && bytes != 0) std::memset(destination, 0, bytes);
 }
 
 extern "C" void darling_windows_explicit_bzero(void* destination, std::size_t bytes)

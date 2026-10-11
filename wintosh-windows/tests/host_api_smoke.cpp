@@ -928,6 +928,14 @@ int main()
 	const bool legacy_address_parts_ok = legacy_address == htonl(0x7f000001u) &&
 		darling_windows_inet_lnaof(legacy_address) == 1 &&
 		darling_windows_inet_netof(legacy_address) == 127 &&
+		darling_windows_inet_makeaddr(0xc000u, 0x0211u) == htonl(0xc0000211u) &&
+		darling_windows_inet_lnaof(htonl(0xc0000211u)) == 0x11u &&
+		darling_windows_inet_netof(htonl(0xc0000211u)) == 0xc00002u &&
+		darling_windows_inet_makeaddr(0xacu << 8 | 0x10u, 0x0211u) == htonl(0xac100211u) &&
+		darling_windows_inet_lnaof(htonl(0xac100211u)) == 0x0211u &&
+		darling_windows_inet_netof(htonl(0xac100211u)) == 0xac10u &&
+		darling_windows_inet_makeaddr(0xc00002u, 0x11u) == htonl(0xc0000211u) &&
+		darling_windows_inet_lnaof(htonl(0xc0000211u)) == 0x11u &&
 		darling_windows_host_symbol("inet_makeaddr") != 0 &&
 		darling_windows_host_symbol("inet_lnaof") != 0 && darling_windows_host_symbol("inet_netof") != 0;
 	if (!legacy_address_parts_ok) {

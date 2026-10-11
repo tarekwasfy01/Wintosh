@@ -64,7 +64,7 @@ following families with Windows-backed implementations:
   invalid-input handling and network-byte-order coverage.
 - The companion address decomposition/construction helpers `inet_makeaddr`,
   `inet_lnaof`, and `inet_netof` are also host-symbol-resolvable for the
-  classic class-A-style compatibility subset.
+  classic class-A-, class-B-, and class-C-style compatibility subset.
 - Legacy textual conversion through `inet_ntoa` and `inet_ntoa_r` is covered,
   including bounded output failure handling for the reentrant form.
 - The legacy `gethostbyname` resolver entry point now delegates to the native

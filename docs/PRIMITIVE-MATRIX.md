@@ -824,7 +824,8 @@ The resolver family additionally covers the legacy BSD IPv4 helpers
 `inet_addr`, `inet_aton`, and `inet_network`; full historical shorthand-address
 parsing remains outside this bridge.
 The companion `inet_makeaddr`, `inet_lnaof`, and `inet_netof` helpers cover the
-classic class-A-style address decomposition used by legacy callers.
+classic class-A-, class-B-, and class-C-style address decomposition used by
+legacy callers; modern CIDR/netmask semantics remain open.
 Legacy text conversion is also available through `inet_ntoa` and
 `inet_ntoa_r`; broader historical formatting quirks remain open.
 The legacy `gethostbyname` entry point is also bridged; resolver-global

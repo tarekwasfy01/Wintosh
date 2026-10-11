@@ -1762,17 +1762,33 @@ extern "C" std::uint32_t darling_windows_inet_network(const char* source)
 extern "C" std::uint32_t darling_windows_inet_makeaddr(std::uint32_t network,
 	std::uint32_t local)
 {
-	return htonl((network << 24) | (local & 0x00ffffffu));
+	std::uint32_t host_address = 0;
+	if (network <= 0xffu) {
+		host_address = (network << 24) | (local & 0x00ffffffu);
+	} else if (network <= 0xffffu) {
+		host_address = (network << 16) | (local & 0x0000ffffu);
+	} else {
+		host_address = (network << 8) | (local & 0x000000ffu);
+	}
+	return htonl(host_address);
 }
 
 extern "C" std::uint32_t darling_windows_inet_lnaof(std::uint32_t address)
 {
-	return ntohl(address) & 0x00ffffffu;
+	const auto host_address = ntohl(address);
+	const auto first_octet = host_address >> 24;
+	if (first_octet < 128u) return host_address & 0x00ffffffu;
+	if (first_octet < 192u) return host_address & 0x0000ffffu;
+	return host_address & 0x000000ffu;
 }
 
 extern "C" std::uint32_t darling_windows_inet_netof(std::uint32_t address)
 {
-	return (ntohl(address) >> 24) & 0xffu;
+	const auto host_address = ntohl(address);
+	const auto first_octet = host_address >> 24;
+	if (first_octet < 128u) return first_octet;
+	if (first_octet < 192u) return host_address >> 16;
+	return host_address >> 8;
 }
 
 extern "C" const char* darling_windows_inet_ntoa(std::uint32_t address)

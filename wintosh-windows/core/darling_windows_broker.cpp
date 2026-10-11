@@ -7,6 +7,7 @@
  */
 
 #include "darling_windows_runtime.h"
+#include "darling_windows_mig.h"
 
 #include <atomic>
 #include <iostream>
@@ -62,6 +63,8 @@ int wmain(int argc, wchar_t** argv)
 			return token;
 		};
 		std::unordered_set<std::uint64_t> allocated_ports;
+		struct PortRights final { std::uint32_t receive = 1; std::uint32_t send = 0; std::uint32_t send_once = 0; };
+		std::unordered_map<std::uint64_t, PortRights> port_rights;
 		std::unordered_map<std::uint64_t, std::uint64_t> port_session_owners;
 		std::unordered_map<std::uint64_t, std::deque<darling::windows_host::MachIpcEnvelope>> port_queues;
 		std::unordered_map<std::uint64_t, darling::windows_host::MachIpcSharedMemory> out_of_line_regions;
@@ -77,6 +80,13 @@ int wmain(int argc, wchar_t** argv)
 		std::unordered_map<std::uint64_t, DWORD> session_process_ids;
 		std::unordered_map<std::uint64_t, std::shared_ptr<std::atomic_bool>> active_requests;
 		std::unordered_map<std::uint64_t, std::uint64_t> active_request_sessions;
+		darling::windows_host::MigRoutineRegistry mig_routines;
+		// Bootstrap routine used until generated Darling subsystem stubs are
+		// registered. Keeping it in the registry exercises the real dispatch path.
+		mig_routines.Register({0x1001, 0, 1024 * 1024, 1024 * 1024,
+			[](std::span<const std::uint8_t> request) {
+				return std::vector<std::uint8_t>(request.begin(), request.end());
+			}});
 
 		// Keep the broker state alive across client reconnects.  A disconnected
 		// client must not destroy the emulated Mach namespace.
@@ -110,6 +120,7 @@ int wmain(int argc, wchar_t** argv)
 						it != port_session_owners.end();) {
 						if (it->second == session_token) {
 							allocated_ports.erase(it->first);
+							port_rights.erase(it->first);
 							port_queues.erase(it->first);
 							it = port_session_owners.erase(it);
 						} else {
@@ -238,6 +249,26 @@ int wmain(int argc, wchar_t** argv)
 					server.Write(AsString(darling::windows_host::EncodeMachIpcEnvelope(response)));
 					continue;
 				}
+				if (envelope.operation == darling::windows_host::MachIpcOperation::MigDispatch) {
+					if (envelope.session_token == 0 || envelope.mig_routine_id == 0 ||
+						envelope.port_token != 0 || envelope.disposition_count != 0 ||
+						!envelope.port_descriptor_tokens.empty() ||
+						!envelope.port_descriptor_dispositions.empty() ||
+						envelope.out_of_line_token != 0 || envelope.out_of_line_size != 0 ||
+						!envelope.inline_payload.empty())
+						throw std::invalid_argument("invalid MIG dispatch envelope");
+					const auto reply_payload = mig_routines.Dispatch(
+						envelope.mig_routine_id, envelope.payload);
+					if (!mig_routines.Contains(envelope.mig_routine_id) ||
+						(envelope.mig_routine_id != 0 && reply_payload.empty() && !envelope.payload.empty()))
+						throw std::invalid_argument("unknown or rejected MIG routine");
+					darling::windows_host::MachIpcEnvelope response{
+						envelope.operation, envelope.request_id, 0, 0, reply_payload};
+					response.session_token = envelope.session_token;
+					response.mig_routine_id = envelope.mig_routine_id;
+					server.Write(AsString(darling::windows_host::EncodeMachIpcEnvelope(response)));
+					continue;
+				}
 				if (envelope.operation == darling::windows_host::MachIpcOperation::NotificationCreate) {
 					if (!envelope.payload.empty() || envelope.disposition_count != 0 ||
 						envelope.out_of_line_token != 0 || envelope.out_of_line_size != 0)
@@ -301,6 +332,7 @@ int wmain(int argc, wchar_t** argv)
 					std::uint64_t token = next_opaque_token();
 					while (allocated_ports.contains(token)) token = next_opaque_token();
 					allocated_ports.insert(token);
+					port_rights.emplace(token, PortRights{});
 					port_queues.emplace(token, std::deque<darling::windows_host::MachIpcEnvelope>{});
 					if (envelope.session_token != 0)
 						port_session_owners.emplace(token, envelope.session_token);
@@ -321,6 +353,7 @@ int wmain(int argc, wchar_t** argv)
 					if (allocated_ports.erase(envelope.port_token) == 0)
 						throw std::invalid_argument("unknown Mach IPC port token");
 					port_session_owners.erase(envelope.port_token);
+					port_rights.erase(envelope.port_token);
 					port_queues.erase(envelope.port_token);
 					broker_state_condition.notify_all();
 					for (auto it = out_of_line_owners.begin(); it != out_of_line_owners.end();) {
@@ -347,9 +380,46 @@ int wmain(int argc, wchar_t** argv)
 					if (envelope.disposition_count == 0 &&
 						(envelope.out_of_line_token != 0 || envelope.out_of_line_size != 0))
 						throw std::invalid_argument("invalid Mach IPC send descriptors");
+					for (const auto descriptor_token : envelope.port_descriptor_tokens) {
+						if (!allocated_ports.contains(descriptor_token))
+							throw std::invalid_argument("unknown Mach IPC port descriptor token");
+						const auto descriptor_owner = port_session_owners.find(descriptor_token);
+						if (descriptor_owner != port_session_owners.end() &&
+							descriptor_owner->second != envelope.session_token)
+							throw std::invalid_argument("Mach IPC port descriptor belongs to another session");
+					}
+					if (envelope.port_descriptor_dispositions.size() !=
+						envelope.port_descriptor_tokens.size())
+						throw std::invalid_argument("Mach IPC port descriptor metadata mismatch");
 					if (port_queues.at(envelope.port_token).size() >= max_port_queue_depth)
 						throw std::runtime_error("Mach IPC send queue is full");
+					std::vector<std::pair<std::uint64_t, PortRights>> rights_snapshot;
+					for (const auto descriptor_token : envelope.port_descriptor_tokens)
+						rights_snapshot.emplace_back(descriptor_token, port_rights.at(descriptor_token));
+					auto restore_rights = [&] {
+						for (const auto& [token, rights] : rights_snapshot) port_rights[token] = rights;
+					};
+					for (const auto disposition : envelope.port_descriptor_dispositions) {
+						if (disposition != 16 && disposition != 17 && disposition != 19 &&
+							disposition != 20 && disposition != 21 && disposition != 22 &&
+							disposition != 23)
+							throw std::invalid_argument("unsupported Mach IPC port disposition");
+					}
+					for (std::size_t index = 0; index < envelope.port_descriptor_tokens.size(); ++index) {
+						auto rights = port_rights.find(envelope.port_descriptor_tokens[index]);
+						if (rights == port_rights.end()) throw std::invalid_argument("missing Mach IPC port rights");
+						switch (envelope.port_descriptor_dispositions[index]) {
+						case 16: if (rights->second.receive == 0) throw std::invalid_argument("no receive right"); --rights->second.receive; break;
+						case 17: if (rights->second.send_once == 0) throw std::invalid_argument("no send-once right"); --rights->second.send_once; break;
+						case 19: if (rights->second.send == 0) throw std::invalid_argument("no send right"); break;
+						case 20: if (rights->second.send == 0) throw std::invalid_argument("no send right"); --rights->second.send; break;
+						case 21: if (rights->second.receive == 0) throw std::invalid_argument("no receive right"); ++rights->second.send; break;
+						case 22: if (rights->second.receive == 0) throw std::invalid_argument("no receive right"); ++rights->second.receive; break;
+						case 23: if (rights->second.receive == 0) throw std::invalid_argument("no receive right"); ++rights->second.send_once; break;
+						}
+					}
 					auto queued = envelope;
+					try {
 					if (queued.disposition_count > 0) {
 						if (queued.disposition_count != 1 || queued.payload.empty())
 							throw std::invalid_argument("unsupported Mach IPC disposition");
@@ -369,9 +439,23 @@ int wmain(int argc, wchar_t** argv)
 						queued.out_of_line_token = token;
 						queued.out_of_line_size = static_cast<std::uint32_t>(envelope.payload.size());
 					}
+					} catch (...) {
+						restore_rights();
+						throw;
+					}
 					const auto response_out_of_line_token = queued.out_of_line_token;
 					const auto response_out_of_line_size = queued.out_of_line_size;
-					port_queues.at(envelope.port_token).push_back(std::move(queued));
+					try {
+						port_queues.at(envelope.port_token).push_back(std::move(queued));
+					} catch (...) {
+						restore_rights();
+						if (response_out_of_line_token != 0) {
+							out_of_line_regions.erase(response_out_of_line_token);
+							out_of_line_owners.erase(response_out_of_line_token);
+							out_of_line_session_owners.erase(response_out_of_line_token);
+						}
+						throw;
+					}
 					broker_state_condition.notify_all();
 					darling::windows_host::MachIpcEnvelope response{
 						darling::windows_host::MachIpcOperation::Send,
@@ -476,6 +560,16 @@ int wmain(int argc, wchar_t** argv)
 					}
 					auto message = std::move(queue.front());
 					queue.pop_front();
+					for (std::size_t index = 0; index < message.port_descriptor_tokens.size(); ++index) {
+						auto rights = port_rights.find(message.port_descriptor_tokens[index]);
+						if (rights == port_rights.end()) throw std::invalid_argument("missing received Mach IPC rights");
+						switch (message.port_descriptor_dispositions[index]) {
+						case 16: ++rights->second.receive; break; // move receive
+						case 17: ++rights->second.send_once; break; // move send-once
+						case 20: ++rights->second.send; break; // move send
+						default: break;
+						}
+					}
 					// Receiving an OOL descriptor transfers the broker's owning
 					// mapping handle to the receiver.  Existing receiver views stay
 					// valid; the broker no longer retains the region until port death.
@@ -510,6 +604,9 @@ int wmain(int argc, wchar_t** argv)
 						envelope.request_id, envelope.port_token, message.disposition_count,
 						std::move(message.payload), message.out_of_line_token,
 						message.out_of_line_size};
+					response.port_descriptor_tokens = std::move(message.port_descriptor_tokens);
+					response.port_descriptor_dispositions = std::move(message.port_descriptor_dispositions);
+					response.inline_payload = std::move(message.inline_payload);
 					response.out_of_line_handle = duplicated_handle;
 					server.Write(AsString(darling::windows_host::EncodeMachIpcEnvelope(response)));
 					continue;

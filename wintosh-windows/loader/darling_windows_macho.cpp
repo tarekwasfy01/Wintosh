@@ -397,6 +397,7 @@ MachOImage MachOImage::Open(const std::wstring& path)
 		std::vector<std::string> weak_dependencies;
 		std::vector<std::string> rpaths;
 		std::vector<MachOSymbol> symbols;
+		std::vector<std::uint32_t> indirect_symbols;
 		std::vector<MachOReexport> reexports;
 		std::array<std::uint8_t, 16> uuid{};
 		std::string install_name;
@@ -621,6 +622,22 @@ MachOImage MachOImage::Open(const std::wstring& path)
 			}
 		}
 		if (dysymtab != nullptr) {
+			if (dysymtab->indirect_symbol_count != 0) {
+				Require(symtab != nullptr, "Mach-O indirect symbols require LC_SYMTAB");
+				Require(RangeFits(file_bytes, dysymtab->indirect_symbol_offset,
+					static_cast<std::uint64_t>(dysymtab->indirect_symbol_count) * sizeof(std::uint32_t)),
+					"Mach-O indirect symbol table is outside the file");
+				const auto* entries = reinterpret_cast<const std::uint32_t*>(
+					view + dysymtab->indirect_symbol_offset);
+				for (std::uint32_t index = 0; index < dysymtab->indirect_symbol_count; ++index) {
+					const auto symbol_index = entries[index];
+					const auto special = symbol_index & 0xC0000000u;
+					Require(special == 0 || special == 0xC0000000u ||
+						symbol_index < symtab->symbol_count,
+						"Mach-O indirect symbol index is outside LC_SYMTAB");
+					indirect_symbols.push_back(symbol_index);
+				}
+			}
 			const auto read_relocations = [&](std::uint32_t offset, std::uint32_t count) {
 				Require(RangeFits(file_bytes, offset,
 					static_cast<std::uint64_t>(count) * sizeof(RelocationInfo)),
@@ -1065,7 +1082,8 @@ MachOImage MachOImage::Open(const std::wstring& path)
 			std::move(segments), std::move(dependencies), std::move(sections),
 			std::move(weak_dependencies),
 			std::move(rpaths), std::move(symbols),
-		std::move(relocations), std::move(bind_actions), std::move(threaded_bind_targets),
+		std::move(relocations), std::move(indirect_symbols), std::move(bind_actions),
+			std::move(threaded_bind_targets),
 		std::move(rebase_actions),
 			std::move(chained_fixups), std::move(chained_imports),
 			std::move(reexports), entry_offset, uuid, std::move(install_name));
@@ -1093,6 +1111,55 @@ bool MachOImage::IsWeakUndefined(const MachOSymbol& symbol) noexcept
 	// N_WEAK_REF in n_desc. The caller already restricts this query to an
 	// N_UNDF symbol; keeping the bit test here makes the Darwin rule explicit.
 	return (symbol.description & 0x0040u) != 0;
+}
+
+std::vector<std::uint64_t> MachOImage::IndirectImportSlots() const
+{
+	std::vector<std::uint64_t> slots;
+	const auto pointer_size = Is32Bit() ? sizeof(std::uint32_t) : sizeof(std::uint64_t);
+	for (const auto& section : m_sections) {
+		if (section.section_name != "__la_symbol_ptr" &&
+			section.section_name != "__nl_symbol_ptr")
+			continue;
+		if (section.size % pointer_size != 0)
+			throw std::runtime_error("Mach-O indirect symbol section is misaligned");
+		for (std::uint64_t offset = 0; offset < section.size; offset += pointer_size)
+			slots.push_back(section.address + offset);
+	}
+	if (slots.size() < m_indirect_symbols.size())
+		throw std::out_of_range("Mach-O indirect symbol table exceeds import slots");
+	slots.resize(m_indirect_symbols.size());
+	return slots;
+}
+
+void MachOImage::ApplyIndirectImportBindings(const Mapping& mapping,
+	const std::vector<DyldResolvedBinding>& bindings) const
+{
+	const auto slots = IndirectImportSlots();
+	if (slots.empty())
+		return;
+	if (m_indirect_symbols.size() > m_symbols.size() + 0x1000000u)
+		throw std::runtime_error("Mach-O indirect symbol table is unreasonable");
+	for (std::size_t index = 0; index < slots.size(); ++index) {
+		const auto symbol_index = m_indirect_symbols[index];
+		if ((symbol_index & 0xC0000000u) != 0)
+			continue; // LOCAL and ABSOLUTE entries are not imported bindings.
+		if (symbol_index >= m_symbols.size())
+			throw std::out_of_range("Mach-O indirect symbol index is invalid");
+		const auto& symbol = m_symbols[symbol_index];
+		const auto match = std::find_if(bindings.begin(), bindings.end(),
+			[&symbol](const auto& binding) { return binding.symbol == symbol.name; });
+		if (match == bindings.end()) {
+			if (IsWeakUndefined(symbol)) {
+				if (Is32Bit()) ApplyAbsolute32(mapping, slots[index], 0);
+				else ApplyAbsolute64(mapping, slots[index], 0);
+				continue;
+			}
+			throw std::runtime_error("unresolved Mach-O indirect import: " + symbol.name);
+		}
+		if (Is32Bit()) ApplyAbsolute32(mapping, slots[index], match->address);
+		else ApplyAbsolute64(mapping, slots[index], match->address);
+	}
 }
 
 bool MachOImage::IsWeakDependency(const std::string& name) const noexcept
@@ -2077,6 +2144,7 @@ MachOImage::MachOImage(HANDLE file, HANDLE mapping, const std::uint8_t* view,
 	std::vector<MachOSection> sections,
 	std::vector<std::string> weak_dependencies, std::vector<std::string> rpaths,
 	std::vector<MachOSymbol> symbols, std::vector<MachORelocation> relocations,
+	std::vector<std::uint32_t> indirect_symbols,
 	std::vector<DyldBindAction> bind_actions,
 	std::vector<DyldBindAction> threaded_bind_targets,
 	std::vector<DyldRebaseAction> rebase_actions,
@@ -2093,6 +2161,7 @@ MachOImage::MachOImage(HANDLE file, HANDLE mapping, const std::uint8_t* view,
 	m_rpaths(std::move(rpaths)),
 	m_symbols(std::move(symbols)),
 	m_relocations(std::move(relocations)),
+	m_indirect_symbols(std::move(indirect_symbols)),
 	m_bind_actions(std::move(bind_actions)),
 	m_threaded_bind_targets(std::move(threaded_bind_targets)),
 	m_rebase_actions(std::move(rebase_actions)),
@@ -2117,6 +2186,7 @@ MachOImage::MachOImage(MachOImage&& other) noexcept :
 	m_rpaths(std::move(other.m_rpaths)),
 	m_symbols(std::move(other.m_symbols)),
 	m_relocations(std::move(other.m_relocations)),
+	m_indirect_symbols(std::move(other.m_indirect_symbols)),
 	m_bind_actions(std::move(other.m_bind_actions)),
 	m_threaded_bind_targets(std::move(other.m_threaded_bind_targets)),
 	m_rebase_actions(std::move(other.m_rebase_actions)),
@@ -2154,6 +2224,7 @@ MachOImage& MachOImage::operator=(MachOImage&& other) noexcept
 		m_rpaths = std::move(other.m_rpaths);
 		m_symbols = std::move(other.m_symbols);
 		m_relocations = std::move(other.m_relocations);
+		m_indirect_symbols = std::move(other.m_indirect_symbols);
 		m_bind_actions = std::move(other.m_bind_actions);
 		m_threaded_bind_targets = std::move(other.m_threaded_bind_targets);
 		m_rebase_actions = std::move(other.m_rebase_actions);

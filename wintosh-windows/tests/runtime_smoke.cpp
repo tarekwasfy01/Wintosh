@@ -27,6 +27,18 @@ int wmain()
 		return 1;
 	}
 	std::cout << "MACH_IPC_ENVELOPE=PASS\n";
+	darling::windows_host::MachIpcEnvelope descriptor_envelope = envelope;
+	descriptor_envelope.mig_routine_id = 0x1001;
+	descriptor_envelope.port_descriptor_tokens = {0x111, 0x222};
+	descriptor_envelope.port_descriptor_dispositions = {0, 0};
+	const auto descriptor_decoded = darling::windows_host::DecodeMachIpcEnvelope(
+		darling::windows_host::EncodeMachIpcEnvelope(descriptor_envelope));
+	if (descriptor_decoded.mig_routine_id != 0x1001) return 1;
+	if (descriptor_decoded.port_descriptor_tokens != descriptor_envelope.port_descriptor_tokens) {
+		std::cerr << "MACH_IPC_DESCRIPTOR_TOKENS=FAIL\n";
+		return 1;
+	}
+	std::cout << "MACH_IPC_DESCRIPTOR_TOKENS=PASS\n";
 	darling::windows_host::MachMessage inline_message{{'I', 'N'}, {}};
 	const auto inline_ipc = darling::windows_host::EncodeMachMessageForIpc(inline_message, 50, 8, 11);
 	const auto inline_roundtrip = darling::windows_host::DecodeMachMessageFromIpc(inline_ipc);
@@ -437,6 +449,15 @@ int wmain()
 		return 6;
 	}
 	std::cout << "MACH_IPC_CAPABILITY_TABLE=PASS\n";
+	darling::windows_host::MachIpcCapabilityTable session_capabilities;
+	session_capabilities.Bind(0x321, {0x654, 0x987});
+	session_capabilities.RebindSession(0x321, 0xabc);
+	const auto rebound = session_capabilities.Lookup(0x321);
+	if (!rebound || rebound->session_token != 0xabc) {
+		std::cerr << "MACH_IPC_CAPABILITY_REBIND=FAIL\n";
+		return 1;
+	}
+	std::cout << "MACH_IPC_CAPABILITY_REBIND=PASS\n";
 
 	std::error_code cleanup_error;
 	std::filesystem::remove_all(prefix.Root(), cleanup_error);

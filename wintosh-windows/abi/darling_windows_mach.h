@@ -311,6 +311,8 @@ extern "C" darling_kern_return_t darling_windows_mach_port_allocate(
 extern "C" darling_kern_return_t darling_windows_mach_broker_enable(
 	const wchar_t* pipe_name);
 extern "C" darling_kern_return_t darling_windows_mach_broker_disable();
+extern "C" darling_kern_return_t darling_windows_mach_port_transfer_broker(
+	darling_mach_port_name_t local_name, std::uint64_t target_session);
 extern "C" darling_kern_return_t darling_windows_mach_port_insert_right(
 	darling_mach_port_name_t task, darling_mach_port_name_t name,
 	darling_mach_port_name_t right, std::uint32_t disposition);

@@ -40,7 +40,8 @@ enum class MachIpcOperation : std::uint16_t {
 	SessionOpen = 11,
 	CapabilityTransfer = 12
 	,
-	Cancel = 13
+	Cancel = 13,
+	MigDispatch = 14
 };
 
 struct MachIpcEnvelope final {
@@ -55,6 +56,11 @@ struct MachIpcEnvelope final {
 	// a nonzero value for the capability-aware migration path.
 	std::uint64_t session_token = 0;
 	std::uint64_t out_of_line_handle = 0;
+	std::vector<std::uint64_t> port_descriptor_tokens;
+	std::vector<std::uint8_t> port_descriptor_dispositions;
+	std::vector<std::uint8_t> inline_payload;
+	// MIG routine number carried with a future generated stub dispatch.
+	std::uint32_t mig_routine_id = 0;
 };
 
 [[nodiscard]] MachIpcEnvelope EncodeMachMessageForIpc(
@@ -242,6 +248,8 @@ private:
 	NamedPipeRpcClient& client, const MachIpcEnvelope& request);
 [[nodiscard]] std::uint64_t OpenMachIpcSession(
 	NamedPipeRpcClient& client, DWORD process_id = GetCurrentProcessId());
+[[nodiscard]] bool CancelMachIpcRequest(NamedPipeRpcClient& client,
+	std::uint64_t session_token, std::uint64_t request_id);
 
 struct MachIpcCapability final {
 	std::uint64_t broker_token = 0;
@@ -252,7 +260,10 @@ class MachIpcCapabilityTable final {
 public:
 	void Bind(std::uint32_t local_name, MachIpcCapability capability);
 	[[nodiscard]] std::optional<MachIpcCapability> Lookup(std::uint32_t local_name) const;
+	[[nodiscard]] std::optional<std::uint32_t> LookupLocal(std::uint64_t broker_token,
+		std::uint64_t session_token) const;
 	[[nodiscard]] bool Unbind(std::uint32_t local_name);
+	void RebindSession(std::uint32_t local_name, std::uint64_t session_token);
 	void Clear();
 
 private:

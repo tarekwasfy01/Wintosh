@@ -480,6 +480,7 @@ DarwinDynamicImage* OpenDynamicImage(const std::filesystem::path& path)
 				provider.image.ApplyLazyBindActions(provider.mapping, result->bindings);
 				provider.image.ApplyChainedFixups(provider.mapping, result->bindings);
 			}
+			provider.image.ApplyIndirectImportBindings(provider.mapping, result->bindings);
 			provider.image.ExecuteInitializers(provider.mapping);
 			if (auto* token = RegisterDynamicObjectiveCSections(provider.image,
 				provider.mapping))
@@ -510,6 +511,7 @@ DarwinDynamicImage* OpenDynamicImage(const std::filesystem::path& path)
 			result->image.ApplyLazyBindActions(result->mapping, result->bindings);
 			result->image.ApplyChainedFixups(result->mapping, result->bindings);
 		}
+		result->image.ApplyIndirectImportBindings(result->mapping, result->bindings);
 		result->image.ExecuteInitializers(result->mapping);
 		if (auto* token = RegisterDynamicObjectiveCSections(result->image, result->mapping))
 			result->objc_tokens.push_back(token);

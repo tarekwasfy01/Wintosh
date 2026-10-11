@@ -19,7 +19,7 @@
 namespace darling::windows_host {
 
 namespace {
-constexpr std::uint16_t mach_ipc_version = 2;
+constexpr std::uint16_t mach_ipc_version = 6;
 constexpr std::size_t mach_ipc_header_size = 32;
 constexpr std::size_t mach_ipc_max_payload = 4 * 1024 * 1024;
 constexpr DWORD rpc_max_frame = 4 * 1024 * 1024;
@@ -83,6 +83,21 @@ std::vector<std::uint8_t> EncodeMachIpcEnvelope(const MachIpcEnvelope& envelope)
 	AppendU32(bytes, envelope.out_of_line_size);
 	AppendU64(bytes, envelope.session_token);
 	AppendU64(bytes, envelope.out_of_line_handle);
+	if (envelope.port_descriptor_tokens.size() > 1024)
+		throw std::length_error("too many Mach IPC port descriptors");
+	AppendU32(bytes, static_cast<std::uint32_t>(envelope.port_descriptor_tokens.size()));
+	for (const auto token : envelope.port_descriptor_tokens) AppendU64(bytes, token);
+	if (!envelope.port_descriptor_dispositions.empty() &&
+		envelope.port_descriptor_dispositions.size() != envelope.port_descriptor_tokens.size())
+		throw std::invalid_argument("Mach IPC descriptor metadata count mismatch");
+	AppendU32(bytes, static_cast<std::uint32_t>(envelope.port_descriptor_dispositions.size()));
+	bytes.insert(bytes.end(), envelope.port_descriptor_dispositions.begin(),
+		envelope.port_descriptor_dispositions.end());
+	if (envelope.inline_payload.size() > mach_ipc_max_payload)
+		throw std::length_error("Mach IPC inline payload is too large");
+	AppendU32(bytes, static_cast<std::uint32_t>(envelope.inline_payload.size()));
+	bytes.insert(bytes.end(), envelope.inline_payload.begin(), envelope.inline_payload.end());
+	AppendU32(bytes, envelope.mig_routine_id);
 	return bytes;
 }
 
@@ -95,7 +110,7 @@ MachIpcEnvelope DecodeMachIpcEnvelope(const std::vector<std::uint8_t>& bytes)
 	if (ReadU16(bytes, offset) != mach_ipc_version)
 		throw std::invalid_argument("unsupported Mach IPC envelope version");
 	const auto operation = ReadU16(bytes, offset);
-	if (operation < 1 || operation > static_cast<std::uint16_t>(MachIpcOperation::Cancel))
+	if (operation < 1 || operation > static_cast<std::uint16_t>(MachIpcOperation::MigDispatch))
 		throw std::invalid_argument("unknown Mach IPC operation");
 	MachIpcEnvelope result;
 	result.operation = static_cast<MachIpcOperation>(operation);
@@ -103,7 +118,7 @@ MachIpcEnvelope DecodeMachIpcEnvelope(const std::vector<std::uint8_t>& bytes)
 	result.port_token = ReadU64(bytes, offset);
 	result.disposition_count = ReadU32(bytes, offset);
 	const auto payload_size = ReadU32(bytes, offset);
-	if (payload_size > mach_ipc_max_payload || offset + payload_size + 28 != bytes.size())
+	if (payload_size > mach_ipc_max_payload || offset + payload_size + 28 + 4 > bytes.size())
 		throw std::invalid_argument("invalid Mach IPC payload size");
 	result.payload.assign(bytes.begin() + static_cast<std::ptrdiff_t>(offset), bytes.end());
 	offset += payload_size;
@@ -112,6 +127,25 @@ MachIpcEnvelope DecodeMachIpcEnvelope(const std::vector<std::uint8_t>& bytes)
 	result.out_of_line_size = ReadU32(bytes, offset);
 	result.session_token = ReadU64(bytes, offset);
 	result.out_of_line_handle = ReadU64(bytes, offset);
+	const auto descriptor_count = ReadU32(bytes, offset);
+	if (descriptor_count > 1024 || offset + static_cast<std::size_t>(descriptor_count) * 8 + 4 > bytes.size())
+		throw std::invalid_argument("invalid Mach IPC port descriptor list");
+	result.port_descriptor_tokens.reserve(descriptor_count);
+	for (std::uint32_t index = 0; index < descriptor_count; ++index)
+		result.port_descriptor_tokens.push_back(ReadU64(bytes, offset));
+	const auto disposition_count = ReadU32(bytes, offset);
+	if (disposition_count != descriptor_count || offset + disposition_count > bytes.size())
+		throw std::invalid_argument("invalid Mach IPC descriptor disposition list");
+	result.port_descriptor_dispositions.assign(bytes.begin() + static_cast<std::ptrdiff_t>(offset),
+		bytes.begin() + static_cast<std::ptrdiff_t>(offset + disposition_count));
+	offset += disposition_count;
+	const auto inline_size = ReadU32(bytes, offset);
+	if (inline_size > mach_ipc_max_payload || offset + inline_size + 4 != bytes.size())
+		throw std::invalid_argument("invalid Mach IPC inline payload");
+	result.inline_payload.assign(bytes.begin() + static_cast<std::ptrdiff_t>(offset), bytes.end());
+	offset += inline_size;
+	result.inline_payload.resize(inline_size);
+	result.mig_routine_id = ReadU32(bytes, offset);
 	if ((result.out_of_line_token == 0) != (result.out_of_line_size == 0) ||
 		result.out_of_line_size > mach_ipc_max_payload)
 		throw std::invalid_argument("invalid Mach IPC out-of-line descriptor");
@@ -124,6 +158,7 @@ MachIpcEnvelope EncodeMachMessageForIpc(const MachMessage& message,
 	MachIpcEnvelope envelope{MachIpcOperation::Send, request_id, port_token,
 		message.out_of_line_data.empty() ? 0u : 1u,
 		message.out_of_line_data.empty() ? message.inline_data : message.out_of_line_data};
+	if (!message.out_of_line_data.empty()) envelope.inline_payload = message.inline_data;
 	if (envelope.disposition_count != 0)
 		envelope.out_of_line_size = static_cast<std::uint32_t>(message.out_of_line_data.size());
 	envelope.session_token = session_token;
@@ -808,6 +843,23 @@ std::uint64_t OpenMachIpcSession(NamedPipeRpcClient& client, DWORD process_id)
 	return response.session_token;
 }
 
+bool CancelMachIpcRequest(NamedPipeRpcClient& client, std::uint64_t session_token,
+	std::uint64_t request_id)
+{
+	if (session_token == 0 || request_id == 0) return false;
+	MachIpcEnvelope request;
+	request.operation = MachIpcOperation::Cancel;
+	request.request_id = request_id;
+	request.session_token = session_token;
+	try {
+		const auto response = SendMachIpcEnvelope(client, request);
+		return response.operation == MachIpcOperation::Cancel &&
+			response.request_id == request_id;
+	} catch (...) {
+		return false;
+	}
+}
+
 void MachIpcCapabilityTable::Bind(std::uint32_t local_name, MachIpcCapability capability)
 {
 	if (local_name == 0 || capability.broker_token == 0 || capability.session_token == 0)
@@ -824,10 +876,29 @@ std::optional<MachIpcCapability> MachIpcCapabilityTable::Lookup(std::uint32_t lo
 	return found == m_entries.end() ? std::nullopt : std::optional{found->second};
 }
 
+std::optional<std::uint32_t> MachIpcCapabilityTable::LookupLocal(
+	std::uint64_t broker_token, std::uint64_t session_token) const
+{
+	std::lock_guard lock(m_mutex);
+	for (const auto& [local_name, capability] : m_entries)
+		if (capability.broker_token == broker_token && capability.session_token == session_token)
+			return local_name;
+	return std::nullopt;
+}
+
 bool MachIpcCapabilityTable::Unbind(std::uint32_t local_name)
 {
 	std::lock_guard lock(m_mutex);
 	return m_entries.erase(local_name) != 0;
+}
+
+void MachIpcCapabilityTable::RebindSession(std::uint32_t local_name, std::uint64_t session_token)
+{
+	if (session_token == 0) throw std::invalid_argument("invalid Mach IPC target session");
+	std::lock_guard lock(m_mutex);
+	const auto found = m_entries.find(local_name);
+	if (found == m_entries.end()) throw std::invalid_argument("unknown Mach IPC capability");
+	found->second.session_token = session_token;
 }
 
 void MachIpcCapabilityTable::Clear()

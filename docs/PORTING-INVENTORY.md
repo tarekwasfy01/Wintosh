@@ -1293,6 +1293,28 @@ rebuilt and returned to `EXIT=0`; no failing experiment is included as a pass.
 The next loader task is therefore to make indirect import-slot binding and
 calling-convention validation explicit before claiming dependent-code execution.
 
+The Mach-O reader now materializes and validates `LC_DYSYMTAB`'s indirect
+symbol table against `LC_SYMTAB`, preserving the indices through `MachOImage`
+construction and move operations. This is metadata groundwork only: writing
+and executing an indirect import slot remains a separate, unclaimed gate.
+`MachOImage::IndirectImportSlots()` maps the validated table to the
+`__la_symbol_ptr` and `__nl_symbol_ptr` section addresses with pointer-width
+and count checks. `ApplyIndirectImportBindings()` writes resolved 32-/64-bit
+target addresses with weak-null and fail-closed handling; the Mach-O fixture's
+end-to-end call gate remains unclaimed.
+An isolated native x64 indirect-call smoke now passes after correcting the
+RIP-relative slot displacement (`INDIRECT_CALL_ABI=PASS`). This proves the
+Windows executable-memory and calling-convention primitive independently; it
+does not yet prove the Mach-O fixture's mapping and slot layout.
+The loader now also exposes `ApplyIndirectImportBindings()`, which resolves
+validated indirect indices against the runtime binding table and writes
+32-/64-bit slot values, with weak-undefined null fallback and fail-closed
+unknown-symbol handling. Existing bootstrap paths do not invoke it implicitly
+yet; the dependent-code execution gate still requires a dedicated fixture.
+The dynamic-image loader now invokes this slot application after provider and
+main-image binding, so reachable indirect slots participate in normal dyld
+startup while unresolved required imports still fail closed.
+
 After the provenance inventory update, the selected core regression was rerun:
 x64 `32/32` and Win32 `32/32` smoke programs passed. The two deliberately
 excluded checks remain the privilege-sensitive hard-link and host-rename tests;
@@ -4409,3 +4431,30 @@ unwinds through the Windows thunk, and `pthread_join` observes the canceled
 result. The host API smoke verifies the full request-to-join path. Async
 cancellation remains rejected; cancellation points, cleanup handlers,
 scheduling, and process-shared pthread attributes remain open.
+
+### Current local verification snapshot — 2026-10-11
+
+The current unpushed working tree builds successfully with the Visual Studio
+Release configuration. The complete native Windows CTest matrix reports
+`43/43` passing, including the new `wintosh_indirect_call_smoke` and
+`wintosh_indirect_import_smoke` targets.
+The license preflight also reports `LICENSE_PREFLIGHT=PASS`, with
+`PORT_SOURCE_FILES_WITHOUT_HEADER_NOTICE=0`; the 147 review-required
+provenance rows remain explicitly classified and are not treated as silently
+relicensed source.
+
+`wintosh_indirect_call_smoke` is deliberately a narrow ABI gate. It allocates
+executable Windows memory, performs a correctly aligned x64 RIP-relative
+indirect call through a writable pointer slot, and returns the called result.
+`INDIRECT_CALL_ABI=PASS` proves the native Windows executable-memory and
+calling-convention primitive. It does not by itself prove that every Mach-O
+`LC_DYSYMTAB` indirect-symbol section is mapped to the correct runtime slot;
+the new `MACHO_INDIRECT_IMPORT_BIND=PASS` fixture now proves the x86-64
+`LC_DYSYMTAB` table is parsed, associated with a `__la_symbol_ptr` slot, and
+written with the resolved runtime address after mapping. End-to-end execution
+through that slot and complete 32-bit, weak, local/absolute, and
+chained-pointer parity remain open.
+The same fixture now also covers an unresolved weak indirect import and
+verifies that its slot is nulled while the required import remains bound.
+
+No Git commit, GitHub push, or release was performed in this snapshot.

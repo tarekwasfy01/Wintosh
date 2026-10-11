@@ -1,0 +1,4 @@
+/* Test fixture only. No upstream source. */
+subsystem sample_server;
+sample_ping(uint32_t value);
+sample_echo(bytes payload);

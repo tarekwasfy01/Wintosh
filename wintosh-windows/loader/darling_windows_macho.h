@@ -337,6 +337,10 @@ public:
 	[[nodiscard]] bool IsWeakDependency(const std::string& name) const noexcept;
 	[[nodiscard]] const std::vector<std::string>& RPaths() const noexcept { return m_rpaths; }
 	[[nodiscard]] const std::vector<MachOSymbol>& Symbols() const noexcept { return m_symbols; }
+	[[nodiscard]] const std::vector<std::uint32_t>& IndirectSymbols() const noexcept { return m_indirect_symbols; }
+	[[nodiscard]] std::vector<std::uint64_t> IndirectImportSlots() const;
+	void ApplyIndirectImportBindings(const Mapping& mapping,
+		const std::vector<DyldResolvedBinding>& bindings) const;
 	[[nodiscard]] const std::vector<MachOReexport>& Reexports() const noexcept { return m_reexports; }
 	[[nodiscard]] static bool IsWeakUndefined(const MachOSymbol& symbol) noexcept;
 	[[nodiscard]] const std::vector<MachORelocation>& Relocations() const noexcept { return m_relocations; }
@@ -393,6 +397,7 @@ private:
 		std::vector<MachOSection> sections,
 		std::vector<std::string> weak_dependencies, std::vector<std::string> rpaths,
 		std::vector<MachOSymbol> symbols, std::vector<MachORelocation> relocations,
+		std::vector<std::uint32_t> indirect_symbols,
 		std::vector<DyldBindAction> bind_actions,
 		std::vector<DyldBindAction> threaded_bind_targets,
 		std::vector<DyldRebaseAction> rebase_actions,
@@ -417,6 +422,7 @@ private:
 	std::vector<std::string> m_weak_dependencies;
 	std::vector<std::string> m_rpaths;
 	std::vector<MachOSymbol> m_symbols;
+	std::vector<std::uint32_t> m_indirect_symbols;
 	std::vector<MachORelocation> m_relocations;
 	std::vector<DyldBindAction> m_bind_actions;
 	std::vector<DyldBindAction> m_threaded_bind_targets;

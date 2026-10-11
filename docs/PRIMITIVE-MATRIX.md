@@ -593,3 +593,111 @@ names, so this is valid only for a shared local namespace; true cross-process
 capability-token rewriting is still pending. OOL-only messages continue to use
 the dedicated mapping-disposition path above.
 
+The envelope protocol now carries an explicit version-3 list of port-descriptor
+broker tokens, with encode/decode coverage in `MACH_IPC_DESCRIPTOR_TOKENS=PASS`.
+The C ABI populates that list from local capabilities and rewrites returned
+tokens through the session mapping; this is locally built and tested but not
+yet released to GitHub in the current working tree.
+
+The end-to-end broker smoke now exercises a complex port-descriptor message and
+reports `BROKER_C_ABI_PORT_DESCRIPTOR=PASS`: the descriptor is sent with its
+broker token and restored to the local name on receive. The current test uses
+one session and one local mapping; multi-session capability transfer and
+disposition-specific right ownership remain open.
+
+The version-4 envelope adds a separate `inline_payload` alongside the OOL
+payload. The C ABI now preserves the Mach header/body/descriptor while sending
+OOL bytes and patches the returned mapping address on receive. The broker smoke
+continues to report `BROKER_C_ABI_OOL=PASS`; mixed inline+OOL data is now
+transported, while exact Darwin right semantics and multi-session rewriting
+remain open.
+
+The C ABI now exposes broker capability transfer and updates the local mapping
+to the target session after a validated `CapabilityTransfer` response. The
+table-level session update is covered by `MACH_IPC_CAPABILITY_REBIND=PASS`.
+The broker smoke now also opens a second active session, transfers the port to
+it, transfers ownership back, restores the local mapping, and destroys the
+port. It reports `BROKER_C_ABI_TRANSFER=PASS`; true independent-process right
+semantics and disposition-specific reference accounting remain open.
+
+Broker Send validation now checks every port-descriptor token for allocation
+and session ownership before queueing the message. This is intentionally kept
+separate from OOL disposition handling; foreign descriptor tokens are rejected
+instead of being treated as raw local names.
+The negative path is covered by `BROKER_DESCRIPTOR_TOKEN_VALIDATION=PASS`.
+
+Envelope version 5 now carries one disposition byte per port-descriptor token;
+the broker preserves and validates the metadata, and the C-ABI restores it on
+receive. This is transport-level right metadata, not yet full Darwin reference
+count behavior for every move/copy/make disposition.
+Unknown disposition values are rejected and covered by
+`BROKER_DISPOSITION_VALIDATION=PASS`.
+Queue-capacity validation now occurs before rights mutation, preventing a
+full-queue failure from consuming a move right without enqueueing its message.
+The OOL allocation/mapping block now snapshots and restores affected rights on
+its immediate exception paths, so mapping creation failure does not leave a
+partially consumed disposition.
+Queue insertion is also transactional: a late queue allocation failure removes
+the newly created OOL mapping and restores the saved rights snapshot.
+The complete native Windows regression matrix was rerun after this change:
+`40/40` CTest tests passed in Release configuration.
+The broker now maintains receive/send/send-once counters per capability for
+the supported move/copy/make cases and applies the first-level consume/create
+rules before queueing. This is covered by the updated make-send descriptor
+smoke. Move receive/send/send-once rights are restored to the receiving
+capability when the queued message is successfully dequeued. Complete Darwin
+right propagation through every receiver and failure/rollback edge remains
+open.
+
+After these changes the complete native Windows CTest matrix passes 40/40 in
+Release configuration. This validates regression coverage across the current
+host/runtime/ABI families, but it does not expand the claimed compatibility
+boundary to full Darwin semantics.
+
+The current uncommitted batch also passes `Check-LicensePreflight.ps1`:
+150 provenance rows, 22 license-inventory rows, all required bundled license
+files present, and zero port source files without a header notice. The
+preflight still marks source-provenance review items explicitly; PASS means
+the inventory and required notices are present, not that upstream licenses are
+silently relicensed.
+
+`CancelMachIpcRequest` now wraps the native authenticated Cancel envelope;
+the broker smoke uses it to interrupt a Receive from another client and
+reports `BROKER_MACH_CROSS_CLIENT_CANCEL=PASS`. Full C-ABI request tracking
+and signal/interrupt propagation into every blocking primitive remain open.
+
+The new `MigRoutineRegistry` is the first native MIG/RPC dispatch seam. It
+supports routine registration, duplicate rejection, request-size bounds,
+unknown-routine rejection, dispatch, and unregister. It is intentionally
+transport-independent so generated or hand-written Darling-compatible stubs
+can be connected to Mach IPC later; it is not generated MIG support yet.
+The envelope now also carries a validated `mig_routine_id` field (protocol
+version 6), making the routine identity transportable across the broker.
+The broker accepts the authenticated `MigDispatch` operation as a transport
+boundary and returns the request payload with the same routine ID. This is
+deliberately an echo seam until generated subsystem handlers are connected;
+it is not yet a Darwin MIG server implementation.
+Because the current workspace contains no upstream `.defs`/`.mig` files, the
+repository now includes `tools/Scan-MigDefinitions.ps1`. It records relative
+path, SHA-256, detected subsystem/routine names, and an explicit upstream
+license-review marker without copying source. A real inventory remains
+unavailable until the corresponding licensed Darling tree is present.
+`tools/Generate-MigRegistry.ps1` converts that inventory into an explicit C++
+registration fragment. Generated entries are clearly empty stubs with stable
+local IDs; they are integration scaffolding, not claimed Darwin behavior.
+Usage and provenance boundaries for both scripts are documented in
+`tools/README.md`.
+The registry also enforces a per-routine maximum reply size, so generated or
+hand-written handlers cannot emit an unbounded response through the broker.
+
+The current local Release verification snapshot is `43/43` CTest tests
+passing. The added `wintosh_indirect_call_smoke` reports
+`INDIRECT_CALL_ABI=PASS` for a native Windows x64 executable-memory indirect
+call. The dedicated `wintosh_indirect_import_smoke` now also reports
+`MACHO_INDIRECT_IMPORT_BIND=PASS` for an x86-64 `LC_DYSYMTAB` table mapped to
+`__la_symbol_ptr` and patched in mapped memory. Full indirect-import execution
+through the slot and all pointer-format and architecture variants remain open.
+`Check-LicensePreflight.ps1` reports PASS with
+zero port source files missing a header notice, while provenance rows marked
+`review-required` remain open for license review.
+

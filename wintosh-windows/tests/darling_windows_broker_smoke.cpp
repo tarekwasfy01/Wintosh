@@ -80,6 +80,32 @@ int wmain()
 		if (session_token == 0) {
 			return 5;
 		}
+		darling::windows_host::MachIpcEnvelope mig_request;
+		mig_request.operation = darling::windows_host::MachIpcOperation::MigDispatch;
+		mig_request.request_id = 0x5101;
+		mig_request.session_token = session_token;
+		mig_request.mig_routine_id = 0x1001;
+		mig_request.payload = {0x10, 0x20, 0x30};
+		const auto mig_response = darling::windows_host::SendMachIpcEnvelope(client, mig_request);
+		const bool mig_ok = mig_response.operation == darling::windows_host::MachIpcOperation::MigDispatch &&
+			mig_response.request_id == mig_request.request_id &&
+			mig_response.session_token == session_token &&
+			mig_response.mig_routine_id == mig_request.mig_routine_id &&
+			mig_response.payload == mig_request.payload;
+		std::cout << "BROKER_MIG_DISPATCH=" << (mig_ok ? "PASS" : "FAIL") << "\n";
+		if (!mig_ok) return 6;
+		bool rejected_unknown_mig = false;
+		try {
+			auto invalid_mig = mig_request;
+			invalid_mig.request_id = 0x5102;
+			invalid_mig.mig_routine_id = 0x7fff;
+			(void)darling::windows_host::SendMachIpcEnvelope(client, invalid_mig);
+		} catch (const std::exception&) {
+			rejected_unknown_mig = true;
+		}
+		std::cout << "BROKER_MIG_UNKNOWN_REJECT="
+			<< (rejected_unknown_mig ? "PASS" : "FAIL") << "\n";
+		if (!rejected_unknown_mig) return 7;
 		darling_mach_port_name_t broker_local_port = 0;
 		const auto broker_enable = darling_windows_mach_broker_enable(pipe_name.c_str());
 		const auto broker_allocate = darling_windows_mach_port_allocate(
@@ -129,15 +155,98 @@ int wmain()
 			std::equal(broker_ool_payload.begin(), broker_ool_payload.end(), broker_ool_received_bytes) &&
 			darling_windows_mach_ool_release(const_cast<std::uint8_t*>(broker_ool_received_bytes)) == 0;
 		std::cout << "BROKER_C_ABI_OOL=" << (broker_ool_ok ? "PASS" : "FAIL") << "\n";
+		struct BrokerPortMessage final {
+			darling_mach_msg_header header;
+			darling_mach_msg_body body;
+			darling_mach_msg_port_descriptor descriptor;
+		} broker_port_message{};
+		broker_port_message.header.msgh_bits = darling_mach_msg_complex;
+		broker_port_message.header.msgh_size = sizeof(broker_port_message);
+		broker_port_message.header.msgh_remote_port = broker_local_port;
+		broker_port_message.header.msgh_id = 0x4444;
+		broker_port_message.body.msgh_descriptor_count = 1;
+		broker_port_message.descriptor.name = broker_local_port;
+		broker_port_message.descriptor.disposition = darling_mach_make_send;
+		broker_port_message.descriptor.type = darling_mach_msg_descriptor_port;
+		const auto broker_port_send = darling_windows_mach_msg(
+			&broker_port_message.header, darling_mach_send_msg, sizeof(broker_port_message), 0, 0, 0, 0);
+		std::array<std::uint8_t, sizeof(BrokerPortMessage)> broker_port_received{};
+		const auto broker_port_receive = darling_windows_mach_msg(
+			reinterpret_cast<darling_mach_msg_header*>(broker_port_received.data()),
+			darling_mach_receive_msg | darling_mach_receive_timeout, 0,
+			static_cast<std::uint32_t>(broker_port_received.size()), broker_local_port, 1000, 0);
+		const auto* broker_port_received_descriptor = reinterpret_cast<const darling_mach_msg_port_descriptor*>(
+			broker_port_received.data() + sizeof(darling_mach_msg_header) + sizeof(darling_mach_msg_body));
+		const bool broker_port_ok = broker_port_send == 0 && broker_port_receive == 0 &&
+			broker_port_received_descriptor->name == broker_local_port;
+		std::cout << "BROKER_C_ABI_PORT_DESCRIPTOR=" << (broker_port_ok ? "PASS" : "FAIL") << "\n";
+		darling::windows_host::MachIpcEnvelope invalid_descriptor_token{
+			darling::windows_host::MachIpcOperation::Send, 0x7799, broker_capability, 0,
+			{0x01, 0x02, 0x03, 0x04}};
+		invalid_descriptor_token.session_token = broker_capability_session;
+		invalid_descriptor_token.port_descriptor_tokens = {0xffffffffffffffffull};
+		invalid_descriptor_token.port_descriptor_dispositions = {19};
+		const auto invalid_descriptor_bytes = darling::windows_host::EncodeMachIpcEnvelope(
+			invalid_descriptor_token);
+		client.Write(std::string(invalid_descriptor_bytes.begin(), invalid_descriptor_bytes.end()));
+		const auto invalid_descriptor_response = client.Read();
+		const bool broker_descriptor_validation = invalid_descriptor_response ==
+			"INVALID_MACH_IPC_REQUEST";
+		std::cout << "BROKER_DESCRIPTOR_TOKEN_VALIDATION=" <<
+			(broker_descriptor_validation ? "PASS" : "FAIL") << "\n";
+		darling::windows_host::MachIpcEnvelope invalid_disposition = invalid_descriptor_token;
+		invalid_disposition.request_id = 0x779a;
+		invalid_disposition.port_descriptor_tokens = {broker_capability};
+		invalid_disposition.port_descriptor_dispositions = {99};
+		const auto invalid_disposition_bytes = darling::windows_host::EncodeMachIpcEnvelope(
+			invalid_disposition);
+		client.Write(std::string(invalid_disposition_bytes.begin(), invalid_disposition_bytes.end()));
+		const auto invalid_disposition_response = client.Read();
+		const bool broker_disposition_validation = invalid_disposition_response ==
+			"INVALID_MACH_IPC_REQUEST";
+		std::cout << "BROKER_DISPOSITION_VALIDATION=" <<
+			(broker_disposition_validation ? "PASS" : "FAIL") << "\n";
+		darling::windows_host::NamedPipeRpcClient transfer_client =
+			darling::windows_host::NamedPipeRpcClient::Connect(pipe_name);
+		const auto transfer_session = darling::windows_host::OpenMachIpcSession(transfer_client);
+		const auto transfer_to_other = darling_windows_mach_port_transfer_broker(
+			broker_local_port, transfer_session);
+		darling::windows_host::MachIpcEnvelope transfer_back{
+			darling::windows_host::MachIpcOperation::CapabilityTransfer, 0x7788,
+			broker_capability, 0, {}};
+		transfer_back.session_token = transfer_session;
+		transfer_back.payload.resize(8);
+		for (unsigned shift = 0; shift != 64; shift += 8)
+			transfer_back.payload[shift / 8] = static_cast<std::uint8_t>(broker_capability_session >> shift);
+		const auto transfer_back_response = darling::windows_host::SendMachIpcEnvelope(
+			transfer_client, transfer_back);
+		const auto rebind_back = darling_windows_mach_port_bind_broker(
+			broker_local_port, broker_capability, broker_capability_session);
+		const bool broker_transfer_ok = transfer_session != 0 && transfer_to_other == 0 &&
+			transfer_back_response.operation == darling::windows_host::MachIpcOperation::CapabilityTransfer &&
+			transfer_back_response.request_id == transfer_back.request_id && rebind_back != 0;
+		// The C table was deliberately moved to the target session; restore its
+		// local entry explicitly after the raw target session transfers ownership back.
+		(void)darling_windows_mach_port_unbind_broker(broker_local_port);
+		const auto rebind_original = darling_windows_mach_port_bind_broker(
+			broker_local_port, broker_capability, broker_capability_session);
+		std::cout << "BROKER_C_ABI_TRANSFER=" <<
+			(broker_transfer_ok && rebind_original == 0 ? "PASS" : "FAIL") << "\n";
 		const auto broker_destroy = darling_windows_mach_port_destroy(
 			darling_windows_mach_task_self(), broker_local_port);
 		const auto broker_disable = darling_windows_mach_broker_disable();
 		std::cout << "BROKER_C_ABI_ALLOCATE=" <<
 			(broker_enable == 0 && broker_allocate == 0 && broker_lookup == 0 &&
 			 broker_capability != 0 && broker_capability_session != 0 && broker_send == 0 &&
-			 broker_receive == 0 && broker_received.msgh_id == 0x4242 && broker_ool_ok && broker_destroy == 0 ? "PASS" : "FAIL") << "\n";
+			 broker_receive == 0 && broker_received.msgh_id == 0x4242 && broker_ool_ok &&
+			 broker_port_ok && broker_descriptor_validation && broker_disposition_validation && broker_transfer_ok &&
+			 rebind_original == 0 && broker_destroy == 0 ? "PASS" : "FAIL") << "\n";
 		if (broker_enable != 0 || broker_allocate != 0 || broker_lookup != 0 ||
 			broker_send != 0 || broker_receive != 0 || broker_received.msgh_id != 0x4242 || !broker_ool_ok ||
+			!broker_port_ok ||
+			!broker_descriptor_validation ||
+			!broker_disposition_validation ||
+			!broker_transfer_ok || rebind_original != 0 ||
 			broker_destroy != 0 || broker_disable != 0 || broker_capability == 0 || broker_capability_session == 0)
 			return 6;
 		const auto process_id = static_cast<std::uint32_t>(GetCurrentProcessId());
@@ -437,15 +546,9 @@ int wmain()
 			blocked_cancel_result.assign(blocked_wire.begin(), blocked_wire.end());
 		});
 		Sleep(250);
-		const darling::windows_host::MachIpcEnvelope cross_client_cancel{
-			darling::windows_host::MachIpcOperation::Cancel, 118, 0, 0, {}};
-		auto authenticated_cancel = cross_client_cancel;
-		authenticated_cancel.session_token = session_response.session_token;
-		const auto cancel_bytes = darling::windows_host::EncodeMachIpcEnvelope(
-			authenticated_cancel);
-		client.Write(std::string(cancel_bytes.begin(), cancel_bytes.end()));
-		const auto cancel_result = client.Read();
-		if (cancel_result.empty()) {
+		const auto cancel_result = darling::windows_host::CancelMachIpcRequest(
+			client, session_response.session_token, 118);
+		if (!cancel_result) {
 			blocked_receiver.join();
 			std::cerr << "BROKER_MACH_CROSS_CLIENT_CANCEL=FAIL\n";
 			return 5;

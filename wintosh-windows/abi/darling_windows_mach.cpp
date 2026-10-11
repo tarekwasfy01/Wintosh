@@ -174,7 +174,7 @@ DWORD ResolveTaskPid(darling_mach_port_name_t task)
 	if (task == darling_windows_mach_task_self()) return GetCurrentProcessId();
 	std::lock_guard lock(task_ports_mutex);
 	const auto found = task_ports.find(task);
-	return found == task_ports.end() ? static_cast<DWORD>(task) : found->second;
+	return found == task_ports.end() ? 0 : found->second;
 }
 
 void ForgetTaskPort(darling_mach_port_name_t task)

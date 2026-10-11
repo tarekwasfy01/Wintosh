@@ -6,6 +6,7 @@
 #include "darling_windows_dyld.h"
 #include "darling_windows_bootstrap.h"
 #include "darling_windows_stdio.h"
+#include "darling_windows_tlv.h"
 
 #include <windows.h>
 
@@ -58,6 +59,58 @@ void WriteInitializerMachO(const std::filesystem::path& path)
 	std::ofstream output(path, std::ios::binary | std::ios::trunc);
 	output.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
 	if (!output) throw std::runtime_error("cannot write initializer Mach-O");
+}
+
+// Repository-owned metadata fixture for the Darwin TLV section family.  The
+// file deliberately contains no Apple object code or SDK data; it only gives
+// the loader real __thread_* section layouts to map and initialize.
+void WriteTLVProviderMachO(const std::filesystem::path& path)
+{
+	using namespace darling::windows_host;
+	constexpr std::size_t section_count = 4;
+	const MachHeader64 header{MH_MAGIC_64, CPU_TYPE_X86_64, 3, MH_DYLIB, 1,
+		static_cast<std::uint32_t>(sizeof(SegmentCommand64) +
+			section_count * sizeof(Section64)), 0, 0};
+	SegmentCommand64 segment{};
+	segment.header = {LC_SEGMENT_64, static_cast<std::uint32_t>(
+		sizeof(SegmentCommand64) + section_count * sizeof(Section64))};
+	std::memcpy(segment.segment_name, "__DATA", 6);
+	segment.vm_address = 0x1000;
+	segment.vm_size = 0x1000;
+	segment.file_offset = 0;
+	segment.file_size = 0x1000;
+	segment.max_protection = 3;
+	segment.initial_protection = 3;
+	segment.section_count = static_cast<std::uint32_t>(section_count);
+	const auto make_section = [](const char* name, std::uint64_t address,
+		std::uint64_t size, std::uint32_t offset, std::uint32_t type) {
+		Section64 section{};
+		std::memcpy(section.section_name, name, std::strlen(name));
+		std::memcpy(section.segment_name, "__DATA", 6);
+		section.address = address;
+		section.size = size;
+		section.file_offset = offset;
+		section.alignment = 3;
+		section.flags = type;
+		return section;
+	};
+	const Section64 sections[] = {
+		make_section("__thread_data", 0x1100, 1, 0x100, 0x11),
+		make_section("__thread_bss", 0x1108, 1, 0, 0x12),
+		make_section("__thread_vars", 0x1200, sizeof(DarwinTLVDescriptor),
+			0x200, 0x13),
+		make_section("__thread_ptrs", 0x1210, sizeof(std::uintptr_t), 0x210, 0x14),
+	};
+	std::vector<std::uint8_t> bytes(0x1000, 0);
+	bytes[0x100] = 0x5a;
+	std::memcpy(bytes.data(), &header, sizeof(header));
+	std::memcpy(bytes.data() + sizeof(header), &segment, sizeof(segment));
+	std::memcpy(bytes.data() + sizeof(header) + sizeof(segment), sections,
+		sizeof(sections));
+	std::ofstream output(path, std::ios::binary | std::ios::trunc);
+	output.write(reinterpret_cast<const char*>(bytes.data()),
+		static_cast<std::streamsize>(bytes.size()));
+	if (!output) throw std::runtime_error("cannot write TLV provider Mach-O");
 }
 
 void WriteMachO(const std::filesystem::path& path, const char* dependency,
@@ -322,6 +375,12 @@ void WriteMachO(const std::filesystem::path& path, const char* dependency,
 int wmain(int argc, wchar_t** argv)
 {
 	try {
+		if (argc == 3 && std::wcscmp(argv[1], L"--emit-tlv") == 0) {
+			const auto root = std::filesystem::path(argv[2]);
+			std::filesystem::create_directories(root);
+			WriteTLVProviderMachO(root / "libwintosh_tlv.dylib");
+			return 0;
+		}
 		if (argc == 3 && std::wcscmp(argv[1], L"--emit-runtime") == 0) {
 			const auto root = std::filesystem::path(argv[2]);
 			std::filesystem::create_directories(root);

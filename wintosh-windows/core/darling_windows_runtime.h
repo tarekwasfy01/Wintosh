@@ -291,5 +291,9 @@ private:
 [[nodiscard]] bool TransferMachIpcNotification(NamedPipeRpcClient& client,
 	std::uint64_t source_session_token, std::uint64_t notification_token,
 	std::uint64_t target_session_token);
+[[nodiscard]] std::uint64_t OpenAndTransferMachIpcChildSession(
+	NamedPipeRpcClient& parent_client, NamedPipeRpcClient& child_client,
+	std::uint64_t parent_session_token, DWORD child_process_id,
+	const MachIpcCapabilityTable& capabilities);
 
 } // namespace darling::windows_host

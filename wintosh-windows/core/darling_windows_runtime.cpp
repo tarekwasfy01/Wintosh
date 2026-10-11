@@ -937,6 +937,24 @@ bool TransferMachIpcNotification(NamedPipeRpcClient& client,
 	}
 }
 
+std::uint64_t OpenAndTransferMachIpcChildSession(
+	NamedPipeRpcClient& parent_client, NamedPipeRpcClient& child_client,
+	std::uint64_t parent_session_token, DWORD child_process_id,
+	const MachIpcCapabilityTable& capabilities)
+{
+	if (parent_session_token == 0 || child_process_id == 0)
+		return 0;
+	try {
+		const auto child_session = OpenMachIpcSession(child_client, child_process_id);
+		if (!TransferMachIpcCapabilities(parent_client, parent_session_token,
+			capabilities, child_session))
+			return 0;
+		return child_session;
+	} catch (...) {
+		return 0;
+	}
+}
+
 void MachIpcCapabilityTable::Bind(std::uint32_t local_name, MachIpcCapability capability)
 {
 	if (local_name == 0 || capability.broker_token == 0 || capability.session_token == 0)

@@ -931,3 +931,9 @@ well. It changes notification ownership only after validating the source and
 target sessions; the legacy unauthenticated notification path remains a
 compatibility mode and is not treated as child inheritance.
 
+`OpenAndTransferMachIpcChildSession` now combines child-session opening on a
+child broker connection with the atomic capability batch transfer from the
+parent connection. It is the reusable bridge for a suspended child bootstrap;
+it does not itself create the process, clone memory, or roll back an already
+opened session when a future resource family fails.
+

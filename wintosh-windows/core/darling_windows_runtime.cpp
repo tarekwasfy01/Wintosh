@@ -820,6 +820,8 @@ MachIpcEnvelope SendMachIpcEnvelope(NamedPipeRpcClient& client,
 	client.Write(std::string(bytes.begin(), bytes.end()));
 	const auto response = client.Read();
 	if (response.empty()) throw std::runtime_error("empty Mach IPC broker response");
+	if (response.rfind("MACH_", 0) == 0 || response == "INVALID_MACH_IPC_REQUEST")
+		throw std::runtime_error(response);
 	return DecodeMachIpcEnvelope(std::vector<std::uint8_t>(response.begin(), response.end()));
 }
 

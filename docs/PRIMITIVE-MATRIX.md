@@ -90,6 +90,10 @@ The regular broker-backed `mach_msg` receive path still appends trailers in the
 client ABI after transport; a focused x64 follow-up exposed an unresolved
 interaction with the subsequent port-descriptor receive sequence, so full
 receive-trailer plus descriptor/OOL ordering is not yet marked verified.
+Broker error replies are now classified before envelope decoding and map the
+known receive-would-block, dead-port, cancellation, and send-queue-full cases
+to explicit Darwin-facing return values; unknown transport errors remain
+fail-closed.
 `MACH_RCV_LARGE` and `MACH_RCV_LARGE_IDENTITY` are now accepted at the option
 boundary and retain the queue-preserving Too-Large behavior; Darwin's complete
 large-message identity payload remains open.

@@ -2113,8 +2113,15 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 					AppendReceiveTrailer(message, message->msgh_size, receive_size, option,
 						mach_last_receive_sequence, receive_name);
 					return 0;
+				} catch (const std::exception& error) {
+					const std::string message(error.what());
+					if (message == "MACH_RECEIVE_WOULD_BLOCK") return 268;
+					if (message == "MACH_PORT_DEAD") return 3;
+					if (message == "MACH_REQUEST_CANCELLED") return 0x10004007;
+					if (message == "MACH_SEND_QUEUE_FULL") return darling_mach_send_queue_full;
+					return 4;
 				} catch (...) {
-					return 268;
+					return 4;
 				}
 			}
 		}

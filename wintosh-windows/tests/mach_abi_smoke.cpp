@@ -379,6 +379,13 @@ int main()
 		worker.join();
 		return 1;
 	}
+	if (worker_avx == 0 && darling_windows_thread_set_state(worker_thread,
+		darling_x86_avx_state64_flavor, &worker_avx_state,
+		darling_x86_avx_state64_count) != 0) {
+		worker_stop.store(true, std::memory_order_release);
+		worker.join();
+		return 1;
+	}
 	darling_x86_avx512_state64 worker_avx512_state{};
 	std::uint32_t worker_avx512_count = darling_x86_avx512_state64_count;
 	const auto worker_avx512 = darling_windows_thread_get_state(worker_thread,
@@ -389,6 +396,13 @@ int main()
 		return 1;
 	}
 	if (worker_avx512 == 0 && worker_avx512_count != darling_x86_avx512_state64_count) {
+		worker_stop.store(true, std::memory_order_release);
+		worker.join();
+		return 1;
+	}
+	if (worker_avx512 == 0 && darling_windows_thread_set_state(worker_thread,
+		darling_x86_avx512_state64_flavor, &worker_avx512_state,
+		darling_x86_avx512_state64_count) != 0) {
 		worker_stop.store(true, std::memory_order_release);
 		worker.join();
 		return 1;

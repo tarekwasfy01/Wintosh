@@ -738,8 +738,14 @@ extern "C" darling_kern_return_t darling_windows_thread_set_state(
 	return darling_kern_not_supported;
 #else
 	if (thread == 0 ||
-		(flavor != darling_x86_thread_state64_flavor && flavor != darling_x86_float_state64_flavor && flavor != darling_x86_debug_state64_flavor) || state == nullptr ||
-		count < (flavor == darling_x86_thread_state64_flavor ? darling_x86_thread_state64_count : flavor == darling_x86_float_state64_flavor ? darling_x86_float_state64_count : darling_x86_debug_state64_count))
+		(flavor != darling_x86_thread_state64_flavor && flavor != darling_x86_float_state64_flavor &&
+		 flavor != darling_x86_avx_state64_flavor && flavor != darling_x86_avx512_state64_flavor &&
+		 flavor != darling_x86_debug_state64_flavor) || state == nullptr ||
+		count < (flavor == darling_x86_thread_state64_flavor ? darling_x86_thread_state64_count :
+			flavor == darling_x86_float_state64_flavor ? darling_x86_float_state64_count :
+			flavor == darling_x86_avx_state64_flavor ? darling_x86_avx_state64_count :
+			flavor == darling_x86_avx512_state64_flavor ? darling_x86_avx512_state64_count :
+			darling_x86_debug_state64_count))
 		return 4;
 	if (thread == darling_windows_mach_thread_self()) {
 		if (flavor != darling_x86_float_state64_flavor) return 4;
@@ -747,6 +753,53 @@ extern "C" darling_kern_return_t darling_windows_thread_set_state(
 		std::memcpy(&mxcsr, reinterpret_cast<const std::uint8_t*>(state) + 32, sizeof(mxcsr));
 		_mm_setcsr(mxcsr);
 		return 0;
+	}
+	if (flavor == darling_x86_avx_state64_flavor || flavor == darling_x86_avx512_state64_flavor) {
+		DWORD context_length = 0;
+		if (InitializeContext(nullptr, CONTEXT_FULL | CONTEXT_XSTATE, nullptr, &context_length) ||
+			context_length == 0)
+			return 4;
+		std::vector<std::uint8_t> context_storage(context_length);
+		PCONTEXT xstate_context = nullptr;
+		if (!InitializeContext(context_storage.data(), CONTEXT_FULL | CONTEXT_XSTATE,
+			&xstate_context, &context_length) || xstate_context == nullptr)
+			return 4;
+		const HANDLE handle = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT |
+			THREAD_SET_CONTEXT, FALSE, thread);
+		if (handle == nullptr) return 4;
+		if (SuspendThread(handle) == static_cast<DWORD>(-1) ||
+			!GetThreadContext(handle, xstate_context)) {
+			ResumeThread(handle);
+			CloseHandle(handle);
+			return 4;
+		}
+		DWORD64 features = 0;
+		const auto* legacy = LocateXStateFeature(xstate_context, XSTATE_LEGACY_SSE, nullptr);
+		const auto* avx = LocateXStateFeature(xstate_context, XSTATE_AVX, nullptr);
+		const auto* kmask = LocateXStateFeature(xstate_context, XSTATE_AVX512_KMASK, nullptr);
+		const auto* zmmh = LocateXStateFeature(xstate_context, XSTATE_AVX512_ZMM_H, nullptr);
+		const auto* zmm = LocateXStateFeature(xstate_context, XSTATE_AVX512_ZMM, nullptr);
+		const bool supported = GetXStateFeaturesMask(xstate_context, &features) &&
+			(features & XSTATE_MASK_AVX) != 0 && legacy != nullptr && avx != nullptr &&
+			(flavor == darling_x86_avx_state64_flavor ||
+			 ((features & XSTATE_MASK_AVX512) == XSTATE_MASK_AVX512 &&
+			  kmask != nullptr && zmmh != nullptr && zmm != nullptr));
+		BOOL applied = FALSE;
+		if (supported) {
+			const auto* input = static_cast<const std::uint8_t*>(state);
+			std::memcpy(legacy, input + 8, sizeof(XSAVE_FORMAT));
+			std::memcpy(avx, input + 588, 16 * 16);
+			if (flavor == darling_x86_avx512_state64_flavor) {
+				std::memcpy(kmask, input + 844, 64);
+				std::memcpy(zmmh, input + 908, 512);
+				std::memcpy(zmm, input + 1420, 1024);
+			}
+			applied = SetThreadContext(handle, xstate_context);
+		}
+		ResumeThread(handle);
+		CloseHandle(handle);
+		if (!supported) return darling_kern_not_supported;
+		return applied ? 0 : 4;
 	}
 	const HANDLE handle = OpenThread(THREAD_SUSPEND_RESUME | THREAD_SET_CONTEXT, FALSE, thread);
 	if (handle == nullptr) return 4;

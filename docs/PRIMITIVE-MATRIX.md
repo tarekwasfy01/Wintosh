@@ -615,8 +615,10 @@ chain for the current task. This still does not create durable Mach thread-port
 objects.
 Foreign x86 `thread_set_state` for `x86_FLOAT_STATE64` now writes back the
 complete 512-byte XSAVE floating-point payload after Darwin's two-word prefix,
-covering x87/MMX/SSE control and register state rather than only MXCSR. AVX/
-AVX-512 writeback, ARM state, and exception-state writes remain open.
+covering x87/MMX/SSE control and register state rather than only MXCSR. The
+same XState bridge now writes AVX and AVX-512 payloads when the Windows host
+reports the required feature sets; unsupported host features return
+`KERN_NOT_SUPPORTED`. ARM state and exception-state writes remain open.
 Managed foreign task names now participate in the local port lifecycle: both
 `mach_port_deallocate` and `mach_port_destroy` release an opaque name returned
 by `task_for_pid`, and later task operations reject that released name. This

@@ -52,6 +52,13 @@ repository-owned Mach-O provider containing real `__thread_*` sections is
 still missing; the existing TLS evidence is native and synthetic rather than
 a redistributable Apple `libpthread` binary.
 
+The focused TLS/pthread regression set was rerun on the current Release build:
+`wintosh_tlv_smoke`, `wintosh_thread_smoke`, `wintosh_pthread_sync_smoke`,
+`wintosh_host_api_smoke`, `wintosh_dyld_smoke`, and `wintosh_macho_smoke`
+all pass (6/6).  This is evidence for the Windows host bridge and loader
+paths, not evidence that an arbitrary Apple pthread implementation can already
+be loaded.
+
 ## What is included in a source release
 
 Include the Windows port source, all documentation, and the `licenses`

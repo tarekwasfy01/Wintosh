@@ -348,6 +348,20 @@ extern "C" darling_kern_return_t darling_windows_task_resume(darling_mach_port_n
 	return 0;
 }
 
+extern "C" darling_kern_return_t darling_windows_task_terminate(darling_mach_port_name_t task)
+{
+	if (task == 0 || task == darling_windows_mach_task_self()) return 4;
+	const HANDLE process = OpenProcess(PROCESS_TERMINATE | SYNCHRONIZE, FALSE, task);
+	if (process == nullptr) return 4;
+	const BOOL terminated = TerminateProcess(process, 1);
+	if (terminated) (void)WaitForSingleObject(process, 5000);
+	CloseHandle(process);
+	if (!terminated) return 4;
+	std::lock_guard lock(suspend_counts_mutex);
+	task_suspend_counts.erase(task);
+	return 0;
+}
+
 extern "C" darling_kern_return_t darling_windows_thread_policy_set(
 	darling_mach_port_name_t thread, std::uint32_t flavor, const void* policy,
 	std::uint32_t count)

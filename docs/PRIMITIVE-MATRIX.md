@@ -551,6 +551,10 @@ thread-port rights and Darwin port namespaces remain incomplete.
 `NtResumeProcess`, with a guarded per-task suspend count and underflow
 rejection. Self-suspension is rejected deliberately to avoid deadlocking the
 hosting Darwin process; exact Darwin self-task semantics remain open.
+`task_terminate` maps a foreign task to `TerminateProcess`, waits for its
+terminal state, and removes its adapter suspend-count entry. Self-termination
+is rejected intentionally; signal- and exception-based Darwin termination
+semantics are not yet represented.
 The same boundary now exposes `AllocateMemory`, `ProtectMemory`, and
 `FreeMemory`, completing the basic remote-VM operation shape needed by a future
 restore path. The smoke covers invalid-operation rejection; successful remote

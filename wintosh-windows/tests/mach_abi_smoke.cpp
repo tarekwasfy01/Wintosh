@@ -64,6 +64,19 @@ int main()
 		return 1;
 	}
 	cleanup_child();
+	PROCESS_INFORMATION terminated_child{};
+	wchar_t terminate_command[] = L"cmd.exe /d /c ping 127.0.0.1 -n 30 > nul";
+	if (!CreateProcessW(nullptr, terminate_command, nullptr, nullptr, FALSE, 0,
+		nullptr, nullptr, &startup, &terminated_child))
+		return 1;
+	darling_mach_port_name_t terminated_task = 0;
+	const bool terminate_ok = darling_windows_task_for_pid(darling_windows_mach_host_self(),
+		terminated_child.dwProcessId, &terminated_task) == 0 && terminated_task != 0 &&
+		darling_windows_task_terminate(terminated_task) == 0 &&
+		WaitForSingleObject(terminated_child.hProcess, 5000) == WAIT_OBJECT_0;
+	CloseHandle(terminated_child.hThread);
+	CloseHandle(terminated_child.hProcess);
+	if (!terminate_ok) return 1;
 	const auto thread = darling_windows_mach_thread_self();
 	darling_thread_precedence_policy_info precedence{};
 	darling_thread_time_constraint_policy_info time_constraint{100, 10, 20, 1};

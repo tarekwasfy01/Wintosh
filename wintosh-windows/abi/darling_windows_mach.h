@@ -152,6 +152,7 @@ extern "C" darling_kern_return_t darling_windows_task_threads(
 	std::uint32_t* count);
 extern "C" darling_kern_return_t darling_windows_task_suspend(darling_mach_port_name_t task);
 extern "C" darling_kern_return_t darling_windows_task_resume(darling_mach_port_name_t task);
+extern "C" darling_kern_return_t darling_windows_task_terminate(darling_mach_port_name_t task);
 constexpr std::uint32_t darling_thread_extended_policy = 1;
 constexpr std::uint32_t darling_thread_time_constraint_policy = 2;
 constexpr std::uint32_t darling_thread_precedence_policy = 3;

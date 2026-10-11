@@ -5680,6 +5680,7 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 	if (std::strcmp(name, "task_threads") == 0 || std::strcmp(name, "_task_threads") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_task_threads);
 	if (std::strcmp(name, "task_suspend") == 0 || std::strcmp(name, "_task_suspend") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_task_suspend);
 	if (std::strcmp(name, "task_resume") == 0 || std::strcmp(name, "_task_resume") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_task_resume);
+	if (std::strcmp(name, "task_terminate") == 0 || std::strcmp(name, "_task_terminate") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_task_terminate);
 	if (std::strcmp(name, "mach_thread_self") == 0 || std::strcmp(name, "_mach_thread_self") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_mach_thread_self);
 	if (std::strcmp(name, "thread_policy_set") == 0 || std::strcmp(name, "_thread_policy_set") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_thread_policy_set);
 	if (std::strcmp(name, "thread_policy_get") == 0 || std::strcmp(name, "_thread_policy_get") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_thread_policy_get);

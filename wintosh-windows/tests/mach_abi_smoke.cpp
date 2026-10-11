@@ -488,6 +488,18 @@ int main()
 		&exception_state, &exception_count) != 0 ||
 		exception_count != darling_x86_exception_state64_count)
 		return 1;
+	exception_state.trapno = 7;
+	exception_state.error = 0x1234;
+	exception_state.faultvaddr = 0xfeedface;
+	if (darling_windows_thread_set_state(thread, darling_x86_exception_state64_flavor,
+		&exception_state, darling_x86_exception_state64_count) != 0) return 1;
+	darling_x86_exception_state64 exception_readback{};
+	exception_count = darling_x86_exception_state64_count;
+	if (darling_windows_thread_get_state(thread, darling_x86_exception_state64_flavor,
+		&exception_readback, &exception_count) != 0 ||
+		exception_readback.trapno != 7 || exception_readback.error != 0x1234 ||
+		exception_readback.faultvaddr != 0xfeedface)
+		return 1;
 	darling_x86_debug_state64 debug_state{};
 	std::uint32_t debug_count = darling_x86_debug_state64_count;
 	if (darling_windows_thread_get_state(thread, darling_x86_debug_state64_flavor,

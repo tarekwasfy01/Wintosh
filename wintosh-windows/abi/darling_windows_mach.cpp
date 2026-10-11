@@ -161,6 +161,8 @@ std::unordered_map<darling_mach_port_name_t, std::uint32_t> suspend_counts;
 std::unordered_map<darling_mach_port_name_t, std::uint32_t> task_suspend_counts;
 std::mutex time_constraint_policies_mutex;
 std::unordered_map<darling_mach_port_name_t, darling_thread_time_constraint_policy_info> time_constraint_policies;
+std::mutex exception_states_mutex;
+std::unordered_map<darling_mach_port_name_t, darling_x86_exception_state64> exception_states;
 void* exception_handler_cookie = nullptr;
 std::mutex read_buffers_mutex;
 std::unordered_map<darling_mach_vm_address_t, SIZE_T> read_buffers;
@@ -434,6 +436,11 @@ extern "C" darling_kern_return_t darling_windows_task_terminate(darling_mach_por
 			time_constraint_policies.erase(thread);
 	}
 	{
+		std::lock_guard lock(exception_states_mutex);
+		for (const auto thread : child_threads)
+			exception_states.erase(thread);
+	}
+	{
 		std::lock_guard lock(exception_ports_mutex);
 		exception_ports.erase(task);
 		for (const auto thread : child_threads)
@@ -624,7 +631,14 @@ extern "C" darling_kern_return_t darling_windows_thread_get_state(
 		return 4;
 	if (flavor == darling_x86_exception_state64_flavor) {
 		auto* result = static_cast<darling_x86_exception_state64*>(state);
-		result->cpu = static_cast<std::uint16_t>(GetCurrentProcessorNumber());
+		std::lock_guard lock(exception_states_mutex);
+		const auto found = exception_states.find(thread);
+		if (found == exception_states.end()) {
+			*result = {};
+			result->cpu = static_cast<std::uint16_t>(GetCurrentProcessorNumber());
+		} else {
+			*result = found->second;
+		}
 		*count = darling_x86_exception_state64_count;
 		return 0;
 	}
@@ -758,6 +772,7 @@ extern "C" darling_kern_return_t darling_windows_thread_set_state(
 	if (thread == 0 ||
 		(flavor != darling_x86_thread_state64_flavor && flavor != darling_x86_float_state64_flavor &&
 		 flavor != darling_x86_avx_state64_flavor && flavor != darling_x86_avx512_state64_flavor &&
+		 flavor != darling_x86_exception_state64_flavor &&
 		 flavor != darling_x86_debug_state64_flavor) || state == nullptr ||
 		count < (flavor == darling_x86_thread_state64_flavor ? darling_x86_thread_state64_count :
 			flavor == darling_x86_float_state64_flavor ? darling_x86_float_state64_count :
@@ -766,10 +781,20 @@ extern "C" darling_kern_return_t darling_windows_thread_set_state(
 			darling_x86_debug_state64_count))
 		return 4;
 	if (thread == darling_windows_mach_thread_self()) {
+		if (flavor == darling_x86_exception_state64_flavor) {
+			std::lock_guard lock(exception_states_mutex);
+			exception_states[thread] = *static_cast<const darling_x86_exception_state64*>(state);
+			return 0;
+		}
 		if (flavor != darling_x86_float_state64_flavor) return 4;
 		std::uint32_t mxcsr = 0;
 		std::memcpy(&mxcsr, reinterpret_cast<const std::uint8_t*>(state) + 32, sizeof(mxcsr));
 		_mm_setcsr(mxcsr);
+		return 0;
+	}
+	if (flavor == darling_x86_exception_state64_flavor) {
+		std::lock_guard lock(exception_states_mutex);
+		exception_states[thread] = *static_cast<const darling_x86_exception_state64*>(state);
 		return 0;
 	}
 	if (flavor == darling_x86_avx_state64_flavor || flavor == darling_x86_avx512_state64_flavor) {

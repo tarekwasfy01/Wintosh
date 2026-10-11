@@ -619,6 +619,10 @@ covering x87/MMX/SSE control and register state rather than only MXCSR. The
 same XState bridge now writes AVX and AVX-512 payloads when the Windows host
 reports the required feature sets; unsupported host features return
 `KERN_NOT_SUPPORTED`. ARM state and exception-state writes remain open.
+`x86_EXCEPTION_STATE64` now has an adapter-local get/set roundtrip, including
+trap number, error, and fault address, with cleanup on foreign task termination.
+It preserves metadata for translated callers; it does not rewrite a live
+Windows trap frame or create a kernel exception context.
 Managed foreign task names now participate in the local port lifecycle: both
 `mach_port_deallocate` and `mach_port_destroy` release an opaque name returned
 by `task_for_pid`, and later task operations reject that released name. This

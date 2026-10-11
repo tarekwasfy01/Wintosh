@@ -35,6 +35,8 @@ following families with Windows-backed implementations:
   without dereferencing null pointers and reject invalid nonempty ranges;
 - `bcopy` and `memccpy` now apply the same empty-range and invalid-pointer
   protection;
+- `strlcpy` and `strlcat` now reject null source/destination pointers without
+  entering the CRT, while preserving bounded-copy return lengths for valid input;
 - BSD/Darwin reverse byte search `memrchr` is now Windows-backed and
   host-symbol-resolvable, including bounded reverse scanning;
 - BSD/Darwin first-set-bit primitive `ffs` is now Windows-backed and

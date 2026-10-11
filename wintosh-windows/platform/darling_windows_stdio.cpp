@@ -8194,8 +8194,9 @@ extern "C" char* darling_windows_strncat(char* destination, const char* source,
 extern "C" std::size_t darling_windows_strlcpy(char* destination, const char* source,
 	std::size_t size)
 {
+	if (source == nullptr) return 0;
 	const auto source_length = std::strlen(source);
-	if (size != 0) {
+	if (size != 0 && destination != nullptr) {
 		const auto copy_length = (std::min)(source_length, size - 1);
 		std::memcpy(destination, source, copy_length);
 		destination[copy_length] = '\0';
@@ -8206,6 +8207,7 @@ extern "C" std::size_t darling_windows_strlcpy(char* destination, const char* so
 extern "C" std::size_t darling_windows_strlcat(char* destination, const char* source,
 	std::size_t size)
 {
+	if (source == nullptr || destination == nullptr) return 0;
 	const auto destination_length = std::strlen(destination);
 	const auto source_length = std::strlen(source);
 	if (destination_length >= size) {

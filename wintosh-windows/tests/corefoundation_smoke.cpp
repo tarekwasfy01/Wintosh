@@ -25,6 +25,14 @@ void RunLoopCallback(void* context) {
 	runloop_callback_value = *static_cast<int*>(context);
 	++runloop_callback_count;
 }
+void ArrayApplyCallback(const void* value, void* context)
+{
+	if (value != nullptr) ++*static_cast<int*>(context);
+}
+void DictionaryApplyCallback(const void* key, const void* value, void* context)
+{
+	if (key != nullptr && value != nullptr) ++*static_cast<int*>(context);
+}
 }
 
 int main()
@@ -45,8 +53,10 @@ int main()
 	}
 	std::cout << "COREFOUNDATION_RANGE_OVERFLOW=PASS\n";
 	const auto string = darling_windows_CFStringCreateWithCString("Wintosh");
+	const auto string_copy = darling_windows_CFStringCreateCopy(string);
 	char buffer[32]{};
-	const bool string_ok = string != nullptr &&
+	const bool string_ok = string != nullptr && string_copy != nullptr &&
+		darling_windows_CFEqual(string, string_copy) &&
 		darling_windows_CFStringGetLength(string) == 7 &&
 		 darling_windows_CFStringGetCString(string, buffer, sizeof(buffer)) &&
 		std::strcmp(buffer, "Wintosh") == 0 &&
@@ -70,6 +80,7 @@ int main()
 		std::strcmp(darling_windows_CFStringGetCStringPtr(unicode_whitespace), "Trim") == 0;
 	const unsigned char bytes[] = {1, 2, 3, 4};
 	const auto data = darling_windows_CFDataCreate(bytes, 4);
+	const auto data_copy = darling_windows_CFDataCreateCopy(data);
 	const auto equal_hash_string = darling_windows_CFStringCreateWithCString("Wintosh");
 	const bool identity_ok = string != nullptr && data != nullptr && equal_hash_string != nullptr &&
 		darling_windows_CFGetTypeID(string) != 0 &&
@@ -77,23 +88,31 @@ int main()
 		darling_windows_CFHash(string) == darling_windows_CFHash(equal_hash_string) &&
 		darling_windows_CFHash(string) != darling_windows_CFHash(data) &&
 		darling_windows_CFGetTypeID(nullptr) == 0 && darling_windows_CFHash(nullptr) == 0;
-	const bool data_ok = data != nullptr && darling_windows_CFDataGetLength(data) == 4 &&
-		darling_windows_CFDataGetBytePtr(data)[2] == 3;
+	const bool data_ok = data != nullptr && data_copy != nullptr &&
+		darling_windows_CFDataGetLength(data) == 4 &&
+		darling_windows_CFDataGetBytePtr(data)[2] == 3 &&
+		darling_windows_CFEqual(data, data_copy);
 	unsigned char data_slice[2]{};
 	const bool data_slice_ok = darling_windows_CFDataGetBytes(data, 1, 2, data_slice) &&
 		data_slice[0] == 2 && data_slice[1] == 3;
 	const void* values[] = {string, data};
 	const auto array = darling_windows_CFArrayCreate(values, 2);
+	const auto array_copy = darling_windows_CFArrayCreateCopy(array);
 	const bool array_ok = array != nullptr && darling_windows_CFArrayGetCount(array) == 2 &&
 		darling_windows_CFArrayGetValueAtIndex(array, 0) == string &&
-		darling_windows_CFArrayGetValueAtIndex(array, 1) == data;
+		darling_windows_CFArrayGetValueAtIndex(array, 1) == data &&
+		array_copy != nullptr && darling_windows_CFEqual(array, array_copy);
 	const void* copied_values[2]{};
 	darling_windows_CFArrayGetValues(array, 0, 2, copied_values);
 	const bool array_values_ok = copied_values[0] == string && copied_values[1] == data;
+	int applied_values = 0;
+	darling_windows_CFArrayApplyFunction(array, darling_windows_CFRangeMake(0, 2),
+		&ArrayApplyCallback, &applied_values);
+	const bool array_apply_ok = applied_values == 2;
 	darling_windows_CFArrayGetValues(array, 0, 2, copied_values);
 	const bool array_overlap_copy_ok = copied_values[0] == string && copied_values[1] == data;
 	darling_windows_CFArrayGetValues(array, 0, 0, nullptr);
-	const bool array_empty_range_ok = darling_windows_CFArrayGetCount(array) == 2;
+	const bool array_empty_range_ok = darling_windows_CFArrayGetCount(array) == 2 && array_apply_ok;
 	const bool array_search_ok = darling_windows_CFArrayGetFirstIndexOfValue(array,
 		data) == 1 && darling_windows_CFArrayGetFirstIndexOfValue(array, prefix) == -1 &&
 		darling_windows_CFArrayGetCountOfValue(array, string) == 1 &&
@@ -102,8 +121,10 @@ int main()
 	const bool collection_equal_ok = darling_windows_CFEqual(array, equal_array) &&
 		darling_windows_CFHash(array) == darling_windows_CFHash(equal_array);
 	const auto number = darling_windows_CFNumberCreateInteger(42);
+	const auto number_copy = darling_windows_CFNumberCreateCopy(number);
 	std::int64_t integer = 0;
-	const bool number_ok = darling_windows_CFNumberGetInteger(number, &integer) && integer == 42;
+	const bool number_ok = darling_windows_CFNumberGetInteger(number, &integer) && integer == 42 &&
+		number_copy != nullptr && darling_windows_CFEqual(number, number_copy);
 	double integer_as_real = 0;
 	const bool number_conversion_ok = darling_windows_CFNumberGetDouble(number, &integer_as_real) &&
 		integer_as_real == 42;
@@ -124,9 +145,11 @@ int main()
 	const void* keys[] = {string};
 	const void* mapped[] = {number};
 	const auto dictionary = darling_windows_CFDictionaryCreate(keys, mapped, 1);
+	const auto dictionary_copy = darling_windows_CFDictionaryCreateCopy(dictionary);
 	const bool dictionary_ok = dictionary != nullptr &&
 		darling_windows_CFDictionaryGetCount(dictionary) == 1 &&
-		darling_windows_CFDictionaryGetValue(dictionary, string) == number;
+		darling_windows_CFDictionaryGetValue(dictionary, string) == number &&
+		dictionary_copy != nullptr && darling_windows_CFEqual(dictionary, dictionary_copy);
 	const void* duplicate_keys[] = {string, string};
 	const void* duplicate_values[] = {number, real_number};
 	const auto duplicate_dictionary = darling_windows_CFDictionaryCreate(
@@ -150,17 +173,27 @@ int main()
 	const void* copied_dictionary_values[1]{};
 	darling_windows_CFDictionaryGetKeysAndValues(dictionary, copied_keys,
 		copied_dictionary_values);
+	int applied_dictionary_values = 0;
+	darling_windows_CFDictionaryApplyFunction(dictionary, &DictionaryApplyCallback,
+		&applied_dictionary_values);
+	const bool dictionary_apply_ok = applied_dictionary_values == 1;
 	const bool dictionary_values_ok = copied_keys[0] == string &&
 		copied_dictionary_values[0] == number &&
-		darling_windows_CFDictionaryContainsKey(dictionary, string);
+		darling_windows_CFDictionaryContainsKey(dictionary, string) &&
+		dictionary_apply_ok;
 	const void* set_values[] = {string, string, data};
 	const auto set = darling_windows_CFSetCreate(set_values, 3);
+	const auto set_copy = darling_windows_CFSetCreateCopy(set);
 	const auto equal_data = darling_windows_CFDataCreate(bytes, 4);
 	const bool set_ok = set != nullptr && darling_windows_CFSetGetCount(set) == 2 &&
-		darling_windows_CFSetContainsValue(set, equal_data);
+		darling_windows_CFSetContainsValue(set, equal_data) && set_copy != nullptr &&
+		darling_windows_CFEqual(set, set_copy);
+	int applied_set_values = 0;
+	darling_windows_CFSetApplyFunction(set, &ArrayApplyCallback, &applied_set_values);
+	const bool set_apply_ok = applied_set_values == 2;
 	const void* reversed_set_values[] = {data, string};
 	const auto reversed_set = darling_windows_CFSetCreate(reversed_set_values, 2);
-	const bool set_hash_ok = reversed_set != nullptr && darling_windows_CFEqual(set, reversed_set) &&
+	const bool set_hash_ok = reversed_set != nullptr && set_apply_ok && darling_windows_CFEqual(set, reversed_set) &&
 		darling_windows_CFHash(set) == darling_windows_CFHash(reversed_set);
 	const void* copied_set_values[2]{};
 	darling_windows_CFSetGetValues(set, copied_set_values);
@@ -168,12 +201,14 @@ int main()
 		(copied_set_values[0] == data || copied_set_values[1] == data) &&
 		darling_windows_CFSetGetValue(set, equal_data) == data;
 	const auto date = darling_windows_CFDateCreate(1234.5);
+	const auto date_copy = darling_windows_CFDateCreateCopy(date);
 	const auto earlier_date = darling_windows_CFDateCreate(1234.0);
 	const auto later_date = darling_windows_CFDateCreate(1235.0);
 	const auto url = darling_windows_CFURLCreateWithFileSystemPath("C:/Wintosh/app");
 	const auto url_path = darling_windows_CFURLCopyFileSystemPath(url);
 	char url_buffer[64]{};
-	const bool date_url_ok = date != nullptr &&
+	const bool date_url_ok = date != nullptr && date_copy != nullptr &&
+		darling_windows_CFEqual(date, date_copy) &&
 		darling_windows_CFDateGetAbsoluteTime(date) == 1234.5 && url != nullptr &&
 		url_path != nullptr && darling_windows_CFStringGetCString(url_path, url_buffer, sizeof(url_buffer)) &&
 		std::strcmp(url_buffer, "C:/Wintosh/app") == 0;
@@ -550,6 +585,7 @@ int main()
 		darling_windows_CFDataGetBytePtr(alias_data)[2] == 8;
 	darling_windows_CFRetain(string);
 	darling_windows_CFRelease(string);
+	darling_windows_CFRelease(string_copy);
 	darling_windows_CFRelease(alias_data);
 	darling_windows_CFRelease(prefix);
 	darling_windows_CFRelease(suffix);
@@ -560,22 +596,28 @@ int main()
 	darling_windows_CFRelease(mutable_replacement);
 	darling_windows_CFRelease(whitespace_string);
 	darling_windows_CFRelease(array);
+	darling_windows_CFRelease(array_copy);
 	darling_windows_CFRelease(equal_array);
 	darling_windows_CFRelease(data);
+	darling_windows_CFRelease(data_copy);
 	darling_windows_CFRelease(equal_hash_string);
 	darling_windows_CFRelease(set);
+	darling_windows_CFRelease(set_copy);
 	darling_windows_CFRelease(equal_data);
 	darling_windows_CFRelease(reversed_set);
 	darling_windows_CFRelease(dictionary);
+	darling_windows_CFRelease(dictionary_copy);
 	darling_windows_CFRelease(duplicate_dictionary);
 	darling_windows_CFRelease(reordered_dictionary);
 	darling_windows_CFRelease(original_dictionary);
 	darling_windows_CFRelease(number);
+	darling_windows_CFRelease(number_copy);
 	darling_windows_CFRelease(equal_real_number);
 	darling_windows_CFRelease(real_number);
 	darling_windows_CFRelease(url_path);
 	darling_windows_CFRelease(url);
 	darling_windows_CFRelease(date);
+	darling_windows_CFRelease(date_copy);
 	darling_windows_CFRelease(earlier_date);
 	darling_windows_CFRelease(later_date);
 	darling_windows_CFRelease(shifted_date);

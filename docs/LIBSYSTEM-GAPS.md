@@ -31,6 +31,21 @@ following families with Windows-backed implementations:
 - C++ virtual-dispatch failure entry points `___cxa_pure_virtual` and
   `___cxa_deleted_virtual`, resolved to fail-closed Windows handlers with
   both Darwin and Itanium spelling aliases covered by the host smoke test.
+- CoreFoundation array traversal through `CFArrayApplyFunction`, including
+  range validation and callback execution on x64 and Win32.
+- CoreFoundation dictionary traversal through `CFDictionaryApplyFunction`,
+  with key/value callback delivery covered on x64 and Win32.
+- CoreFoundation set traversal through `CFSetApplyFunction`, with duplicate-
+  free value iteration covered on x64 and Win32.
+- CoreFoundation container copies `CFArrayCreateCopy`,
+  `CFDictionaryCreateCopy`, and `CFSetCreateCopy`, with retained value
+  semantics verified on x64 and Win32.
+- CoreFoundation immutable copies `CFStringCreateCopy` and
+  `CFDataCreateCopy`, including value equality and retained ownership checks
+  on x64 and Win32.
+- CoreFoundation numeric/date copies `CFNumberCreateCopy` and
+  `CFDateCreateCopy`, including integer/real type preservation and value
+  equality checks on x64 and Win32.
 
 These are native Windows compatibility primitives. They are not a copied or
 relicensed Apple libSystem binary.

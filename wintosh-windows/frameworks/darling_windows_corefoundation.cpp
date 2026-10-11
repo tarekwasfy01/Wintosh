@@ -625,6 +625,14 @@ extern "C" darling_windows_CFStringRef darling_windows_CFStringCreateWithCString
 	return object;
 }
 
+extern "C" darling_windows_CFStringRef darling_windows_CFStringCreateCopy(
+	darling_windows_CFStringRef value)
+{
+	const auto* object = static_cast<const Object*>(value);
+	if (object == nullptr || object->kind != Kind::String) return nullptr;
+	return darling_windows_CFStringCreateWithCString(object->string.c_str());
+}
+
 extern "C" darling_windows_CFIndex darling_windows_CFStringGetLength(darling_windows_CFStringRef value)
 {
 	const auto* object = static_cast<const Object*>(value);
@@ -825,6 +833,15 @@ extern "C" darling_windows_CFDataRef darling_windows_CFDataCreate(const void* by
 	return object;
 }
 
+extern "C" darling_windows_CFDataRef darling_windows_CFDataCreateCopy(
+	darling_windows_CFDataRef value)
+{
+	const auto* object = static_cast<const Object*>(value);
+	if (object == nullptr || object->kind != Kind::Data) return nullptr;
+	return darling_windows_CFDataCreate(object->data.data(),
+		static_cast<darling_windows_CFIndex>(object->data.size()));
+}
+
 extern "C" const unsigned char* darling_windows_CFDataGetBytePtr(darling_windows_CFDataRef value)
 {
 	const auto* object = static_cast<const Object*>(value);
@@ -924,6 +941,15 @@ extern "C" darling_windows_CFIndex darling_windows_CFArrayGetCount(darling_windo
 		static_cast<darling_windows_CFIndex>(object->array.size()) : 0;
 }
 
+extern "C" darling_windows_CFArrayRef darling_windows_CFArrayCreateCopy(
+	darling_windows_CFArrayRef value)
+{
+	const auto* object = static_cast<const Object*>(value);
+	if (object == nullptr || object->kind != Kind::Array) return nullptr;
+	return darling_windows_CFArrayCreate(object->array.data(),
+		static_cast<darling_windows_CFIndex>(object->array.size()));
+}
+
 extern "C" darling_windows_CFTypeRef darling_windows_CFArrayGetValueAtIndex(
 	darling_windows_CFArrayRef value, darling_windows_CFIndex index)
 {
@@ -964,6 +990,20 @@ extern "C" darling_windows_CFIndex darling_windows_CFArrayGetLastIndexOfValue(
 		if (darling_windows_CFEqual(object->array[index - 1], candidate))
 			return static_cast<darling_windows_CFIndex>(index - 1);
 	return -1;
+}
+
+extern "C" void darling_windows_CFArrayApplyFunction(darling_windows_CFArrayRef value,
+	darling_windows_CFRange range, darling_windows_CFArrayApplierFunction function,
+	void* context)
+{
+	const auto* object = static_cast<const Object*>(value);
+	if (object == nullptr || object->kind != Kind::Array || function == nullptr ||
+		range.location < 0 || range.length < 0 ||
+		static_cast<std::size_t>(range.location) > object->array.size() ||
+		static_cast<std::size_t>(range.length) > object->array.size() -
+			static_cast<std::size_t>(range.location)) return;
+	for (darling_windows_CFIndex index = 0; index < range.length; ++index)
+		function(object->array[static_cast<std::size_t>(range.location + index)], context);
 }
 
 extern "C" void darling_windows_CFArrayGetValues(darling_windows_CFArrayRef value,
@@ -1066,6 +1106,17 @@ extern "C" const void* darling_windows_CFNumberCreateInteger(std::int64_t value)
 	return object;
 }
 
+extern "C" const void* darling_windows_CFNumberCreateCopy(const void* value)
+{
+	const auto* object = static_cast<const Object*>(value);
+	if (object == nullptr) return nullptr;
+	if (object->kind == Kind::Number)
+		return darling_windows_CFNumberCreateInteger(object->number);
+	if (object->kind == Kind::Real)
+		return darling_windows_CFNumberCreateDouble(object->real_number);
+	return nullptr;
+}
+
 extern "C" bool darling_windows_CFNumberGetInteger(const void* value, std::int64_t* result)
 {
 	const auto* object = static_cast<const Object*>(value);
@@ -1134,6 +1185,23 @@ extern "C" darling_windows_CFIndex darling_windows_CFDictionaryGetCount(
 		static_cast<darling_windows_CFIndex>(object->dictionary.size()) : 0;
 }
 
+extern "C" darling_windows_CFDictionaryRef darling_windows_CFDictionaryCreateCopy(
+	darling_windows_CFDictionaryRef value)
+{
+	const auto* object = static_cast<const Object*>(value);
+	if (object == nullptr || object->kind != Kind::Dictionary) return nullptr;
+	std::vector<const void*> keys;
+	std::vector<const void*> values;
+	keys.reserve(object->dictionary.size());
+	values.reserve(object->dictionary.size());
+	for (const auto& entry : object->dictionary) {
+		keys.push_back(entry.first);
+		values.push_back(entry.second);
+	}
+	return darling_windows_CFDictionaryCreate(keys.data(), values.data(),
+		static_cast<darling_windows_CFIndex>(keys.size()));
+}
+
 extern "C" darling_windows_CFTypeRef darling_windows_CFDictionaryGetValue(
 	darling_windows_CFDictionaryRef value, const void* key)
 {
@@ -1163,6 +1231,16 @@ extern "C" void darling_windows_CFDictionaryGetKeysAndValues(
 		if (keys != nullptr) keys[index] = object->dictionary[index].first;
 		if (values != nullptr) values[index] = object->dictionary[index].second;
 	}
+}
+
+extern "C" void darling_windows_CFDictionaryApplyFunction(
+	darling_windows_CFDictionaryRef value, darling_windows_CFDictionaryApplierFunction function,
+	void* context)
+{
+	const auto* object = static_cast<const Object*>(value);
+	if (object == nullptr || object->kind != Kind::Dictionary || function == nullptr) return;
+	for (const auto& entry : object->dictionary)
+		function(entry.first, entry.second, context);
 }
 
 extern "C" bool darling_windows_CFDictionarySetValue(darling_windows_CFDictionaryRef value,
@@ -1238,6 +1316,15 @@ extern "C" darling_windows_CFIndex darling_windows_CFSetGetCount(darling_windows
 		static_cast<darling_windows_CFIndex>(object->array.size()) : 0;
 }
 
+extern "C" darling_windows_CFSetRef darling_windows_CFSetCreateCopy(
+	darling_windows_CFSetRef value)
+{
+	const auto* object = static_cast<const Object*>(value);
+	if (object == nullptr || object->kind != Kind::Set) return nullptr;
+	return darling_windows_CFSetCreate(object->array.data(),
+		static_cast<darling_windows_CFIndex>(object->array.size()));
+}
+
 extern "C" bool darling_windows_CFSetContainsValue(darling_windows_CFSetRef value,
 	const void* candidate)
 {
@@ -1265,6 +1352,15 @@ extern "C" void darling_windows_CFSetGetValues(darling_windows_CFSetRef value,
 	if (object == nullptr || object->kind != Kind::Set || output == nullptr) return;
 	if (!object->array.empty()) std::memmove(output, object->array.data(),
 		object->array.size() * sizeof(const void*));
+}
+
+extern "C" void darling_windows_CFSetApplyFunction(darling_windows_CFSetRef value,
+	darling_windows_CFArrayApplierFunction function, void* context)
+{
+	const auto* object = static_cast<const Object*>(value);
+	if (object == nullptr || object->kind != Kind::Set || function == nullptr) return;
+	for (const auto* element : object->array)
+		function(element, context);
 }
 
 extern "C" bool darling_windows_CFSetAddValue(darling_windows_CFSetRef value, const void* element)
@@ -1348,6 +1444,14 @@ extern "C" darling_windows_CFDateRef darling_windows_CFDateCreate(double absolut
 	object->kind = Kind::Date;
 	object->date = absolute_time;
 	return object;
+}
+
+extern "C" darling_windows_CFDateRef darling_windows_CFDateCreateCopy(
+	darling_windows_CFDateRef value)
+{
+	const auto* object = static_cast<const Object*>(value);
+	if (object == nullptr || object->kind != Kind::Date) return nullptr;
+	return darling_windows_CFDateCreate(object->date);
 }
 
 extern "C" double darling_windows_CFDateGetAbsoluteTime(darling_windows_CFDateRef value)

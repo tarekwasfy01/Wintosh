@@ -76,12 +76,18 @@ struct darling_mach_msg_audit_trailer final {
 	darling_mach_audit_token audit_token;
 };
 
+struct darling_mach_msg_context_trailer final {
+	darling_mach_msg_audit_trailer audit;
+	std::uint64_t msgh_context;
+};
+
 static_assert(sizeof(darling_mach_msg_trailer) == 8);
 static_assert(sizeof(darling_mach_msg_seqno_trailer) == 12);
 static_assert(sizeof(darling_mach_security_token) == 8);
 static_assert(sizeof(darling_mach_audit_token) == 32);
 static_assert(sizeof(darling_mach_msg_security_trailer) == 20);
 static_assert(sizeof(darling_mach_msg_audit_trailer) == 52);
+static_assert(sizeof(darling_mach_msg_context_trailer) == 64);
 
 constexpr std::uint32_t darling_mach_msg_descriptor_port = 0;
 constexpr std::uint32_t darling_mach_msg_descriptor_ool = 1;
@@ -96,6 +102,8 @@ constexpr std::uint32_t darling_mach_receive_large = 0x00001000;
 constexpr std::uint32_t darling_mach_receive_large_identity = 0x00002000;
 // MACH_RCV_TRAILER_ELEMENTS(MACH_RCV_TRAILER_SENDER): (2 << 24).
 constexpr std::uint32_t darling_mach_receive_trailer_sender = 0x02000000;
+// MACH_RCV_TRAILER_ELEMENTS(MACH_RCV_TRAILER_CTX): (4 << 24).
+constexpr std::uint32_t darling_mach_receive_trailer_context = 0x04000000;
 // MACH_RCV_TRAILER_ELEMENTS(MACH_RCV_TRAILER_AUDIT):
 // (MACH_RCV_TRAILER_AUDIT == 3) << 24.
 constexpr std::uint32_t darling_mach_receive_trailer_audit = 0x03000000;

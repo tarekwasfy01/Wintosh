@@ -122,6 +122,11 @@ The official sender-element mask (`0x02000000`) is also accepted as
 `mach_sender_trailer_smoke` verifies its sequence and nonzero Windows host
 identity words. These words are compatibility metadata, not Darwin security
 credentials.
+The official context-element mask (`0x04000000`) is accepted as
+`darling_mach_receive_trailer_context` and emits the 64-byte aligned context trailer;
+`mach_context_trailer_smoke` verifies its sequence and port-name context
+mapping. This context is a Wintosh host mapping, not a Darwin kernel context
+pointer or cross-process capability.
 Queue shutdown returns a stable port-dead result. Session-authenticated request
 cancellation is now available through the `Cancel` operation with envelope
 validation and round-trip coverage: a blocked `Receive` registers its nonzero

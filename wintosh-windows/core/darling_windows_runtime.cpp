@@ -871,6 +871,29 @@ void MachIpcCapabilityTable::Bind(std::uint32_t local_name, MachIpcCapability ca
 		throw std::invalid_argument("Mach IPC capability already bound");
 }
 
+MachIpcCapabilityTable::MachIpcCapabilityTable(MachIpcCapabilityTable&& other) noexcept
+{
+	std::lock_guard lock(other.m_mutex);
+	m_entries = std::move(other.m_entries);
+}
+
+MachIpcCapabilityTable& MachIpcCapabilityTable::operator=(MachIpcCapabilityTable&& other) noexcept
+{
+	if (this != &other) {
+		std::scoped_lock lock(m_mutex, other.m_mutex);
+		m_entries = std::move(other.m_entries);
+	}
+	return *this;
+}
+
+MachIpcCapabilityTable MachIpcCapabilityTable::CloneForChild() const
+{
+	MachIpcCapabilityTable child;
+	std::lock_guard lock(m_mutex);
+	child.m_entries = m_entries;
+	return child;
+}
+
 std::optional<MachIpcCapability> MachIpcCapabilityTable::Lookup(std::uint32_t local_name) const
 {
 	std::lock_guard lock(m_mutex);

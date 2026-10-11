@@ -449,6 +449,16 @@ int wmain()
 		return 6;
 	}
 	std::cout << "MACH_IPC_CAPABILITY_TABLE=PASS\n";
+	darling::windows_host::MachIpcCapabilityTable parent_capabilities;
+	parent_capabilities.Bind(0x111, {0x222, 0x333});
+	auto child_capabilities = parent_capabilities.CloneForChild();
+	if (!child_capabilities.Lookup(0x111).has_value() ||
+		!child_capabilities.Unbind(0x111) ||
+		!parent_capabilities.Lookup(0x111).has_value()) {
+		std::cerr << "MACH_IPC_CAPABILITY_CLONE=FAIL\n";
+		return 7;
+	}
+	std::cout << "MACH_IPC_CAPABILITY_CLONE=PASS\n";
 	darling::windows_host::MachIpcCapabilityTable session_capabilities;
 	session_capabilities.Bind(0x321, {0x654, 0x987});
 	session_capabilities.RebindSession(0x321, 0xabc);

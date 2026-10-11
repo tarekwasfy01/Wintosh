@@ -259,7 +259,13 @@ struct MachIpcCapability final {
 
 class MachIpcCapabilityTable final {
 public:
+	MachIpcCapabilityTable() = default;
+	MachIpcCapabilityTable(const MachIpcCapabilityTable&) = delete;
+	MachIpcCapabilityTable& operator=(const MachIpcCapabilityTable&) = delete;
+	MachIpcCapabilityTable(MachIpcCapabilityTable&& other) noexcept;
+	MachIpcCapabilityTable& operator=(MachIpcCapabilityTable&& other) noexcept;
 	void Bind(std::uint32_t local_name, MachIpcCapability capability);
+	[[nodiscard]] MachIpcCapabilityTable CloneForChild() const;
 	[[nodiscard]] std::optional<MachIpcCapability> Lookup(std::uint32_t local_name) const;
 	[[nodiscard]] std::optional<std::uint32_t> LookupLocal(std::uint64_t broker_token,
 		std::uint64_t session_token) const;

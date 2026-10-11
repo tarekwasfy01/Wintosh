@@ -241,6 +241,13 @@ int main()
 			if (local_port != 0) (void)darling_windows_mach_port_destroy(task, local_port);
 			return inserted;
 		}(released_task) &&
+		[task] (darling_mach_port_name_t value) {
+			darling_mach_port_name_t extracted = 0;
+			std::uint32_t extracted_disposition = 0;
+			return darling_windows_mach_port_extract_right(task, value,
+				darling_mach_copy_send, &extracted, &extracted_disposition) == 0 &&
+				extracted == value && extracted_disposition == darling_mach_copy_send;
+		}(released_task) &&
 		darling_windows_mach_port_deallocate(task, released_task) == 0;
 	darling_task_basic_info released_info{};
 	std::uint32_t released_info_count = darling_task_basic_info_count;

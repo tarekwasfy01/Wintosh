@@ -1745,6 +1745,14 @@ extern "C" darling_kern_return_t darling_windows_mach_port_extract_right(
 		disposition != darling_mach_dispose_send &&
 		disposition != darling_mach_dispose_send_once)
 		return 4;
+	if (IsTaskPort(name)) {
+		if (disposition != darling_mach_copy_send && disposition != darling_mach_move_send)
+			return 3;
+		*right = name;
+		*right_disposition = disposition;
+		if (disposition == darling_mach_move_send) ForgetTaskPort(name);
+		return 0;
+	}
 	const auto port = FindPort(name);
 	if (port == nullptr) return 3;
 	bool exhausted = false;

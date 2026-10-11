@@ -284,6 +284,12 @@ old-value return behavior. These are Wintosh-original Windows adapters with
 their provenance recorded in `PRIMITIVE-MATRIX.csv`; they do not claim the
 complete Foundation, notification-center, scheduler, or Objective-C ABI.
 
+The CoreFoundation collection family now snapshots and retains array, dictionary,
+and set values while applier callbacks run. Callbacks may remove or replace
+entries from the mutable collection without invalidating the active iteration;
+a dedicated mutation test covers all three collection types. This is still
+collection-ABI coverage, not the complete CoreFoundation object model.
+
 The Release Clang build currently passes 60/60 CTest entries, including the
 Mach-O printf bundle end-to-end test. The latest five local commits are ahead
 of the configured remote and have not been pushed in this work cycle.

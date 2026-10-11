@@ -33,6 +33,28 @@ void DictionaryApplyCallback(const void* key, const void* value, void* context)
 {
 	if (key != nullptr && value != nullptr) ++*static_cast<int*>(context);
 }
+struct CollectionMutationContext { const void* collection{}; int calls{}; };
+void MutatingArrayCallback(const void*, void* context)
+{
+	auto* state = static_cast<CollectionMutationContext*>(context);
+	++state->calls;
+	darling_windows_CFArrayRemoveValueAtIndex(
+		static_cast<darling_windows_CFArrayRef>(state->collection), 0);
+}
+void MutatingDictionaryCallback(const void* key, const void*, void* context)
+{
+	auto* state = static_cast<CollectionMutationContext*>(context);
+	++state->calls;
+	darling_windows_CFDictionaryRemoveValue(
+		static_cast<darling_windows_CFDictionaryRef>(state->collection), key);
+}
+void MutatingSetCallback(const void* value, void* context)
+{
+	auto* state = static_cast<CollectionMutationContext*>(context);
+	++state->calls;
+	darling_windows_CFSetRemoveValue(
+		static_cast<darling_windows_CFSetRef>(state->collection), value);
+}
 }
 
 int main()
@@ -345,6 +367,22 @@ int main()
 	const auto reversed_set = darling_windows_CFSetCreate(reversed_set_values, 2);
 	const bool set_hash_ok = reversed_set != nullptr && set_apply_ok && darling_windows_CFEqual(set, reversed_set) &&
 		darling_windows_CFHash(set) == darling_windows_CFHash(reversed_set);
+	const auto mutating_array = darling_windows_CFArrayCreateMutableCopy(4, array);
+	const auto mutating_dictionary = darling_windows_CFDictionaryCreateMutableCopy(4, dictionary);
+	const auto mutating_set = darling_windows_CFSetCreateMutableCopy(4, set);
+	CollectionMutationContext array_mutation{mutating_array, 0};
+	CollectionMutationContext dictionary_mutation{mutating_dictionary, 0};
+	CollectionMutationContext set_mutation{mutating_set, 0};
+	darling_windows_CFArrayApplyFunction(mutating_array, darling_windows_CFRangeMake(0, 2),
+		&MutatingArrayCallback, &array_mutation);
+	darling_windows_CFDictionaryApplyFunction(mutating_dictionary, &MutatingDictionaryCallback,
+		&dictionary_mutation);
+	darling_windows_CFSetApplyFunction(mutating_set, &MutatingSetCallback, &set_mutation);
+	const bool collection_mutation_safe = array_mutation.calls == 2 &&
+		darling_windows_CFArrayGetCount(mutating_array) == 0 &&
+		dictionary_mutation.calls == 1 &&
+		darling_windows_CFDictionaryGetCount(mutating_dictionary) == 0 &&
+		set_mutation.calls == 2 && darling_windows_CFSetGetCount(mutating_set) == 0;
 	const void* copied_set_values[2]{};
 	darling_windows_CFSetGetValues(set, copied_set_values);
 	const bool set_values_ok = (copied_set_values[0] == string || copied_set_values[1] == string) &&
@@ -1000,7 +1038,7 @@ int main()
 	darling_windows_CFRelease(parsed_binary_data);
 	darling_windows_CFRelease(string);
 	if (!dictionary_hash_ok || !set_hash_ok || !mutable_copy_ok) return 1;
-	const bool corefoundation_ok = string_ok && formatted_string_ok && substring_ok && string_match_ok && string_find_ok && equal_ok && semantic_lookup_ok && collection_equal_ok && array_search_ok && data_ok && data_slice_ok && array_ok && array_values_ok && number_ok && real_number_ok && number_conversion_ok && dictionary_ok && dictionary_values_ok && set_ok && set_values_ok && date_url_ok && url_xml_ok && scalar_ok && runloop_ok && callback_ok && timer_ok && drain_sources_ok && notification_ok && delivered && plist_ok && array_plist_ok && data_plist_ok && date_plist_ok && real_plist_ok && escaping_ok && plist_parse_ok && plist_dict_parse_ok && plist_data_parse_ok && plist_date_parse_ok && plist_fractional_date_ok && plist_offset_date_ok && binary_plist_ok && binary_dictionary_ok && binary_utf16_ok && binary_extended_ok && binary_data_ok && binary_date_ok && binary_real_ok && binary_uid_ok && mutable_array_ok && mutable_dictionary_ok && mutable_set_ok && mutable_data_ok;
+	const bool corefoundation_ok = string_ok && formatted_string_ok && substring_ok && string_match_ok && string_find_ok && equal_ok && semantic_lookup_ok && collection_equal_ok && array_search_ok && data_ok && data_slice_ok && array_ok && array_values_ok && number_ok && real_number_ok && number_conversion_ok && dictionary_ok && dictionary_values_ok && set_ok && set_values_ok && collection_mutation_safe && date_url_ok && url_xml_ok && scalar_ok && runloop_ok && callback_ok && timer_ok && drain_sources_ok && notification_ok && delivered && plist_ok && array_plist_ok && data_plist_ok && date_plist_ok && real_plist_ok && escaping_ok && plist_parse_ok && plist_dict_parse_ok && plist_data_parse_ok && plist_date_parse_ok && plist_fractional_date_ok && plist_offset_date_ok && binary_plist_ok && binary_dictionary_ok && binary_utf16_ok && binary_extended_ok && binary_data_ok && binary_date_ok && binary_real_ok && binary_uid_ok && mutable_array_ok && mutable_dictionary_ok && mutable_set_ok && mutable_data_ok;
 	if (!corefoundation_ok) {
 		std::cerr << "COREFOUNDATION_FLAGS runloop=" << runloop_ok
 			<< " callback=" << callback_ok << " queued=" << queued_sources
@@ -1018,5 +1056,5 @@ int main()
 	darling_windows_CFRelease(unicode_whitespace);
 	darling_windows_CFRelease(case_source);
 	darling_windows_CFRelease(case_string);
-	return string_ok && formatted_string_ok && substring_ok && string_match_ok && string_find_ok && unicode_length_ok && unicode_trim_ok && equal_ok && mutable_string_ok && string_bytes_ok && trim_ok && semantic_lookup_ok && array_search_ok && data_ok && data_slice_ok && array_ok && array_values_ok && array_overlap_copy_ok && array_empty_range_ok && number_ok && real_number_ok && number_conversion_ok && real_conversion_ok && number_compare_ok && numeric_equal_ok && dictionary_ok && duplicate_dictionary_ok && dictionary_values_ok && set_ok && set_values_ok && date_url_ok && url_xml_ok && date_compare_ok && date_interval_ok && negative_date_ok && date_rounding_ok && scalar_ok && singleton_lifetime_ok && singleton_still_valid && runloop_ok && callback_ok && queued_sources && one_source_ok && source_queue_ok && drain_sources_ok && timer_ok && notification_ok && wildcard_notification_ok && notification_global_remove_ok && notification_missing_remove_ok && delivered && plist_ok && array_plist_ok && data_plist_ok && date_plist_ok && real_plist_ok && escaping_ok && plist_parse_ok && plist_dict_parse_ok && plist_data_parse_ok && plist_date_parse_ok && plist_fractional_date_ok && plist_offset_date_ok && binary_plist_ok && binary_dictionary_ok && binary_utf16_ok && binary_extended_ok && binary_data_ok && binary_date_ok && binary_real_ok && binary_uid_ok && mutable_array_ok && mutable_dictionary_ok && mutable_set_ok && mutable_data_ok && mutable_data_alias_ok && data_overlap_copy_ok ? 0 : 1;
+	return string_ok && formatted_string_ok && substring_ok && string_match_ok && string_find_ok && unicode_length_ok && unicode_trim_ok && equal_ok && mutable_string_ok && string_bytes_ok && trim_ok && semantic_lookup_ok && array_search_ok && data_ok && data_slice_ok && array_ok && array_values_ok && array_overlap_copy_ok && array_empty_range_ok && number_ok && real_number_ok && number_conversion_ok && real_conversion_ok && number_compare_ok && numeric_equal_ok && dictionary_ok && duplicate_dictionary_ok && dictionary_values_ok && set_ok && set_values_ok && collection_mutation_safe && date_url_ok && url_xml_ok && date_compare_ok && date_interval_ok && negative_date_ok && date_rounding_ok && scalar_ok && singleton_lifetime_ok && singleton_still_valid && runloop_ok && callback_ok && queued_sources && one_source_ok && source_queue_ok && drain_sources_ok && timer_ok && notification_ok && wildcard_notification_ok && notification_global_remove_ok && notification_missing_remove_ok && delivered && plist_ok && array_plist_ok && data_plist_ok && date_plist_ok && real_plist_ok && escaping_ok && plist_parse_ok && plist_dict_parse_ok && plist_data_parse_ok && plist_date_parse_ok && plist_fractional_date_ok && plist_offset_date_ok && binary_plist_ok && binary_dictionary_ok && binary_utf16_ok && binary_extended_ok && binary_data_ok && binary_date_ok && binary_real_ok && binary_uid_ok && mutable_array_ok && mutable_dictionary_ok && mutable_set_ok && mutable_data_ok && mutable_data_alias_ok && data_overlap_copy_ok ? 0 : 1;
 }

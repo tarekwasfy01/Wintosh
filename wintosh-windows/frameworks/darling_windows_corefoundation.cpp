@@ -1518,8 +1518,15 @@ extern "C" void darling_windows_CFArrayApplyFunction(darling_windows_CFArrayRef 
 		static_cast<std::size_t>(range.location) > object->array.size() ||
 		static_cast<std::size_t>(range.length) > object->array.size() -
 			static_cast<std::size_t>(range.location)) return;
-	for (darling_windows_CFIndex index = 0; index < range.length; ++index)
-		function(object->array[static_cast<std::size_t>(range.location + index)], context);
+	std::vector<const void*> snapshot;
+	snapshot.reserve(static_cast<std::size_t>(range.length));
+	for (darling_windows_CFIndex index = 0; index < range.length; ++index) {
+		const auto* element = object->array[static_cast<std::size_t>(range.location + index)];
+		RetainOwned(element);
+		snapshot.push_back(element);
+	}
+	for (const auto* element : snapshot) function(element, context);
+	for (const auto* element : snapshot) ReleaseOwned(As(element));
 }
 
 extern "C" void darling_windows_CFArrayGetValues(darling_windows_CFArrayRef value,
@@ -1769,8 +1776,16 @@ extern "C" void darling_windows_CFDictionaryApplyFunction(
 {
 	const auto* object = static_cast<const Object*>(value);
 	if (object == nullptr || object->kind != Kind::Dictionary || function == nullptr) return;
-	for (const auto& entry : object->dictionary)
-		function(entry.first, entry.second, context);
+	const auto snapshot = object->dictionary;
+	for (const auto& entry : snapshot) {
+		RetainOwned(entry.first);
+		RetainOwned(entry.second);
+	}
+	for (const auto& entry : snapshot) function(entry.first, entry.second, context);
+	for (const auto& entry : snapshot) {
+		ReleaseOwned(As(entry.first));
+		ReleaseOwned(As(entry.second));
+	}
 }
 
 extern "C" bool darling_windows_CFDictionarySetValue(darling_windows_CFDictionaryRef value,
@@ -1903,8 +1918,10 @@ extern "C" void darling_windows_CFSetApplyFunction(darling_windows_CFSetRef valu
 {
 	const auto* object = static_cast<const Object*>(value);
 	if (object == nullptr || object->kind != Kind::Set || function == nullptr) return;
-	for (const auto* element : object->array)
-		function(element, context);
+	const auto snapshot = object->array;
+	for (const auto* element : snapshot) RetainOwned(element);
+	for (const auto* element : snapshot) function(element, context);
+	for (const auto* element : snapshot) ReleaseOwned(As(element));
 }
 
 extern "C" bool darling_windows_CFSetAddValue(darling_windows_CFSetRef value, const void* element)

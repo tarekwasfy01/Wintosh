@@ -568,6 +568,9 @@ The foreign-task VM path now requests `PROCESS_QUERY_INFORMATION` for
 `task_for_pid -> mach_vm_region` on a real child. Memory reads/writes and
 remote allocation still require their separate VM rights and remain
 independently gated.
+The same x64 child test also validates `mach_vm_region_recurse` at depth zero,
+with consistent base address, nonzero size, and returned info count. Nested
+Darwin submap semantics are still not modeled.
 The x64 smoke now walks foreign committed regions and proves `mach_vm_read`
 for one readable page, including returned-size validation and read-buffer
 deallocation. This is a bounded read proof, not yet a full task-memory dump or

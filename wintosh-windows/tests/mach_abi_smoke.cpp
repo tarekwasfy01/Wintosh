@@ -84,6 +84,19 @@ int main()
 		cleanup_child();
 		return 1;
 	}
+	darling_mach_vm_address_t recursive_region_address = child_region_address;
+	darling_mach_vm_size_t recursive_region_size = child_region_size;
+	std::uint32_t recursive_depth = 0;
+	darling_mach_vm_region_basic_info recursive_region_info{};
+	std::uint32_t recursive_region_count = darling_vm_region_basic_info_count;
+	if (darling_windows_mach_vm_region_recurse(child_task, &recursive_region_address,
+		&recursive_region_size, &recursive_depth, &recursive_region_info,
+		&recursive_region_count) != 0 || recursive_region_size == 0 ||
+		recursive_region_address != child_region_address ||
+		recursive_region_count != darling_vm_region_basic_info_count) {
+		cleanup_child();
+		return 1;
+	}
 	bool foreign_read_ok = false;
 	for (std::uint32_t attempt = 0; attempt < 64 && child_region_size != 0; ++attempt) {
 		if ((child_region_info.protection & darling_vm_prot_read) != 0) {

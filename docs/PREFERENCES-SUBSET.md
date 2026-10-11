@@ -50,8 +50,17 @@ on demand. Successful writes also signal a named Windows event per domain, and
 event before reloading the file; immediate callback delivery and a durable
 multi-event queue are still separate work.
 
-This does not yet implement argument-domain mutation/removal, cross-process
-notification queues, or callback-safe reentrancy,
+Successful writes also append the changed key to a per-domain `.events` sidecar.
+`darling_windows_preferences_drain_external_event` removes and returns the
+oldest queued key, preserving write order across processes. The event handle is
+held for the lifetime of an open store, so a waiter cannot miss a signal merely
+because the writer opened and closed its own handle. This remains a Wintosh
+adapter rather than the complete Darwin notification-center ABI: payload
+values, crash-proof transaction journals, and cross-machine delivery remain
+outside this subset.
+
+This does not yet implement argument-domain mutation/removal, crash-proof
+notification transactions, or callback-safe reentrancy,
 defaults notification delivery, managed preferences, binary-plist output, or
 the Objective-C `NSUserDefaults` class ABI. Those remain separate work items.
 

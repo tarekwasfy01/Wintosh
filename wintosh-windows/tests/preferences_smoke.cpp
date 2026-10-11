@@ -28,10 +28,19 @@ int main() {
     const bool path_ok = std::filesystem::exists(root / "Users" / "Default" / "Library" / "Preferences" / "com.wintosh.smoke.plist");
     auto watcher = darling_windows_preferences_open("com.wintosh.smoke");
     bool initial_changed{}; const bool initial_poll = watcher && darling_windows_preferences_poll_external(watcher, &initial_changed) && !initial_changed;
+    char queued_key[64]{}; bool queued_event{}; bool queue_drained = watcher;
+    while (queue_drained && darling_windows_preferences_drain_external_event(watcher, queued_key, sizeof queued_key, &queued_event) && queued_event) {}
     auto external_writer = darling_windows_preferences_open("com.wintosh.smoke");
-    const bool external_write = external_writer && darling_windows_preferences_set_string(external_writer, "External", "updated");
+    const bool external_write = external_writer && darling_windows_preferences_set_string(external_writer, "QueueA", "one") &&
+        darling_windows_preferences_set_string(external_writer, "External", "updated") &&
+        darling_windows_preferences_set_string(external_writer, "QueueB", "two");
     darling_windows_preferences_close(external_writer);
     bool external_changed{}; char external_value[64]{};
+    char first_event[64]{}, second_event[64]{}, third_event[64]{}; bool first_has_event{}, second_has_event{}, third_has_event{};
+    const bool external_queue = watcher && darling_windows_preferences_drain_external_event(watcher, first_event, sizeof first_event, &first_has_event) &&
+        darling_windows_preferences_drain_external_event(watcher, second_event, sizeof second_event, &second_has_event) &&
+        darling_windows_preferences_drain_external_event(watcher, third_event, sizeof third_event, &third_has_event) && first_has_event && second_has_event && third_has_event &&
+        std::string(first_event) == "QueueA" && std::string(second_event) == "External" && std::string(third_event) == "QueueB";
     const bool external_wait = watcher && darling_windows_preferences_wait_external(watcher, 1000, &external_changed) && external_changed &&
         darling_windows_preferences_get_string(watcher, "External", external_value, sizeof external_value) && std::string(external_value) == "updated";
     darling_windows_preferences_close(watcher);
@@ -51,7 +60,7 @@ int main() {
     darling_windows_preferences_close(fallback);
     std::filesystem::remove_all(root, ec);
     std::cout << "DARWIN_PREFERENCES_PERSISTENCE=" << (ok && path_ok ? "PASS" : "FAIL") << "\n";
-    std::cout << "DARWIN_PREFERENCES_EXTERNAL_POLL=" << (initial_poll && external_write && external_wait ? "PASS" : "FAIL") << "\n";
+    std::cout << "DARWIN_PREFERENCES_EXTERNAL_POLL=" << (initial_poll && queue_drained && external_write && external_queue && external_wait ? "PASS" : "FAIL") << "\n";
     std::cout << "DARWIN_PREFERENCES_NOTIFICATIONS=" << (notifications_ok ? "PASS" : "FAIL") << "\n";
     std::cout << "DARWIN_PREFERENCES_DOMAINS=" << (suite_ok && registration_ok && registration_types_ok ? "PASS" : "FAIL") << "\n";
     const char* arguments[] = { "app", "--Mode=command-line", "--Count=i:7", "--Enabled=b:1" };
@@ -86,5 +95,5 @@ int main() {
     darling_windows_preferences_close(effective);
     std::cout << "DARWIN_PREFERENCES_MANAGED=" << (managed_ok ? "PASS" : "FAIL") << "\n";
     std::cout << "DARWIN_PREFERENCES_EFFECTIVE=" << (application_policy_ok && effective_ok ? "PASS" : "FAIL") << "\n";
-    return ok && path_ok && initial_poll && external_write && external_wait && notifications_ok && suite_ok && registration_ok && registration_types_ok && arguments_ok && arguments_read_only && managed_ok && application_policy_ok && effective_ok ? 0 : 1;
+    return ok && path_ok && initial_poll && queue_drained && external_write && external_queue && external_wait && notifications_ok && suite_ok && registration_ok && registration_types_ok && arguments_ok && arguments_read_only && managed_ok && application_policy_ok && effective_ok ? 0 : 1;
 }

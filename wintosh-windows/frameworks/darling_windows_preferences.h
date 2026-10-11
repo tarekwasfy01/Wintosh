@@ -27,3 +27,4 @@ extern "C" bool darling_windows_preferences_remove_observer(darling_windows_pref
 extern "C" bool darling_windows_preferences_poll_external(darling_windows_preferences_ref, bool* changed);
 extern "C" bool darling_windows_preferences_signal_external(darling_windows_preferences_ref);
 extern "C" bool darling_windows_preferences_wait_external(darling_windows_preferences_ref, unsigned timeout_ms, bool* changed);
+extern "C" bool darling_windows_preferences_drain_external_event(darling_windows_preferences_ref, char* key, std::size_t capacity, bool* has_event);

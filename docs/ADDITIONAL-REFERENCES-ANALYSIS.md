@@ -56,3 +56,57 @@ copied into this project. It is reference-only.
    `macho-ld` and VST-ace show that conflating them leaves real gaps.
 3. Preserve the native/emulated boundary used by Classix and VST-ace, but use
    Darling's modern `darlingserver` path for full macOS behavior.
+
+## Newly reviewed references
+
+### JetBrains format-ripper
+
+Repository: https://github.com/JetBrains/format-ripper
+License: Apache-2.0.  The project parses and identifies PE, ELF, Mach-O,
+Fat-Mach-O, MSI, DMG and related formats and also checks signatures and
+hashes.  It is useful as an independent format-validation oracle for
+Wintosh's Mach-O parser, especially universal-binary boundaries and malformed
+header handling.  It is not a loader or runtime, so no code is copied.
+
+### panthera-speech
+
+Repository: https://github.com/tgeczy/panthera-speech
+License: MIT according to the repository metadata; engine data and other
+third-party payloads remain separate and are not included.  This is the most
+directly relevant new reference: it demonstrates a hand-written Windows
+Mach-O loader, direct symbol-slot filling, a native Windows host boundary and
+the practical ABI split between 32-bit Darwin/i386 and x64 Windows.  Its
+loader architecture should guide a later isolated `libSystem`/engine-host
+adapter, but its engine-specific code and extracted Apple assets must not be
+copied into Wintosh.
+
+### cthpw103 mach-o
+
+Repository: https://github.com/cthpw103/mach-o
+License: Apple Public Source License 2.0.  The repository is a small
+cross-platform Mach-O port reference rather than a complete runtime.  It is
+useful for comparing portable structure definitions and endian/format
+handling, but APSL-covered code must remain isolated from the GPL Wintosh
+implementation unless a separate compatibility decision is made.  No code is
+copied.
+
+### Venerable OS
+
+Repository: https://github.com/Sovereign-Immortal/venerable-os
+License: Apache-2.0.  This is primarily an Arch/Hyprland workstation and
+launcher integration project, not a Mach-O loader.  Its useful idea for
+Wintosh is the explicit cross-platform launch matrix (`win`, `mac`, Linux)
+and a user-facing launcher boundary; its Linux desktop configuration is out
+of scope for the native Windows port.  No code is copied.
+
+### Resulting Wintosh work items
+
+1. Add format-ripper-derived independent fixtures for fat Mach-O, signature
+   metadata and malformed bounds, while keeping the implementation original.
+2. Add a documented isolated engine/guest ABI layer inspired by
+   panthera-speech's symbol-slot approach; do not mix it with the core Mach
+   loader or ship Apple engine data.
+3. Keep the cthpw103/APSL material reference-only unless a future legal review
+   explicitly permits a separated APSL component.
+4. Extend the CLI documentation with a platform-launch matrix concept without
+   importing Venerable OS's desktop configuration.

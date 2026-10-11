@@ -231,6 +231,7 @@ int main()
 	const bool date_url_ok = date != nullptr && date_copy != nullptr && url_from_bytes != nullptr &&
 		absolute_url != nullptr &&
 		url_string != nullptr &&
+		darling_windows_CFURLGetTypeID() == darling_windows_CFGetTypeID(url) &&
 		!darling_windows_CFURLHasDirectoryPath(url) &&
 		darling_windows_CFURLHasDirectoryPath(directory_url) &&
 		darling_windows_CFEqual(date, date_copy) &&

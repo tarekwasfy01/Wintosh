@@ -63,6 +63,8 @@ following families with Windows-backed implementations:
   string equality checked on x64 and Win32.
 - CoreFoundation directory-path detection through `CFURLHasDirectoryPath`,
   including file-vs-directory path checks on x64 and Win32.
+- CoreFoundation URL type identification through `CFURLGetTypeID`, matching
+  generic `CFGetTypeID` results on x64 and Win32.
 
 These are native Windows compatibility primitives. They are not a copied or
 relicensed Apple libSystem binary.

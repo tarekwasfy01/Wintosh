@@ -1575,6 +1575,11 @@ extern "C" bool darling_windows_CFURLHasDirectoryPath(darling_windows_CFURLRef v
 	return last == '/' || last == '\\';
 }
 
+extern "C" darling_windows_CFTypeID darling_windows_CFURLGetTypeID()
+{
+	return TypeId(Kind::URL);
+}
+
 extern "C" bool darling_windows_CFURLGetFileSystemRepresentation(
 	darling_windows_CFURLRef value, bool resolve_against_base, unsigned char* buffer,
 	darling_windows_CFIndex buffer_capacity)

@@ -96,9 +96,15 @@ int wmain()
 		WriteArgcMachO(image);
 		const auto bundle = std::filesystem::path(temp_path) /
 			(L"DarlingRunnerSmoke-" + std::to_wstring(GetCurrentProcessId()) + L".app");
-		const auto bundle_image = bundle / L"Contents" / L"MacOS" / bundle.stem();
+		const auto bundle_image = bundle / L"Contents" / L"MacOS" / L"ActualExecutable";
 		std::filesystem::create_directories(bundle_image.parent_path());
 		WriteArgcMachO(bundle_image);
+		{
+			std::ofstream plist(bundle / L"Contents" / L"Info.plist", std::ios::binary);
+			plist << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+				"<plist><dict><key>CFBundleExecutable</key>"
+				"<string>ActualExecutable</string></dict></plist>\n";
+		}
 		wchar_t executable[MAX_PATH]{};
 		const DWORD executable_length = GetModuleFileNameW(nullptr, executable, MAX_PATH);
 		if (executable_length == 0 || executable_length >= MAX_PATH) {

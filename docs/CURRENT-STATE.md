@@ -67,6 +67,11 @@ entry receives the expected single argument, and the process returns exit code
 1.  This is a repository-owned bundle fixture; it does not prove arbitrary
 real-world application bundles or their Apple frameworks are runnable.
 
+The bundle resolver now honors a simple XML `Info.plist` value for
+`CFBundleExecutable` and falls back to the bundle directory name when the key
+is absent or malformed.  The runner smoke uses a deliberately different
+bundle name and executable name to verify this path.
+
 The Objective-C/CoreFoundation tests verify class and selector registration,
 typed message-send bridges, blocks, Foundation values, run loops, and
 CoreFoundation collections.  They do not provide an Objective-C exception

@@ -284,6 +284,11 @@ old-value return behavior. These are Wintosh-original Windows adapters with
 their provenance recorded in `PRIMITIVE-MATRIX.csv`; they do not claim the
 complete Foundation, notification-center, scheduler, or Objective-C ABI.
 
+Preferences observer delivery now also defers store destruction requested from
+inside an observer until the callback snapshot and the active mutation lock
+are finished. The callback-destruction smoke covers this lifetime boundary;
+the full NSUserDefaults ABI and cross-process observer lifecycle remain open.
+
 The CoreFoundation collection family now snapshots and retains array, dictionary,
 and set values while applier callbacks run. Callbacks may remove or replace
 entries from the mutable collection without invalidating the active iteration;

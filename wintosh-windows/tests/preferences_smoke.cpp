@@ -4,7 +4,7 @@
 #include <iostream>
 #include <string>
 
-namespace { int observer_calls = 0; int reentrant_reads = 0; int self_removing_calls = 0; int late_observer_calls = 0; std::string observer_key; void Observer(const char* key, void*) { ++observer_calls; observer_key = key ? key : ""; } void LateObserver(const char*, void*) { ++late_observer_calls; } void ReentrantObserver(const char* key, void* context) { char value[64]{}; ++reentrant_reads; auto store = static_cast<darling_windows_preferences_ref>(context); darling_windows_preferences_get_string(store, key, value, sizeof value); if (reentrant_reads == 1) darling_windows_preferences_add_observer(store, LateObserver, nullptr); } void SelfRemovingObserver(const char*, void* context) { ++self_removing_calls; darling_windows_preferences_remove_observer(static_cast<darling_windows_preferences_ref>(context), SelfRemovingObserver, context); } }
+namespace { int observer_calls = 0; int reentrant_reads = 0; int self_removing_calls = 0; int late_observer_calls = 0; int destroying_observer_calls = 0; std::string observer_key; void Observer(const char* key, void*) { ++observer_calls; observer_key = key ? key : ""; } void LateObserver(const char*, void*) { ++late_observer_calls; } void ReentrantObserver(const char* key, void* context) { char value[64]{}; ++reentrant_reads; auto store = static_cast<darling_windows_preferences_ref>(context); darling_windows_preferences_get_string(store, key, value, sizeof value); if (reentrant_reads == 1) darling_windows_preferences_add_observer(store, LateObserver, nullptr); } void SelfRemovingObserver(const char*, void* context) { ++self_removing_calls; darling_windows_preferences_remove_observer(static_cast<darling_windows_preferences_ref>(context), SelfRemovingObserver, context); } void DestroyingObserver(const char*, void* context) { ++destroying_observer_calls; darling_windows_preferences_close(static_cast<darling_windows_preferences_ref>(context)); } }
 
 int main() {
     const auto root = std::filesystem::temp_directory_path() / "wintosh-preferences-smoke";
@@ -20,6 +20,11 @@ int main() {
     if (!darling_windows_preferences_set_boolean(store, "Enabled", true)) { std::cout << "SET_BOOLEAN=FAIL\n"; return 1; }
     const bool notifications_ok = observer_added && reentrant_observer_added && self_removing_observer_added && observer_calls >= 3 && reentrant_reads >= 3 && self_removing_calls == 1 && late_observer_calls == 2 && observer_key == "Enabled" &&
         darling_windows_preferences_remove_observer(store, Observer, nullptr) && darling_windows_preferences_remove_observer(store, ReentrantObserver, store) && darling_windows_preferences_remove_observer(store, LateObserver, nullptr);
+    auto* destroying_store = darling_windows_preferences_open("com.wintosh.callback-destruction");
+    const bool destroying_store_ok = destroying_store &&
+        darling_windows_preferences_add_observer(destroying_store, DestroyingObserver, destroying_store) &&
+        darling_windows_preferences_set_string(destroying_store, "Value", "deferred") &&
+        destroying_observer_calls == 1;
     darling_windows_preferences_close(store);
     store = darling_windows_preferences_open("com.wintosh.smoke");
     char name[64]{}; std::int64_t count{}; bool enabled{};
@@ -64,6 +69,7 @@ int main() {
     std::cout << "DARWIN_PREFERENCES_PERSISTENCE=" << (ok && path_ok ? "PASS" : "FAIL") << "\n";
     std::cout << "DARWIN_PREFERENCES_EXTERNAL_POLL=" << (initial_poll && queue_drained && external_write && external_queue && external_wait ? "PASS" : "FAIL") << "\n";
     std::cout << "DARWIN_PREFERENCES_NOTIFICATIONS=" << (notifications_ok ? "PASS" : "FAIL") << "\n";
+    std::cout << "DARWIN_PREFERENCES_CALLBACK_DESTRUCTION=" << (destroying_store_ok ? "PASS" : "FAIL") << "\n";
     std::cout << "DARWIN_PREFERENCES_DOMAINS=" << (suite_ok && registration_ok && registration_types_ok ? "PASS" : "FAIL") << "\n";
     const char* arguments[] = { "app", "--Mode=command-line", "--Count=i:7", "--Enabled=b:1" };
     auto argument_store = darling_windows_preferences_open_arguments("com.wintosh.arguments", 4, arguments);
@@ -109,5 +115,5 @@ int main() {
     std::cout << "DARWIN_PREFERENCES_MANAGED=" << (managed_ok ? "PASS" : "FAIL") << "\n";
     std::cout << "DARWIN_PREFERENCES_EFFECTIVE=" << (application_policy_ok && effective_ok ? "PASS" : "FAIL") << "\n";
     std::cout << "DARWIN_PREFERENCES_RECOVERY=" << (recovery_ok ? "PASS" : "FAIL") << "\n";
-    return ok && path_ok && initial_poll && queue_drained && external_write && external_queue && external_wait && notifications_ok && suite_ok && registration_ok && registration_types_ok && arguments_ok && arguments_read_only && managed_ok && application_policy_ok && effective_ok && recovery_ok ? 0 : 1;
+    return ok && path_ok && initial_poll && queue_drained && external_write && external_queue && external_wait && notifications_ok && destroying_store_ok && suite_ok && registration_ok && registration_types_ok && arguments_ok && arguments_read_only && managed_ok && application_policy_ok && effective_ok && recovery_ok ? 0 : 1;
 }

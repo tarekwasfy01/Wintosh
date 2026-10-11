@@ -325,6 +325,11 @@ executes a Root-class super method to prove the argument promotion and return
 value boundary. General variadic Objective-C dispatch and aggregate signatures
 remain incomplete.
 
+The same Super bridge now covers void integer and void int64 arguments
+(`v@:i` and `v@:q`), with the smoke invoking both Root-class methods. This
+extends fixed-arity ABI coverage only; it does not provide arbitrary variadic
+or aggregate Objective-C dispatch.
+
 The Release Clang build currently passes 60/60 CTest entries, including the
 Mach-O printf bundle end-to-end test. The latest five local commits are ahead
 of the configured remote and have not been pushed in this work cycle.

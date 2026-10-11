@@ -383,10 +383,14 @@ int main()
 			reinterpret_cast<IMP>(&AddDoubles), "d@:dd"))
 		return 10;
 	if (!class_addMethod(child, void_int64_selector,
-		reinterpret_cast<IMP>(&ObserveInt64), "v@:q"))
+		reinterpret_cast<IMP>(&ObserveInt64), "v@:q") ||
+		!class_addMethod(root, void_int64_selector,
+			reinterpret_cast<IMP>(&ObserveInt64), "v@:q"))
 		return 10;
 	if (!class_addMethod(child, void_int_selector,
-		reinterpret_cast<IMP>(&ObserveInt), "v@:i"))
+		reinterpret_cast<IMP>(&ObserveInt), "v@:i") ||
+		!class_addMethod(root, void_int_selector,
+			reinterpret_cast<IMP>(&ObserveInt), "v@:i"))
 		return 10;
 	if (!class_addMethod(child, int64_zero_selector, reinterpret_cast<IMP>(&ReturnInt64), "q@:") ||
 		!class_addMethod(child, uint64_zero_selector, reinterpret_cast<IMP>(&ReturnUInt64), "Q@:") ||
@@ -438,6 +442,10 @@ int main()
 	darling_objc_msgSend_void1_int(object, void_int_selector, 123456);
 	if (observed_void_int != 123456)
 		return 21;
+	objc_msgSendSuper(object, root, void_int64_selector, 0x987654321LL);
+	objc_msgSendSuper(object, root, void_int_selector, 654321);
+	if (observed_void_int64 != 0x987654321LL || observed_void_int != 654321)
+		return 94;
 	SEL pointer_selector = sel_registerName("pointer:");
 	SEL two_selector = sel_registerName("addTwo:");
 	if (!class_addMethod(child, pointer_selector,

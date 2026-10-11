@@ -2082,6 +2082,16 @@ extern "C" id objc_msgSendSuper(id receiver, Class superclass, SEL selector, ...
 		if (implementation)
 			result = reinterpret_cast<id>(static_cast<std::uintptr_t>(
 				reinterpret_cast<BoolMethod>(implementation)(receiver, selector, value)));
+	} else if (std::strcmp(types, "v@:i") == 0) {
+		const IMP implementation = class_getMethodImplementation(superclass, selector);
+		if (implementation)
+			reinterpret_cast<void (*)(id, SEL, int)>(implementation)(receiver, selector,
+				va_arg(arguments, int));
+	} else if (std::strcmp(types, "v@:q") == 0) {
+		const IMP implementation = class_getMethodImplementation(superclass, selector);
+		if (implementation)
+			reinterpret_cast<void (*)(id, SEL, std::int64_t)>(implementation)(receiver, selector,
+				va_arg(arguments, std::int64_t));
 	} else if (std::strcmp(types, "^v@:^v") == 0) {
 		const IMP implementation = class_getMethodImplementation(superclass, selector);
 		using PointerMethod = void* (*)(id, SEL, void*);

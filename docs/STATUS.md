@@ -10,7 +10,7 @@ Status date: 2026-10-10
 | x64 Foundation type encoding | verified | `darling_windows_foundation_smoke.exe` reports `FOUNDATION_TYPE_ENCODING_ABI=PASS` |
 | Win32 Foundation type encoding | verified | same smoke gate on Win32 |
 | Low-level primitive families | verified in selected batches | tracked in `PRIMITIVE-MATRIX.csv`; not equivalent to full Darwin semantics |
-| Full generated `ALL_BUILD` | not currently confirmed | aggregate orchestration can stall without active compiler output; every configured Release target is built and exercised target-by-target |
+| Full generated `ALL_BUILD` | not currently confirmed | aggregate orchestration can stall without active compiler output; the current configured Release CTest suite is independently verified at 58/58 |
 | WSL runtime backend | unavailable in the current host evidence | probe reported `Wsl/E_ACCESSDENIED` |
 | Real Darling server / arbitrary Mach-O app | not proven | no local end-to-end application run |
 | Darling component licenses | incomplete review | 150 external components; 147 remain review-required |
@@ -19,7 +19,7 @@ Status date: 2026-10-10
 ## Current local integration evidence
 
 The complete configured Release smoke suite now builds target-by-target and
-passes: **39/39 CTest tests**. The Visual
+passes: **58/58 CTest tests**. The Visual
 Studio aggregate build target can
 still stall during orchestration, so the reproducible fallback is to build
 the generated targets individually; this does not represent a test failure.

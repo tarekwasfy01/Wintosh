@@ -31,6 +31,13 @@ is intentionally compatible with GPL combination requirements, but it applies
 only where the source is genuinely original and explicitly identified as such;
 it does not relicense Darling-derived or other third-party code.
 
+The current Mach-O ABI, dyld, runner, and Windows assembly additions introduce
+no new third-party source dependency and therefore require no new external
+license file. They retain the GPL-3.0 headers and the existing Darling
+provenance boundary. The guarded variadic `printf` export is Wintosh adapter
+code and is explicitly documented as incomplete; it is not copied from an
+Apple or other external implementation.
+
 For the human-readable cross-project summary, see
 `../THIRD-PARTY-NOTICES.md`. Keep this directory, the original source trees,
 and the corresponding source available in any redistribution that includes

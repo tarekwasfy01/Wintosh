@@ -119,10 +119,10 @@ pick up the new source file, `wintosh_host_api_smoke` and `wintosh_dyld_smoke`
 both pass.  These exports are ready for Clang/System-V guest calls; the
 default MSVC build still uses the compatibility ABI fallback, so this is not
 yet evidence that a real Mach-O import call has executed.
-The bridge translation unit also compiles successfully to a Windows object
-with `clang-cl` after matching the ABI attribute on declarations and
-definitions; full Clang linking is still blocked by this host's missing
-Windows resource compiler/CMake linker setup.
+The bridge translation unit and complete native runner now compile and link
+with clang-cl/lld-link and LLVM's integrated assembler on Windows. The Clang
+configuration is kept separate from the MSVC build; the latter remains the
+supported synthetic-fixture and broad regression configuration.
 The new `abi_bridge_smoke` additionally calls `_puts` directly and verifies
 that the Mach-O `_puts` lookup returns the same address; this is a fixed-arity
 host-export smoke only, not yet the Clang System-V guest-call gate.

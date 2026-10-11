@@ -24,6 +24,27 @@ If the installed CMake generator has another name, select the matching Visual
 Studio generator. A successful command must finish with exit code 0; merely
 finding a generated project is not a build result.
 
+## Clang/SysV Mach-O gate
+
+The native real-guest path is built separately with clang-cl. The project uses
+LLVM's integrated assembler when MASM `ml64` is unavailable:
+
+```powershell
+cmake -S .\wintosh-windows -B .\build-windows-clang -G Ninja `
+  -DCMAKE_CXX_COMPILER='C:/Program Files/LLVM/bin/clang-cl.exe' `
+  -DCMAKE_RC_COMPILER='C:/Program Files/LLVM/bin/llvm-rc.exe' `
+  -DCMAKE_LINKER='C:/Program Files/LLVM/bin/lld-link.exe' `
+  -DCMAKE_BUILD_TYPE=Release `
+  -DCMAKE_CXX_FLAGS='/EHsc /clang:-fexceptions'
+cmake --build .\build-windows-clang --target wintosh
+```
+
+The verified gate uses the supplied test fixtures from the external
+ABI-bridge task archive, not redistributed Apple binaries. The Chained and
+Classic fixtures each print `hello from guest`, return `0` without an extra
+argument, and return `7` with one extra argument. The MSVC build must not be
+used for this gate; it fails closed before entering real guest code.
+
 ## Focused Foundation gate
 
 ```powershell

@@ -77,6 +77,10 @@ cmake --build .\build-windows-win32 --config Release
 & .\build-windows-win32\Release\wintosh_foundation_smoke.exe
 ```
 
+For the real x86_64 SysV Mach-O execution gate, use the Clang/Ninja
+configuration described in `BUILD-AND-TEST.md`; the MSVC build intentionally
+fails closed before entering real guest code.
+
 The repository deliberately distinguishes source presence, compilation,
 smoke-test execution, and real application compatibility.
 

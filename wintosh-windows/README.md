@@ -70,6 +70,13 @@ initializer/terminator ordering are covered by the current Objective-C/dyld
 smokes. Selector-reference teardown, complete dyld namespace semantics, and
 arbitrary application compatibility remain outside this release boundary.
 
+The verified Clang/SysV execution gate currently covers repository-provided
+x86_64 Chained-Fixups and Classic Mach-O fixtures. Both print `hello from
+guest`, return `0` without an extra argument, and return `7` with one extra
+argument. The MSVC build remains fail-closed for real guest entry and is used
+only for explicitly marked synthetic fixtures. Variadic guest calls such as
+`printf` remain unsupported and fail closed.
+
 The detailed build and evidence rules are in `../docs/BUILD-AND-TEST.md`.
 
 ## Installation layout

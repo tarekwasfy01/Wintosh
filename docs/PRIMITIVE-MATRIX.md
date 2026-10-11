@@ -388,11 +388,11 @@ body, port-descriptor, OOL-descriptor, and basic trailer structures; this is a
 layout foundation only and does not yet transfer descriptor rights or memory.
 The first functional slice now accepts complex inline messages containing one or
 more valid port descriptors with `MACH_MSG_TYPE_COPY_SEND` and transports the
-descriptor bytes through the local native queue. Move dispositions, OOL
-descriptors, and trailers remain explicitly unsupported. `MOVE_SEND` and
-`MOVE_SEND_ONCE` are now accepted for inline port descriptors and consume the
+descriptor bytes through the local native queue. `MOVE_SEND` and
+`MOVE_SEND_ONCE` are also accepted for inline port descriptors and consume the
 corresponding local sender reference after successful queueing; the Mach smoke
-covers `MOVE_SEND`.
+covers both paths. OOL descriptors and credential/audit trailers remain
+restricted to the documented local/broker slices below.
 The same path now consumes one `MACH_MSG_TYPE_MOVE_SEND_ONCE` reference and is
 covered by a second native receive/send-once descriptor case.
 `MACH_MSG_TYPE_COPY_RECEIVE` now increments the referenced local receive-right
@@ -788,8 +788,10 @@ session; send/receive message routing is still a separate family.
 For a non-complex message, `mach_msg` now resolves the destination capability
 and sends the complete inline message through the broker `Send` operation,
 with response validation. `darling_windows_broker_smoke` covers this path
-inside `BROKER_C_ABI_ALLOCATE=PASS`. Complex messages with OOL or port
-descriptors remain on the local path until descriptor translation is added.
+inside `BROKER_C_ABI_ALLOCATE=PASS`. Complex messages with OOL descriptors
+remain on the local path until the dedicated OOL mapping path is selected;
+port-descriptor messages are routed through the broker with session-token
+translation as described below.
 
 The matching simple `Receive` path is now broker-backed as well: the C ABI
 sends timeout and receive-capacity metadata, copies the returned inline bytes
@@ -807,7 +809,8 @@ That OOL-only path is now exercised end-to-end: `mach_msg` sends the copied OOL
 bytes as a broker disposition, the broker returns a duplicated mapping handle,
 and the C-ABI receive reconstructs and releases the local OOL allocation.
 `darling_windows_broker_smoke` reports `BROKER_C_ABI_OOL=PASS`. Mixed inline+OOL
-messages and port descriptors remain unsupported in the broker bridge.
+mixed inline+OOL messages remain unsupported in the broker bridge; port
+descriptors use the separate token path described below.
 
 Complex messages containing only port descriptors now use the broker transport
 as a full inline message. The descriptor names intentionally remain local

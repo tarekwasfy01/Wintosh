@@ -2,6 +2,8 @@
 #include "darling_windows_mach.h"
 #include "darling_windows_stdio.h"
 
+#include <windows.h>
+
 #include <iostream>
 #include <atomic>
 #include <array>
@@ -41,6 +43,27 @@ int main()
 			reinterpret_cast<darling_mach_vm_address_t>(task_threads),
 			task_thread_count * sizeof(*task_threads)) != 0)
 		return 1;
+	STARTUPINFOW startup{};
+	startup.cb = sizeof(startup);
+	PROCESS_INFORMATION child{};
+	wchar_t command_line[] = L"cmd.exe /d /c ping 127.0.0.1 -n 6 > nul";
+	if (!CreateProcessW(nullptr, command_line, nullptr, nullptr, FALSE, CREATE_SUSPENDED,
+		nullptr, nullptr, &startup, &child))
+		return 1;
+	const auto cleanup_child = [&]() {
+		TerminateProcess(child.hProcess, 1);
+		WaitForSingleObject(child.hProcess, 5000);
+		CloseHandle(child.hThread);
+		CloseHandle(child.hProcess);
+	};
+	darling_mach_port_name_t child_task = 0;
+	if (darling_windows_task_for_pid(darling_windows_mach_host_self(), child.dwProcessId,
+		&child_task) != 0 || child_task == 0 || ResumeThread(child.hThread) == static_cast<DWORD>(-1) ||
+	darling_windows_task_suspend(child_task) != 0 || darling_windows_task_resume(child_task) != 0) {
+		cleanup_child();
+		return 1;
+	}
+	cleanup_child();
 	const auto thread = darling_windows_mach_thread_self();
 	darling_thread_precedence_policy_info precedence{};
 	darling_thread_time_constraint_policy_info time_constraint{100, 10, 20, 1};

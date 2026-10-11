@@ -94,6 +94,9 @@ constexpr std::uint32_t darling_mach_send_timeout = 0x00000010;
 constexpr std::uint32_t darling_mach_receive_timeout = 0x00000100;
 constexpr std::uint32_t darling_mach_receive_large = 0x00001000;
 constexpr std::uint32_t darling_mach_receive_large_identity = 0x00002000;
+// MACH_RCV_TRAILER_ELEMENTS(MACH_RCV_TRAILER_AUDIT):
+// (MACH_RCV_TRAILER_AUDIT == 3) << 24.
+constexpr std::uint32_t darling_mach_receive_trailer_audit = 0x03000000;
 constexpr std::uint32_t darling_vm_prot_read = 1;
 constexpr std::uint32_t darling_vm_prot_write = 2;
 constexpr std::uint32_t darling_vm_prot_execute = 4;

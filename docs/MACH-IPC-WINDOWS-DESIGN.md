@@ -112,6 +112,11 @@ broker is active), covered by `mach_seqno_trailer_smoke`. The sequence
 trailer is still a bounded compatibility step: its trailer type remains the
 compact no-trailer value, and Darwin audit/security identity fields and exact
 cross-process sequence semantics are still pending.
+The exact XNU audit-element mask (`0x03000000`) is now accepted as
+`darling_mach_receive_trailer_audit` and emits the 52-byte audit trailer;
+`mach_audit_trailer_smoke` verifies the sequence and host PID/TID mapping on
+both targets. The two audit-token words are a documented Windows mapping, not
+Darwin kernel audit credentials, and the security token remains neutral.
 Queue shutdown returns a stable port-dead result. Session-authenticated request
 cancellation is now available through the `Cancel` operation with envelope
 validation and round-trip coverage: a blocked `Receive` registers its nonzero

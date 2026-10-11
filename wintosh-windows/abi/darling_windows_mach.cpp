@@ -80,11 +80,21 @@ struct PortQueue final {
 void AppendReceiveTrailer(darling_mach_msg_header* message, std::uint32_t actual_size,
 	std::uint32_t capacity, std::uint32_t option, std::uint32_t sequence)
 {
+	const auto audit = (option & darling_mach_receive_trailer_audit) ==
+		darling_mach_receive_trailer_audit;
 	const auto large_identity = (option & darling_mach_receive_large_identity) != 0;
-	const auto trailer_size = large_identity ? sizeof(darling_mach_msg_seqno_trailer) :
-		sizeof(darling_mach_msg_trailer);
+	const auto trailer_size = audit ? sizeof(darling_mach_msg_audit_trailer) :
+		(large_identity ? sizeof(darling_mach_msg_seqno_trailer) : sizeof(darling_mach_msg_trailer));
 	if (capacity < actual_size + trailer_size) return;
-	if (large_identity) {
+	if (audit) {
+		auto* trailer = reinterpret_cast<darling_mach_msg_audit_trailer*>(
+			reinterpret_cast<std::uint8_t*>(message) + actual_size);
+		trailer->security.seqno.trailer.type = darling_mach_msg_trailer_none;
+		trailer->security.seqno.trailer.size = sizeof(darling_mach_msg_audit_trailer);
+		trailer->security.seqno.msgh_seqno = sequence;
+		trailer->audit_token.val[0] = GetCurrentProcessId();
+		trailer->audit_token.val[1] = GetCurrentThreadId();
+	} else if (large_identity) {
 		auto* trailer = reinterpret_cast<darling_mach_msg_seqno_trailer*>(
 			reinterpret_cast<std::uint8_t*>(message) + actual_size);
 		trailer->trailer.type = darling_mach_msg_trailer_none;
@@ -1649,7 +1659,8 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 	(void)notify;
 	if (message == nullptr) return 4;
 	if ((option & ~(darling_mach_send_msg | darling_mach_receive_msg | darling_mach_send_timeout | darling_mach_receive_timeout |
-		darling_mach_receive_large | darling_mach_receive_large_identity)) != 0 ||
+		darling_mach_receive_large | darling_mach_receive_large_identity |
+		darling_mach_receive_trailer_audit)) != 0 ||
 		option == 0) return 4;
 	if ((option & darling_mach_send_msg) != 0) {
 		if (send_size < sizeof(darling_mach_msg_header) ||

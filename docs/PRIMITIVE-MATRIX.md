@@ -85,6 +85,8 @@ boundary and retain the queue-preserving Too-Large behavior; Darwin's complete
 large-message identity payload remains open.
 The dynamic host-symbol table now resolves both `mach_msg_destroy` spellings,
 so Mach-O imports can reach the destruction primitive through the loader.
+It also resolves both `mach_port_peek` spellings, so the new non-destructive
+peek primitive is reachable through Mach-O symbol binding.
 
 `OpenMachIpcSession` now performs the broker session handshake, including the
 current-process validation payload, and the broker smoke uses this helper for

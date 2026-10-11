@@ -110,6 +110,8 @@ conversion for LaunchServices-style callers.
 the common CoreAudio/DirectoryService normalization path.
 `CFStringReplaceRange` now converts its location and length from UTF-16 units
 to UTF-8 storage offsets, including surrogate-pair-safe replacement.
+`CFStringGetBytes` now uses the same UTF-16 range model while returning the
+UTF-8 byte count required by the Windows bridge.
 `CFStringCreateMutableCopy` now returns an independent mutable string; its
 capacity argument is treated as a non-binding reservation hint on Windows.
 `CFStringCreateMutable` now creates an empty mutable string with the same

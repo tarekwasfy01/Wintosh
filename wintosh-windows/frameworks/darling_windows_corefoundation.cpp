@@ -1116,11 +1116,12 @@ extern "C" darling_windows_CFIndex darling_windows_CFStringGetBytes(
 {
 	const auto* object = static_cast<const Object*>(value);
 	if (object == nullptr || object->kind != Kind::String || location < 0 || length < 0 || capacity < 0 ||
-		(static_cast<std::size_t>(location) > object->string.size()) ||
-		static_cast<std::size_t>(length) > object->string.size() - static_cast<std::size_t>(location) ||
 		(static_cast<std::size_t>(capacity) != 0 && output == nullptr)) return -1;
-	const auto copied = std::min<std::size_t>(static_cast<std::size_t>(length), static_cast<std::size_t>(capacity));
-	if (copied != 0) std::memcpy(output, object->string.data() + location, copied);
+	const auto start = UTF8OffsetForUTF16(object->string, location);
+	const auto end = UTF8OffsetForUTF16(object->string, location + length);
+	if (start == std::string::npos || end == std::string::npos || start > end) return -1;
+	const auto copied = std::min<std::size_t>(end - start, static_cast<std::size_t>(capacity));
+	if (copied != 0) std::memcpy(output, object->string.data() + start, copied);
 	return static_cast<darling_windows_CFIndex>(copied);
 }
 

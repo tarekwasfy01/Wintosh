@@ -8911,8 +8911,8 @@ extern "C" char* darling_windows_basename(const char* path)
 	static thread_local std::string result;
 	if (path == nullptr || path[0] == '\0') { result = "."; return result.data(); }
 	result = path;
-	while (result.size() > 1 && result.back() == '/') result.pop_back();
-	const auto separator = result.find_last_of('/');
+	while (result.size() > 1 && (result.back() == '/' || result.back() == '\\')) result.pop_back();
+	const auto separator = result.find_last_of("/\\");
 	if (separator != std::string::npos) result.erase(0, separator + 1);
 	if (result.empty()) result = "/";
 	return result.data();
@@ -8923,12 +8923,12 @@ extern "C" char* darling_windows_dirname(const char* path)
 	static thread_local std::string result;
 	if (path == nullptr || path[0] == '\0') { result = "."; return result.data(); }
 	result = path;
-	while (result.size() > 1 && result.back() == '/') result.pop_back();
-	const auto separator = result.find_last_of('/');
+	while (result.size() > 1 && (result.back() == '/' || result.back() == '\\')) result.pop_back();
+	const auto separator = result.find_last_of("/\\");
 	if (separator == std::string::npos) result = ".";
 	else {
 		result.resize(separator == 0 ? 1 : separator);
-		while (result.size() > 1 && result.back() == '/') result.pop_back();
+		while (result.size() > 1 && (result.back() == '/' || result.back() == '\\')) result.pop_back();
 	}
 	return result.data();
 }

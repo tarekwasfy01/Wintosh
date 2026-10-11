@@ -926,6 +926,8 @@ int main()
 		std::strcmp(darling_windows_dirname("/tmp/darling/app.bin"), "/tmp/darling") == 0 &&
 		std::strcmp(darling_windows_basename("/"), "/") == 0 &&
 		std::strcmp(darling_windows_dirname("app.bin"), ".") == 0 &&
+		std::strcmp(darling_windows_basename("C:\\Darling\\app.bin"), "app.bin") == 0 &&
+		std::strcmp(darling_windows_dirname("C:\\Darling\\app.bin"), "C:\\Darling") == 0 &&
 		std::strcmp(darling_windows_basename(nullptr), ".") == 0 &&
 		darling_windows_host_symbol("basename") != 0 && darling_windows_host_symbol("dirname") != 0;
 	if (!path_split_ok) {

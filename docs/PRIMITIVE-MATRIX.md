@@ -824,8 +824,8 @@ The libc pattern family now includes `fnmatch` with the common wildcard,
 character-class, pathname, period, and escape flags; locale-specific collation
 and extended bracket expressions remain open.
 The path-string family also includes `basename` and `dirname` for common
-slash-separated and root-path cases; Windows drive/UNC edge semantics remain
-open.
+slash-separated, backslash-separated, and drive-letter cases; UNC/device-path
+edge semantics remain open.
 The resolver family additionally covers the legacy BSD IPv4 helpers
 `inet_addr`, `inet_aton`, and `inet_network`; full historical shorthand-address
 parsing remains outside this bridge.

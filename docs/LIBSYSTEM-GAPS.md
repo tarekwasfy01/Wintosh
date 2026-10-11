@@ -63,6 +63,8 @@ following families with Windows-backed implementations:
   pathname boundaries, leading-period handling, and escaped-character support.
 - The companion path helpers `basename` and `dirname` now provide bounded
   POSIX-style slash/root/empty-path decomposition through the host resolver.
+- They also recognize Windows backslash separators and ordinary drive-letter
+  paths; full UNC/device-path corner semantics remain open.
 - Legacy BSD IPv4 conversion helpers `inet_addr`, `inet_aton`, and
   `inet_network` are now Windows-backed and host-symbol-resolvable, including
   invalid-input handling and network-byte-order coverage.

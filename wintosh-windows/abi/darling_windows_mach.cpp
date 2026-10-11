@@ -2199,6 +2199,39 @@ extern "C" darling_kern_return_t darling_windows_mach_port_receive(
 	if (port->closed) return 3;
 	const auto& queued_message = port->messages.front();
 	if (queued_message.size() > capacity) return 0x10004003; // MACH_MSG_TOO_LARGE
+	if (queued_message.size() >= sizeof(darling_mach_msg_header) + sizeof(darling_mach_msg_body)) {
+		const auto* header = reinterpret_cast<const darling_mach_msg_header*>(queued_message.data());
+		if ((header->msgh_bits & darling_mach_msg_complex) != 0) {
+			const auto* body = reinterpret_cast<const darling_mach_msg_body*>(
+				queued_message.data() + sizeof(darling_mach_msg_header));
+			const auto descriptor_bytes = static_cast<std::uint64_t>(body->msgh_descriptor_count) *
+				sizeof(darling_mach_msg_port_descriptor);
+			const auto remaining = queued_message.size() - sizeof(darling_mach_msg_header) - sizeof(*body);
+			const auto* descriptors = reinterpret_cast<const darling_mach_msg_port_descriptor*>(body + 1);
+			if (body->msgh_descriptor_count != 0 && descriptor_bytes <= remaining &&
+				descriptors[0].type == darling_mach_msg_descriptor_port) {
+				std::vector<std::pair<darling_mach_port_name_t, std::uint32_t>> added;
+				for (std::uint32_t index = 0; index < body->msgh_descriptor_count; ++index) {
+					std::uint32_t right = 0;
+					switch (descriptors[index].disposition) {
+					case darling_mach_move_receive: right = darling_mach_port_type_receive; break;
+					case darling_mach_move_send: right = darling_mach_port_type_send; break;
+					case darling_mach_move_send_once: right = darling_mach_port_type_send_once; break;
+					default: break;
+					}
+					if (right == 0) continue;
+					if (darling_windows_mach_port_mod_refs(darling_windows_mach_task_self(),
+						descriptors[index].name, right, 1) != 0) {
+						for (auto it = added.rbegin(); it != added.rend(); ++it)
+							(void)darling_windows_mach_port_mod_refs(darling_windows_mach_task_self(),
+								it->first, it->second, -1);
+						return 4;
+					}
+					added.emplace_back(descriptors[index].name, right);
+				}
+			}
+		}
+	}
 	auto message = std::move(port->messages.front());
 	port->messages.pop_front();
 	std::memcpy(data, message.data(), message.size());
@@ -2413,8 +2446,15 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 					(void)darling_windows_mach_port_mod_refs(darling_windows_mach_task_self(),
 						descriptors[index].name, right, 1);
 				} else if (descriptors[index].disposition == darling_mach_move_receive) {
-					(void)darling_windows_mach_port_mod_refs(darling_windows_mach_task_self(),
-						descriptors[index].name, darling_mach_port_type_receive, -1);
+					// Keep a receive-less port object alive until the queued right is
+					// materialized by the receiver. Removing it here would make the
+					// moved receive right impossible to restore.
+					const auto source = FindPort(descriptors[index].name);
+					if (source == nullptr) return 3;
+					std::lock_guard source_lock(source->mutex);
+					if (source->receive_refs == 0) return 3;
+					--source->receive_refs;
+					source->refs = source->total_refs();
 				} else if (descriptors[index].disposition == darling_mach_move_send ||
 					descriptors[index].disposition == darling_mach_move_send_once) {
 					const auto right = descriptors[index].disposition == darling_mach_move_send_once ?

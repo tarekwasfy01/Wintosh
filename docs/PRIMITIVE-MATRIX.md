@@ -401,6 +401,11 @@ count after queueing and is covered by the descriptor smoke; move-receive and
 queueing and is covered by the descriptor smoke; cross-task name translation
 remains open. `MACH_MSG_TYPE_MAKE_SEND` and `MAKE_SEND_ONCE` now add the
 corresponding local sender reference while retaining the receive right. A
+local `MOVE_SEND`, `MOVE_SEND_ONCE`, or `MOVE_RECEIVE` descriptor now restores
+the moved right when the queued message is received; a receive-less moved port
+is retained until that handoff completes. The smoke verifies the restored send,
+send-once, and receive counts. Failure rollback and independent task namespaces
+remain open. A
 single local `COPY` OOL descriptor is now identified using its native ABI
 `type` offset, validated, and transported without deallocation or
 cross-process copying. The first native

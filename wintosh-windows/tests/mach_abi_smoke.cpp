@@ -1220,7 +1220,9 @@ int main()
 		std::uint32_t move_received_size = 0;
 		const bool move_receive_ok = darling_windows_mach_port_receive(ns_notify,
 			descriptor_received.data(), descriptor_received.size(), &move_received_size, 100) == 0 &&
-			move_received_size == wire.size();
+			move_received_size == wire.size() &&
+			darling_windows_mach_port_get_refs(task, move_source,
+				darling_mach_port_type_send, &move_refs) == 0 && move_refs == 1;
 		darling_windows_mach_port_destroy(task, move_source);
 		if (!move_send_ok || !move_receive_ok) return 1;
 		darling_mach_port_name_t move_once_source = 0;
@@ -1240,7 +1242,9 @@ int main()
 				darling_mach_port_type_send_once, &move_once_refs) == 0 && move_once_refs == 0;
 		const bool move_once_receive_ok = darling_windows_mach_port_receive(ns_notify,
 			descriptor_received.data(), descriptor_received.size(), &move_received_size, 100) == 0 &&
-			move_received_size == wire.size();
+			move_received_size == wire.size() &&
+			darling_windows_mach_port_get_refs(task, move_once_source,
+				darling_mach_port_type_send_once, &move_once_refs) == 0 && move_once_refs == 1;
 		darling_windows_mach_port_destroy(task, move_once_source);
 		if (!move_once_send_ok || !move_once_receive_ok) return 1;
 		darling_mach_port_name_t copy_send_source = 0;
@@ -1290,10 +1294,13 @@ int main()
 		const bool move_receive_send_ok = darling_windows_mach_msg(
 			reinterpret_cast<darling_mach_msg_header*>(wire.data()), darling_mach_send_msg,
 			static_cast<std::uint32_t>(wire.size()), 0, 0, 0, 0) == 0 &&
-			darling_windows_mach_port_type(task, move_receive_source, &move_receive_type) == 3 &&
+			darling_windows_mach_port_type(task, move_receive_source, &move_receive_type) == 0 &&
 			move_receive_type == darling_mach_port_type_none;
-		const bool move_receive_receive_ok = darling_windows_mach_port_receive(ns_notify,
-			descriptor_received.data(), descriptor_received.size(), &move_received_size, 100) == 0;
+		const auto move_receive_result = darling_windows_mach_port_receive(ns_notify,
+			descriptor_received.data(), descriptor_received.size(), &move_received_size, 100);
+		const auto move_receive_type_result = darling_windows_mach_port_type(task, move_receive_source, &move_receive_type);
+		const bool move_receive_receive_ok = move_receive_result == 0 &&
+			move_receive_type_result == 0 && move_receive_type == darling_mach_port_type_receive;
 		if (move_receive_source != 0) darling_windows_mach_port_destroy(task, move_receive_source);
 		if (!move_receive_send_ok || !move_receive_receive_ok) return 1;
 		darling_mach_port_name_t make_send_source = 0;

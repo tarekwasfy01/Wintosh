@@ -4,7 +4,7 @@
 #include <iostream>
 #include <string>
 
-namespace { int observer_calls = 0; int reentrant_reads = 0; std::string observer_key; void Observer(const char* key, void*) { ++observer_calls; observer_key = key ? key : ""; } void ReentrantObserver(const char* key, void* context) { char value[64]{}; ++reentrant_reads; darling_windows_preferences_get_string(static_cast<darling_windows_preferences_ref>(context), key, value, sizeof value); } }
+namespace { int observer_calls = 0; int reentrant_reads = 0; int self_removing_calls = 0; std::string observer_key; void Observer(const char* key, void*) { ++observer_calls; observer_key = key ? key : ""; } void ReentrantObserver(const char* key, void* context) { char value[64]{}; ++reentrant_reads; darling_windows_preferences_get_string(static_cast<darling_windows_preferences_ref>(context), key, value, sizeof value); } void SelfRemovingObserver(const char*, void* context) { ++self_removing_calls; darling_windows_preferences_remove_observer(static_cast<darling_windows_preferences_ref>(context), SelfRemovingObserver, context); } }
 
 int main() {
     const auto root = std::filesystem::temp_directory_path() / "wintosh-preferences-smoke";
@@ -14,10 +14,11 @@ int main() {
     if (!store) { std::cout << "OPEN=FAIL\n"; return 1; }
     const bool observer_added = darling_windows_preferences_add_observer(store, Observer, nullptr);
     const bool reentrant_observer_added = darling_windows_preferences_add_observer(store, ReentrantObserver, store);
+    const bool self_removing_observer_added = darling_windows_preferences_add_observer(store, SelfRemovingObserver, store);
     if (!darling_windows_preferences_set_string(store, "Name", "Wintosh & Darling")) { std::cout << "SET_STRING=FAIL\n"; return 1; }
     if (!darling_windows_preferences_set_integer(store, "Count", 42)) { std::cout << "SET_INTEGER=FAIL\n"; return 1; }
     if (!darling_windows_preferences_set_boolean(store, "Enabled", true)) { std::cout << "SET_BOOLEAN=FAIL\n"; return 1; }
-    const bool notifications_ok = observer_added && reentrant_observer_added && observer_calls >= 3 && reentrant_reads >= 3 && observer_key == "Enabled" &&
+    const bool notifications_ok = observer_added && reentrant_observer_added && self_removing_observer_added && observer_calls >= 3 && reentrant_reads >= 3 && self_removing_calls == 1 && observer_key == "Enabled" &&
         darling_windows_preferences_remove_observer(store, Observer, nullptr) && darling_windows_preferences_remove_observer(store, ReentrantObserver, store);
     darling_windows_preferences_close(store);
     store = darling_windows_preferences_open("com.wintosh.smoke");

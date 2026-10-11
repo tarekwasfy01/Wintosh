@@ -29,6 +29,11 @@ constexpr darling_windows_CFTypeID TypeId(Kind kind)
 {
 	return static_cast<darling_windows_CFTypeID>(kind) + 1;
 }
+
+extern "C" int darling_windows_CFStringGetSystemEncoding()
+{
+	return 1;
+}
 struct Object {
 	std::atomic<std::size_t> references{1};
 	bool immortal = false;

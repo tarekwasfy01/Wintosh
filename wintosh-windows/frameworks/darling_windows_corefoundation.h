@@ -28,6 +28,7 @@ using darling_windows_CFDictionaryApplierFunction = void (*)(const void* key,
 	const void* value, void* context);
 
 using darling_windows_CFTypeID = std::uint64_t;
+extern "C" int darling_windows_CFStringGetSystemEncoding();
 
 extern "C" darling_windows_CFRange darling_windows_CFRangeMake(
 	darling_windows_CFIndex location, darling_windows_CFIndex length);

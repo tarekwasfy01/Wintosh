@@ -99,6 +99,8 @@ bytes and rejects embedded NUL data.
 `CFStringCreateWithCStringNoCopy` is available for the relevant encoding IDs;
 on Windows it deliberately copies the input and therefore does not retain
 foreign allocator ownership.
+`CFStringGetSystemEncoding` reports the port's explicit UTF-8 system encoding
+identifier for stable CoreServices string conversion.
 The URL family also includes last-component extraction and parent-path copies,
 covering path operations used by Darling's CoreAudio helpers.
 It now also provides path-extension extraction and extension removal for

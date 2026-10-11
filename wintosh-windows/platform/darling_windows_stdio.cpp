@@ -8259,17 +8259,17 @@ extern "C" const char* darling_windows_strcasestr(const char* value, const char*
 
 extern "C" std::size_t darling_windows_strspn(const char* value, const char* accepted)
 {
-	return std::strspn(value, accepted);
+	return value != nullptr && accepted != nullptr ? std::strspn(value, accepted) : 0;
 }
 
 extern "C" std::size_t darling_windows_strcspn(const char* value, const char* rejected)
 {
-	return std::strcspn(value, rejected);
+	return value != nullptr && rejected != nullptr ? std::strcspn(value, rejected) : 0;
 }
 
 extern "C" const char* darling_windows_strpbrk(const char* value, const char* accepted)
 {
-	return std::strpbrk(value, accepted);
+	return value != nullptr && accepted != nullptr ? std::strpbrk(value, accepted) : nullptr;
 }
 
 extern "C" char* darling_windows_strtok_r(char* value, const char* delimiters, char** state)

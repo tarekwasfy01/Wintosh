@@ -750,6 +750,9 @@ int main()
 		darling_windows_strspn("123abc", "0123456789") == 3 &&
 		darling_windows_strcspn("darling-windows", "-") == 7 &&
 		darling_windows_strpbrk("darling-windows", "sw") != nullptr &&
+		darling_windows_strspn(nullptr, "abc") == 0 &&
+		darling_windows_strcspn("abc", nullptr) == 0 &&
+		darling_windows_strpbrk(nullptr, "abc") == nullptr &&
 		darling_windows_strcasestr("Darling-Windows", "WINDOWS") != nullptr;
 	const unsigned char binary_data[] = {0x10, 0x20, 0x30, 0x40, 0x50};
 	const unsigned char binary_needle[] = {0x30, 0x40};

@@ -836,6 +836,9 @@ the same thread.
 The Darwin-style `gethostbyname_r` copy path is covered for caller-owned IPv4
 storage and insufficient-buffer `ERANGE`; reentrant IPv6 and multi-address
 alias copying remain open.
+`gethostbyaddr_r` now has the same caller-owned IPv4 copy boundary; successful
+PTR resolution remains environment-dependent and IPv6/multi-alias copying is
+still open.
 The reverse `gethostbyaddr` ABI and invalid-input path are covered for IPv4;
 successful PTR resolution remains environment-dependent, while IPv6-specific
 and fully reentrant hostent variants remain open.

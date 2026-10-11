@@ -74,6 +74,9 @@ following families with Windows-backed implementations:
 - The Darwin-style reentrant `gethostbyname_r` path now copies a bounded IPv4
   `hostent` into caller-owned storage and returns `ERANGE` for insufficient
   buffers.
+- The matching Darwin-style `gethostbyaddr_r` signature now copies successful
+  IPv4 reverse entries into caller-owned storage and has deterministic invalid-
+  input/undersized-buffer handling.
 - The reverse legacy lookup `gethostbyaddr` is also bridged with input
   validation and IPv4 hostent ABI coverage; successful reverse DNS remains
   environment-dependent and is not claimed by the smoke test.

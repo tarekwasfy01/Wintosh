@@ -985,6 +985,28 @@ int main()
 		std::cerr << "HOST_API_SMOKE_ERROR=gethostbyname_r\n";
 		return 1;
 	}
+	IN_ADDR reverse_reentrant_address{};
+	reverse_reentrant_address.S_un.S_addr = htonl(0x7f000001u);
+	hostent reverse_reentrant_host{};
+	hostent* reverse_reentrant_result = nullptr;
+	int reverse_reentrant_error = 0;
+	char reverse_reentrant_buffer[256]{};
+	const auto reverse_reentrant_call = darling_windows_gethostbyaddr_r(&reverse_reentrant_address,
+		static_cast<int>(sizeof(reverse_reentrant_address)), AF_INET, &reverse_reentrant_host,
+		reverse_reentrant_buffer, sizeof(reverse_reentrant_buffer), &reverse_reentrant_result,
+		&reverse_reentrant_error);
+	const bool reverse_reentrant_ok =
+		(reverse_reentrant_call == 0 && reverse_reentrant_result == &reverse_reentrant_host &&
+		reverse_reentrant_host.h_addrtype == AF_INET) ||
+		(reverse_reentrant_call == 1 && reverse_reentrant_result == nullptr) &&
+		darling_windows_host_symbol("gethostbyaddr_r") != 0 &&
+		darling_windows_gethostbyaddr_r(nullptr, sizeof(reverse_reentrant_address), AF_INET,
+			&reverse_reentrant_host, reverse_reentrant_buffer, sizeof(reverse_reentrant_buffer),
+			&reverse_reentrant_result, &reverse_reentrant_error) == 22;
+	if (!reverse_reentrant_ok) {
+		std::cerr << "HOST_API_SMOKE_ERROR=gethostbyaddr_r\n";
+		return 1;
+	}
 	IN_ADDR reverse_address{};
 	reverse_address.S_un.S_addr = htonl(0x7f000001u);
 	const auto* reverse_entry = darling_windows_gethostbyaddr(&reverse_address,

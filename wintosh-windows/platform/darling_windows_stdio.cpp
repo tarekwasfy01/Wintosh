@@ -8847,6 +8847,7 @@ namespace {
 constexpr int darling_fnm_pathname = 0x01;
 constexpr int darling_fnm_period = 0x02;
 constexpr int darling_fnm_noescape = 0x04;
+constexpr int darling_fnm_leading_dir = 0x08;
 constexpr int darling_fnm_casefold = 0x10;
 
 char DarlingFnmatchFold(char value, int flags)
@@ -8905,7 +8906,7 @@ bool DarlingFnmatchImpl(const char* pattern, const char* value, int flags, bool 
 		if ((flags & darling_fnm_period) != 0 && at_start && *value == '.' && *pattern != '.') return false;
 		++pattern; if (*value != '\0') ++value; at_start = false;
 	}
-	return *value == '\0';
+	return *value == '\0' || ((flags & darling_fnm_leading_dir) != 0 && *value == '/');
 }
 }
 

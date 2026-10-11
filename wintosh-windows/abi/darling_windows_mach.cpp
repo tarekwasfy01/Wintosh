@@ -424,6 +424,11 @@ extern "C" darling_kern_return_t darling_windows_task_terminate(darling_mach_por
 			suspend_counts.erase(thread);
 	}
 	{
+		std::lock_guard lock(time_constraint_policies_mutex);
+		for (const auto thread : child_threads)
+			time_constraint_policies.erase(thread);
+	}
+	{
 		std::lock_guard lock(exception_ports_mutex);
 		exception_ports.erase(task);
 		for (const auto thread : child_threads)

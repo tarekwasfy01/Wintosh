@@ -59,6 +59,7 @@ public:
 	[[nodiscard]] DWORD ExitCode() const noexcept;
 	[[nodiscard]] DWORD ProcessId() const noexcept;
 	[[nodiscard]] DWORD ThreadId() const noexcept { return m_thread_id; }
+	[[nodiscard]] std::vector<DWORD> ThreadIds() const;
 	[[nodiscard]] bool GetPrimaryThreadContext(CONTEXT& context) const noexcept;
 	[[nodiscard]] bool SetPrimaryThreadContext(const CONTEXT& context) const noexcept;
 	[[nodiscard]] bool GetDarwinX86ThreadState64(DarwinX86ThreadState64& state) const noexcept;

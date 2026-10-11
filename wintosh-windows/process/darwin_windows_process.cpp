@@ -12,6 +12,8 @@
 
 #include <system_error>
 
+#include <algorithm>
+#include <tlhelp32.h>
 #include <vector>
 
 namespace darling::windows_host {
@@ -194,6 +196,30 @@ DWORD Process::ExitCode() const noexcept
 DWORD Process::ProcessId() const noexcept
 {
 	return m_process == nullptr ? 0 : GetProcessId(m_process);
+}
+
+std::vector<DWORD> Process::ThreadIds() const
+{
+	std::vector<DWORD> result;
+	if (m_process == nullptr)
+		return result;
+	const DWORD process_id = GetProcessId(m_process);
+	if (m_thread_id != 0)
+		result.push_back(m_thread_id);
+	const HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+	if (snapshot == INVALID_HANDLE_VALUE)
+		return result;
+	THREADENTRY32 entry{};
+	entry.dwSize = sizeof(entry);
+	if (Thread32First(snapshot, &entry)) {
+		do {
+			if (entry.th32OwnerProcessID == process_id &&
+				std::find(result.begin(), result.end(), entry.th32ThreadID) == result.end())
+				result.push_back(entry.th32ThreadID);
+		} while (Thread32Next(snapshot, &entry));
+	}
+	CloseHandle(snapshot);
+	return result;
 }
 
 bool Process::GetPrimaryThreadContext(CONTEXT& context) const noexcept

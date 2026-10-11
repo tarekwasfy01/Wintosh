@@ -499,6 +499,12 @@ Darwin `D` mapping is conservatively fixed at 16-byte size/alignment rather
 than inheriting MSVC's host representation. Bitfields use a conservative
 4-byte Windows storage word; exact compiler-specific packed layout remains
 open.
+
+`Process::ThreadIds()` now provides a deduplicated child-thread inventory. It
+always retains the already verified primary thread and supplements it with
+Toolhelp entries when the host exposes them, so a restricted snapshot API does
+not erase known thread state. Secondary-thread context capture is still not
+implemented.
 Quoted aggregate field names are skipped while parsing, matching common
 Objective-C runtime encodings.
 Quoted object class names (`@"NSString"`) and pointers to nested encodings

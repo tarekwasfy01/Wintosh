@@ -103,6 +103,8 @@ int wmain()
 		int any_wait4_pid = 0;
 		int any_wait4_status = -1;
 		int waitid_pid = 0;
+		int spawnp_pid = 0;
+		int spawnp_status = -1;
 		darling_rusage spawned_usage{};
 		darling_rusage children_usage{};
 		darling_rusage any_wait4_usage{};
@@ -149,8 +151,15 @@ int wmain()
 			waitid_info.si_pid == waitid_pid && waitid_info.si_status == 29 &&
 			darling_windows_waitid(1, waitid_pid, &waitid_info, 4) == 0 &&
 			waitid_info.si_pid == waitid_pid && waitid_info.si_status == 29;
+		const bool posix_spawnp_ok = darling_windows_posix_spawnp(&spawnp_pid, "cmd.exe",
+			nullptr, nullptr, spawn_arguments, nullptr) == 0 && spawnp_pid > 0 &&
+			darling_windows_waitpid(spawnp_pid, &spawnp_status, 0) == spawnp_pid &&
+			spawnp_status == (11 << 8);
 		if (!posix_spawn_ok) {
 			throw std::runtime_error("posix_spawn process result mismatch");
+		}
+		if (!posix_spawnp_ok) {
+			throw std::runtime_error("posix_spawnp PATH lookup mismatch");
 		}
 		wchar_t temp_path[MAX_PATH]{};
 		const DWORD temp_length = GetTempPathW(MAX_PATH, temp_path);

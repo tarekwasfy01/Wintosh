@@ -48,6 +48,15 @@ following families with Windows-backed implementations:
   equality checks on x64 and Win32.
 - CoreFoundation formatted strings through `CFStringCreateWithFormat`,
   including variadic formatting and invalid-format handling on x64 and Win32.
+- CoreFoundation byte-backed strings through `CFStringCreateWithBytes`,
+  covering the supported ASCII/UTF-8 encoding identifiers and invalid-input
+  rejection on x64 and Win32.
+- CoreFoundation filesystem URLs through
+  `CFURLCreateFromFileSystemRepresentation`, including bounded byte-path
+  construction and URL equality on x64 and Win32.
+- CoreFoundation URL filesystem extraction through
+  `CFURLGetFileSystemRepresentation`, including bounded output and overflow
+  rejection on x64 and Win32.
 
 These are native Windows compatibility primitives. They are not a copied or
 relicensed Apple libSystem binary.

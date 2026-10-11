@@ -627,6 +627,21 @@ extern "C" darling_windows_CFStringRef darling_windows_CFStringCreateWithCString
 	return object;
 }
 
+extern "C" darling_windows_CFStringRef darling_windows_CFStringCreateWithBytes(
+	const unsigned char* bytes, darling_windows_CFIndex length, int encoding,
+	bool is_external_representation)
+{
+	(void)is_external_representation;
+	if (length < 0 || (length != 0 && bytes == nullptr)) return nullptr;
+	// kCFStringEncodingASCII and kCFStringEncodingUTF8 are accepted here;
+	// the internal representation is UTF-8 and validates the byte sequence
+	// through the existing string operations.
+	if (encoding != 0 && encoding != 1 && encoding != 4) return nullptr;
+	std::string value(reinterpret_cast<const char*>(bytes),
+		static_cast<std::size_t>(length));
+	return darling_windows_CFStringCreateWithCString(value.c_str());
+}
+
 extern "C" darling_windows_CFStringRef darling_windows_CFStringCreateWithFormat(
 	const char* format, ...)
 {
@@ -1519,12 +1534,34 @@ extern "C" darling_windows_CFURLRef darling_windows_CFURLCreateWithFileSystemPat
 	return object;
 }
 
+extern "C" darling_windows_CFURLRef darling_windows_CFURLCreateFromFileSystemRepresentation(
+	const unsigned char* bytes, darling_windows_CFIndex length, bool is_directory)
+{
+	(void)is_directory;
+	if (length < 0 || (length != 0 && bytes == nullptr)) return nullptr;
+	std::string path(reinterpret_cast<const char*>(bytes), static_cast<std::size_t>(length));
+	return darling_windows_CFURLCreateWithFileSystemPath(path.c_str());
+}
+
 extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyFileSystemPath(
 	darling_windows_CFURLRef value)
 {
 	const auto* object = static_cast<const Object*>(value);
 	if (object == nullptr || object->kind != Kind::URL) return nullptr;
 	return darling_windows_CFStringCreateWithCString(object->string.c_str());
+}
+
+extern "C" bool darling_windows_CFURLGetFileSystemRepresentation(
+	darling_windows_CFURLRef value, bool resolve_against_base, unsigned char* buffer,
+	darling_windows_CFIndex buffer_capacity)
+{
+	(void)resolve_against_base;
+	const auto* object = static_cast<const Object*>(value);
+	if (object == nullptr || object->kind != Kind::URL || buffer == nullptr ||
+		buffer_capacity <= 0 || object->string.size() + 1 >
+		static_cast<std::size_t>(buffer_capacity)) return false;
+	std::memcpy(buffer, object->string.c_str(), object->string.size() + 1);
+	return true;
 }
 
 extern "C" darling_windows_CFBooleanRef darling_windows_CFBooleanGetValue(bool value)

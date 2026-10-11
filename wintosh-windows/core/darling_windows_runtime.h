@@ -268,6 +268,7 @@ public:
 	MachIpcCapabilityTable(MachIpcCapabilityTable&& other) noexcept;
 	MachIpcCapabilityTable& operator=(MachIpcCapabilityTable&& other) noexcept;
 	void Bind(std::uint32_t local_name, MachIpcCapability capability);
+	[[nodiscard]] std::vector<std::pair<std::uint32_t, MachIpcCapability>> Snapshot() const;
 	[[nodiscard]] MachIpcCapabilityTable CloneForChild() const;
 	[[nodiscard]] MachIpcCapabilityTable CloneForChild(std::uint64_t child_session_token) const;
 	[[nodiscard]] std::optional<MachIpcCapability> Lookup(std::uint32_t local_name) const;
@@ -281,5 +282,9 @@ private:
 	mutable std::mutex m_mutex;
 	std::unordered_map<std::uint32_t, MachIpcCapability> m_entries;
 };
+
+[[nodiscard]] bool TransferMachIpcCapabilities(NamedPipeRpcClient& client,
+	std::uint64_t source_session_token, const MachIpcCapabilityTable& capabilities,
+	std::uint64_t target_session_token);
 
 } // namespace darling::windows_host

@@ -441,6 +441,13 @@ int wmain()
 
 	darling::windows_host::MachIpcCapabilityTable capabilities;
 	capabilities.Bind(0x123, {0x456, 0x789});
+	const auto capability_snapshot = capabilities.Snapshot();
+	if (capability_snapshot.size() != 1 || capability_snapshot.front().first != 0x123 ||
+		capability_snapshot.front().second.broker_token != 0x456) {
+		std::cerr << "MACH_IPC_CAPABILITY_SNAPSHOT=FAIL\n";
+		return 9;
+	}
+	std::cout << "MACH_IPC_CAPABILITY_SNAPSHOT=PASS\n";
 	const auto capability = capabilities.Lookup(0x123);
 	if (!capability || capability->broker_token != 0x456 ||
 		capability->session_token != 0x789 || !capabilities.Unbind(0x123) ||

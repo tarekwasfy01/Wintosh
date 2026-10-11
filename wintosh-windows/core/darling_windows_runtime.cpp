@@ -885,6 +885,21 @@ bool TransferMachIpcCapability(NamedPipeRpcClient& client,
 	}
 }
 
+bool TransferMachIpcCapabilities(NamedPipeRpcClient& client,
+	std::uint64_t source_session_token, const MachIpcCapabilityTable& capabilities,
+	std::uint64_t target_session_token)
+{
+	if (source_session_token == 0 || target_session_token == 0)
+		return false;
+	for (const auto& [local_name, capability] : capabilities.Snapshot()) {
+		(void)local_name;
+		if (!TransferMachIpcCapability(client, source_session_token,
+			capability.broker_token, target_session_token))
+			return false;
+	}
+	return true;
+}
+
 void MachIpcCapabilityTable::Bind(std::uint32_t local_name, MachIpcCapability capability)
 {
 	if (local_name == 0 || capability.broker_token == 0 || capability.session_token == 0)
@@ -892,6 +907,16 @@ void MachIpcCapabilityTable::Bind(std::uint32_t local_name, MachIpcCapability ca
 	std::lock_guard lock(m_mutex);
 	if (!m_entries.emplace(local_name, capability).second)
 		throw std::invalid_argument("Mach IPC capability already bound");
+}
+
+std::vector<std::pair<std::uint32_t, MachIpcCapability>> MachIpcCapabilityTable::Snapshot() const
+{
+	std::lock_guard lock(m_mutex);
+	std::vector<std::pair<std::uint32_t, MachIpcCapability>> snapshot;
+	snapshot.reserve(m_entries.size());
+	for (const auto& entry : m_entries)
+		snapshot.push_back(entry);
+	return snapshot;
 }
 
 MachIpcCapabilityTable::MachIpcCapabilityTable(MachIpcCapabilityTable&& other) noexcept

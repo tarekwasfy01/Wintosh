@@ -57,6 +57,8 @@ following families with Windows-backed implementations:
 - CoreFoundation URL filesystem extraction through
   `CFURLGetFileSystemRepresentation`, including bounded output and overflow
   rejection on x64 and Win32.
+- CoreFoundation URL copying through `CFURLCopyAbsoluteURL`, preserving the
+  current filesystem-path URL value on x64 and Win32.
 
 These are native Windows compatibility primitives. They are not a copied or
 relicensed Apple libSystem binary.

@@ -244,6 +244,8 @@ struct MachOSection final {
 	std::uint64_t address = 0;
 	std::uint64_t size = 0;
 	std::uint32_t file_offset = 0;
+	std::uint32_t flags = 0;
+	std::uint32_t reserved2 = 0;
 };
 
 struct MappedMachOSegment final {
@@ -350,7 +352,11 @@ public:
 	[[nodiscard]] const std::vector<std::string>& RPaths() const noexcept { return m_rpaths; }
 	[[nodiscard]] const std::vector<MachOSymbol>& Symbols() const noexcept { return m_symbols; }
 	[[nodiscard]] const std::vector<std::uint32_t>& IndirectSymbols() const noexcept { return m_indirect_symbols; }
-	[[nodiscard]] std::vector<std::uint64_t> IndirectImportSlots() const;
+	struct IndirectImportSlot final {
+		std::uint64_t address = 0;
+		std::uint32_t symbol_index = 0;
+	};
+	[[nodiscard]] std::vector<IndirectImportSlot> IndirectImportSlots() const;
 	void ApplyIndirectImportBindings(const Mapping& mapping,
 		const std::vector<DyldResolvedBinding>& bindings) const;
 	[[nodiscard]] const std::vector<MachOReexport>& Reexports() const noexcept { return m_reexports; }

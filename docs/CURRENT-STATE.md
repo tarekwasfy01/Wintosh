@@ -229,3 +229,19 @@ This is the first end-to-end proof of a real x86_64 SysV Mach-O entry and the
 fixed-arity `_puts`/`_exit` bridge on Windows. It covers the chained fixture
 only; the Classic fixture, lazy binding, Darwin `crt1` startup, variadic
 exports, and arbitrary Apple frameworks remain unimplemented or unverified.
+
+The Classic Mach-O fixture now also executes through the Clang build. Its
+`__stubs` section is accounted for when walking the indirect-symbol table;
+stub entries are consumed as metadata while only lazy/non-lazy pointer
+sections are patched. The verified Classic result is likewise:
+
+```text
+hello from guest
+CLASSIC_NO_ARG_EXIT=0
+hello from guest
+CLASSIC_ONE_ARG_EXIT=7
+```
+
+This proves the current fixed-arity classic binding path for `_puts` and
+`_exit`; it does not yet prove arbitrary lazy-binding protocols or variadic
+function calls.

@@ -446,7 +446,8 @@ MachOImage MachOImage::Open(const std::wstring& path)
 					sections.push_back({SegmentName(section[section_index].segment_name),
 						SegmentName(section[section_index].section_name),
 						section[section_index].address, section[section_index].size,
-						section[section_index].file_offset});
+						section[section_index].file_offset, section[section_index].flags,
+						section[section_index].reserved2});
 				}
 			} else if (command->command == LC_SEGMENT) {
 				Require(is_32_bit && command->command_bytes >= sizeof(SegmentCommand32),
@@ -467,7 +468,8 @@ MachOImage MachOImage::Open(const std::wstring& path)
 					sections.push_back({SegmentName(section[section_index].segment_name),
 						SegmentName(section[section_index].section_name),
 						section[section_index].address, section[section_index].size,
-						section[section_index].file_offset});
+						section[section_index].file_offset, section[section_index].flags,
+						section[section_index].reserved2});
 				}
 			} else if (command->command == LC_SYMTAB) {
 				Require(command->command_bytes >= sizeof(SymtabCommand),
@@ -1136,22 +1138,29 @@ bool MachOImage::IsWeakUndefined(const MachOSymbol& symbol) noexcept
 	return (symbol.description & 0x0040u) != 0;
 }
 
-std::vector<std::uint64_t> MachOImage::IndirectImportSlots() const
+std::vector<MachOImage::IndirectImportSlot> MachOImage::IndirectImportSlots() const
 {
-	std::vector<std::uint64_t> slots;
+	std::vector<IndirectImportSlot> slots;
 	const auto pointer_size = Is32Bit() ? sizeof(std::uint32_t) : sizeof(std::uint64_t);
+	std::size_t indirect_index = 0;
 	for (const auto& section : m_sections) {
-		if (section.section_name != "__la_symbol_ptr" &&
+		const auto section_type = section.flags & 0xffu;
+		if (section_type == 0x8u) {
+			if (section.reserved2 == 0 || section.size % section.reserved2 != 0)
+				throw std::runtime_error("Mach-O symbol-stub section is misaligned");
+			indirect_index += static_cast<std::size_t>(section.size / section.reserved2);
+			continue;
+		}
+		if (section_type != 0x6u && section_type != 0x7u &&
+			section.section_name != "__la_symbol_ptr" &&
 			section.section_name != "__nl_symbol_ptr")
 			continue;
 		if (section.size % pointer_size != 0)
 			throw std::runtime_error("Mach-O indirect symbol section is misaligned");
 		for (std::uint64_t offset = 0; offset < section.size; offset += pointer_size)
-			slots.push_back(section.address + offset);
+			slots.push_back({section.address + offset,
+				static_cast<std::uint32_t>(indirect_index++)});
 	}
-	if (slots.size() < m_indirect_symbols.size())
-		throw std::out_of_range("Mach-O indirect symbol table exceeds import slots");
-	slots.resize(m_indirect_symbols.size());
 	return slots;
 }
 
@@ -1169,8 +1178,10 @@ void MachOImage::ApplyIndirectImportBindings(const Mapping& mapping,
 		return;
 	if (m_indirect_symbols.size() > m_symbols.size() + 0x1000000u)
 		throw std::runtime_error("Mach-O indirect symbol table is unreasonable");
-	for (std::size_t index = 0; index < slots.size(); ++index) {
-		const auto symbol_index = m_indirect_symbols[index];
+	for (const auto& slot : slots) {
+		if (slot.symbol_index >= m_indirect_symbols.size())
+			throw std::out_of_range("Mach-O indirect symbol table exceeds import slots");
+		const auto symbol_index = m_indirect_symbols[slot.symbol_index];
 		if ((symbol_index & 0xC0000000u) != 0)
 			continue; // LOCAL and ABSOLUTE entries are not imported bindings.
 		if (symbol_index >= m_symbols.size())
@@ -1180,14 +1191,14 @@ void MachOImage::ApplyIndirectImportBindings(const Mapping& mapping,
 			[&symbol](const auto& binding) { return binding.symbol == symbol.name; });
 		if (match == bindings.end()) {
 			if (IsWeakUndefined(symbol)) {
-				if (Is32Bit()) ApplyAbsolute32(mapping, slots[index], 0);
-				else ApplyAbsolute64(mapping, slots[index], 0);
+				if (Is32Bit()) ApplyAbsolute32(mapping, slot.address, 0);
+				else ApplyAbsolute64(mapping, slot.address, 0);
 				continue;
 			}
 			throw std::runtime_error("unresolved Mach-O indirect import: " + symbol.name);
 		}
-		if (Is32Bit()) ApplyAbsolute32(mapping, slots[index], match->address);
-		else ApplyAbsolute64(mapping, slots[index], match->address);
+		if (Is32Bit()) ApplyAbsolute32(mapping, slot.address, match->address);
+		else ApplyAbsolute64(mapping, slot.address, match->address);
 	}
 }
 

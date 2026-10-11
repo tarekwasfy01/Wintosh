@@ -62,6 +62,16 @@ all pass (6/6).  This is evidence for the Windows host bridge and loader
 paths, not evidence that an arbitrary Apple pthread implementation can already
 be loaded.
 
+The executable `TLVClient.macho` currently proves the safe path: all four
+Darwin TLS sections are initialized before its entry returns, and the runner
+exits with code 0.  A hand-written Mach-O-side call through the initialized
+`DarwinTLVDescriptor::thunk` was also isolated experimentally, but still
+causes an access violation at the Mach-O-to-host ABI boundary.  That call is
+therefore not shipped as a capability claim; the native `tlv_smoke` test
+continues to cover the thunk and per-thread resolution directly.  The next
+required step is an ABI trampoline with a verified Windows x64 call frame,
+followed by a Mach-O-side value and second-thread isolation assertion.
+
 ## What is included in a source release
 
 Include the Windows port source, all documentation, and the `licenses`

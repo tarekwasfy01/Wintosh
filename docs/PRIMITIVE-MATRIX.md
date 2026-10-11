@@ -873,6 +873,10 @@ its immediate exception paths, so mapping creation failure does not leave a
 partially consumed disposition.
 Queue insertion is also transactional: a late queue allocation failure removes
 the newly created OOL mapping and restores the saved rights snapshot.
+Session disconnect cleanup now also removes queued messages that reference a
+port or OOL mapping owned by the lost session, preventing dangling capability
+tokens from being delivered after a client/process abort. Transferred
+capabilities remain alive under their new session owner.
 The complete native Windows regression matrix currently contains 55 tests and
 passes `55/55` on both x64 and Win32 in Release configuration.
 The broker now maintains receive/send/send-once counters per capability for

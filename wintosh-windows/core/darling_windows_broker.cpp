@@ -109,6 +109,8 @@ int wmain(int argc, wchar_t** argv)
 					// Reclaim only resources explicitly created in this session.  The
 					// legacy token-0 namespace intentionally survives reconnects.
 					std::unique_lock cleanup_lock(broker_state_mutex);
+					std::unordered_set<std::uint64_t> abandoned_ports;
+					std::unordered_set<std::uint64_t> abandoned_ool;
 					for (auto it = notification_session_owners.begin();
 						it != notification_session_owners.end();) {
 						if (it->second == session_token) {
@@ -121,6 +123,7 @@ int wmain(int argc, wchar_t** argv)
 					for (auto it = port_session_owners.begin();
 						it != port_session_owners.end();) {
 						if (it->second == session_token) {
+							abandoned_ports.insert(it->first);
 							allocated_ports.erase(it->first);
 							port_rights.erase(it->first);
 							port_queues.erase(it->first);
@@ -132,11 +135,27 @@ int wmain(int argc, wchar_t** argv)
 					for (auto it = out_of_line_session_owners.begin();
 						it != out_of_line_session_owners.end();) {
 						if (it->second == session_token) {
+							abandoned_ool.insert(it->first);
 							out_of_line_regions.erase(it->first);
 							out_of_line_owners.erase(it->first);
 							it = out_of_line_session_owners.erase(it);
 						} else {
 							++it;
+						}
+					}
+					for (auto& [port_token, queue] : port_queues) {
+						(void)port_token;
+						for (auto message = queue.begin(); message != queue.end();) {
+							const bool dangling_port = std::any_of(
+								message->port_descriptor_tokens.begin(),
+								message->port_descriptor_tokens.end(),
+								[&](const auto token) { return abandoned_ports.contains(token); });
+							const bool dangling_ool = message->out_of_line_token != 0 &&
+								abandoned_ool.contains(message->out_of_line_token);
+							if (dangling_port || dangling_ool)
+								message = queue.erase(message);
+							else
+								++message;
 						}
 					}
 					broker_state_condition.notify_all();

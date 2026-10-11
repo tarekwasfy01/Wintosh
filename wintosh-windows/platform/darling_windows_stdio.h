@@ -586,4 +586,5 @@ extern "C" char* darling_windows_strtok(char* value, const char* delimiters);
 extern "C" char* darling_windows_strsep(char** value, const char* delimiters);
 extern "C" const char* darling_windows_strerror(int error_number);
 extern "C" int darling_windows_strerror_r(int error_number, char* buffer, std::size_t size);
+extern "C" const char* darling_windows_strsignal(int signal_number);
 extern "C" int darling_windows_host_entry(int argc, char** argv, char** envp);

@@ -895,6 +895,13 @@ int main()
 	char strerror_buffer[64]{};
 	const bool strerror_r_ok = darling_windows_strerror_r(2, strerror_buffer,
 		sizeof(strerror_buffer)) == 0 && std::string(strerror_buffer).find("No such file") != std::string::npos;
+	const bool strsignal_ok = std::string(darling_windows_strsignal(SIGINT)).find("Interrupt") != std::string::npos &&
+		std::string(darling_windows_strsignal(SIGTERM)).find("Terminated") != std::string::npos &&
+		darling_windows_strsignal(999) != nullptr && darling_windows_host_symbol("strsignal") != 0;
+	if (!strsignal_ok) {
+		std::cerr << "HOST_API_SMOKE_ERROR=strsignal\n";
+		return 1;
+	}
 	const bool file_values_ok = file_written == 3 && duplicate_written == 3 && file_end == 6 && file_start == 0 && truncate_ok;
 	const bool file_access_ok = darling_windows_access(file_path.c_str(), 0) == 0;
 	(void)DeleteFileA(renamed_file_path.c_str());

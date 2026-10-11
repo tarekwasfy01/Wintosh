@@ -5754,6 +5754,9 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 	if (std::strcmp(name, "_strerror_r") == 0 || std::strcmp(name, "strerror_r") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_strerror_r);
 	}
+	if (std::strcmp(name, "_strsignal") == 0 || std::strcmp(name, "strsignal") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_strsignal);
+	}
 	return 0;
 }
 
@@ -8371,6 +8374,38 @@ extern "C" int darling_windows_strerror_r(int error_number, char* buffer,
 		return 34;
 	}
 	return 0;
+}
+
+extern "C" const char* darling_windows_strsignal(int signal_number)
+{
+	switch (signal_number) {
+	case 1: return "Hangup";
+	case 2: return "Interrupt";
+	case 3: return "Quit";
+	case 4: return "Illegal instruction";
+	case 6: return "Abort trap";
+	case 9: return "Killed";
+	case 11: return "Segmentation fault";
+	case 13: return "Broken pipe";
+	case 14: return "Alarm clock";
+	case 15: return "Terminated";
+	case 17: return "Child exited";
+	case 18: return "Continued";
+	case 19: return "Stopped (signal)";
+	case 20: return "Stopped";
+	case 21: return "Stopped (tty input)";
+	case 22: return "Stopped (tty output)";
+	case 23: return "Urgent I/O condition";
+	case 24: return "CPU time limit exceeded";
+	case 25: return "File size limit exceeded";
+	case 26: return "Virtual timer expired";
+	case 27: return "Profiling timer expired";
+	case 28: return "Window size changes";
+	case 29: return "I/O possible";
+	case 30: return "Power failure";
+	case 31: return "Bad system call";
+	default: return "Unknown signal";
+	}
 }
 
 extern "C" int darling_windows_write_stdout(const void* data, std::size_t bytes)

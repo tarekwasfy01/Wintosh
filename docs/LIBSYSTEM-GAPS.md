@@ -53,6 +53,9 @@ following families with Windows-backed implementations:
   Windows-backed and host-symbol-resolvable;
 - BSD/Darwin constant-time byte comparison `timingsafe_bcmp` is now
   Windows-backed and host-symbol-resolvable for equal, unequal, and empty inputs;
+- Darwin/BSD signal descriptions now include the common `strsignal` names and
+  a deterministic unknown-signal fallback; localization and exact platform
+  wording remain outside this bounded bridge;
 - C++ static-initialization guard entry points `___cxa_guard_acquire`,
   `___cxa_guard_release`, and `___cxa_guard_abort`, backed by atomic
   Windows-host state transitions; acquire/release/abort behavior is covered

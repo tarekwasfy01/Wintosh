@@ -346,6 +346,7 @@ public:
 	[[nodiscard]] const std::vector<std::string>& Dependencies() const noexcept { return m_dependencies; }
 	[[nodiscard]] const std::string& InstallName() const noexcept { return m_install_name; }
 	[[nodiscard]] bool HasCodeSignature() const noexcept;
+	[[nodiscard]] bool HasValidCodeSignatureSuperBlob() const noexcept;
 	[[nodiscard]] bool CodeSignatureRange(std::uint32_t& offset,
 		std::uint32_t& size) const noexcept;
 	[[nodiscard]] bool IsWeakDependency(const std::string& name) const noexcept;

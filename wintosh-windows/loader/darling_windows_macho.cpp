@@ -1240,6 +1240,32 @@ bool MachOImage::HasCodeSignature() const noexcept
 	return CodeSignatureRange(offset, size);
 }
 
+bool MachOImage::HasValidCodeSignatureSuperBlob() const noexcept
+{
+	std::uint32_t offset = 0;
+	std::uint32_t size = 0;
+	if (!CodeSignatureRange(offset, size) || size < 12 ||
+		offset > m_file_bytes || size > m_file_bytes - offset)
+		return false;
+	const auto* blob = m_view + offset;
+	const auto read_be32 = [](const std::uint8_t* value) {
+		return (static_cast<std::uint32_t>(value[0]) << 24) |
+			(static_cast<std::uint32_t>(value[1]) << 16) |
+			(static_cast<std::uint32_t>(value[2]) << 8) | value[3];
+	};
+	if (read_be32(blob) != 0xfade0cc0u) return false;
+	const auto length = read_be32(blob + 4);
+	const auto count = read_be32(blob + 8);
+	if (length < 12 || length > size || count > (length - 12) / 8) return false;
+	for (std::uint32_t index = 0; index < count; ++index) {
+		const auto blob_offset = read_be32(blob + 12 + index * 8 + 4);
+		if (blob_offset > length || length - blob_offset < 8) return false;
+		const auto blob_length = read_be32(blob + blob_offset + 4);
+		if (blob_length < 8 || blob_length > length - blob_offset) return false;
+	}
+	return true;
+}
+
 bool MachOImage::IsWeakDependency(const std::string& name) const noexcept
 {
 	return std::find(m_weak_dependencies.begin(), m_weak_dependencies.end(), name)

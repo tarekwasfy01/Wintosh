@@ -17,6 +17,11 @@ for non-local destinations only when every transferred descriptor has a
 registered broker capability. This closes one ABI family; full Mach rights,
 MIG, OOL lifetime, and arbitrary Darwin IPC compatibility remain open.
 
+Mach-O code signatures now also have a structural gate:
+`HasValidCodeSignatureSuperBlob()` validates the embedded SuperBlob magic,
+length, count, and nested blob bounds. This is format validation only; it does
+not validate Apple CodeDirectory hashes, CMS signatures, or authenticity.
+
 | Area | Current state | Evidence / limitation |
 |---|---|---|
 | Native Windows source | present | `darling-source/src/native/windows` |

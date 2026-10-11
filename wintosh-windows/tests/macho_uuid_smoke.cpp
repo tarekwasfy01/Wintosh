@@ -46,13 +46,16 @@ int wmain()
 	header.command_count = 2;
 	header.command_bytes = sizeof(command) + sizeof(LinkeditCommand);
 	const LinkeditCommand signature{darling::windows_host::LC_CODE_SIGNATURE, 16,
-		static_cast<std::uint32_t>(sizeof(header) + sizeof(command) + sizeof(LinkeditCommand)), 4};
+		static_cast<std::uint32_t>(sizeof(header) + sizeof(command) + sizeof(LinkeditCommand)), 12};
+	const std::array<std::uint8_t, 12> super_blob{
+		0xfa, 0xde, 0x0c, 0xc0, 0x00, 0x00, 0x00, 0x0c,
+		0x00, 0x00, 0x00, 0x00};
 	{
 		std::ofstream output(path, std::ios::binary);
 		output.write(reinterpret_cast<const char*>(&header), sizeof(header));
 		output.write(reinterpret_cast<const char*>(&command), sizeof(command));
 		output.write(reinterpret_cast<const char*>(&signature), sizeof(signature));
-		output.write("SIGN", 4);
+		output.write(reinterpret_cast<const char*>(super_blob.data()), super_blob.size());
 	}
 	try {
 		const auto image = darling::windows_host::MachOImage::Open(path);
@@ -68,6 +71,11 @@ int wmain()
 			DeleteFileW(path.c_str());
 			std::cerr << "MACHO_CODE_SIGNATURE_ERROR=range mismatch\n";
 			return 6;
+		}
+		if (!image.HasValidCodeSignatureSuperBlob()) {
+			DeleteFileW(path.c_str());
+			std::cerr << "MACHO_CODE_SIGNATURE_ERROR=superblob rejected\n";
+			return 7;
 		}
 		DeleteFileW(path.c_str());
 		const auto invalid_path = std::wstring(temp) + L"darling-macho-uuid-invalid.bin";
@@ -90,7 +98,7 @@ int wmain()
 			std::cerr << "MACHO_UUID_ERROR=invalid signature accepted\n";
 			return 5;
 		}
-		std::cout << "MACHO_UUID=PASS MACHO_CODE_SIGNATURE_RANGE=PASS\n";
+		std::cout << "MACHO_UUID=PASS MACHO_CODE_SIGNATURE_RANGE=PASS MACHO_CODE_SIGNATURE_SUPERBLOB=PASS\n";
 		return 0;
 	} catch (const std::exception& error) {
 		DeleteFileW(path.c_str());

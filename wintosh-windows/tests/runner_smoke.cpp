@@ -150,7 +150,7 @@ int wmain()
 		}
 		const auto runner = std::filesystem::path(executable, executable + executable_length).parent_path() /
 			L"wintosh.exe";
-		const std::wstring command_line = L"\"" + runner.wstring() + L"\" \"" +
+		const std::wstring command_line = L"\"" + runner.wstring() + L"\" --startup-abi synthetic-main \"" +
 			image.wstring() + L"\" one two";
 		auto command = CommandLine(command_line);
 		STARTUPINFOW startup{};
@@ -202,7 +202,7 @@ int wmain()
 		const auto binary_bundle_image = bundle / L"Contents" / L"MacOS" / L"BinaryExecutable";
 		WriteArgcMachO(binary_bundle_image);
 		WriteBinaryExecutablePlist(bundle / L"Contents" / L"Info.plist", "BinaryExecutable");
-		const std::wstring bundle_run_command_line = L"\"" + runner.wstring() + L"\" \"" +
+		const std::wstring bundle_run_command_line = L"\"" + runner.wstring() + L"\" --startup-abi synthetic-main \"" +
 			bundle.wstring() + L"\"";
 		auto bundle_run_command = CommandLine(bundle_run_command_line);
 		PROCESS_INFORMATION bundle_run_process{};

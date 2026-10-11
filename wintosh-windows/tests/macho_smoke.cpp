@@ -228,7 +228,8 @@ int wmain()
 					return 26;
 			}
 			#else
-			if (mach32_image.ExecuteEntry(mach32_mapping, {}, {}) != 42)
+		if (mach32_image.ExecuteEntry(mach32_mapping, {}, {}, {},
+			DarwinEntryAbi::SyntheticCompatibleMain) != 42)
 				return 28;
 			DWORD old_protection = PAGE_NOACCESS;
 			const auto mapped_base = mach32_mapping.Segments()[0].address;

@@ -27,4 +27,12 @@ extern "C" DARLING_SYSV [[noreturn]] void darling_windows_abi_exit(int status)
 	darling_windows_exit(status);
 }
 
+extern "C" DARLING_SYSV [[noreturn]] void darling_windows_abi_dyld_stub_binder()
+{
+	std::fputs("DARLING_RUNNER_ERROR=dyld_stub_binder was invoked; lazy binding is not supported\n",
+		stderr);
+	std::fflush(stderr);
+	std::abort();
+}
+
 #undef DARLING_SYSV

@@ -189,7 +189,7 @@ void Usage()
 		<< L"  --prefix <directory>   Set the initial Wintosh prefix\n"
 		<< L"  --rpath <directory>    Add a dynamic-library search path\n"
 		<< L"  --env KEY=VALUE        Add an environment entry\n"
-		<< L"  --startup-abi <mode>   Use main or darwin entry ABI (default: main)\n"
+		<< L"  --startup-abi <mode>   Use main, synthetic-main, or darwin ABI (default: main)\n"
 		<< L"  --apple-param VALUE    Add a Darwin Apple startup parameter\n"
 		<< L"                         WINTOSH_PREFIX may provide a default runtime root\n"
 		<< L"  --                    End options before the Mach-O path\n";
@@ -368,10 +368,12 @@ int wmain(int argc, wchar_t** argv)
 					options.apple_parameters.push_back(value);
 				else if (value == "main")
 					options.entry_abi = darling::windows_host::DarwinEntryAbi::CompatibleMain;
+				else if (value == "synthetic-main")
+					options.entry_abi = darling::windows_host::DarwinEntryAbi::SyntheticCompatibleMain;
 				else if (value == "darwin")
 					options.entry_abi = darling::windows_host::DarwinEntryAbi::DarwinStart;
 				else
-					throw std::runtime_error("--startup-abi expects main or darwin");
+					throw std::runtime_error("--startup-abi expects main, synthetic-main, or darwin");
 				continue;
 			}
 			if (!end_options && image.empty() && !argument.empty() && argument[0] == L'-')

@@ -17,7 +17,14 @@
 
 namespace darling::windows_host {
 
-enum class DarwinEntryAbi { CompatibleMain, DarwinStart };
+enum class DarwinEntryAbi {
+	// Explicitly synthetic test-fixture ABI: never use for an untrusted real
+	// Mach-O image because MSVC cannot express the System-V calling convention.
+	SyntheticCompatibleMain,
+	// Real x86_64 Darwin main ABI; requires a Clang build with sysv_abi.
+	CompatibleMain,
+	DarwinStart
+};
 
 constexpr std::uint32_t MH_MAGIC_64 = 0xfeedfacf;
 constexpr std::uint32_t MH_MAGIC = 0xfeedface;

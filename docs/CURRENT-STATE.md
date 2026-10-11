@@ -104,11 +104,14 @@ loader or host-export table.
 
 The first loader integration is now present: `ExecuteEntryNoArgs`,
 `ExecuteInitializers`, `ExecuteTerminators`, and the compatible `main` entry
-are expressed through the Wintosh-owned `abi::GuestFn` aliases.  The default
-MSVC build intentionally uses the compatibility fallback; Clang Windows
-builds activate `sysv_abi`.  The targeted Mach-O and runner smokes pass after
-this change.  This is API plumbing only: the Clang bridge target, host export
-table, variadic stub, and real Mach-O fixture run remain outstanding.
+are expressed through the Wintosh-owned `abi::GuestFn` aliases.  The 58-test
+Release run was built with MSVC; on that compiler `GuestFn` is deliberately a
+normal function pointer and is never used for a real guest entry.  The real
+`CompatibleMain` path now fails closed with
+`real Mach-O execution requires a Clang build with System-V ABI support`.
+Existing repository fixtures must opt into `SyntheticCompatibleMain` (the CLI
+spelling is `--startup-abi synthetic-main`).  This keeps their Windows-ABI
+smoke coverage explicit without presenting it as Apple ABI execution.
 
 The bridge now also provides fixed-arity `_puts` and `_exit` export entry
 points through `darling_windows_host_symbol`.  After reconfiguring CMake to
@@ -123,6 +126,17 @@ Windows resource compiler/CMake linker setup.
 The new `abi_bridge_smoke` additionally calls `_puts` directly and verifies
 that the Mach-O `_puts` lookup returns the same address; this is a fixed-arity
 host-export smoke only, not yet the Clang System-V guest-call gate.
+
+The loader now recognizes `dyld_stub_binder` as a guarded host export.  This
+allows a chained-fixups image that carries legacy stub metadata but does not
+execute lazy binding to continue through binding preparation; if the binder is
+actually invoked, the guarded export terminates with an explicit unsupported
+diagnostic instead of silently calling an incompatible function.  Chained
+images also skip the legacy indirect-symbol slot walk because their pointer
+locations come from the chained starts table.  The supplied chained fixture
+now passes the MSVC fail-closed gate (`real Mach-O execution requires a Clang
+build with System-V ABI support`); forcing it through `synthetic-main` is
+intentionally invalid and terminates before producing guest output.
 
 The dyld resolver now also checks `Contents/Frameworks` and `Contents/PlugIns`
 as scoped fallbacks for `@rpath/...` dependencies of a bundle executable when

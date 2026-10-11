@@ -31,10 +31,12 @@ libraries; the current `libSystem` and `libobjc` boundary is provided by the
 host symbol table, while real Darwin dylibs and frameworks remain a separate
 licensed runtime component.
 `--startup-abi darwin` selects the x86_64 stack trampoline for a Mach-O whose
-entrypoint is a Darwin `crt1`/`dyld` start routine.  The default remains
-`--startup-abi main`, which is the compatible `int(argc, argv, envp)` path used
-by the repository's synthetic fixtures.  Do not select `darwin` for those
-fixtures; they intentionally use the compatible main ABI.
+entrypoint is a Darwin `crt1`/`dyld` start routine.  `--startup-abi main` is the
+real compatible `int(argc, argv, envp)` path and requires a Clang Windows build
+with System-V ABI support; the MSVC build fails closed before entering guest
+code.  `--startup-abi synthetic-main` is reserved for the repository's marked
+synthetic fixtures, which intentionally use the Windows-compatible calling
+convention and are not proof of Apple ABI execution.
 The runner automatically adds `executable_path=<resolved-image>` to the Apple
 parameter vector. Additional entries can be supplied with `--apple-param`.
 The runner is therefore an adapter/loader milestone, not a complete Darling

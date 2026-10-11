@@ -62,7 +62,8 @@ std::uintptr_t DynamicImageSymbol(const DarwinDynamicImage& image,
 	const char* name);
 int DynamicImageExecuteEntry(const DarwinDynamicImage& image,
 	const std::vector<std::string>& arguments,
-	const std::vector<std::string>& environment = {});
+	const std::vector<std::string>& environment = {},
+	DarwinEntryAbi entry_abi = DarwinEntryAbi::CompatibleMain);
 const std::filesystem::path& DynamicImagePath(const DarwinDynamicImage& image) noexcept;
 const void* DynamicImageHeader(const DarwinDynamicImage& image) noexcept;
 std::intptr_t DynamicImageSlide(const DarwinDynamicImage& image) noexcept;

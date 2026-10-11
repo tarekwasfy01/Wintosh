@@ -182,7 +182,7 @@ int wmain()
 		}
 		const auto runner = std::filesystem::path(executable, executable + executable_length).parent_path() /
 			L"wintosh.exe";
-		const std::wstring command_line = L"\"" + runner.wstring() + L"\" \"" + image.wstring() + L"\"";
+		const std::wstring command_line = L"\"" + runner.wstring() + L"\" --startup-abi synthetic-main \"" + image.wstring() + L"\"";
 		auto command = CommandLine(command_line);
 		STARTUPINFOW startup{};
 		startup.cb = sizeof(startup);

@@ -55,7 +55,8 @@ static int RunEntry32()
 		output.close();
 		const auto image = MachOImage::Open(path.wstring());
 		const auto mapping = image.MapSegments();
-		const auto result = image.ExecuteEntry(mapping, {"entry32", "one"}, {"PATH=/usr/bin"});
+		const auto result = image.ExecuteEntry(mapping, {"entry32", "one"},
+			{"PATH=/usr/bin"}, {}, DarwinEntryAbi::SyntheticCompatibleMain);
 		DeleteFileW(path.c_str());
 		const bool ok = image.Is32Bit() && image.EntryOffset() == 0x100 && result == 42;
 		std::cout << "MACHO_ENTRY_32=" << (ok ? "PASS" : "FAIL") << "\n";

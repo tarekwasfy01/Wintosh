@@ -1012,10 +1012,26 @@ MachOImage MachOImage::Open(const std::wstring& path)
 				if (segment_offset == 0) {
 					continue;
 				}
-				Require(segment_offset < chained_command->data_size &&
-					chained_command->data_size - segment_offset >= sizeof(ChainedStartsSegment),
+				const auto starts_bytes_available = header->starts_offset <=
+					chained_command->data_size ?
+					chained_command->data_size - header->starts_offset : 0;
+				const bool starts_relative = segment_offset < starts_bytes_available &&
+					starts_bytes_available - segment_offset >= sizeof(ChainedStartsSegment);
+				const bool payload_relative = segment_offset < chained_command->data_size &&
+					chained_command->data_size - segment_offset >= sizeof(ChainedStartsSegment);
+				Require(starts_relative || payload_relative,
 					"Mach-O chained-fixups segment starts are invalid");
-				const auto* segment_starts = reinterpret_cast<const ChainedStartsSegment*>(payload + segment_offset);
+				const auto* starts_candidate = reinterpret_cast<const ChainedStartsSegment*>(
+					starts + segment_offset);
+				const auto* payload_candidate = reinterpret_cast<const ChainedStartsSegment*>(
+					payload + segment_offset);
+				auto supported_pointer_format = [](std::uint16_t format) {
+					return format == 1 || format == 2 || format == 6 || format == 7 ||
+						format == 9 || format == 10 || format == 12;
+				};
+				const auto* segment_starts = starts_relative &&
+					supported_pointer_format(starts_candidate->pointer_format) ?
+					starts_candidate : payload_candidate;
 				const auto pointer_format = segment_starts->pointer_format;
 				Require(pointer_format == 1 || pointer_format == 2 || pointer_format == 6 ||
 					pointer_format == 7 || pointer_format == 9 || pointer_format == 10 ||
@@ -1024,7 +1040,9 @@ MachOImage MachOImage::Open(const std::wstring& path)
 				const auto starts_bytes = segment_starts->size;
 				Require(starts_bytes >= sizeof(ChainedStartsSegment) +
 					static_cast<std::uint64_t>(segment_starts->page_count) * sizeof(std::uint16_t) &&
-					segment_offset + starts_bytes <= chained_command->data_size,
+					(segment_starts == starts_candidate ? header->starts_offset + segment_offset :
+						segment_offset) + starts_bytes <=
+					chained_command->data_size,
 					"Mach-O chained-fixups page starts are invalid");
 				const auto* page_starts = reinterpret_cast<const std::uint16_t*>(
 					payload + segment_offset + sizeof(ChainedStartsSegment));
@@ -1140,6 +1158,12 @@ std::vector<std::uint64_t> MachOImage::IndirectImportSlots() const
 void MachOImage::ApplyIndirectImportBindings(const Mapping& mapping,
 	const std::vector<DyldResolvedBinding>& bindings) const
 {
+	// Modern chained-fixups images carry their import locations in the chained
+	// starts table.  Some toolchains retain a legacy indirect-symbol table for
+	// stub metadata as well; it is not a second set of pointer slots and must
+	// not be forced through the legacy __la/__nl slot walk.
+	if (!m_chained_fixups.empty())
+		return;
 	const auto slots = IndirectImportSlots();
 	if (slots.empty())
 		return;
@@ -2207,6 +2231,12 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 		throw std::runtime_error("Darwin startup entry returned unexpectedly");
 #else
 		throw std::runtime_error("Darwin startup ABI requires a 64-bit Windows host");
+#endif
+	}
+	if (entry_abi == DarwinEntryAbi::CompatibleMain) {
+#if !defined(__clang__)
+		throw std::runtime_error(
+			"real Mach-O execution requires a Clang build with System-V ABI support");
 #endif
 	}
 	FlushInstructionCache(GetCurrentProcess(),

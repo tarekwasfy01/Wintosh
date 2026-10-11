@@ -591,9 +591,10 @@ std::uintptr_t DynamicImageSymbol(const DarwinDynamicImage& image, const char* n
 
 int DynamicImageExecuteEntry(const DarwinDynamicImage& image,
 	const std::vector<std::string>& arguments,
-	const std::vector<std::string>& environment)
+	const std::vector<std::string>& environment,
+	DarwinEntryAbi entry_abi)
 {
-	return image.image.ExecuteEntry(image.mapping, arguments, environment);
+	return image.image.ExecuteEntry(image.mapping, arguments, environment, {}, entry_abi);
 }
 
 const std::filesystem::path& DynamicImagePath(const DarwinDynamicImage& image) noexcept

@@ -146,7 +146,8 @@ int wmain()
 		const bool loader_slot_patched = loader_symbol == static_cast<std::uint32_t>(loader_binding) &&
 			loader_binding != 0;
 		const auto loader_entry_result = DynamicImageExecuteEntry(*loader_image,
-			{"Main32", "argument"}, {"PATH=/usr/bin"});
+			{"Main32", "argument"}, {"PATH=/usr/bin"},
+			darling::windows_host::DarwinEntryAbi::SyntheticCompatibleMain);
 		CloseDynamicImage(loader_image);
 		auto* dependent = static_cast<std::uint8_t*>(VirtualAlloc(
 			nullptr, 4096, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));

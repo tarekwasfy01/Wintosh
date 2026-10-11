@@ -145,6 +145,7 @@ int wmain(int argc, wchar_t** argv)
 				diagnostic << "before-bootstrap";
 			}
 			darling::windows_host::DarwinLaunchOptions options;
+			options.entry_abi = darling::windows_host::DarwinEntryAbi::SyntheticCompatibleMain;
 			const int result = darling::windows_host::DarwinBootstrap::Run(argv[2], options);
 			if (argc > 3) {
 				std::ofstream diagnostic(argv[3], std::ios::trunc);

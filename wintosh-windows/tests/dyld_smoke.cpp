@@ -651,11 +651,13 @@ int wmain(int argc, wchar_t** argv)
 			library_image.ExecuteEntryNoArgs(library_mapping);
 			std::cout << "DYLD_EXECUTE_ENTRY=PASS\n";
 			if (library_image.ExecuteEntry(library_mapping,
-				{"Demo", "one", "two"}, {"PATH=/usr/bin"}) != 3) {
+				{"Demo", "one", "two"}, {"PATH=/usr/bin"}, {},
+				darling::windows_host::DarwinEntryAbi::SyntheticCompatibleMain) != 3) {
 				throw std::runtime_error("Mach-O argc/argv entry did not receive arguments");
 			}
 			std::cout << "DYLD_EXECUTE_ARGV=PASS\n";
 			darling::windows_host::DarwinLaunchOptions launch_options;
+			launch_options.entry_abi = darling::windows_host::DarwinEntryAbi::SyntheticCompatibleMain;
 			launch_options.prefix = root;
 		launch_options.arguments = {"Demo", "one", "two"};
 		launch_options.environment = {"PATH=/usr/bin"};
@@ -674,7 +676,7 @@ int wmain(int argc, wchar_t** argv)
 					throw std::runtime_error("cannot locate dyld smoke executable");
 				const auto runner = std::filesystem::path(executable,
 					executable + executable_length).parent_path() / L"wintosh.exe";
-				std::wstring command_line = L"\"" + runner.wstring() + L"\" \"" +
+				std::wstring command_line = L"\"" + runner.wstring() + L"\" --startup-abi synthetic-main \"" +
 					image.wstring() + L"\" one two";
 				std::vector<wchar_t> command(command_line.begin(), command_line.end());
 				command.push_back(L'\0');
@@ -702,6 +704,7 @@ int wmain(int argc, wchar_t** argv)
 				"@loader_path/../../../../usr/lib/libSystem.B.dylib", false, true,
 				false, false, true, true, false, false, "_libSystemInit");
 			darling::windows_host::DarwinLaunchOptions imported_entry_options;
+			imported_entry_options.entry_abi = darling::windows_host::DarwinEntryAbi::SyntheticCompatibleMain;
 			imported_entry_options.prefix = root;
 			imported_entry_options.arguments = {"ImportedEntry", "one", "two"};
 			imported_entry_options.environment = {"PATH=/usr/bin"};

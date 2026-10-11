@@ -1732,6 +1732,20 @@ extern "C" servent* darling_windows_getservbyport(int port, const char* protocol
 	return ::getservbyport(port, protocol);
 }
 
+extern "C" protoent* darling_windows_getprotobyname(const char* name)
+{
+	if (name == nullptr || name[0] == '\0') {
+		darling::windows_host::DarwinErrno::Set(22);
+		return nullptr;
+	}
+	return ::getprotobyname(name);
+}
+
+extern "C" protoent* darling_windows_getprotobynumber(int number)
+{
+	return ::getprotobynumber(number);
+}
+
 extern "C" int darling_windows_getnameinfo(const void* address, int address_length,
 	char* host, std::size_t host_length, char* service, std::size_t service_length, int flags)
 {
@@ -5010,6 +5024,12 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 	}
 	if (std::strcmp(name, "_getservbyport") == 0 || std::strcmp(name, "getservbyport") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_getservbyport);
+	}
+	if (std::strcmp(name, "_getprotobyname") == 0 || std::strcmp(name, "getprotobyname") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_getprotobyname);
+	}
+	if (std::strcmp(name, "_getprotobynumber") == 0 || std::strcmp(name, "getprotobynumber") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_getprotobynumber);
 	}
 	if (std::strcmp(name, "_getnameinfo") == 0 || std::strcmp(name, "getnameinfo") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_getnameinfo);

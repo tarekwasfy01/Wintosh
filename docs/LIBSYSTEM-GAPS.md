@@ -76,6 +76,8 @@ following families with Windows-backed implementations:
   environment-dependent and is not claimed by the smoke test.
 - Legacy service database lookups `getservbyname` and `getservbyport` now
   delegate to Winsock with null-input validation and host-symbol coverage.
+- Legacy protocol database lookups `getprotobyname` and `getprotobynumber` are
+  now bridged with the same bounded native-database behavior.
 - C++ static-initialization guard entry points `___cxa_guard_acquire`,
   `___cxa_guard_release`, and `___cxa_guard_abort`, backed by atomic
   Windows-host state transitions; acquire/release/abort behavior is covered

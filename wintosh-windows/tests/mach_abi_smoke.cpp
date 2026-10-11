@@ -1202,6 +1202,25 @@ int main()
 			descriptor_received_size == wire.size() &&
 			std::memcmp(descriptor_received.data(), wire.data(), wire.size()) == 0;
 		if (!descriptor_send_ok || !descriptor_receive_ok) return 1;
+		struct MultiDescriptorMessage {
+			darling_mach_msg_header header;
+			darling_mach_msg_body body;
+			darling_mach_msg_port_descriptor descriptors[2];
+		} multi_descriptor_message{
+			descriptor_message,
+			darling_mach_msg_body{2},
+			{descriptor, descriptor}};
+		multi_descriptor_message.header.msgh_size = sizeof(multi_descriptor_message);
+		multi_descriptor_message.header.msgh_id = 0x44455344;
+		const bool multi_descriptor_send_ok = darling_windows_mach_msg(
+			&multi_descriptor_message.header, darling_mach_send_msg,
+			sizeof(multi_descriptor_message), 0, 0, 0, 0) == 0;
+		std::uint32_t multi_descriptor_received_size = 0;
+		const bool multi_descriptor_receive_ok = darling_windows_mach_port_receive(ns_notify,
+			descriptor_received.data(), descriptor_received.size(), &multi_descriptor_received_size, 100) == 0 &&
+			multi_descriptor_received_size == sizeof(multi_descriptor_message);
+		(void)darling_windows_mach_port_mod_refs(task, thread, darling_mach_port_type_send, -2);
+		if (!multi_descriptor_send_ok || !multi_descriptor_receive_ok) return 1;
 		darling_mach_port_name_t move_source = 0;
 		std::uint32_t move_refs = 0;
 		if (darling_windows_mach_port_allocate(task, &move_source) != 0 ||

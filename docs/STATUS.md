@@ -7,8 +7,9 @@ Status date: 2026-10-11
 ### Mach IPC descriptor gate (2026-10-11)
 
 The native Clang Mach ABI smoke now passes the complex port-descriptor slice
-end to end (`MACH_NOTIFY_NO_SENDERS`, descriptor transfer, dead-name
-notification, broker capability, and self-deallocate; exit code 0). The
+end to end (`MACH_NOTIFY_NO_SENDERS`, single- and multi-descriptor transfer,
+dead-name notification, broker capability, and self-deallocate; exit code 0).
+The
 Windows dispatcher now bounds OOL-type probing by the available descriptor
 bytes and keeps locally owned destination ports on the local queue instead of
 forcing them through the cross-process broker. Broker routing remains enabled

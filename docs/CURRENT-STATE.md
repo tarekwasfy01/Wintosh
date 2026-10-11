@@ -207,3 +207,25 @@ does not prove that all 150 Darling external components are license-cleared,
 that the NTFS-incompatible Heimdal checkout is complete, that the global build
 passes, or that arbitrary macOS applications run on Windows. Those boundaries
 remain in [STATUS.md](STATUS.md) and [RELEASE-CHECKLIST.md](RELEASE-CHECKLIST.md).
+
+## First real Clang/SysV Mach-O run on Windows
+
+The project now has a native Clang-cl Ninja configuration that uses LLVM's
+integrated assembler for the Darwin-start trampoline when MASM `ml64` is not
+available. The MSVC/MASM path remains unchanged. With LLVM 23.1.2,
+`build-windows-clang-native3/wintosh.exe` compiled and linked successfully on
+Windows.
+
+The supplied chained-fixups fixture was then executed through that Clang build:
+
+```text
+hello from guest
+NO_ARG_EXIT=0
+hello from guest
+ONE_ARG_EXIT=7
+```
+
+This is the first end-to-end proof of a real x86_64 SysV Mach-O entry and the
+fixed-arity `_puts`/`_exit` bridge on Windows. It covers the chained fixture
+only; the Classic fixture, lazy binding, Darwin `crt1` startup, variadic
+exports, and arbitrary Apple frameworks remain unimplemented or unverified.

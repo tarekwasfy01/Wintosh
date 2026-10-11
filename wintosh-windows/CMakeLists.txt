@@ -2,7 +2,11 @@ cmake_minimum_required(VERSION 3.20)
 
 project(wintosh-windows LANGUAGES CXX)
 
-if (WIN32 AND CMAKE_SIZEOF_VOID_P EQUAL 8)
+if (WIN32 AND CMAKE_SIZEOF_VOID_P EQUAL 8 AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    enable_language(ASM)
+    set(WINTOSH_STARTUP_OBJ
+        "${CMAKE_CURRENT_SOURCE_DIR}/runtime/darling_windows_startup_x64.S")
+elseif (WIN32 AND CMAKE_SIZEOF_VOID_P EQUAL 8)
     enable_language(ASM_MASM)
     set(WINTOSH_STARTUP_ASM
         "${CMAKE_CURRENT_SOURCE_DIR}/runtime/darling_windows_startup_x64.asm")

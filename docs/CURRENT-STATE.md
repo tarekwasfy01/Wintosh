@@ -246,9 +246,11 @@ This proves the current fixed-arity classic binding path for `_puts` and
 `_exit`; it does not yet prove arbitrary lazy-binding protocols or variadic
 function calls.
 
-The host symbol table now exposes a named SysV `printf` bridge entry, but the
-implementation is deliberately fail-closed: clang-cl rejects `va_start` inside
-a Windows-targeted `sysv_abi` function. The bridge therefore reports
-`SysV variadic printf bridge is not implemented` and returns `-1` until a
-dedicated register-save/variadic trampoline is added. The lookup is covered by
-`abi_bridge_smoke`; no variadic guest execution is claimed.
+The host symbol table now exposes a named SysV `printf` bridge entry. Under the
+Clang build, a dedicated x86_64 register-save trampoline translates the SysV
+integer/pointer variadic arguments into a Windows helper call. The direct
+`abi_bridge_smoke` gate now verifies `%d`, `%s`, and newline handling. Floating
+point, `long double`, positional arguments, and the full `printf` format
+language remain unsupported. The MSVC build remains deliberately fail-closed
+and reports `SysV variadic printf bridge is not implemented`; it does not run
+real SysV guest code.

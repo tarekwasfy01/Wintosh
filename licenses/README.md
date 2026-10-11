@@ -34,9 +34,11 @@ it does not relicense Darling-derived or other third-party code.
 The current Mach-O ABI, dyld, runner, and Windows assembly additions introduce
 no new third-party source dependency and therefore require no new external
 license file. They retain the GPL-3.0 headers and the existing Darling
-provenance boundary. The guarded variadic `printf` export is Wintosh adapter
-code and is explicitly documented as incomplete; it is not copied from an
-Apple or other external implementation.
+provenance boundary. The SysV variadic register-save trampoline and its Windows
+formatting helper are Wintosh adapter code, not copied from Apple or another
+external implementation. They intentionally implement only the documented
+integer/pointer subset; unsupported formats remain outside the compatibility
+claim.
 
 For the human-readable cross-project summary, see
 `../THIRD-PARTY-NOTICES.md`. Keep this directory, the original source trees,

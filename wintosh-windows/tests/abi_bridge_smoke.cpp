@@ -32,10 +32,22 @@ int main()
 		return 2;
 	}
 	std::puts("ABI_BRIDGE_VARIADIC_LOOKUP=PASS");
+#if defined(__clang__) && defined(_WIN64)
+	if (darling::windows_host::abi::darling_windows_abi_printf("v=%d\n", 7) != 4) {
+		std::fprintf(stderr, "ABI_BRIDGE_VARIADIC_EXECUTION=FAIL\n");
+		return 3;
+	}
+	if (darling::windows_host::abi::darling_windows_abi_printf("s=%s\n", "ok") != 5) {
+		std::fprintf(stderr, "ABI_BRIDGE_VARIADIC_STRING=FAIL\n");
+		return 4;
+	}
+	std::puts("ABI_BRIDGE_VARIADIC_EXECUTION=PASS");
+#else
 	if (darling::windows_host::abi::darling_windows_abi_printf("unused %d", 7) != -1) {
 		std::fprintf(stderr, "ABI_BRIDGE_VARIADIC_FAIL_CLOSED=FAIL\n");
 		return 3;
 	}
 	std::puts("ABI_BRIDGE_VARIADIC_FAIL_CLOSED=PASS");
+#endif
 	return 0;
 }

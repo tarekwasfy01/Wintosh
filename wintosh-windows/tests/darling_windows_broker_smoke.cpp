@@ -270,8 +270,11 @@ int wmain()
 		const auto transfer_session = darling::windows_host::OpenMachIpcSession(transfer_client);
 		const auto transfer_to_other = darling_windows_mach_port_transfer_broker(
 			broker_local_port, transfer_session);
-		const bool transfer_back_response = darling::windows_host::TransferMachIpcCapability(
-			transfer_client, transfer_session, broker_capability, broker_capability_session);
+		darling::windows_host::MachIpcCapabilityTable transferred_capabilities;
+		transferred_capabilities.Bind(0x9001, {broker_capability, transfer_session});
+		const bool transfer_back_response = darling::windows_host::TransferMachIpcCapabilities(
+			transfer_client, transfer_session, transferred_capabilities,
+			broker_capability_session);
 		const auto rebind_back = darling_windows_mach_port_bind_broker(
 			broker_local_port, broker_capability, broker_capability_session);
 		const bool broker_transfer_ok = transfer_session != 0 && transfer_to_other == 0 &&

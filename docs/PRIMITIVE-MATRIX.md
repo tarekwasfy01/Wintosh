@@ -762,3 +762,8 @@ through the slot and all pointer-format and architecture variants remain open.
 zero port source files missing a header notice, while provenance rows marked
 `review-required` remain open for license review.
 
+The process family additionally verifies native `posix_spawnp` PATH lookup,
+environment propagation, spawn file actions, and `waitpid`/`wait4` on x64 and
+Win32. This is spawn-based compatibility and does not claim `fork` or
+copy-on-write equivalence.
+

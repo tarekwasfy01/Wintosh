@@ -27,6 +27,11 @@ struct DarwinX86ThreadState64 final {
 	std::uint64_t cs = 0, fs = 0, gs = 0;
 };
 
+struct DarwinArm64ThreadState final {
+	std::uint64_t x[29]{};
+	std::uint64_t fp = 0, lr = 0, sp = 0, pc = 0, cpsr = 0;
+};
+
 struct ProcessMemoryRegion final {
 	std::uintptr_t base = 0;
 	std::size_t size = 0;
@@ -84,6 +89,8 @@ public:
 	[[nodiscard]] bool SetThreadContext(DWORD thread_id, const CONTEXT& context) const noexcept;
 	[[nodiscard]] bool GetDarwinX86ThreadState64(DarwinX86ThreadState64& state) const noexcept;
 	[[nodiscard]] bool SetDarwinX86ThreadState64(const DarwinX86ThreadState64& state) const noexcept;
+	[[nodiscard]] bool GetDarwinArm64ThreadState(DarwinArm64ThreadState& state) const noexcept;
+	[[nodiscard]] bool SetDarwinArm64ThreadState(const DarwinArm64ThreadState& state) const noexcept;
 	[[nodiscard]] DWORD Suspend() noexcept;
 	[[nodiscard]] DWORD Resume() noexcept;
 	void Terminate(UINT exit_code = 1) noexcept;

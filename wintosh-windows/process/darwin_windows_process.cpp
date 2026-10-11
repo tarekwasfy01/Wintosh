@@ -395,6 +395,36 @@ bool Process::SetDarwinX86ThreadState64(const DarwinX86ThreadState64& state) con
 #endif
 }
 
+bool Process::GetDarwinArm64ThreadState(DarwinArm64ThreadState& state) const noexcept
+{
+#if defined(_M_ARM64) || defined(__aarch64__)
+	CONTEXT context{};
+	if (!GetPrimaryThreadContext(context)) return false;
+	for (unsigned index = 0; index < 29; ++index) state.x[index] = context.X[index];
+	state.fp = context.Fp; state.lr = context.Lr; state.sp = context.Sp;
+	state.pc = context.Pc; state.cpsr = context.Cpsr;
+	return true;
+#else
+	(void)state;
+	return false;
+#endif
+}
+
+bool Process::SetDarwinArm64ThreadState(const DarwinArm64ThreadState& state) const noexcept
+{
+#if defined(_M_ARM64) || defined(__aarch64__)
+	CONTEXT context{};
+	if (!GetPrimaryThreadContext(context)) return false;
+	for (unsigned index = 0; index < 29; ++index) context.X[index] = state.x[index];
+	context.Fp = state.fp; context.Lr = state.lr; context.Sp = state.sp;
+	context.Pc = state.pc; context.Cpsr = state.cpsr;
+	return SetPrimaryThreadContext(context);
+#else
+	(void)state;
+	return false;
+#endif
+}
+
 DWORD Process::Suspend() noexcept
 {
 	if (m_process == nullptr)

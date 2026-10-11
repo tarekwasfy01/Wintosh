@@ -964,6 +964,12 @@ segment metadata while retaining host-validated selectors on write; Win32
 rejects this 64-bit state explicitly. ARM64 state and secondary-thread
 translation remain separate gaps.
 
+The process layer now defines a Darwin ARM64 thread-state bridge as well. It
+maps the 29 general registers, frame/link registers, stack, program counter,
+and status register when compiled for Windows ARM64; x64 and Win32 reject the
+operation explicitly. ARM64 runtime evidence is not available in the current
+host matrix.
+
 The broker also exposes an atomic `CapabilityTransferBatch` operation. The
 client serializes the target session and complete broker-token list; the broker
 validates every current owner before changing any owner and moves associated

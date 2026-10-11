@@ -141,6 +141,10 @@ int wmain()
 #else
 		if (darwin_state_ok) throw std::runtime_error("Win32 accepted x86_64 thread state");
 #endif
+		darling::windows_host::DarwinArm64ThreadState arm64_state{};
+		if (suspended_process.GetDarwinArm64ThreadState(arm64_state) ||
+			suspended_process.SetDarwinArm64ThreadState(arm64_state))
+			throw std::runtime_error("non-ARM64 host accepted Darwin ARM64 state");
 		auto controllable_process = darling::windows_host::Process::Launch(
 			L"C:\\Windows\\System32\\cmd.exe", L"cmd.exe /d /c exit 21");
 		if (!controllable_process.Valid() || controllable_process.Suspend() == static_cast<DWORD>(-1) ||

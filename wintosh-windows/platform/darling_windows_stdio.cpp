@@ -2435,6 +2435,7 @@ namespace {
 thread_local std::string darling_pthread_name;
 std::mutex darling_pthread_name_mutex;
 std::unordered_map<std::uint64_t, std::string> darling_pthread_names;
+std::unordered_map<std::uint64_t, std::uint64_t> darling_pthread_ids;
 void RunPthreadTlsDestructors();
 
 struct DarlingPthreadAttributes final {
@@ -2602,7 +2603,11 @@ extern "C" int darling_windows_pthread_getname_np(std::uint64_t thread,
 	std::string name;
 	{
 		std::lock_guard lock(darling_pthread_name_mutex);
-		auto found = darling_pthread_names.find(thread);
+		std::uint64_t lookup_thread = thread;
+		auto identity = darling_pthread_ids.find(thread);
+		if (identity != darling_pthread_ids.end())
+			lookup_thread = identity->second;
+		auto found = darling_pthread_names.find(lookup_thread);
 		if (found == darling_pthread_names.end()) {
 			if (thread != darling_windows_pthread_self()) {
 				darling::windows_host::DarwinErrno::Set(22);
@@ -2797,12 +2802,18 @@ extern "C" int darling_windows_pthread_create(std::uint64_t* thread,
 	if (attributes != nullptr && attr == nullptr) return 22;
 	context->detached.store(attr != nullptr && attr->detached, std::memory_order_release);
 	const SIZE_T stack_size = attr == nullptr ? 0 : static_cast<SIZE_T>(attr->stack_size);
-	HANDLE handle = CreateThread(nullptr, stack_size, DarlingPthreadThunk, context.get(), 0, nullptr);
+	DWORD native_thread_id = 0;
+	HANDLE handle = CreateThread(nullptr, stack_size, DarlingPthreadThunk, context.get(), 0, &native_thread_id);
 	if (handle == nullptr) return 11;
 	const auto token = static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(handle));
+	const auto thread_id = static_cast<std::uint64_t>(native_thread_id);
 	{
 		std::lock_guard lock(darling_pthread_mutex);
 		darling_pthreads.emplace(token, std::move(context));
+	}
+	{
+		std::lock_guard lock(darling_pthread_name_mutex);
+		darling_pthread_ids[token] = thread_id;
 	}
 	*thread = token;
 	if (attr != nullptr && attr->detached) {
@@ -2845,6 +2856,7 @@ extern "C" int darling_windows_pthread_join(std::uint64_t thread, void** result)
 	{
 		std::lock_guard lock(darling_pthread_name_mutex);
 		darling_pthread_names.erase(thread);
+		darling_pthread_ids.erase(thread);
 	}
 	return 0;
 }
@@ -2865,6 +2877,7 @@ extern "C" int darling_windows_pthread_detach(std::uint64_t thread)
 	{
 		std::lock_guard lock(darling_pthread_name_mutex);
 		darling_pthread_names.erase(thread);
+		darling_pthread_ids.erase(thread);
 	}
 	CloseHandle(handle);
 	return 0;
@@ -4441,6 +4454,16 @@ extern "C" __declspec(noreturn) void darling_windows_stack_chk_fail()
 	std::abort();
 }
 
+extern "C" __declspec(noreturn) void darling_windows_cxa_pure_virtual()
+{
+	std::abort();
+}
+
+extern "C" __declspec(noreturn) void darling_windows_cxa_deleted_virtual()
+{
+	std::abort();
+}
+
 extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 {
 	if (name == nullptr) {
@@ -4455,6 +4478,14 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 		std::strcmp(name, "___stack_chk_guard") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_stack_chk_guard);
 	}
+	if (std::strcmp(name, "___cxa_pure_virtual") == 0 ||
+		std::strcmp(name, "__cxa_pure_virtual") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_cxa_pure_virtual);
+	}
+	if (std::strcmp(name, "___cxa_deleted_virtual") == 0 ||
+		std::strcmp(name, "__cxa_deleted_virtual") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_cxa_deleted_virtual);
+	}
 	if (std::strcmp(name, "___cxa_guard_acquire") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_cxa_guard_acquire);
 	}
@@ -4468,11 +4499,14 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 		std::strcmp(name, "___error") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_errno);
 	}
-	if (std::strcmp(name, "_tlv_atexit") == 0) {
+	if (std::strcmp(name, "_tlv_atexit") == 0 ||
+		std::strcmp(name, "___tlv_atexit") == 0) {
 		return reinterpret_cast<std::uintptr_t>(
 			&darling::windows_host::darling_windows_tlv_atexit);
 	}
-	if (std::strcmp(name, "___cxa_thread_atexit") == 0) {
+	if (std::strcmp(name, "___cxa_thread_atexit") == 0 ||
+		std::strcmp(name, "___cxa_thread_atexit_impl") == 0 ||
+		std::strcmp(name, "_cxa_thread_atexit_impl") == 0) {
 		return reinterpret_cast<std::uintptr_t>(
 			&darling::windows_host::darling_windows_cxa_thread_atexit);
 	}

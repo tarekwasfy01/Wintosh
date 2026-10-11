@@ -21,6 +21,7 @@
 
 namespace {
 	volatile std::sig_atomic_t raised_signal = 0;
+	std::atomic_bool named_thread_ready{false};
 
 	void* PthreadSmokeStart(void* argument)
 	{
@@ -29,6 +30,7 @@ namespace {
 	void* PthreadNamedStart(void*)
 	{
 		darling_windows_pthread_setname_np("darling-worker");
+		named_thread_ready.store(true, std::memory_order_release);
 		return nullptr;
 	}
 	std::atomic_bool cancellation_worker_started{false};
@@ -199,13 +201,58 @@ int main()
 		darling_windows_host_symbol("___stack_chk_fail") != 0 &&
 		darling_windows_host_symbol("___stack_chk_fail_local") != 0 &&
 		darling_windows_host_symbol("__stack_chk_guard") != 0 &&
-		darling_windows_host_symbol("___stack_chk_guard") != 0 &&
-		darling_windows_host_symbol("___cxa_guard_acquire") != 0 &&
-		darling_windows_host_symbol("___cxa_guard_release") != 0 &&
-		darling_windows_host_symbol("___cxa_guard_abort") != 0;
+		darling_windows_host_symbol("___stack_chk_guard") != 0;
 	std::cout << "DARWIN_STACK_PROTECTOR_SYMBOLS=" <<
 		(stack_protector_symbols ? "PASS" : "FAIL") << "\n";
 	if (!stack_protector_symbols)
+		return 1;
+	using CxaGuardAcquire = int (*)(std::uint64_t*);
+	using CxaGuardRelease = void (*)(std::uint64_t*);
+	using CxaGuardAbort = void (*)(std::uint64_t*);
+	const auto cxa_guard_acquire = reinterpret_cast<CxaGuardAcquire>(
+		darling_windows_host_symbol("___cxa_guard_acquire"));
+	const auto cxa_guard_release = reinterpret_cast<CxaGuardRelease>(
+		darling_windows_host_symbol("___cxa_guard_release"));
+	const auto cxa_guard_abort = reinterpret_cast<CxaGuardAbort>(
+		darling_windows_host_symbol("___cxa_guard_abort"));
+	std::uint64_t cxa_guard_state = 0;
+	const bool cxa_guard_symbols = cxa_guard_acquire != nullptr &&
+		cxa_guard_release != nullptr && cxa_guard_abort != nullptr &&
+		cxa_guard_acquire(&cxa_guard_state) == 1 &&
+		cxa_guard_acquire(&cxa_guard_state) == 0;
+	if (cxa_guard_symbols)
+		cxa_guard_release(&cxa_guard_state);
+	const bool cxa_guard_release_ok = cxa_guard_symbols &&
+		cxa_guard_acquire(&cxa_guard_state) == 0;
+	std::uint64_t cxa_guard_abort_state = 0;
+	const bool cxa_guard_abort_ok = cxa_guard_symbols &&
+		cxa_guard_acquire(&cxa_guard_abort_state) == 1;
+	if (cxa_guard_abort_ok)
+		cxa_guard_abort(&cxa_guard_abort_state);
+	const bool cxa_guard_behavior = cxa_guard_release_ok && cxa_guard_abort_ok &&
+		cxa_guard_acquire(&cxa_guard_abort_state) == 1;
+	std::cout << "DARWIN_CXA_GUARD_SYMBOLS=" <<
+		(cxa_guard_behavior ? "PASS" : "FAIL") << "\n";
+	if (!cxa_guard_behavior)
+		return 1;
+	const bool cxa_virtual_symbols =
+		darling_windows_host_symbol("___cxa_pure_virtual") != 0 &&
+		darling_windows_host_symbol("__cxa_pure_virtual") != 0 &&
+		darling_windows_host_symbol("___cxa_deleted_virtual") != 0 &&
+		darling_windows_host_symbol("__cxa_deleted_virtual") != 0;
+	std::cout << "DARWIN_CXA_VIRTUAL_SYMBOLS=" <<
+		(cxa_virtual_symbols ? "PASS" : "FAIL") << "\n";
+	if (!cxa_virtual_symbols)
+		return 1;
+	const bool cxa_thread_atexit_aliases =
+		darling_windows_host_symbol("___cxa_thread_atexit") != 0 &&
+		darling_windows_host_symbol("___cxa_thread_atexit_impl") != 0 &&
+		darling_windows_host_symbol("_cxa_thread_atexit_impl") != 0 &&
+		darling_windows_host_symbol("_tlv_atexit") != 0 &&
+		darling_windows_host_symbol("___tlv_atexit") != 0;
+	std::cout << "DARWIN_CXA_THREAD_ATEXIT_ALIASES=" <<
+		(cxa_thread_atexit_aliases ? "PASS" : "FAIL") << "\n";
+	if (!cxa_thread_atexit_aliases)
 		return 1;
 	const bool normalized_libc_symbols =
 		darling_windows_host_symbol("malloc") != 0 &&
@@ -1186,8 +1233,17 @@ int main()
 		sizeof(pthread_name)) == 0 &&
 		std::strcmp(pthread_name, "darling-smoke") == 0;
 	std::uint64_t named_thread = 0;
+	named_thread_ready.store(false, std::memory_order_release);
+	const bool named_thread_created =
+		darling_windows_pthread_create(&named_thread, nullptr, &PthreadNamedStart, nullptr) == 0;
+	if (named_thread_created) {
+		for (int attempt = 0; attempt < 100 &&
+				!named_thread_ready.load(std::memory_order_acquire); ++attempt)
+			std::this_thread::sleep_for(std::chrono::milliseconds(1));
+	}
 	const bool pthread_cross_thread_name_ok =
-		darling_windows_pthread_create(&named_thread, nullptr, &PthreadNamedStart, nullptr) == 0 &&
+		named_thread_created &&
+		named_thread_ready.load(std::memory_order_acquire) &&
 		darling_windows_pthread_getname_np(named_thread, pthread_name, sizeof(pthread_name)) == 0 &&
 		std::strcmp(pthread_name, "darling-worker") == 0 &&
 		darling_windows_pthread_join(named_thread, nullptr) == 0 &&

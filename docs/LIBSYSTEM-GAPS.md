@@ -22,7 +22,15 @@ following families with Windows-backed implementations:
   underscore aliases, plus the `__stack_chk_guard` data-symbol aliases;
 - C++ static-initialization guard entry points `___cxa_guard_acquire`,
   `___cxa_guard_release`, and `___cxa_guard_abort`, backed by atomic
-  Windows-host state transitions and covered on x64 and Win32.
+  Windows-host state transitions; acquire/release/abort behavior is covered
+  on both x64 and Win32.
+- C++ thread-destructor entry-point aliases `___cxa_thread_atexit`,
+  `___cxa_thread_atexit_impl`, and `_cxa_thread_atexit_impl`, mapped to the
+  existing TLS destructor machinery; `_tlv_atexit` and `___tlv_atexit` are
+  covered alongside them on both target architectures.
+- C++ virtual-dispatch failure entry points `___cxa_pure_virtual` and
+  `___cxa_deleted_virtual`, resolved to fail-closed Windows handlers with
+  both Darwin and Itanium spelling aliases covered by the host smoke test.
 
 These are native Windows compatibility primitives. They are not a copied or
 relicensed Apple libSystem binary.

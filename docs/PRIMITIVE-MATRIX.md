@@ -599,6 +599,9 @@ The x64 smoke also verifies `mach_vm_copy` between two remote allocations by
 comparing the copied bytes after a remote read. This is an explicit copy
 operation; it must not be confused with Darwin VM copy-on-write sharing or
 snapshot rollback.
+The copy test also mutates the source after copying and confirms the destination
+still contains the original bytes, proving independent remote allocations
+rather than an alias. This remains explicit copying, not Darwin COW metadata.
 The x64 smoke additionally validates `mach_vm_read_overwrite` into a local
 buffer and checks the exact transferred size and bytes, covering both Darwin
 read return shapes for the same remote allocation.

@@ -184,6 +184,22 @@ int main()
 				remote_value.data(), remote_value.size()) == 0 &&
 			darling_windows_mach_vm_deallocate(child_task, copy_read_data, copy_read_size) == 0;
 	}
+	if (copy_ok) {
+		const std::array<std::uint8_t, 16> changed_source{
+			0x43, 0x4f, 0x50, 0x59, 0x2d, 0x53, 0x4f, 0x55,
+			0x52, 0x43, 0x45, 0x2d, 0x43, 0x48, 0x47, 0x00};
+		darling_mach_vm_address_t independent_read_data = 0;
+		darling_mach_vm_size_t independent_read_size = 0;
+		copy_ok = darling_windows_mach_vm_write(child_task, copy_source,
+			changed_source.data(), changed_source.size()) == 0 &&
+			darling_windows_mach_vm_read(child_task, copy_destination, changed_source.size(),
+				&independent_read_data, &independent_read_size) == 0 &&
+			independent_read_data != 0 && independent_read_size == changed_source.size() &&
+			std::memcmp(reinterpret_cast<const void*>(static_cast<std::uintptr_t>(independent_read_data)),
+				remote_value.data(), remote_value.size()) == 0 &&
+			darling_windows_mach_vm_deallocate(child_task, independent_read_data,
+				independent_read_size) == 0;
+	}
 	if (copy_source != 0)
 		(void)darling_windows_mach_vm_deallocate(child_task, copy_source, remote_page_size);
 	if (copy_destination != 0)

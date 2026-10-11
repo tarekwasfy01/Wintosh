@@ -653,6 +653,22 @@ int wmain(int argc, wchar_t** argv)
 						std::uint32_t trailer_size = required_size;
 						std::memcpy(response_payload.data() + offset + 4, &trailer_size, sizeof(trailer_size));
 						std::memcpy(response_payload.data() + offset + 8, &next_sequence, sizeof(next_sequence));
+						const auto process_owner = session_process_ids.find(envelope.session_token);
+						const auto host_pid = process_owner == session_process_ids.end() ? 0u :
+							static_cast<std::uint32_t>(process_owner->second);
+						const auto host_tid = static_cast<std::uint32_t>(GetCurrentThreadId());
+						if (elements >= 2) {
+							std::memcpy(response_payload.data() + offset + 12, &host_pid, sizeof(host_pid));
+							std::memcpy(response_payload.data() + offset + 16, &host_tid, sizeof(host_tid));
+						}
+						if (elements >= 3) {
+							std::memcpy(response_payload.data() + offset + 20, &host_pid, sizeof(host_pid));
+							std::memcpy(response_payload.data() + offset + 24, &host_tid, sizeof(host_tid));
+						}
+						if (elements == 4) {
+							const auto context = envelope.port_token;
+							std::memcpy(response_payload.data() + offset + 52, &context, sizeof(context));
+						}
 					}
 					darling::windows_host::MachIpcEnvelope response{
 						darling::windows_host::MachIpcOperation::Peek, envelope.request_id,

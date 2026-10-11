@@ -55,6 +55,34 @@ struct darling_mach_msg_trailer final {
 	std::uint32_t size;
 };
 
+// Darwin-compatible receive-trailer building blocks. The compact trailer
+// above remains the default Wintosh ABI until receive-option negotiation can
+// select and size a full trailer without changing existing callers.
+struct darling_mach_msg_seqno_trailer final {
+	darling_mach_msg_trailer trailer;
+	std::uint32_t msgh_seqno;
+};
+
+struct darling_mach_security_token final { std::uint32_t val[2]{}; };
+struct darling_mach_audit_token final { std::uint32_t val[8]{}; };
+
+struct darling_mach_msg_security_trailer final {
+	darling_mach_msg_seqno_trailer seqno;
+	darling_mach_security_token security_token;
+};
+
+struct darling_mach_msg_audit_trailer final {
+	darling_mach_msg_security_trailer security;
+	darling_mach_audit_token audit_token;
+};
+
+static_assert(sizeof(darling_mach_msg_trailer) == 8);
+static_assert(sizeof(darling_mach_msg_seqno_trailer) == 12);
+static_assert(sizeof(darling_mach_security_token) == 8);
+static_assert(sizeof(darling_mach_audit_token) == 32);
+static_assert(sizeof(darling_mach_msg_security_trailer) == 20);
+static_assert(sizeof(darling_mach_msg_audit_trailer) == 52);
+
 constexpr std::uint32_t darling_mach_msg_descriptor_port = 0;
 constexpr std::uint32_t darling_mach_msg_descriptor_ool = 1;
 constexpr std::uint32_t darling_mach_msg_trailer_none = 0;

@@ -102,6 +102,12 @@ The companion `mach_destroy_ool_smoke` fixture verifies OOL receive ownership
 and rejects a second release on both targets.
 The `mach_too_large_smoke` fixture verifies that an undersized receive buffer
 returns `MACH_MSG_TOO_LARGE` without consuming the queued message.
+The ABI also exposes separately sized Darwin-compatible trailer building
+blocks for sequence numbers, security tokens, audit tokens, and their nested
+forms. `mach_trailer_abi_smoke` verifies their offsets and sizes on x64 and
+Win32. The existing compact 8-byte no-trailer record remains the default;
+option-driven trailer emission, real sequence-number assignment, and Darwin
+audit/security identity values are still pending.
 Queue shutdown returns a stable port-dead result. Session-authenticated request
 cancellation is now available through the `Cancel` operation with envelope
 validation and round-trip coverage: a blocked `Receive` registers its nonzero

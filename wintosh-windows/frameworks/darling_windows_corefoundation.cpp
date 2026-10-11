@@ -505,6 +505,7 @@ struct RunLoop {
 // Keeping this object thread-local also prevents callbacks posted by one
 // thread from being consumed by an unrelated thread's run loop.
 thread_local RunLoop current_run_loop;
+RunLoop main_run_loop;
 struct NotificationObserver {
 	const void* observer;
 	darling_windows_CFNotificationCallback callback;
@@ -2223,6 +2224,11 @@ extern "C" darling_windows_CFTypeRef darling_windows_CFPropertyListCreateFromBin
 extern "C" darling_windows_CFRunLoopRef darling_windows_CFRunLoopGetCurrent()
 {
 	return &current_run_loop;
+}
+
+extern "C" darling_windows_CFRunLoopRef darling_windows_CFRunLoopGetMain()
+{
+	return &main_run_loop;
 }
 
 extern "C" int darling_windows_CFRunLoopRunInMode(double seconds, bool return_after_source)

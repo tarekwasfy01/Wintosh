@@ -295,6 +295,7 @@ extern "C" darling_windows_CFTypeRef darling_windows_CFPropertyListCreateFromXML
 extern "C" darling_windows_CFTypeRef darling_windows_CFPropertyListCreateFromBinary(
 	const void* bytes, darling_windows_CFIndex length);
 extern "C" darling_windows_CFRunLoopRef darling_windows_CFRunLoopGetCurrent();
+extern "C" darling_windows_CFRunLoopRef darling_windows_CFRunLoopGetMain();
 extern "C" int darling_windows_CFRunLoopRunInMode(double seconds, bool return_after_source);
 extern "C" void darling_windows_CFRunLoopStop(darling_windows_CFRunLoopRef loop);
 extern "C" bool darling_windows_CFRunLoopIsRunning(darling_windows_CFRunLoopRef loop);

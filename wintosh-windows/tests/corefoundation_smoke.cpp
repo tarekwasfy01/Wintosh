@@ -481,6 +481,7 @@ int main()
 	const bool semantic_lookup_ok = darling_windows_CFDictionaryGetValue(dictionary,
 		equal_string) == number;
 	auto loop = darling_windows_CFRunLoopGetCurrent();
+	const bool runloop_main_ok = darling_windows_CFRunLoopGetMain() != nullptr;
 	bool loop_started = false;
 	darling_windows_CFRunLoopRef worker_loop = nullptr;
 	std::thread loop_thread([&] {
@@ -492,7 +493,7 @@ int main()
 		darling_windows_CFRunLoopIsRunning(worker_loop);
 	darling_windows_CFRunLoopStop(worker_loop);
 	loop_thread.join();
-	const bool runloop_ok = loop_started && !darling_windows_CFRunLoopIsRunning(worker_loop) &&
+	const bool runloop_ok = runloop_main_ok && loop_started && !darling_windows_CFRunLoopIsRunning(worker_loop) &&
 		!darling_windows_CFRunLoopIsRunning(loop);
 	int callback_value = 7;
 	runloop_callback_value = 0;

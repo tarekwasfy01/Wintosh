@@ -88,6 +88,10 @@ Mutable-copy constructors `CFArrayCreateMutableCopy`,
 independent retained container state and pass mutation checks on x64 and
 Win32. The capacity argument remains a non-binding reservation hint.
 
+`CFRunLoopGetMain` now exposes the process main run loop alongside
+`CFRunLoopGetCurrent`; the current minimal single-process model keeps the
+main loop Windows-backed and distinct from worker-thread run-loop state.
+
 ## Still required for broad compatibility
 
 The CoreFoundation string family now also includes the numeric accessors

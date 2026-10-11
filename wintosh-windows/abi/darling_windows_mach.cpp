@@ -155,6 +155,7 @@ std::mutex port_notifications_mutex;
 std::unordered_map<darling_mach_port_name_t, PortNotification> port_notifications;
 std::mutex suspend_counts_mutex;
 std::unordered_map<darling_mach_port_name_t, std::uint32_t> suspend_counts;
+std::unordered_map<darling_mach_port_name_t, std::uint32_t> task_suspend_counts;
 std::mutex time_constraint_policies_mutex;
 std::unordered_map<darling_mach_port_name_t, darling_thread_time_constraint_policy_info> time_constraint_policies;
 void* exception_handler_cookie = nullptr;
@@ -305,6 +306,45 @@ extern "C" darling_kern_return_t darling_windows_task_threads(
 	}
 	*threads = static_cast<darling_mach_port_name_t*>(storage);
 	*count = static_cast<std::uint32_t>(ids.size());
+	return 0;
+}
+
+extern "C" darling_kern_return_t darling_windows_task_suspend(darling_mach_port_name_t task)
+{
+	if (task == 0 || task == darling_windows_mach_task_self()) return 4;
+	const HANDLE process = OpenProcess(PROCESS_SUSPEND_RESUME, FALSE, task);
+	if (process == nullptr) return 4;
+	using SuspendProcessFn = LONG (WINAPI*)(HANDLE);
+	const auto suspend_process = reinterpret_cast<SuspendProcessFn>(
+		GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "NtSuspendProcess"));
+	const LONG result = suspend_process == nullptr ? 4 : suspend_process(process);
+	CloseHandle(process);
+	if (result != 0) return 4;
+	std::lock_guard lock(suspend_counts_mutex);
+	++task_suspend_counts[task];
+	return 0;
+}
+
+extern "C" darling_kern_return_t darling_windows_task_resume(darling_mach_port_name_t task)
+{
+	if (task == 0 || task == darling_windows_mach_task_self()) return 4;
+	{
+		std::lock_guard lock(suspend_counts_mutex);
+		const auto found = task_suspend_counts.find(task);
+		if (found == task_suspend_counts.end() || found->second == 0) return 4;
+	}
+	const HANDLE process = OpenProcess(PROCESS_SUSPEND_RESUME, FALSE, task);
+	if (process == nullptr) return 4;
+	using ResumeProcessFn = LONG (WINAPI*)(HANDLE);
+	const auto resume_process = reinterpret_cast<ResumeProcessFn>(
+		GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "NtResumeProcess"));
+	const LONG result = resume_process == nullptr ? 4 : resume_process(process);
+	CloseHandle(process);
+	if (result != 0) return 4;
+	std::lock_guard lock(suspend_counts_mutex);
+	const auto found = task_suspend_counts.find(task);
+	if (found != task_suspend_counts.end() && found->second != 0 && --found->second == 0)
+		task_suspend_counts.erase(found);
 	return 0;
 }
 

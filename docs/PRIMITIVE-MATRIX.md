@@ -547,6 +547,10 @@ full Darwin task accounting remains open.
 returns them in a VM-owned array; the existing `mach_vm_deallocate` path frees
 that array. This proves the enumeration/allocation contract, while individual
 thread-port rights and Darwin port namespaces remain incomplete.
+`task_suspend` and `task_resume` map foreign tasks to `NtSuspendProcess` and
+`NtResumeProcess`, with a guarded per-task suspend count and underflow
+rejection. Self-suspension is rejected deliberately to avoid deadlocking the
+hosting Darwin process; exact Darwin self-task semantics remain open.
 The same boundary now exposes `AllocateMemory`, `ProtectMemory`, and
 `FreeMemory`, completing the basic remote-VM operation shape needed by a future
 restore path. The smoke covers invalid-operation rejection; successful remote

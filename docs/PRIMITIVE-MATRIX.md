@@ -792,6 +792,7 @@ The URL family also covers `CFURLCreateWithString` for non-empty absolute
 string values and simple relative paths against a base URL; escaping,
 including leading `../` parent segments, are covered; escaping, normalization,
 and full RFC authority parsing remain open.
+Simple `/./` segments and a trailing `/.` are also covered.
 
 The libc string/allocation family now also covers `reallocarray`,
 `reallocarrayf`, and `strsep`. The array helpers reject multiplication

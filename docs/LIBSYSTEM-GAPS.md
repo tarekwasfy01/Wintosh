@@ -101,6 +101,8 @@ for the absolute/simple URL form used by this bridge; base-URL resolution is
 now also handles a simple relative path against a base URL. Full RFC
 normalization and escaping remain unimplemented; one or more leading `../`
 segments are handled for simple path bases.
+Simple `/./` segments and a trailing `/.` are also collapsed in this path
+form; full RFC normalization remains unimplemented.
 
 ## Still required for broad compatibility
 

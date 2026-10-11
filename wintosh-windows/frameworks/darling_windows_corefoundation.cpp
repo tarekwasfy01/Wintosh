@@ -1988,6 +1988,11 @@ extern "C" darling_windows_CFURLRef darling_windows_CFURLCreateWithString(
 		}
 		resolved = directory + resolved;
 	}
+	for (std::size_t marker = resolved.find("/./"); marker != std::string::npos;
+		marker = resolved.find("/./")) {
+		resolved.replace(marker, 2, "");
+	}
+	if (resolved.size() >= 2 && resolved.ends_with("/.")) resolved.resize(resolved.size() - 2);
 	return darling_windows_CFURLCreateWithFileSystemPath(resolved.c_str());
 }
 

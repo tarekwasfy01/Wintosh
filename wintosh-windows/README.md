@@ -75,8 +75,8 @@ x86_64 Chained-Fixups and Classic Mach-O fixtures. Both print `hello from
 guest`, return `0` without an extra argument, and return `7` with one extra
 argument. The Clang build also has a direct variadic bridge smoke for integer
 and string/integer `%d`, `%s`, `%u`, `%x`, `%X`, `%c`, and `%%` calls;
-floating-point, length modifiers, and general `printf` compatibility remain
-unsupported. The MSVC build remains fail-closed for real guest entry
+floating-point formats beyond the tested `%f`/`%g` subset, length modifiers,
+and general `printf` compatibility remain unsupported. The MSVC build remains fail-closed for real guest entry
 and is used only for explicitly marked synthetic fixtures. Clang CTest also
 generates and executes a temporary Mach-O that imports `_printf` and verifies
 the loader's lazy-binding-to-bridge path. The legacy `dyld_stub_binder` callback

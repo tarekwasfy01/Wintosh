@@ -251,7 +251,9 @@ Clang build, a dedicated x86_64 register-save trampoline translates the SysV
 integer/pointer variadic arguments into a Windows helper call. The direct
 `abi_bridge_smoke` gate now verifies `%d`, `%s`, `%u`, `%x`, `%X`, `%c`, `%%`,
 and newline handling. Floating point, length modifiers, positional arguments,
-and the full `printf` format language remain unsupported. The MSVC build remains deliberately fail-closed
+and the full `printf` format language remain unsupported. The Clang trampoline
+also saves the SysV XMM register area and verifies `%f`/`%g` for `double`.
+The MSVC build remains deliberately fail-closed
 and reports `SysV variadic printf bridge is not implemented`; it does not run
 real SysV guest code.
 

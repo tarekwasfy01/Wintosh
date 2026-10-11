@@ -32,6 +32,10 @@ template <typename T> bool ReadGp(SysVVaList& state, T& value) {
 	if (state.gp_offset > 40) return false;
 	std::memcpy(&value, state.save + state.gp_offset, sizeof(T)); state.gp_offset += 8; return true;
 }
+template <typename T> bool ReadFp(SysVVaList& state, T& value) {
+	if (state.fp_offset > 160) return false;
+	std::memcpy(&value, state.save + state.fp_offset, sizeof(T)); state.fp_offset += 16; return true;
+}
 }
 extern "C" int darling_windows_abi_printf_windows_helper(const char* format, const void* raw)
 {
@@ -45,6 +49,7 @@ extern "C" int darling_windows_abi_printf_windows_helper(const char* format, con
 		if (*p == 'u') { std::uint32_t v{}; if (!ReadGp(state, v)) return -1; written += std::fprintf(stdout, "%" PRIu32, v); continue; }
 		if (*p == 'x' || *p == 'X') { std::uint32_t v{}; if (!ReadGp(state, v)) return -1; written += std::fprintf(stdout, *p == 'x' ? "%" PRIx32 : "%" PRIX32, v); continue; }
 		if (*p == 'c') { std::uint32_t v{}; if (!ReadGp(state, v)) return -1; std::fputc(static_cast<int>(v), stdout); ++written; continue; }
+		if (*p == 'f' || *p == 'g') { double v{}; if (!ReadFp(state, v)) return -1; written += std::fprintf(stdout, *p == 'f' ? "%.6f" : "%.6g", v); continue; }
 		if (*p == 's') { const char* v{}; if (!ReadGp(state, v)) return -1; const char* s = v ? v : "(null)"; if (std::fputs(s, stdout) < 0) return -1; written += static_cast<int>(std::strlen(s)); continue; }
 		return -1;
 	}

@@ -784,6 +784,10 @@ The CoreFoundation date family also covers
 `CFDateGetTimeIntervalSinceReferenceDate`; the bridge keeps one explicit
 reference-date representation and does not claim calendar/time-zone support.
 
+`CFDateCreateWithTimeIntervalSinceNow` is also covered for relative future
+dates; clock precision, adjustment, and calendar/time-zone behavior remain
+outside this bridge.
+
 The libc string/allocation family now also covers `reallocarray`,
 `reallocarrayf`, and `strsep`. The array helpers reject multiplication
 overflow before calling the Windows heap, while `strsep` preserves empty

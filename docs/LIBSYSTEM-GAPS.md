@@ -94,6 +94,8 @@ main loop Windows-backed and distinct from worker-thread run-loop state.
 
 `CFDateGetTimeIntervalSinceReferenceDate` now exposes the same Darwin
 reference-date value as `CFDateGetAbsoluteTime`, with x64 and Win32 coverage.
+`CFDateCreateWithTimeIntervalSinceNow` now derives the Darwin 2001 reference
+date from the Windows system clock and is covered for future relative dates.
 
 ## Still required for broad compatibility
 

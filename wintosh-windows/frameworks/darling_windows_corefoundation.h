@@ -237,6 +237,8 @@ extern "C" bool darling_windows_CFSetIntersect(darling_windows_CFSetRef value,
 extern "C" bool darling_windows_CFSetSubtract(darling_windows_CFSetRef value,
 	darling_windows_CFSetRef source);
 extern "C" darling_windows_CFDateRef darling_windows_CFDateCreate(double absolute_time);
+extern "C" darling_windows_CFDateRef darling_windows_CFDateCreateWithTimeIntervalSinceNow(
+	double seconds);
 extern "C" darling_windows_CFDateRef darling_windows_CFDateCreateCopy(
 	darling_windows_CFDateRef value);
 extern "C" double darling_windows_CFDateGetAbsoluteTime(darling_windows_CFDateRef value);

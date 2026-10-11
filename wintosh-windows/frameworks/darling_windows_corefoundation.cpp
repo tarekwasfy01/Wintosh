@@ -1896,6 +1896,15 @@ extern "C" darling_windows_CFDateRef darling_windows_CFDateCreate(double absolut
 	return object;
 }
 
+extern "C" darling_windows_CFDateRef darling_windows_CFDateCreateWithTimeIntervalSinceNow(
+	double seconds)
+{
+	using namespace std::chrono;
+	const auto now = system_clock::now().time_since_epoch();
+	const double unix_seconds = duration<double>(now).count();
+	return darling_windows_CFDateCreate(unix_seconds - 978307200.0 + seconds);
+}
+
 extern "C" darling_windows_CFDateRef darling_windows_CFDateCreateCopy(
 	darling_windows_CFDateRef value)
 {

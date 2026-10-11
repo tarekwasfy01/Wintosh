@@ -331,6 +331,7 @@ int main()
 		(copied_set_values[0] == data || copied_set_values[1] == data) &&
 		darling_windows_CFSetGetValue(set, equal_data) == data;
 	const auto date = darling_windows_CFDateCreate(1234.5);
+	const auto now_date = darling_windows_CFDateCreateWithTimeIntervalSinceNow(60.0);
 	const auto date_copy = darling_windows_CFDateCreateCopy(date);
 	const auto earlier_date = darling_windows_CFDateCreate(1234.0);
 	const auto later_date = darling_windows_CFDateCreate(1235.0);
@@ -364,6 +365,7 @@ int main()
 		std::strcmp(reinterpret_cast<const char*>(url_representation), "C:/Wintosh/app") == 0 &&
 		!darling_windows_CFURLGetFileSystemRepresentation(url, false, url_representation, 4);
 	const bool date_url_ok = date != nullptr && date_copy != nullptr && url_from_bytes != nullptr &&
+		now_date != nullptr && darling_windows_CFDateGetTimeIntervalSinceDate(now_date, date) > 0.0 &&
 		absolute_url != nullptr &&
 		url_string != nullptr &&
 		darling_windows_CFURLGetTypeID() == darling_windows_CFGetTypeID(url) &&
@@ -850,6 +852,7 @@ int main()
 	darling_windows_CFRelease(directory_url);
 	darling_windows_CFRelease(url);
 	darling_windows_CFRelease(date);
+	darling_windows_CFRelease(now_date);
 	darling_windows_CFRelease(date_copy);
 	darling_windows_CFRelease(earlier_date);
 	darling_windows_CFRelease(later_date);

@@ -360,6 +360,25 @@ bool Process::CaptureMemorySnapshot(const std::vector<ProcessMemoryRegion>& regi
 	return true;
 }
 
+bool Process::CaptureTaskSnapshot(DarwinTaskSnapshot& snapshot,
+	std::size_t max_total_memory) const
+{
+	if (m_process == nullptr || max_total_memory == 0)
+		return false;
+	const auto thread_ids = ThreadIds();
+	const auto regions = MemoryRegions();
+	if (thread_ids.empty() || regions.empty())
+		return false;
+	std::vector<ProcessMemorySnapshot> memory;
+	if (!CaptureMemorySnapshot(regions, memory, max_total_memory))
+		return false;
+	DarwinTaskSnapshot candidate;
+	candidate.thread_ids = thread_ids;
+	candidate.memory = std::move(memory);
+	snapshot = std::move(candidate);
+	return true;
+}
+
 bool Process::GetPrimaryThreadContext(CONTEXT& context) const noexcept
 {
 	return GetThreadContext(m_thread_id, context);

@@ -527,6 +527,11 @@ snapshot, COW snapshot, or restore mechanism.
 with checked cumulative byte limits and all-or-nothing publication of the
 result vector. It is the bounded primitive for a future Mach task-memory
 snapshot, not a claim that arbitrary Windows process memory is readable.
+`Process::CaptureTaskSnapshot` combines the retained thread inventory with
+the bounded memory snapshot and publishes both only after both phases succeed.
+It deliberately fails when the host exposes no queryable regions; therefore a
+successful Darwin task snapshot still requires a host with permitted
+cross-process VM inspection.
 The same boundary now exposes `AllocateMemory`, `ProtectMemory`, and
 `FreeMemory`, completing the basic remote-VM operation shape needed by a future
 restore path. The smoke covers invalid-operation rejection; successful remote

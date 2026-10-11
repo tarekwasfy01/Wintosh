@@ -139,6 +139,9 @@ int wmain()
 	if (suspended_process.CaptureMemorySnapshot(
 		{{1, 1, MEM_COMMIT, PAGE_READONLY, MEM_PRIVATE}}, invalid_snapshots, 0))
 		throw std::runtime_error("oversized Darwin multi-region snapshot was accepted");
+	darling::windows_host::DarwinTaskSnapshot invalid_task_snapshot;
+	if (suspended_process.CaptureTaskSnapshot(invalid_task_snapshot, 0))
+		throw std::runtime_error("zero-budget Darwin task snapshot was accepted");
 		for (const auto thread_id : child_thread_ids) {
 			CONTEXT thread_context{};
 			(void)suspended_process.GetThreadContext(thread_id, thread_context);

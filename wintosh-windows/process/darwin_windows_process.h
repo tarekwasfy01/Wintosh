@@ -45,6 +45,11 @@ struct ProcessMemorySnapshot final {
 	std::vector<std::uint8_t> bytes;
 };
 
+struct DarwinTaskSnapshot final {
+	std::vector<DWORD> thread_ids;
+	std::vector<ProcessMemorySnapshot> memory;
+};
+
 class ProcessGroup;
 
 class Process final {
@@ -93,6 +98,8 @@ public:
 	[[nodiscard]] bool CaptureMemorySnapshot(const std::vector<ProcessMemoryRegion>& regions,
 		std::vector<ProcessMemorySnapshot>& snapshots,
 		std::size_t max_total_bytes = 256 * 1024 * 1024) const;
+	[[nodiscard]] bool CaptureTaskSnapshot(DarwinTaskSnapshot& snapshot,
+		std::size_t max_total_memory = 256 * 1024 * 1024) const;
 	[[nodiscard]] bool GetPrimaryThreadContext(CONTEXT& context) const noexcept;
 	[[nodiscard]] bool SetPrimaryThreadContext(const CONTEXT& context) const noexcept;
 	[[nodiscard]] bool GetThreadContext(DWORD thread_id, CONTEXT& context) const noexcept;

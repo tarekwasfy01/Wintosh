@@ -1066,7 +1066,9 @@ extern "C" darling_kern_return_t darling_windows_mach_vm_protect(
 	darling_mach_vm_size_t size, bool set_maximum, std::uint32_t protection)
 {
 	(void)set_maximum;
-	if (task == 0 || address == 0 || size == 0 || size > (std::numeric_limits<SIZE_T>::max)()) return 4;
+	if (task == 0 || address == 0 || size == 0 || size > (std::numeric_limits<SIZE_T>::max)() ||
+		(protection & ~(darling_vm_prot_read | darling_vm_prot_write | darling_vm_prot_execute)) != 0)
+		return 4;
 	bool owned = false;
 	const HANDLE process = OpenVmProcess(task, PROCESS_VM_OPERATION, owned);
 	if (process == nullptr) return 4;

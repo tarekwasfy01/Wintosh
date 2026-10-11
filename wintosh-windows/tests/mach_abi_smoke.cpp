@@ -791,6 +791,7 @@ int main()
 				darling_windows_mach_vm_region_recurse(task, &region_address, &region_size,
 					&depth, &region_info, &region_count) == 0 && depth == 0;
 		})() &&
+		darling_windows_mach_vm_protect(task, vm_address, page_size, false, 8) != 0 &&
 		darling_windows_mach_vm_protect(task, vm_address, page_size, false,
 		 darling_vm_prot_read) == 0 &&
 		darling_windows_mach_vm_deallocate(task, vm_copy_address, page_size) == 0 &&

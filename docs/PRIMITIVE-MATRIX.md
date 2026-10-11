@@ -576,6 +576,10 @@ The x64 smoke now proves a complete bounded foreign-task transaction:
 `mach_vm_allocate -> mach_vm_write -> mach_vm_read -> mach_vm_deallocate`,
 including byte-for-byte validation. It does not yet provide COW semantics,
 protection transitions, or a rollback/restore transaction.
+The same foreign allocation path now also verifies `mach_vm_protect` for a
+read-only transition followed by restoration to read/write. This confirms the
+basic protection mapping, but not Darwin maximum-protection inheritance or
+copy-on-write behavior.
 The x64 Mach smoke now consumes every returned `task_threads` entry through
 `thread_get_state` before deallocation, proving the enumeration-to-thread-state
 chain for the current task. This still does not create durable Mach thread-port

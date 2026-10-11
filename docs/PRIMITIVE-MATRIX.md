@@ -690,7 +690,7 @@ Usage and provenance boundaries for both scripts are documented in
 The registry also enforces a per-routine maximum reply size, so generated or
 hand-written handlers cannot emit an unbounded response through the broker.
 
-The Win32 Release configuration also compiles successfully and passes all 43
+The Win32 Release configuration also compiles successfully and passes all 46
 CTest entries. Its dedicated 32-bit Mach-O indirect-import fixture reports
 `MACHO_INDIRECT_IMPORT_BIND_32=PASS`; only executable-code indirect calls and
 the complete 32-bit dyld startup ABI remain architecture-specific gaps. The
@@ -751,7 +751,7 @@ The dyld smoke now launches the real `wintosh.exe` with only the temporary
 provider directory in `DYLD_LIBRARY_PATH`; `DYLD_CLI_LIBRARY_PATH=PASS`
 confirms the CLI-to-resolver-to-entry path.
 
-The current local Release verification snapshot is `43/43` CTest tests
+The current local Release verification snapshot is `46/46` CTest tests
 passing. The added `wintosh_indirect_call_smoke` reports
 `INDIRECT_CALL_ABI=PASS` for a native Windows x64 executable-memory indirect
 call. The dedicated `wintosh_indirect_import_smoke` now also reports

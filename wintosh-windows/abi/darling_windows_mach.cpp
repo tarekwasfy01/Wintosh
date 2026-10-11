@@ -1316,6 +1316,14 @@ extern "C" darling_kern_return_t darling_windows_mach_port_deallocate(
 	darling_mach_port_name_t task, darling_mach_port_name_t name)
 {
 	if (task == 0 || task != darling_windows_mach_task_self() || name == 0) return 4; // KERN_INVALID_ARGUMENT
+	{
+		std::lock_guard lock(task_ports_mutex);
+		const auto task_port = task_ports.find(name);
+		if (task_port != task_ports.end()) {
+			task_ports.erase(task_port);
+			return 0;
+		}
+	}
 	if (name == darling_windows_mach_task_self() ||
 		name == darling_windows_mach_thread_self() ||
 		name == darling_windows_mach_host_self())
@@ -1449,6 +1457,14 @@ extern "C" darling_kern_return_t darling_windows_mach_port_destroy(
 	darling_mach_port_name_t task, darling_mach_port_name_t name)
 {
 	if (task == 0 || task != darling_windows_mach_task_self() || name == 0) return 4;
+	{
+		std::lock_guard lock(task_ports_mutex);
+		const auto task_port = task_ports.find(name);
+		if (task_port != task_ports.end()) {
+			task_ports.erase(task_port);
+			return 0;
+		}
+	}
 	if (name == darling_windows_mach_task_self() ||
 		name == darling_windows_mach_thread_self() ||
 		name == darling_windows_mach_host_self()) return 0;

@@ -208,6 +208,20 @@ int main()
 		cleanup_child();
 		return 1;
 	}
+	darling_mach_port_name_t released_task = 0;
+	const bool task_port_lifecycle_ok =
+		darling_windows_task_for_pid(darling_windows_mach_host_self(), child.dwProcessId,
+			&released_task) == 0 && released_task != 0 &&
+		darling_windows_mach_port_deallocate(task, released_task) == 0;
+	darling_task_basic_info released_info{};
+	std::uint32_t released_info_count = darling_task_basic_info_count;
+	const bool released_task_rejected = task_port_lifecycle_ok &&
+		darling_windows_task_info(released_task, darling_task_basic_info_flavor,
+			&released_info, &released_info_count) != 0;
+	if (!released_task_rejected) {
+		cleanup_child();
+		return 1;
+	}
 	cleanup_child();
 	PROCESS_INFORMATION terminated_child{};
 	wchar_t terminate_command[] = L"cmd.exe /d /c ping 127.0.0.1 -n 30 > nul";

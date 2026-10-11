@@ -613,6 +613,12 @@ The x64 Mach smoke now consumes every returned `task_threads` entry through
 `thread_get_state` before deallocation, proving the enumeration-to-thread-state
 chain for the current task. This still does not create durable Mach thread-port
 objects.
+Managed foreign task names now participate in the local port lifecycle: both
+`mach_port_deallocate` and `mach_port_destroy` release an opaque name returned
+by `task_for_pid`, and later task operations reject that released name. This
+prevents stale task handles from remaining usable after explicit namespace
+cleanup; cross-process Mach right transfer and kernel-backed port rights remain
+open.
 Task-level `task_set_exception_ports` and `task_get_exception_ports` now reuse
 the existing owner-keyed exception registry, so task and thread registrations
 have identical mask/filter behavior. Delivery is still only wired through the

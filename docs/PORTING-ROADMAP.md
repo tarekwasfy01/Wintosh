@@ -9,8 +9,9 @@ the named runtime gate and the semantic boundary must both be recorded.
 1. **Darwin startup and Mach-O execution** — extend the existing x86_64 Clang
    path from the chained/classic fixtures to additional real relocation,
    lazy-binding, and startup-stack fixtures. Gate: `wintosh_macho_printf_e2e`
-   plus a license-clear Darwin-startup fixture. Remaining: ARM64 execution,
-   full dyld protocol parity, arbitrary Apple frameworks.
+   plus the isolated license-clear startup trampoline and the explicit ARM64
+   fail-closed gate. Remaining: native ARM64 execution, true on-demand
+   `dyld_stub_binder`, full dyld protocol parity, arbitrary Apple frameworks.
 2. **Foundation/CoreFoundation** — grow the existing C ABI in cohesive value,
    collection, plist, run-loop, and notification families. Gate each family in
    `corefoundation_smoke` and keep Apple/Cocotron provenance separate from

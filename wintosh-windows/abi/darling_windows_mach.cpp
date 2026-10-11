@@ -1616,6 +1616,7 @@ extern "C" darling_kern_return_t darling_windows_mach_port_peek(
 	if (task == 0 || task != darling_windows_mach_task_self() || name == 0 ||
 		sequence == nullptr || message_size == nullptr || message_id == nullptr ||
 		trailer_size == nullptr) return 4;
+	const auto requested_trailer_size = *trailer_size;
 	{
 		std::lock_guard broker_lock(mach_broker_mutex);
 		const auto capability = mach_ipc_capabilities.Lookup(name);
@@ -1633,14 +1634,19 @@ extern "C" darling_kern_return_t darling_windows_mach_port_peek(
 				}
 				const auto response = darling::windows_host::SendMachIpcEnvelope(*mach_broker_client, request);
 				if (response.operation != request.operation || response.request_id != request.request_id ||
-					response.port_token != request.port_token || response.payload.size() != 12) return 4;
+					response.port_token != request.port_token || response.payload.size() < 12) return 4;
 				*sequence = *message_size = 0;
 				for (unsigned shift = 0; shift != 32; shift += 8) {
 					*sequence |= static_cast<std::uint32_t>(response.payload[shift / 8]) << shift;
 					*message_size |= static_cast<std::uint32_t>(response.payload[4 + shift / 8]) << shift;
 					*message_id |= static_cast<darling_mach_msg_id_t>(static_cast<std::uint32_t>(response.payload[8 + shift / 8]) << shift);
 				}
-				*trailer_size = 0;
+				const auto broker_trailer_bytes = response.payload.size() - 12;
+				if (broker_trailer_bytes != 0 && trailer_info != nullptr &&
+					requested_trailer_size < broker_trailer_bytes) return 4;
+				if (broker_trailer_bytes != 0 && trailer_info != nullptr)
+					std::memcpy(trailer_info, response.payload.data() + 12, broker_trailer_bytes);
+				*trailer_size = static_cast<std::uint32_t>(broker_trailer_bytes);
 				return 0;
 			} catch (...) { return 4; }
 		}

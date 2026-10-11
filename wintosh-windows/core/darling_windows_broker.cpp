@@ -636,6 +636,24 @@ int wmain(int argc, wchar_t** argv)
 						response_payload[4 + shift / 8] = static_cast<std::uint8_t>(bytes.size() >> shift);
 						response_payload[8 + shift / 8] = static_cast<std::uint8_t>(header->msgh_id >> shift);
 					}
+					const auto elements = (static_cast<std::uint32_t>(envelope.payload[0]) |
+						(static_cast<std::uint32_t>(envelope.payload[1]) << 8) |
+						(static_cast<std::uint32_t>(envelope.payload[2]) << 16) |
+						(static_cast<std::uint32_t>(envelope.payload[3]) << 24)) >> 24 & 0xfu;
+					const auto requested_size = static_cast<std::uint32_t>(envelope.payload[4]) |
+						(static_cast<std::uint32_t>(envelope.payload[5]) << 8) |
+						(static_cast<std::uint32_t>(envelope.payload[6]) << 16) |
+						(static_cast<std::uint32_t>(envelope.payload[7]) << 24);
+					const std::uint32_t required_size = elements == 0 ? 8 : elements == 1 ? 12 :
+						elements == 2 ? 20 : elements == 3 ? 52 : elements == 4 ? 64 : 0;
+					if (required_size != 0 && requested_size >= required_size) {
+						const auto offset = response_payload.size();
+						response_payload.resize(offset + required_size);
+						std::memcpy(response_payload.data() + offset, response_payload.data() + 0, 0);
+						std::uint32_t trailer_size = required_size;
+						std::memcpy(response_payload.data() + offset + 4, &trailer_size, sizeof(trailer_size));
+						std::memcpy(response_payload.data() + offset + 8, &next_sequence, sizeof(next_sequence));
+					}
 					darling::windows_host::MachIpcEnvelope response{
 						darling::windows_host::MachIpcOperation::Peek, envelope.request_id,
 						envelope.port_token, 0, std::move(response_payload)};

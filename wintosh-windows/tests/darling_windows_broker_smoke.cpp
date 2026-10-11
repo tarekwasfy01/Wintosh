@@ -122,10 +122,11 @@ int wmain()
 			&broker_message, darling_mach_send_msg, sizeof(broker_message), 0, 0, 0, 0);
 		std::uint32_t broker_peek_sequence = 0, broker_peek_size = 0;
 		darling_mach_msg_id_t broker_peek_id = 0;
-		std::uint32_t broker_peek_trailer_size = 0;
+		std::uint32_t broker_peek_trailer_size = sizeof(darling_mach_msg_seqno_trailer);
+		darling_mach_msg_seqno_trailer broker_peek_trailer{};
 		const auto broker_peek = darling_windows_mach_port_peek(
 			darling_windows_mach_task_self(), broker_local_port, 0x01000000,
-			&broker_peek_sequence, &broker_peek_size, &broker_peek_id, nullptr,
+			&broker_peek_sequence, &broker_peek_size, &broker_peek_id, &broker_peek_trailer,
 			&broker_peek_trailer_size);
 		darling_mach_msg_header broker_received{};
 		const auto broker_receive = darling_windows_mach_msg(
@@ -247,6 +248,8 @@ int wmain()
 			 broker_capability != 0 && broker_capability_session != 0 && broker_send == 0 &&
 			 broker_peek == 0 && broker_peek_sequence != 0 && broker_peek_size == sizeof(broker_message) &&
 			 broker_peek_id == 0x4242 &&
+			 broker_peek_trailer_size == sizeof(darling_mach_msg_seqno_trailer) &&
+			 broker_peek_trailer.msgh_seqno == broker_peek_sequence &&
 			 broker_receive == 0 && broker_received.msgh_id == 0x4242 && broker_ool_ok &&
 			 broker_port_ok && broker_descriptor_validation && broker_disposition_validation && broker_transfer_ok &&
 			 rebind_original == 0 && broker_destroy == 0 ? "PASS" : "FAIL") << "\n";

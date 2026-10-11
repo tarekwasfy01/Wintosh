@@ -924,6 +924,16 @@ int main()
 		std::cerr << "HOST_API_SMOKE_ERROR=legacy_inet\n";
 		return 1;
 	}
+	const auto legacy_address = darling_windows_inet_makeaddr(127, 1);
+	const bool legacy_address_parts_ok = legacy_address == htonl(0x7f000001u) &&
+		darling_windows_inet_lnaof(legacy_address) == 1 &&
+		darling_windows_inet_netof(legacy_address) == 127 &&
+		darling_windows_host_symbol("inet_makeaddr") != 0 &&
+		darling_windows_host_symbol("inet_lnaof") != 0 && darling_windows_host_symbol("inet_netof") != 0;
+	if (!legacy_address_parts_ok) {
+		std::cerr << "HOST_API_SMOKE_ERROR=legacy_inet_parts\n";
+		return 1;
+	}
 	const bool file_values_ok = file_written == 3 && duplicate_written == 3 && file_end == 6 && file_start == 0 && truncate_ok;
 	const bool file_access_ok = darling_windows_access(file_path.c_str(), 0) == 0;
 	(void)DeleteFileA(renamed_file_path.c_str());

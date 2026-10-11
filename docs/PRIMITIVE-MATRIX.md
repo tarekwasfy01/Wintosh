@@ -823,6 +823,8 @@ mapping and bounded `strerrordesc_np` descriptions for stable errno values.
 The resolver family additionally covers the legacy BSD IPv4 helpers
 `inet_addr`, `inet_aton`, and `inet_network`; full historical shorthand-address
 parsing remains outside this bridge.
+The companion `inet_makeaddr`, `inet_lnaof`, and `inet_netof` helpers cover the
+classic class-A-style address decomposition used by legacy callers.
 `flsll`; `timingsafe_bcmp` provides the constant-time byte comparison subset.
 The array helpers reject multiplication overflow before calling the Windows
 heap, while `strsep` preserves empty fields. Host API smoke coverage verifies

@@ -62,6 +62,9 @@ following families with Windows-backed implementations:
 - Legacy BSD IPv4 conversion helpers `inet_addr`, `inet_aton`, and
   `inet_network` are now Windows-backed and host-symbol-resolvable, including
   invalid-input handling and network-byte-order coverage.
+- The companion address decomposition/construction helpers `inet_makeaddr`,
+  `inet_lnaof`, and `inet_netof` are also host-symbol-resolvable for the
+  classic class-A-style compatibility subset.
 - C++ static-initialization guard entry points `___cxa_guard_acquire`,
   `___cxa_guard_release`, and `___cxa_guard_abort`, backed by atomic
   Windows-host state transitions; acquire/release/abort behavior is covered

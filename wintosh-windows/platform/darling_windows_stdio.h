@@ -211,6 +211,9 @@ extern "C" const char* darling_windows_inet_ntop(int family, const void* source,
 extern "C" std::uint32_t darling_windows_inet_addr(const char* source);
 extern "C" int darling_windows_inet_aton(const char* source, void* destination);
 extern "C" std::uint32_t darling_windows_inet_network(const char* source);
+extern "C" std::uint32_t darling_windows_inet_makeaddr(std::uint32_t network, std::uint32_t local);
+extern "C" std::uint32_t darling_windows_inet_lnaof(std::uint32_t address);
+extern "C" std::uint32_t darling_windows_inet_netof(std::uint32_t address);
 extern "C" int darling_windows_select(int nfds, darling_fd_set* read_set,
 	darling_fd_set* write_set, darling_fd_set* exception_set, darling_timeval* timeout);
 extern "C" int darling_windows_pselect(int nfds, darling_fd_set* read_set,

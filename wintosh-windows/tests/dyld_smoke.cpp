@@ -5,6 +5,7 @@
 
 #include "darling_windows_dyld.h"
 #include "darling_windows_bootstrap.h"
+#include "darling_windows_macho.h"
 #include "darling_windows_stdio.h"
 #include "darling_windows_tlv.h"
 
@@ -20,6 +21,9 @@
 #include <vector>
 
 namespace {
+
+using darling::windows_host::DyldResolvedBinding;
+using darling::windows_host::MachOLazyBindingSession;
 
 std::atomic<int> initializer_hits = 0;
 

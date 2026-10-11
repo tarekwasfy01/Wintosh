@@ -312,6 +312,7 @@ int main()
 	SEL object_pair_selector = sel_registerName("second:");
 	SEL super_pair_selector = sel_registerName("superSecond:");
 	SEL super_pointer_selector = sel_registerName("superPointer:");
+	SEL pointer_zero_selector = sel_registerName("context");
 	SEL void_selector = sel_registerName("mark");
 	if (!class_addMethod(child, object_selector,
 		reinterpret_cast<IMP>(&ReturnArgument), "@@:@") ||
@@ -375,10 +376,6 @@ int main()
 		darling_objc_msgSendSuper_object2(object, root, super_pair_selector, object,
 			reinterpret_cast<id>(child)) != reinterpret_cast<id>(child))
 		return 95;
-	if (darling_objc_msgSendSuper_pointer0(object, root, pointer_zero_selector) !=
-		reinterpret_cast<void*>(static_cast<std::uintptr_t>(0x4321)) ||
-		darling_objc_msgSendSuper_pointer1(object, root, super_pointer_selector, marker) != marker)
-		return 96;
 	darling_objc_msgSend_void0(object, void_selector);
 	SEL bool_selector = sel_registerName("positive:");
 	SEL super_bool_selector = sel_registerName("superPositive:");
@@ -397,7 +394,6 @@ int main()
 	SEL int64_pair_selector = sel_registerName("addPairSeven:");
 	SEL bool_zero_selector = sel_registerName("isReady");
 	SEL double_zero_selector = sel_registerName("piValue");
-	SEL pointer_zero_selector = sel_registerName("context");
 	SEL int_zero_selector = sel_registerName("answerInt");
 	SEL uint64_zero_selector = sel_registerName("answerUInt");
 	SEL uint64_selector = sel_registerName("addUInt:");
@@ -453,6 +449,12 @@ int main()
 		!class_addMethod(root, pointer_zero_selector,
 			reinterpret_cast<IMP>(&ReturnPointer), "^v@:"))
 		return 10;
+	if (darling_objc_msgSendSuper_pointer0(object, root, pointer_zero_selector) !=
+		reinterpret_cast<void*>(static_cast<std::uintptr_t>(0x4321)) ||
+		darling_objc_msgSendSuper_pointer1(object, root, super_pointer_selector,
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(0x1234))) !=
+		reinterpret_cast<void*>(static_cast<std::uintptr_t>(0x1234)))
+		return 96;
 	if (!class_addMethod(child, void_int64_selector,
 		reinterpret_cast<IMP>(&ObserveInt64), "v@:q") ||
 		!class_addMethod(root, void_int64_selector,

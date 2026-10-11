@@ -7,6 +7,7 @@
  */
 
 #include "darling_windows_dyld.h"
+#include "darling_windows_macho.h"
 #include "darling_windows_objc.h"
 #include "darling_windows_stdio.h"
 #include "darling_windows_tlv.h"
@@ -524,7 +525,8 @@ DarwinDynamicImage* OpenDynamicImage(const std::filesystem::path& path)
 				provider.image.ApplyRelocations(provider.mapping, provider_symbols, true);
 			if (!result->bindings.empty()) {
 				provider.image.ApplyBindActions(provider.mapping, result->bindings);
-				provider.image.ApplyLazyBindActions(provider.mapping, result->bindings);
+				MachOLazyBindingSession(provider.image, provider.mapping,
+					result->bindings).ApplyAll();
 				provider.image.ApplyChainedFixups(provider.mapping, result->bindings);
 			}
 			provider.image.ApplyIndirectImportBindings(provider.mapping, result->bindings);
@@ -555,7 +557,8 @@ DarwinDynamicImage* OpenDynamicImage(const std::filesystem::path& path)
 			result->image.ApplyRelocations(result->mapping, symbol_addresses, false);
 		if (!result->bindings.empty()) {
 			result->image.ApplyBindActions(result->mapping, result->bindings);
-			result->image.ApplyLazyBindActions(result->mapping, result->bindings);
+			MachOLazyBindingSession(result->image, result->mapping,
+				result->bindings).ApplyAll();
 			result->image.ApplyChainedFixups(result->mapping, result->bindings);
 		}
 		result->image.ApplyIndirectImportBindings(result->mapping, result->bindings);

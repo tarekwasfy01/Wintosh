@@ -8,6 +8,7 @@
 #include "darling_windows_stdio.h"
 
 #include <windows.h>
+#include <tlhelp32.h>
 #include <psapi.h>
 #include <intrin.h>
 
@@ -269,6 +270,41 @@ extern "C" darling_kern_return_t darling_windows_task_info(
 	result->system_time = to_time(kernel);
 	result->policy = 0;
 	*count = darling_task_basic_info_count;
+	return 0;
+}
+
+extern "C" darling_kern_return_t darling_windows_task_threads(
+	darling_mach_port_name_t task, darling_mach_port_name_t** threads, std::uint32_t* count)
+{
+	if (task == 0 || threads == nullptr || count == nullptr)
+		return 4;
+	const DWORD process_id = task;
+	const HANDLE enumeration = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+	if (enumeration == INVALID_HANDLE_VALUE)
+		return 4;
+	std::vector<darling_mach_port_name_t> ids;
+	THREADENTRY32 entry{};
+	entry.dwSize = sizeof(entry);
+	if (Thread32First(enumeration, &entry)) {
+		do {
+			if (entry.th32OwnerProcessID == process_id)
+				ids.push_back(static_cast<darling_mach_port_name_t>(entry.th32ThreadID));
+		} while (Thread32Next(enumeration, &entry));
+	}
+	CloseHandle(enumeration);
+	if (ids.empty())
+		return 4;
+	const auto bytes = ids.size() * sizeof(darling_mach_port_name_t);
+	void* storage = VirtualAlloc(nullptr, bytes, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+	if (storage == nullptr)
+		return 4;
+	std::memcpy(storage, ids.data(), bytes);
+	{
+		std::lock_guard lock(read_buffers_mutex);
+		read_buffers.emplace(reinterpret_cast<darling_mach_vm_address_t>(storage), bytes);
+	}
+	*threads = static_cast<darling_mach_port_name_t*>(storage);
+	*count = static_cast<std::uint32_t>(ids.size());
 	return 0;
 }
 

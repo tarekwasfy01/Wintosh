@@ -147,6 +147,9 @@ extern "C" darling_kern_return_t darling_windows_task_for_pid(
 extern "C" darling_kern_return_t darling_windows_task_info(
 	darling_mach_port_name_t task, std::uint32_t flavor, void* info,
 	std::uint32_t* count);
+extern "C" darling_kern_return_t darling_windows_task_threads(
+	darling_mach_port_name_t task, darling_mach_port_name_t** threads,
+	std::uint32_t* count);
 constexpr std::uint32_t darling_thread_extended_policy = 1;
 constexpr std::uint32_t darling_thread_time_constraint_policy = 2;
 constexpr std::uint32_t darling_thread_precedence_policy = 3;

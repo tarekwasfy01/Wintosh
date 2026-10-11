@@ -33,6 +33,14 @@ int main()
 		&task_info_count) != 0 || task_info_count != darling_task_basic_info_count ||
 		task_info.virtual_size == 0 || task_info.resident_size == 0)
 		return 1;
+	darling_mach_port_name_t* task_threads = nullptr;
+	std::uint32_t task_thread_count = 0;
+	if (darling_windows_task_threads(task, &task_threads, &task_thread_count) != 0 ||
+		task_threads == nullptr || task_thread_count == 0 ||
+		darling_windows_mach_vm_deallocate(task,
+			reinterpret_cast<darling_mach_vm_address_t>(task_threads),
+			task_thread_count * sizeof(*task_threads)) != 0)
+		return 1;
 	const auto thread = darling_windows_mach_thread_self();
 	darling_thread_precedence_policy_info precedence{};
 	darling_thread_time_constraint_policy_info time_constraint{100, 10, 20, 1};

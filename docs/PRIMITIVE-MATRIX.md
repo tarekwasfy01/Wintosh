@@ -543,6 +543,10 @@ Windows process times and working-set/pagefile counters populate the Darwin
 time and size fields. The adapter reports a neutral policy and zero suspend
 count because those values are not equivalent to Windows process metadata;
 full Darwin task accounting remains open.
+`task_threads` now enumerates a task's Windows thread IDs through Toolhelp and
+returns them in a VM-owned array; the existing `mach_vm_deallocate` path frees
+that array. This proves the enumeration/allocation contract, while individual
+thread-port rights and Darwin port namespaces remain incomplete.
 The same boundary now exposes `AllocateMemory`, `ProtectMemory`, and
 `FreeMemory`, completing the basic remote-VM operation shape needed by a future
 restore path. The smoke covers invalid-operation rejection; successful remote

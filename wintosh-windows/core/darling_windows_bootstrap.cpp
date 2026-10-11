@@ -312,7 +312,8 @@ int DarwinBootstrap::Run(const std::filesystem::path& image_path,
 	image.ApplyIndirectImportBindings(mapping, resolved);
 	image.ExecuteInitializers(mapping);
 	RegisterObjectiveCSections(image, mapping);
-	const auto exit_code = image.ExecuteEntry(mapping, options.arguments, options.environment);
+	const auto exit_code = image.ExecuteEntry(mapping, options.arguments,
+		options.environment, options.apple_parameters);
 	image.ExecuteTerminators(mapping);
 	for (auto provider = providers.rbegin(); provider != providers.rend(); ++provider)
 		provider->image.ExecuteTerminators(provider->mapping);

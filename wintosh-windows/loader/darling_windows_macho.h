@@ -387,7 +387,8 @@ public:
 	void ExecuteEntryNoArgs(const Mapping& mapping) const;
 	[[nodiscard]] int ExecuteEntry(const Mapping& mapping,
 		const std::vector<std::string>& arguments,
-		const std::vector<std::string>& environment = {}) const;
+		const std::vector<std::string>& environment = {},
+		const std::vector<std::string>& apple_parameters = {}) const;
 
 private:
 	MachOImage(HANDLE file, HANDLE mapping, const std::uint8_t* view,

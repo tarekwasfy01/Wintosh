@@ -22,6 +22,10 @@ struct DarwinLaunchOptions final {
 	std::vector<std::string> arguments;
 	std::vector<std::string> environment;
 	std::vector<DyldResolvedBinding> host_bindings;
+	// Darwin dyld carries argv/envp and a separate Apple-parameter vector.
+	// The current compatible entry ABI does not consume the latter yet, but
+	// keeping it explicit makes the future startup trampoline additive.
+	std::vector<std::string> apple_parameters;
 };
 
 class DarwinBootstrap final {

@@ -2101,7 +2101,8 @@ void MachOImage::ExecuteTerminators(const Mapping& mapping) const
 
 int MachOImage::ExecuteEntry(const Mapping& mapping,
 	const std::vector<std::string>& arguments,
-	const std::vector<std::string>& environment) const
+	const std::vector<std::string>& environment,
+	const std::vector<std::string>& apple_parameters) const
 {
 	RequireX86Execution(*this);
 	if (mapping.EntryAddress() == 0) {
@@ -2130,6 +2131,19 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 		envp.push_back(environment_storage.back().data());
 	}
 	envp.push_back(nullptr);
+	// Materialize Apple parameters with the same lifetime as argv/envp.  The
+	// compatible entry ABI does not consume them yet; a future dyld trampoline
+	// can use this owned vector without changing the launch contract.
+	std::vector<std::vector<char>> apple_storage;
+	apple_storage.reserve(apple_parameters.size());
+	std::vector<char*> apple;
+	apple.reserve(apple_parameters.size() + 1);
+	for (const auto& parameter : apple_parameters) {
+		apple_storage.emplace_back(parameter.begin(), parameter.end());
+		apple_storage.back().push_back('\0');
+		apple.push_back(apple_storage.back().data());
+	}
+	apple.push_back(nullptr);
 	FlushInstructionCache(GetCurrentProcess(),
 		reinterpret_cast<void*>(mapping.EntryAddress()), 1);
 	using EntryFunction = int (*)(int, char**, char**);

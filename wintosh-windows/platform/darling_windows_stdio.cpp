@@ -8856,6 +8856,12 @@ char DarlingFnmatchFold(char value, int flags)
 	return static_cast<char>(value - 'A' + 'a');
 }
 
+bool DarlingFnmatchSeparator(char value, int flags)
+{
+	return value == '/' || (value == '\\' &&
+		(flags & darling_fnm_noescape) != 0);
+}
+
 bool DarlingFnmatchClass(const char*& pattern, char value, int flags)
 {
 	value = DarlingFnmatchFold(value, flags);
@@ -8886,14 +8892,15 @@ bool DarlingFnmatchImpl(const char* pattern, const char* value, int flags, bool 
 			while (*pattern == '*') ++pattern;
 			if (*pattern == '\0') return (flags & darling_fnm_pathname) == 0 || std::strchr(value, '/') == nullptr;
 			for (const char* cursor = value;; ++cursor) {
-				if ((flags & darling_fnm_pathname) != 0 && cursor != value && cursor[-1] == '/') break;
+			if ((flags & darling_fnm_pathname) != 0 && cursor != value &&
+				DarlingFnmatchSeparator(cursor[-1], flags)) break;
 				if (DarlingFnmatchImpl(pattern, cursor, flags, false)) return true;
 				if (*cursor == '\0') break;
 			}
 			return false;
 		}
 		if (*pattern == '?' && *value != '\0') {
-			if ((flags & darling_fnm_pathname) != 0 && *value == '/') return false;
+			if ((flags & darling_fnm_pathname) != 0 && DarlingFnmatchSeparator(*value, flags)) return false;
 			++pattern; ++value; at_start = false; continue;
 		}
 		if (*pattern == '[' && *value != '\0') {
@@ -8906,7 +8913,8 @@ bool DarlingFnmatchImpl(const char* pattern, const char* value, int flags, bool 
 		if ((flags & darling_fnm_period) != 0 && at_start && *value == '.' && *pattern != '.') return false;
 		++pattern; if (*value != '\0') ++value; at_start = false;
 	}
-	return *value == '\0' || ((flags & darling_fnm_leading_dir) != 0 && *value == '/');
+	return *value == '\0' || ((flags & darling_fnm_leading_dir) != 0 &&
+		DarlingFnmatchSeparator(*value, flags));
 }
 }
 

@@ -740,7 +740,9 @@ int main()
 		darling_windows_strncpy(string_buffer, "darling-win", 6) == string_buffer &&
 		std::strncmp(string_buffer, "darlin", 6) == 0 &&
 		darling_windows_strchr("darling", 'l') != nullptr &&
-		darling_windows_strrchr("darling", 'g') != nullptr;
+		darling_windows_strrchr("darling", 'g') != nullptr &&
+		darling_windows_strchr(nullptr, 'x') == nullptr &&
+		darling_windows_strrchr(nullptr, 'x') == nullptr;
 	const bool string_search_ok = darling_windows_strstr("darling-windows", "windows") != nullptr &&
 		darling_windows_strstr(nullptr, "windows") == nullptr &&
 		darling_windows_strcasestr(nullptr, "windows") == nullptr &&

@@ -8212,12 +8212,12 @@ extern "C" std::size_t darling_windows_strlcat(char* destination, const char* so
 
 extern "C" const char* darling_windows_strchr(const char* value, int character)
 {
-	return std::strchr(value, character);
+	return value != nullptr ? std::strchr(value, character) : nullptr;
 }
 
 extern "C" const char* darling_windows_strrchr(const char* value, int character)
 {
-	return std::strrchr(value, character);
+	return value != nullptr ? std::strrchr(value, character) : nullptr;
 }
 
 extern "C" const char* darling_windows_strstr(const char* value, const char* search)

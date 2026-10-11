@@ -862,6 +862,29 @@ bool CancelMachIpcRequest(NamedPipeRpcClient& client, std::uint64_t session_toke
 	}
 }
 
+bool TransferMachIpcCapability(NamedPipeRpcClient& client,
+	std::uint64_t source_session_token, std::uint64_t broker_token,
+	std::uint64_t target_session_token)
+{
+	if (source_session_token == 0 || broker_token == 0 || target_session_token == 0)
+		return false;
+	MachIpcEnvelope request;
+	request.operation = MachIpcOperation::CapabilityTransfer;
+	request.request_id = 1;
+	request.port_token = broker_token;
+	request.session_token = source_session_token;
+	request.payload.resize(sizeof(target_session_token));
+	for (unsigned shift = 0; shift < 64; shift += 8)
+		request.payload[shift / 8] = static_cast<std::uint8_t>(target_session_token >> shift);
+	try {
+		const auto response = SendMachIpcEnvelope(client, request);
+		return response.operation == MachIpcOperation::CapabilityTransfer &&
+			response.port_token == broker_token;
+	} catch (...) {
+		return false;
+	}
+}
+
 void MachIpcCapabilityTable::Bind(std::uint32_t local_name, MachIpcCapability capability)
 {
 	if (local_name == 0 || capability.broker_token == 0 || capability.session_token == 0)

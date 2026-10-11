@@ -270,20 +270,12 @@ int wmain()
 		const auto transfer_session = darling::windows_host::OpenMachIpcSession(transfer_client);
 		const auto transfer_to_other = darling_windows_mach_port_transfer_broker(
 			broker_local_port, transfer_session);
-		darling::windows_host::MachIpcEnvelope transfer_back{
-			darling::windows_host::MachIpcOperation::CapabilityTransfer, 0x7788,
-			broker_capability, 0, {}};
-		transfer_back.session_token = transfer_session;
-		transfer_back.payload.resize(8);
-		for (unsigned shift = 0; shift != 64; shift += 8)
-			transfer_back.payload[shift / 8] = static_cast<std::uint8_t>(broker_capability_session >> shift);
-		const auto transfer_back_response = darling::windows_host::SendMachIpcEnvelope(
-			transfer_client, transfer_back);
+		const bool transfer_back_response = darling::windows_host::TransferMachIpcCapability(
+			transfer_client, transfer_session, broker_capability, broker_capability_session);
 		const auto rebind_back = darling_windows_mach_port_bind_broker(
 			broker_local_port, broker_capability, broker_capability_session);
 		const bool broker_transfer_ok = transfer_session != 0 && transfer_to_other == 0 &&
-			transfer_back_response.operation == darling::windows_host::MachIpcOperation::CapabilityTransfer &&
-			transfer_back_response.request_id == transfer_back.request_id && rebind_back != 0;
+			transfer_back_response && rebind_back != 0;
 		// The C table was deliberately moved to the target session; restore its
 		// local entry explicitly after the raw target session transfers ownership back.
 		(void)darling_windows_mach_port_unbind_broker(broker_local_port);

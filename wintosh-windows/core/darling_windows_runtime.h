@@ -251,6 +251,9 @@ private:
 	NamedPipeRpcClient& client, DWORD process_id = GetCurrentProcessId());
 [[nodiscard]] bool CancelMachIpcRequest(NamedPipeRpcClient& client,
 	std::uint64_t session_token, std::uint64_t request_id);
+[[nodiscard]] bool TransferMachIpcCapability(NamedPipeRpcClient& client,
+	std::uint64_t source_session_token, std::uint64_t broker_token,
+	std::uint64_t target_session_token);
 
 struct MachIpcCapability final {
 	std::uint64_t broker_token = 0;

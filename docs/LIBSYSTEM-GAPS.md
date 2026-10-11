@@ -78,6 +78,8 @@ relicensed Apple libSystem binary.
 
 Foundation `NSOffsetRange` and `NSInsetRange` now provide overflow-safe range
 transforms for the existing `NSRange` ABI on x64 and Win32.
+`NSInsetRange` now saturates location addition at the host size limit; the
+boundary is covered by the Foundation smoke test.
 
 Mutable CoreFoundation container constructors `CFArrayCreateMutable`,
 `CFDictionaryCreateMutable`, and `CFSetCreateMutable` are now available with

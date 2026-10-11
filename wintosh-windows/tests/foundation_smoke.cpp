@@ -12,6 +12,8 @@ int main()
 	const auto united = darling_windows_NSUnionRange(first, second);
 	const auto offset = darling_windows_NSOffsetRange(first, -2);
 	const auto inset = darling_windows_NSInsetRange(first, 2);
+	const auto saturated_inset = darling_windows_NSInsetRange(
+		darling_windows_NSMakeRange(static_cast<std::size_t>(-1) - 1, 2), 1);
 	if (darling_windows_NSMaxRange(first) != 10 ||
 		!darling_windows_NSEqualRanges(first, darling_windows_NSMakeRange(4, 6)) ||
 		darling_windows_NSEqualRanges(first, second) ||
@@ -24,6 +26,10 @@ int main()
 	}
 	if (offset.location != 2 || offset.length != 6 || inset.location != 6 || inset.length != 2) {
 		std::cerr << "FOUNDATION_NS_RANGE_TRANSFORM=FAIL\n";
+		return 1;
+	}
+	if (saturated_inset.location != static_cast<std::size_t>(-1) || saturated_inset.length != 0) {
+		std::cerr << "FOUNDATION_NS_RANGE_SATURATION=FAIL\n";
 		return 1;
 	}
 	std::size_t size = 0;

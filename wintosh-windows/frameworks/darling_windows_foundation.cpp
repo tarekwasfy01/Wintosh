@@ -98,7 +98,9 @@ extern "C" darling_windows_NSRange darling_windows_NSInsetRange(
 	darling_windows_NSRange range, std::size_t inset)
 {
 	if (inset > range.length / 2) return { range.location + range.length / 2, 0 };
-	return { range.location + inset, range.length - inset * 2 };
+	const auto max_value = (std::numeric_limits<std::size_t>::max)();
+	return { range.location > max_value - inset ? max_value : range.location + inset,
+		range.length - inset * 2 };
 }
 
 extern "C" const char* darling_windows_NSGetSizeAndAlignment(

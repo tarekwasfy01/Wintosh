@@ -12,11 +12,22 @@
 int main()
 {
 	void* mutex = nullptr;
+	void* mutex_attributes = nullptr;
 	void* spin = nullptr;
 	void* rwlock = nullptr;
 	void* barrier = nullptr;
 	int mutex_ceiling = -1;
 	int previous_mutex_ceiling = -1;
+	const bool mutex_attribute_ok = darling_windows_pthread_mutexattr_init(&mutex_attributes) == 0 &&
+		darling_windows_pthread_mutexattr_setprioceiling(mutex_attributes, 3) == 0 &&
+		darling_windows_pthread_mutex_init(&mutex, mutex_attributes) == 0 &&
+		darling_windows_pthread_mutex_getprioceiling(&mutex, &mutex_ceiling) == 0 && mutex_ceiling == 3 &&
+		(previous_mutex_ceiling = darling_windows_pthread_mutex_setprioceiling(&mutex, 4)) == 3 &&
+		darling_windows_pthread_mutex_getprioceiling(&mutex, &mutex_ceiling) == 0 && mutex_ceiling == 4 &&
+		darling_windows_pthread_mutex_destroy(&mutex) == 0 &&
+		darling_windows_pthread_mutexattr_destroy(&mutex_attributes) == 0;
+	mutex_ceiling = -1;
+	previous_mutex_ceiling = -1;
 	const bool mutex_ok = darling_windows_pthread_mutex_init(&mutex, nullptr) == 0 &&
 		darling_windows_pthread_mutex_getprioceiling(&mutex, &mutex_ceiling) == 0 &&
 		mutex_ceiling == 0 &&
@@ -28,7 +39,7 @@ int main()
 		darling_windows_pthread_mutex_trylock(&mutex) == 16 &&
 		darling_windows_pthread_mutex_unlock(&mutex) == 0 &&
 		darling_windows_pthread_mutex_destroy(&mutex) == 0;
-	const bool spin_ok = darling_windows_pthread_spin_init(&spin, 0) == 0 &&
+	const bool spin_ok = mutex_attribute_ok && darling_windows_pthread_spin_init(&spin, 0) == 0 &&
 		darling_windows_pthread_spin_lock(&spin) == 0 &&
 		darling_windows_pthread_spin_trylock(&spin) == 16 &&
 		darling_windows_pthread_spin_unlock(&spin) == 0 &&

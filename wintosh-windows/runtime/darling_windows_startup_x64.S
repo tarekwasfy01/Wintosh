@@ -1,3 +1,8 @@
+/*
+ * Wintosh-original source. Copyright (c) 2026 Tarek Wasfy.
+ * SPDX-License-Identifier: MIT
+ * See ../../LICENSE-WINTOSH-ORIGINAL-MIT.txt.
+ */
 /* Wintosh native x86_64 Darwin-start trampoline for Clang's integrated assembler. */
 
 .intel_syntax noprefix

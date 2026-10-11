@@ -1,3 +1,7 @@
+; Wintosh-original source. Copyright (c) 2026 Tarek Wasfy.
+; SPDX-License-Identifier: MIT
+; See ../../LICENSE-WINTOSH-ORIGINAL-MIT.txt.
+
 ; Wintosh native x86_64 Darwin-start trampoline.
 ; RCX = Darwin entry address, RDX = prepared Darwin stack pointer.
 ; The Darwin entrypoint owns termination and is not expected to return.

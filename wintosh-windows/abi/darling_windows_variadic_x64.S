@@ -1,3 +1,8 @@
+/*
+ * Wintosh-original source. Copyright (c) 2026 Tarek Wasfy.
+ * SPDX-License-Identifier: MIT
+ * See ../../LICENSE-WINTOSH-ORIGINAL-MIT.txt.
+ */
 .intel_syntax noprefix
 .text
 .globl darling_windows_abi_printf

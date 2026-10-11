@@ -535,9 +535,13 @@ cross-process VM inspection.
 
 The Mach ABI now exposes `task_for_pid` through the Windows host symbol table.
 It validates the host token and PID, probes `PROCESS_QUERY_LIMITED_INFORMATION`,
-and represents an accessible Windows PID as the corresponding minimal Darwin
-task name. This establishes task lookup, but not Darwin entitlement/security
-semantics or a transferable Mach task-port object.
+and represents an accessible Windows PID as a managed opaque Darwin task name.
+The name is resolved internally for task-info, thread enumeration, suspend,
+resume, termination, and VM operations; `mach_task_self` remains compatible
+with the current-process name. A transitional fallback still accepts legacy
+numeric task names as PIDs. This establishes a stable local task-name layer,
+but not Darwin entitlement/security semantics, transferable Mach rights, or a
+complete per-task port namespace.
 `task_info(TASK_BASIC_INFO)` is also mapped for accessible Windows processes:
 Windows process times and working-set/pagefile counters populate the Darwin
 time and size fields. The adapter reports a neutral policy and zero suspend

@@ -31,6 +31,9 @@
 
 namespace {
 std::atomic<darling_mach_port_name_t> next_port{0x100};
+std::atomic<darling_mach_port_name_t> next_task_port{0x70000000};
+std::mutex task_ports_mutex;
+std::unordered_map<darling_mach_port_name_t, DWORD> task_ports;
 darling::windows_host::MachOolOwnershipTable mach_ool_ownership;
 darling::windows_host::MachIpcCapabilityTable mach_ipc_capabilities;
 std::mutex mach_broker_mutex;
@@ -161,6 +164,21 @@ std::unordered_map<darling_mach_port_name_t, darling_thread_time_constraint_poli
 void* exception_handler_cookie = nullptr;
 std::mutex read_buffers_mutex;
 std::unordered_map<darling_mach_vm_address_t, SIZE_T> read_buffers;
+
+DWORD ResolveTaskPid(darling_mach_port_name_t task)
+{
+	if (task == 0) return 0;
+	if (task == darling_windows_mach_task_self()) return GetCurrentProcessId();
+	std::lock_guard lock(task_ports_mutex);
+	const auto found = task_ports.find(task);
+	return found == task_ports.end() ? static_cast<DWORD>(task) : found->second;
+}
+
+void ForgetTaskPort(darling_mach_port_name_t task)
+{
+	std::lock_guard lock(task_ports_mutex);
+	task_ports.erase(task);
+}
 struct VmMaximumProtectionKey final {
 	darling_mach_port_name_t task = 0;
 	darling_mach_vm_address_t address = 0;
@@ -250,7 +268,13 @@ extern "C" darling_kern_return_t darling_windows_task_for_pid(
 	if (process == nullptr)
 		return 4;
 	CloseHandle(process);
-	*task = static_cast<darling_mach_port_name_t>(pid);
+	const auto task_port = next_task_port.fetch_add(1);
+	if (task_port == 0) return 4;
+	{
+		std::lock_guard lock(task_ports_mutex);
+		task_ports.emplace(task_port, pid);
+	}
+	*task = task_port;
 	return 0;
 }
 
@@ -260,8 +284,9 @@ extern "C" darling_kern_return_t darling_windows_task_info(
 	if (task == 0 || info == nullptr || count == nullptr ||
 		flavor != darling_task_basic_info_flavor || *count < darling_task_basic_info_count)
 		return 4;
+	const DWORD process_id = ResolveTaskPid(task);
 	const HANDLE process = task == darling_windows_mach_task_self() ?
-		GetCurrentProcess() : OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, task);
+		GetCurrentProcess() : OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, process_id);
 	if (process == nullptr)
 		return 4;
 	FILETIME creation{}, exit{}, kernel{}, user{};
@@ -295,7 +320,7 @@ extern "C" darling_kern_return_t darling_windows_task_threads(
 {
 	if (task == 0 || threads == nullptr || count == nullptr)
 		return 4;
-	const DWORD process_id = task;
+	const DWORD process_id = ResolveTaskPid(task);
 	const HANDLE enumeration = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
 	if (enumeration == INVALID_HANDLE_VALUE)
 		return 4;
@@ -328,7 +353,7 @@ extern "C" darling_kern_return_t darling_windows_task_threads(
 extern "C" darling_kern_return_t darling_windows_task_suspend(darling_mach_port_name_t task)
 {
 	if (task == 0 || task == darling_windows_mach_task_self()) return 4;
-	const HANDLE process = OpenProcess(PROCESS_SUSPEND_RESUME, FALSE, task);
+	const HANDLE process = OpenProcess(PROCESS_SUSPEND_RESUME, FALSE, ResolveTaskPid(task));
 	if (process == nullptr) return 4;
 	using SuspendProcessFn = LONG (WINAPI*)(HANDLE);
 	const auto suspend_process = reinterpret_cast<SuspendProcessFn>(
@@ -349,7 +374,7 @@ extern "C" darling_kern_return_t darling_windows_task_resume(darling_mach_port_n
 		const auto found = task_suspend_counts.find(task);
 		if (found == task_suspend_counts.end() || found->second == 0) return 4;
 	}
-	const HANDLE process = OpenProcess(PROCESS_SUSPEND_RESUME, FALSE, task);
+	const HANDLE process = OpenProcess(PROCESS_SUSPEND_RESUME, FALSE, ResolveTaskPid(task));
 	if (process == nullptr) return 4;
 	using ResumeProcessFn = LONG (WINAPI*)(HANDLE);
 	const auto resume_process = reinterpret_cast<ResumeProcessFn>(
@@ -374,13 +399,13 @@ extern "C" darling_kern_return_t darling_windows_task_terminate(darling_mach_por
 		entry.dwSize = sizeof(entry);
 		if (Thread32First(thread_snapshot, &entry)) {
 			do {
-				if (entry.th32OwnerProcessID == task)
+				if (entry.th32OwnerProcessID == ResolveTaskPid(task))
 					child_threads.push_back(static_cast<darling_mach_port_name_t>(entry.th32ThreadID));
 			} while (Thread32Next(thread_snapshot, &entry));
 		}
 		CloseHandle(thread_snapshot);
 	}
-	const HANDLE process = OpenProcess(PROCESS_TERMINATE | SYNCHRONIZE, FALSE, task);
+	const HANDLE process = OpenProcess(PROCESS_TERMINATE | SYNCHRONIZE, FALSE, ResolveTaskPid(task));
 	if (process == nullptr) return 4;
 	const BOOL terminated = TerminateProcess(process, 1);
 	if (terminated) (void)WaitForSingleObject(process, 5000);
@@ -403,6 +428,7 @@ extern "C" darling_kern_return_t darling_windows_task_terminate(darling_mach_por
 			else ++it;
 		}
 	}
+	ForgetTaskPort(task);
 	return 0;
 }
 
@@ -1029,7 +1055,7 @@ HANDLE OpenVmProcess(darling_mach_port_name_t task, DWORD access, bool& owned)
 	owned = false;
 	if (task == 0) return nullptr;
 	if (task == darling_windows_mach_task_self()) return GetCurrentProcess();
-	const HANDLE process = OpenProcess(access, FALSE, static_cast<DWORD>(task));
+	const HANDLE process = OpenProcess(access, FALSE, ResolveTaskPid(task));
 	owned = process != nullptr;
 	return process;
 }

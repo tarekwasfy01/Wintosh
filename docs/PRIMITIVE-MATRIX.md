@@ -619,6 +619,11 @@ covering x87/MMX/SSE control and register state rather than only MXCSR. The
 same XState bridge now writes AVX and AVX-512 payloads when the Windows host
 reports the required feature sets; unsupported host features return
 `KERN_NOT_SUPPORTED`. ARM state and exception-state writes remain open.
+The portable ABI header now defines the Darwin `ARM_THREAD_STATE64` flavour,
+count, and 68-word layout for ARM64 callers. Native `CONTEXT` mapping is not
+claimed yet: the current verified targets are x64 and Win32, and an ARM64
+Windows build/runtime gate is still required before this row can be marked
+implemented.
 `x86_EXCEPTION_STATE64` now has an adapter-local get/set roundtrip, including
 trap number, error, and fault address, with cleanup on foreign task termination.
 It preserves metadata for translated callers; it does not rewrite a live

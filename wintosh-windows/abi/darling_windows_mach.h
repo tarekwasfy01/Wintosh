@@ -199,6 +199,11 @@ constexpr std::uint32_t darling_x86_avx_state64_count = 211;
 constexpr std::uint32_t darling_x86_avx512_state64_count = 611;
 constexpr std::uint32_t darling_x86_exception_state64_count = 4;
 constexpr std::uint32_t darling_x86_debug_state64_count = 16;
+// Apple XNU arm/thread_status.h: ARM_THREAD_STATE64. The layout is kept
+// portable so callers can size/copy the ABI on non-ARM hosts; native mapping
+// is enabled only by a Windows ARM64 build.
+constexpr std::uint32_t darling_arm_thread_state64_flavor = 6;
+constexpr std::uint32_t darling_arm_thread_state64_count = 68;
 struct darling_time_value final { std::int32_t seconds = 0; std::int32_t microseconds = 0; };
 struct darling_thread_basic_info final {
 	darling_time_value user_time;
@@ -274,6 +279,16 @@ struct darling_x86_debug_state64 final {
 	std::uint64_t dr0 = 0, dr1 = 0, dr2 = 0, dr3 = 0;
 	std::uint64_t dr4 = 0, dr5 = 0, dr6 = 0, dr7 = 0;
 };
+struct darling_arm_thread_state64 final {
+	std::uint64_t x[29]{};
+	std::uint64_t fp = 0;
+	std::uint64_t lr = 0;
+	std::uint64_t sp = 0;
+	std::uint64_t pc = 0;
+	std::uint32_t cpsr = 0;
+	std::uint32_t pad = 0;
+};
+static_assert(sizeof(darling_arm_thread_state64) == darling_arm_thread_state64_count * sizeof(std::uint32_t));
 struct darling_exception_handler_info final {
 	std::uint32_t port_object = 0;
 	std::uint32_t receiver_object = 0;

@@ -55,6 +55,12 @@ the `--emit-tlv` smoke utility and exercises section mapping and
 initialization; it remains synthetic and is not a redistributable Apple
 `libpthread` binary.
 
+The complete current Release CTest run passes 56/56 tests.  This includes the
+Mach-O/dyld, Objective-C/CoreFoundation, errno/signal, Mach IPC, process,
+filesystem, socket, terminal, and Windows host-boundary families.  This is a
+repository-wide regression result for the current Wintosh implementation, not
+a claim of full Darling or macOS compatibility.
+
 The focused TLS/pthread regression set was rerun on the current Release build:
 `wintosh_tlv_smoke`, `wintosh_thread_smoke`, `wintosh_pthread_sync_smoke`,
 `wintosh_host_api_smoke`, `wintosh_dyld_smoke`, and `wintosh_macho_smoke`

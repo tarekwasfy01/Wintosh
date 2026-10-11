@@ -14,6 +14,7 @@ Example:
 ```text
 wintosh-run.exe --inspect path\to\program
 wintosh-run.exe --diagnose-host
+wintosh-run.exe --init-prefix path\to\darwin-prefix
 wintosh-run.exe path\to\program arg1 arg2
 ```
 
@@ -23,6 +24,11 @@ is rejected on x86_64 Windows because no CPU translation layer is included.
 `--diagnose-host` is independent of an input image and reports the current
 Windows architecture, pointer width, supported native Mach-O target, prefix
 source, and the deliberately unsupported full-macOS boundaries.
+`--init-prefix` creates the minimal directory layout used by the native
+Darwin adapter.  It deliberately does not download or invent Apple system
+libraries; the current `libSystem` and `libobjc` boundary is provided by the
+host symbol table, while real Darwin dylibs and frameworks remain a separate
+licensed runtime component.
 The runner is therefore an adapter/loader milestone, not a complete Darling
 root filesystem or a full macOS framework runtime.
 

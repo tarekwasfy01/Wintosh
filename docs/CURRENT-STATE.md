@@ -29,9 +29,14 @@ suite.
 The native `wintosh.exe` Release target was built and verified with
 `--help`, `--version` (`Wintosh 0.1.1`), and `--diagnose-host`. The host
 diagnostic confirms the current x86_64 native target and the fail-closed
-boundaries for i386/ARM64 on this host. No standalone Mach-O fixture is
-bundled in the current workspace, so `--inspect` and actual Mach-O execution
-remain unclaimed until a licensed test image is supplied.
+boundaries for i386/ARM64 on this host. A repository-owned synthetic x86_64
+Mach-O fixture is now bundled, so `--inspect` and native execution are proven
+for that controlled fixture; arbitrary macOS binaries remain unclaimed.
+
+The runner also provides `--init-prefix <directory>`, which creates the
+minimal Darwin directory layout without downloading or fabricating Apple
+libraries.  The repository-owned x86_64 fixture now proves `--inspect` and
+native execution; real system dylibs and frameworks are still not bundled.
 
 ## What is included in a source release
 

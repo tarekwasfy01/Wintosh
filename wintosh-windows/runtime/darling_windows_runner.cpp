@@ -8,6 +8,7 @@
 
 #include "darling_windows_bootstrap.h"
 #include "darling_windows_dyld.h"
+#include "darling_windows_runtime.h"
 
 #include <windows.h>
 
@@ -98,6 +99,7 @@ void Usage()
 		<< L"  --help                 Show this help\n"
 		<< L"  --version              Show the Wintosh version\n"
 		<< L"  --diagnose-host        Report host and loader capabilities\n"
+		<< L"  --init-prefix <dir>    Create a minimal Darwin prefix layout\n"
 		<< L"  --inspect              Inspect a Mach-O without executing it\n"
 		<< L"  --prefix <directory>   Set the initial Wintosh prefix\n"
 		<< L"  --rpath <directory>    Add a dynamic-library search path\n"
@@ -186,6 +188,19 @@ std::filesystem::path DefaultPrefix(const std::filesystem::path& image)
 
 int wmain(int argc, wchar_t** argv)
 {
+	if (argc == 3 && std::wstring(argv[1]) == L"--init-prefix") {
+		try {
+			const auto prefix = darling::windows_host::Prefix::Create(argv[2]);
+			std::wcout << L"prefix=" << prefix.Root() << L"\n"
+				<< L"status=created\n"
+				<< L"system_libraries=host-resolved\n"
+				<< L"apple_frameworks=not-bundled\n";
+			return 0;
+		} catch (const std::exception& error) {
+			std::cerr << "DARLING_PREFIX_ERROR=" << error.what() << "\n";
+			return 1;
+		}
+	}
 	if (argc == 2 && std::wstring(argv[1]) == L"--diagnose-host") {
 		DiagnoseHost();
 		return 0;

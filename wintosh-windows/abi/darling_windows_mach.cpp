@@ -351,6 +351,19 @@ extern "C" darling_kern_return_t darling_windows_task_resume(darling_mach_port_n
 extern "C" darling_kern_return_t darling_windows_task_terminate(darling_mach_port_name_t task)
 {
 	if (task == 0 || task == darling_windows_mach_task_self()) return 4;
+	std::vector<darling_mach_port_name_t> child_threads;
+	const HANDLE thread_snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+	if (thread_snapshot != INVALID_HANDLE_VALUE) {
+		THREADENTRY32 entry{};
+		entry.dwSize = sizeof(entry);
+		if (Thread32First(thread_snapshot, &entry)) {
+			do {
+				if (entry.th32OwnerProcessID == task)
+					child_threads.push_back(static_cast<darling_mach_port_name_t>(entry.th32ThreadID));
+			} while (Thread32Next(thread_snapshot, &entry));
+		}
+		CloseHandle(thread_snapshot);
+	}
 	const HANDLE process = OpenProcess(PROCESS_TERMINATE | SYNCHRONIZE, FALSE, task);
 	if (process == nullptr) return 4;
 	const BOOL terminated = TerminateProcess(process, 1);
@@ -364,6 +377,8 @@ extern "C" darling_kern_return_t darling_windows_task_terminate(darling_mach_por
 	{
 		std::lock_guard lock(exception_ports_mutex);
 		exception_ports.erase(task);
+		for (const auto thread : child_threads)
+			exception_ports.erase(thread);
 	}
 	return 0;
 }

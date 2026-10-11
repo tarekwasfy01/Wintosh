@@ -559,6 +559,10 @@ Successful termination now also removes stale task-level exception registrations
 so a later lookup cannot observe an owner that no longer exists. Thread-level
 registrations and global port-object cleanup still need a complete lifecycle
 model.
+The termination path now snapshots the child's thread IDs before exit and
+removes their thread-level exception registrations as well, preventing stale
+per-thread owners. Global port objects and unrelated namespaces still require
+the future task-port lifecycle model.
 Task-level `task_set_exception_ports` and `task_get_exception_ports` now reuse
 the existing owner-keyed exception registry, so task and thread registrations
 have identical mask/filter behavior. Delivery is still only wired through the

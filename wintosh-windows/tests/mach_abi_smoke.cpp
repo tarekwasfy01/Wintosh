@@ -73,6 +73,7 @@ int main()
 	const bool terminate_ok = darling_windows_task_for_pid(darling_windows_mach_host_self(),
 		terminated_child.dwProcessId, &terminated_task) == 0 && terminated_task != 0 &&
 		darling_windows_task_set_exception_ports(terminated_task, 1, 0x7777, 1, 1) == 0 &&
+		darling_windows_thread_set_exception_ports(terminated_child.dwThreadId, 1, 0x8888, 1, 1) == 0 &&
 		darling_windows_task_terminate(terminated_task) == 0 &&
 		WaitForSingleObject(terminated_child.hProcess, 5000) == WAIT_OBJECT_0;
 	CloseHandle(terminated_child.hThread);
@@ -86,6 +87,11 @@ int main()
 	if (darling_windows_task_get_exception_ports(terminated_task, 1, terminated_masks,
 		&terminated_exception_count, terminated_handlers, terminated_behaviors,
 		terminated_flavors) != 0 || terminated_exception_count != 0)
+		return 1;
+	std::uint32_t terminated_thread_exception_count = 1;
+	if (darling_windows_thread_get_exception_ports(terminated_child.dwThreadId, 1,
+		terminated_masks, &terminated_thread_exception_count, terminated_handlers,
+		terminated_behaviors, terminated_flavors) != 0 || terminated_thread_exception_count != 0)
 		return 1;
 	if (darling_windows_task_set_exception_ports(task, 1, 0x1234, 1, 1) != 0)
 		return 1;

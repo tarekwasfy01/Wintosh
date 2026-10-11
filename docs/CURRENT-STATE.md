@@ -295,6 +295,10 @@ deliver changed and removed keys to the local observer snapshot during
 reloaded values, and callback delivery; native Darwin notification-center
 semantics remain outside this adapter.
 
+Preference loading now compares the main plist and orphaned `.tmp` by write
+time and selects the newer valid source, covering recovery after an interrupted
+replacement even when an older main plist still exists.
+
 The CoreFoundation collection family now snapshots and retains array, dictionary,
 and set values while applier callbacks run. Callbacks may remove or replace
 entries from the mutable collection without invalidating the active iteration;

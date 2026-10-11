@@ -3,6 +3,8 @@
 #include <fstream>
 #include <iostream>
 #include <string>
+#include <thread>
+#include <chrono>
 
 namespace { int observer_calls = 0; int reentrant_reads = 0; int self_removing_calls = 0; int late_observer_calls = 0; int destroying_observer_calls = 0; int external_observer_calls = 0; std::string observer_key; void Observer(const char* key, void*) { ++observer_calls; observer_key = key ? key : ""; } void LateObserver(const char*, void*) { ++late_observer_calls; } void ReentrantObserver(const char* key, void* context) { char value[64]{}; ++reentrant_reads; auto store = static_cast<darling_windows_preferences_ref>(context); darling_windows_preferences_get_string(store, key, value, sizeof value); if (reentrant_reads == 1) darling_windows_preferences_add_observer(store, LateObserver, nullptr); } void SelfRemovingObserver(const char*, void* context) { ++self_removing_calls; darling_windows_preferences_remove_observer(static_cast<darling_windows_preferences_ref>(context), SelfRemovingObserver, context); } void DestroyingObserver(const char*, void* context) { ++destroying_observer_calls; darling_windows_preferences_close(static_cast<darling_windows_preferences_ref>(context)); } void ExternalObserver(const char*, void*) { ++external_observer_calls; } }
 
@@ -104,6 +106,10 @@ int main() {
     darling_windows_preferences_close(effective);
     const auto recovery_path = root / "Users" / "Default" / "Library" / "Preferences" / "com.wintosh.recovery.plist";
     std::filesystem::create_directories(recovery_path.parent_path(), ec);
+    std::ofstream recovery_main(recovery_path);
+    recovery_main << "<plist><dict><key>Recovered</key><string>old</string></dict></plist>";
+    recovery_main.close();
+    std::this_thread::sleep_for(std::chrono::milliseconds(25));
     std::ofstream recovery_tmp(recovery_path.wstring() + L".tmp");
     recovery_tmp << "<plist><dict><key>Recovered</key><string>yes</string></dict></plist>";
     recovery_tmp.close();

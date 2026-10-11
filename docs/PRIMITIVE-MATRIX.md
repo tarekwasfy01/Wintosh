@@ -538,6 +538,11 @@ It validates the host token and PID, probes `PROCESS_QUERY_LIMITED_INFORMATION`,
 and represents an accessible Windows PID as the corresponding minimal Darwin
 task name. This establishes task lookup, but not Darwin entitlement/security
 semantics or a transferable Mach task-port object.
+`task_info(TASK_BASIC_INFO)` is also mapped for accessible Windows processes:
+Windows process times and working-set/pagefile counters populate the Darwin
+time and size fields. The adapter reports a neutral policy and zero suspend
+count because those values are not equivalent to Windows process metadata;
+full Darwin task accounting remains open.
 The same boundary now exposes `AllocateMemory`, `ProtectMemory`, and
 `FreeMemory`, completing the basic remote-VM operation shape needed by a future
 restore path. The smoke covers invalid-operation rejection; successful remote

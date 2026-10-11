@@ -27,6 +27,12 @@ int main()
 		darling_windows_task_for_pid(0, static_cast<DWORD>(GetCurrentProcessId()), &current_task) == 0 ||
 		darling_windows_task_for_pid(darling_windows_mach_host_self(), 0, &current_task) == 0)
 		return 1;
+	darling_task_basic_info task_info{};
+	std::uint32_t task_info_count = darling_task_basic_info_count;
+	if (darling_windows_task_info(task, darling_task_basic_info_flavor, &task_info,
+		&task_info_count) != 0 || task_info_count != darling_task_basic_info_count ||
+		task_info.virtual_size == 0 || task_info.resident_size == 0)
+		return 1;
 	const auto thread = darling_windows_mach_thread_self();
 	darling_thread_precedence_policy_info precedence{};
 	darling_thread_time_constraint_policy_info time_constraint{100, 10, 20, 1};

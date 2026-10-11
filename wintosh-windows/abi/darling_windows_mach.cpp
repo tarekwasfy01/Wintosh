@@ -8,7 +8,10 @@
 #include "darling_windows_stdio.h"
 
 #include <windows.h>
+#include <psapi.h>
 #include <intrin.h>
+
+#pragma comment(lib, "psapi.lib")
 
 #include <atomic>
 #include <algorithm>
@@ -230,6 +233,42 @@ extern "C" darling_kern_return_t darling_windows_task_for_pid(
 		return 4;
 	CloseHandle(process);
 	*task = static_cast<darling_mach_port_name_t>(pid);
+	return 0;
+}
+
+extern "C" darling_kern_return_t darling_windows_task_info(
+	darling_mach_port_name_t task, std::uint32_t flavor, void* info, std::uint32_t* count)
+{
+	if (task == 0 || info == nullptr || count == nullptr ||
+		flavor != darling_task_basic_info_flavor || *count < darling_task_basic_info_count)
+		return 4;
+	const HANDLE process = task == darling_windows_mach_task_self() ?
+		GetCurrentProcess() : OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, task);
+	if (process == nullptr)
+		return 4;
+	FILETIME creation{}, exit{}, kernel{}, user{};
+	PROCESS_MEMORY_COUNTERS memory{};
+	memory.cb = sizeof(memory);
+	const BOOL times_ok = GetProcessTimes(process, &creation, &exit, &kernel, &user);
+	const BOOL memory_ok = GetProcessMemoryInfo(process, &memory, sizeof(memory));
+	if (process != GetCurrentProcess()) CloseHandle(process);
+	if (!times_ok || !memory_ok)
+		return 4;
+	const auto to_time = [](const FILETIME& value) {
+		const auto ticks = (static_cast<std::uint64_t>(value.dwHighDateTime) << 32) |
+			value.dwLowDateTime;
+		return darling_time_value{static_cast<std::int32_t>(ticks / 10000000),
+			static_cast<std::int32_t>((ticks % 10000000) / 10)};
+	};
+	auto* result = static_cast<darling_task_basic_info*>(info);
+	result->suspend_count = 0;
+	result->virtual_size = memory.PagefileUsage;
+	result->resident_size = memory.WorkingSetSize;
+	result->resident_size_max = memory.PeakWorkingSetSize;
+	result->user_time = to_time(user);
+	result->system_time = to_time(kernel);
+	result->policy = 0;
+	*count = darling_task_basic_info_count;
 	return 0;
 }
 

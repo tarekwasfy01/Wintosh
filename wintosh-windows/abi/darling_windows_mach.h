@@ -144,6 +144,9 @@ extern "C" darling_mach_port_name_t darling_windows_mach_thread_self();
 extern "C" darling_mach_port_name_t darling_windows_mach_host_self();
 extern "C" darling_kern_return_t darling_windows_task_for_pid(
 	darling_mach_port_name_t host, std::uint32_t pid, darling_mach_port_name_t* task);
+extern "C" darling_kern_return_t darling_windows_task_info(
+	darling_mach_port_name_t task, std::uint32_t flavor, void* info,
+	std::uint32_t* count);
 constexpr std::uint32_t darling_thread_extended_policy = 1;
 constexpr std::uint32_t darling_thread_time_constraint_policy = 2;
 constexpr std::uint32_t darling_thread_precedence_policy = 3;
@@ -161,6 +164,8 @@ constexpr std::uint32_t darling_thread_sched_timeshare_info_count = 5;
 constexpr std::uint32_t darling_thread_sched_rr_info_count = 5;
 constexpr std::uint32_t darling_thread_sched_fifo_info_count = 4;
 constexpr std::uint32_t darling_thread_time_constraint_policy_count = 4;
+constexpr std::uint32_t darling_task_basic_info_flavor = 20;
+constexpr std::uint32_t darling_task_basic_info_count = 10;
 constexpr std::uint32_t darling_x86_thread_state64_flavor = 4;
 constexpr std::uint32_t darling_x86_float_state64_flavor = 5;
 constexpr std::uint32_t darling_x86_exception_state64_flavor = 6;
@@ -268,6 +273,17 @@ struct darling_thread_time_constraint_policy_info final {
 	std::uint32_t computation = 0;
 	std::uint32_t constraint = 0;
 	std::int32_t preemptible = 1;
+};
+struct darling_task_basic_info final {
+	std::int32_t suspend_count = 0;
+	std::uint32_t padding = 0;
+	std::uint64_t virtual_size = 0;
+	std::uint64_t resident_size = 0;
+	std::uint64_t resident_size_max = 0;
+	darling_time_value user_time;
+	darling_time_value system_time;
+	std::int32_t policy = 0;
+	std::uint32_t reserved = 0;
 };
 extern "C" darling_kern_return_t darling_windows_thread_policy_set(
 	darling_mach_port_name_t thread, std::uint32_t flavor, const void* policy,

@@ -137,6 +137,8 @@ int main()
 		remote_value.data(), remote_value.size()) == 0 &&
 		darling_windows_mach_vm_protect(child_task, remote_address, remote_page_size,
 			false, darling_vm_prot_read) == 0 &&
+		darling_windows_mach_vm_write(child_task, remote_address, remote_value.data(),
+			remote_value.size()) != 0 &&
 		darling_windows_mach_vm_protect(child_task, remote_address, remote_page_size,
 			false, darling_vm_prot_read | darling_vm_prot_write) == 0 &&
 		darling_windows_mach_vm_read(child_task, remote_address, remote_value.size(),

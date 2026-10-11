@@ -583,6 +583,9 @@ The same foreign allocation path now also verifies `mach_vm_protect` for a
 read-only transition followed by restoration to read/write. This confirms the
 basic protection mapping, but not Darwin maximum-protection inheritance or
 copy-on-write behavior.
+The protection check also requires a write to fail while the remote page is
+read-only, then restores read/write protection before continuing; this proves
+enforcement, not merely successful API return values.
 The x64 smoke also verifies `mach_vm_copy` between two remote allocations by
 comparing the copied bytes after a remote read. This is an explicit copy
 operation; it must not be confused with Darwin VM copy-on-write sharing or

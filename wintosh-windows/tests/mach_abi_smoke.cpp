@@ -212,6 +212,14 @@ int main()
 	const bool task_port_lifecycle_ok =
 		darling_windows_task_for_pid(darling_windows_mach_host_self(), child.dwProcessId,
 			&released_task) == 0 && released_task != 0 &&
+		[] (darling_mach_port_name_t value) {
+			std::uint32_t type = 0;
+			std::uint32_t refs = 0;
+			return darling_windows_mach_port_type(darling_windows_mach_task_self(), value,
+				&type) == 0 && type == darling_mach_port_type_send &&
+				darling_windows_mach_port_get_refs(darling_windows_mach_task_self(), value,
+					darling_mach_port_type_send, &refs) == 0 && refs == 1;
+		}(released_task) &&
 		darling_windows_mach_port_deallocate(task, released_task) == 0;
 	darling_task_basic_info released_info{};
 	std::uint32_t released_info_count = darling_task_basic_info_count;

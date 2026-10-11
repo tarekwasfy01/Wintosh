@@ -179,6 +179,12 @@ void ForgetTaskPort(darling_mach_port_name_t task)
 	std::lock_guard lock(task_ports_mutex);
 	task_ports.erase(task);
 }
+
+bool IsTaskPort(darling_mach_port_name_t name)
+{
+	std::lock_guard lock(task_ports_mutex);
+	return task_ports.find(name) != task_ports.end();
+}
 struct VmMaximumProtectionKey final {
 	darling_mach_port_name_t task = 0;
 	darling_mach_vm_address_t address = 0;
@@ -1601,11 +1607,17 @@ extern "C" darling_kern_return_t darling_windows_mach_port_insert_right(
 		disposition != darling_mach_make_send &&
 		disposition != darling_mach_make_send_once)
 		return 4;
-	if (FindPort(right) == nullptr && right != darling_windows_mach_task_self() &&
+	if (FindPort(right) == nullptr && !IsTaskPort(right) && right != darling_windows_mach_task_self() &&
 		right != darling_windows_mach_thread_self() &&
 		right != darling_windows_mach_host_self()) return 3;
 	const auto port = FindPort(name);
-	if (port == nullptr) return 3;
+	if (port == nullptr) {
+		if (right == darling_mach_port_type_send && IsTaskPort(name)) {
+			*refs = 1;
+			return 0;
+		}
+		return 3;
+	}
 	const auto source = FindPort(right);
 	{
 		if (source == nullptr || disposition == darling_mach_copy_send ||
@@ -1826,6 +1838,10 @@ extern "C" darling_kern_return_t darling_windows_mach_port_type(
 	if (task == 0 || task != darling_windows_mach_task_self() || name == 0 || type == nullptr) return 4;
 	const auto port = FindPort(name);
 	if (port == nullptr) {
+		if (IsTaskPort(name)) {
+			*type = darling_mach_port_type_send;
+			return 0;
+		}
 		*type = darling_mach_port_type_none;
 		return 3;
 	}

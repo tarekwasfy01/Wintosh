@@ -625,6 +625,10 @@ by `task_for_pid`, and later task operations reject that released name. This
 prevents stale task handles from remaining usable after explicit namespace
 cleanup; cross-process Mach right transfer and kernel-backed port rights remain
 open.
+The same managed task names now report a send right through `mach_port_type`
+and `mach_port_get_refs`, and can be used as a source right for the local
+`mach_port_insert_right` validation path. This is still an adapter-level right
+description, not a Windows kernel handle or a transferable Darwin right.
 Task-level `task_set_exception_ports` and `task_get_exception_ports` now reuse
 the existing owner-keyed exception registry, so task and thread registrations
 have identical mask/filter behavior. Delivery is still only wired through the

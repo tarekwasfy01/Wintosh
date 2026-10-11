@@ -741,6 +741,8 @@ int main()
 		std::strncmp(string_buffer, "darlin", 6) == 0 &&
 		darling_windows_strcpy(nullptr, "darling") == nullptr &&
 		darling_windows_strcat(nullptr, "darling") == nullptr &&
+		darling_windows_strncpy(nullptr, "darling", 0) == nullptr &&
+		darling_windows_strncat(nullptr, "darling", 0) == nullptr &&
 		darling_windows_strchr("darling", 'l') != nullptr &&
 		darling_windows_strrchr("darling", 'g') != nullptr &&
 		darling_windows_strchr(nullptr, 'x') == nullptr &&

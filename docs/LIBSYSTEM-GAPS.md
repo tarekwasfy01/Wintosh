@@ -41,6 +41,8 @@ following families with Windows-backed implementations:
   bridge's `strcmp` implementation;
 - `strcpy` and `strcat` now reject null source/destination pointers without
   entering the CRT;
+- `strncpy` and `strncat` apply the same null-pointer protection while retaining
+  their bounded-copy behavior for valid buffers;
 - BSD/Darwin reverse byte search `memrchr` is now Windows-backed and
   host-symbol-resolvable, including bounded reverse scanning;
 - BSD/Darwin first-set-bit primitive `ffs` is now Windows-backed and

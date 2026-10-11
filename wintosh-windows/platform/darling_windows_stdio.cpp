@@ -8182,6 +8182,7 @@ extern "C" char* darling_windows_strcpy(char* destination, const char* source)
 extern "C" char* darling_windows_strncpy(char* destination, const char* source,
 	std::size_t bytes)
 {
+	if (destination == nullptr || source == nullptr) return nullptr;
 	return std::strncpy(destination, source, bytes);
 }
 
@@ -8193,6 +8194,7 @@ extern "C" char* darling_windows_strcat(char* destination, const char* source)
 extern "C" char* darling_windows_strncat(char* destination, const char* source,
 	std::size_t bytes)
 {
+	if (destination == nullptr || source == nullptr) return nullptr;
 	return std::strncat(destination, source, bytes);
 }
 

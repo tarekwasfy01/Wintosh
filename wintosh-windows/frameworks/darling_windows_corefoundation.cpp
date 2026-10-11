@@ -1036,6 +1036,29 @@ extern "C" int darling_windows_CFStringCompare(darling_windows_CFStringRef left,
 	return comparison < 0 ? -1 : comparison > 0 ? 1 : 0;
 }
 
+extern "C" int darling_windows_CFStringCompareWithOptions(
+	darling_windows_CFStringRef left, darling_windows_CFStringRef right, int flags)
+{
+	const auto* lhs = static_cast<const Object*>(left);
+	const auto* rhs = static_cast<const Object*>(right);
+	if (lhs == nullptr || rhs == nullptr || lhs->kind != Kind::String ||
+		rhs->kind != Kind::String) return 0;
+	if ((flags & darling_windows_CFCompareCaseInsensitive) == 0)
+		return darling_windows_CFStringCompare(left, right);
+	const auto& a = lhs->string;
+	const auto& b = rhs->string;
+	const auto limit = std::min(a.size(), b.size());
+	for (std::size_t i = 0; i < limit; ++i) {
+		const auto ca = static_cast<unsigned char>(a[i]);
+		const auto cb = static_cast<unsigned char>(b[i]);
+		const auto la = static_cast<unsigned char>(std::tolower(ca));
+		const auto lb = static_cast<unsigned char>(std::tolower(cb));
+		if (la != lb) return la < lb ? -1 : 1;
+	}
+	if (a.size() == b.size()) return 0;
+	return a.size() < b.size() ? -1 : 1;
+}
+
 extern "C" darling_windows_CFRange darling_windows_CFStringFind(
 	darling_windows_CFStringRef value, darling_windows_CFStringRef needle, int flags)
 {

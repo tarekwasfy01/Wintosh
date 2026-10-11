@@ -113,6 +113,10 @@ int wmain(int argc, wchar_t** argv)
 		// The fixture is an x86-64 Mach-O execution proof; Win32 is metadata-only.
 		return 0;
 #else
+		if (argc == 3 && std::wcscmp(argv[1], L"--emit") == 0) {
+			WriteExitMachO(argv[2]);
+			return 0;
+		}
 		if (argc > 2 && std::wcscmp(argv[1], L"--child") == 0) {
 			if (argc > 3) {
 				std::ofstream diagnostic(argv[3], std::ios::trunc);

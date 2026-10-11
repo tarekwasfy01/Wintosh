@@ -31,6 +31,8 @@ following families with Windows-backed implementations:
   host-symbol-resolvable for zero, positive, and signed values;
 - BSD/Darwin last-set-bit primitive `fls` is now Windows-backed and
   host-symbol-resolvable for zero, positive, and signed values;
+- 64-bit BSD/Darwin bit-scan primitives `ffsll` and `flsll` are now also
+  Windows-backed and host-symbol-resolvable;
 - C++ static-initialization guard entry points `___cxa_guard_acquire`,
   `___cxa_guard_release`, and `___cxa_guard_abort`, backed by atomic
   Windows-host state transitions; acquire/release/abort behavior is covered

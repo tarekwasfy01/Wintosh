@@ -5685,6 +5685,12 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 	if (std::strcmp(name, "_fls") == 0 || std::strcmp(name, "fls") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_fls);
 	}
+	if (std::strcmp(name, "_ffsll") == 0 || std::strcmp(name, "ffsll") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_ffsll);
+	}
+	if (std::strcmp(name, "_flsll") == 0 || std::strcmp(name, "flsll") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_flsll);
+	}
 	if (std::strcmp(name, "_strncasecmp") == 0 || std::strcmp(name, "strncasecmp") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_strncasecmp);
 	}
@@ -8104,6 +8110,24 @@ extern "C" int darling_windows_fls(int value)
 {
 	if (value == 0) return 0;
 	const auto bits = static_cast<unsigned int>(value);
+	int position = 0;
+	for (auto remaining = bits; remaining != 0; remaining >>= 1) ++position;
+	return position;
+}
+
+extern "C" int darling_windows_ffsll(long long value)
+{
+	if (value == 0) return 0;
+	const auto bits = static_cast<unsigned long long>(value);
+	int position = 1;
+	for (auto mask = 1ull; (bits & mask) == 0; mask <<= 1) ++position;
+	return position;
+}
+
+extern "C" int darling_windows_flsll(long long value)
+{
+	if (value == 0) return 0;
+	const auto bits = static_cast<unsigned long long>(value);
 	int position = 0;
 	for (auto remaining = bits; remaining != 0; remaining >>= 1) ++position;
 	return position;

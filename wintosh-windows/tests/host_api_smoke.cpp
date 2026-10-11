@@ -768,7 +768,10 @@ int main()
 	const bool bit_scan_ok = darling_windows_ffs(0) == 0 && darling_windows_ffs(1) == 1 &&
 		darling_windows_ffs(0x10) == 5 && darling_windows_ffs(-8) == 4 &&
 		darling_windows_fls(0) == 0 && darling_windows_fls(1) == 1 &&
-		darling_windows_fls(0x10) == 5 && darling_windows_fls(-8) == 32;
+		darling_windows_fls(0x10) == 5 && darling_windows_fls(-8) == 32 &&
+		darling_windows_ffsll(0x100000000LL) == 33 &&
+		darling_windows_flsll(0x100000000LL) == 33 &&
+		darling_windows_ffsll(-8LL) == 4 && darling_windows_flsll(-8LL) == 64;
 	char tokenize_buffer[] = "darling,windows,runtime";
 	char* tokenize_state = nullptr;
 	const char* token_one = darling_windows_strtok_r(tokenize_buffer, ",", &tokenize_state);

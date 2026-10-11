@@ -336,6 +336,8 @@ int main()
 	const auto earlier_date = darling_windows_CFDateCreate(1234.0);
 	const auto later_date = darling_windows_CFDateCreate(1235.0);
 	const auto url = darling_windows_CFURLCreateWithFileSystemPath("C:/Wintosh/app");
+	const auto url_source_string = darling_windows_CFStringCreateWithCString("https://example.test/a");
+	const auto url_from_string = darling_windows_CFURLCreateWithString(url_source_string, nullptr);
 	const auto extension_url = darling_windows_CFURLCreateWithFileSystemPath("C:/Wintosh/app.bin");
 	const auto directory_url = darling_windows_CFURLCreateWithFileSystemPath("C:/Wintosh/");
 	const unsigned char url_bytes[] = "C:/Wintosh/app";
@@ -365,6 +367,7 @@ int main()
 		std::strcmp(reinterpret_cast<const char*>(url_representation), "C:/Wintosh/app") == 0 &&
 		!darling_windows_CFURLGetFileSystemRepresentation(url, false, url_representation, 4);
 	const bool date_url_ok = date != nullptr && date_copy != nullptr && url_from_bytes != nullptr &&
+		url_from_string != nullptr && darling_windows_CFEqual(url_from_string, scheme_url) &&
 		now_date != nullptr && darling_windows_CFDateGetTimeIntervalSinceDate(now_date, date) > 0.0 &&
 		absolute_url != nullptr &&
 		url_string != nullptr &&
@@ -847,6 +850,8 @@ int main()
 	darling_windows_CFRelease(url_host);
 	darling_windows_CFRelease(port_url);
 	darling_windows_CFRelease(url_from_bytes);
+	darling_windows_CFRelease(url_from_string);
+	darling_windows_CFRelease(url_source_string);
 	darling_windows_CFRelease(absolute_url);
 	darling_windows_CFRelease(url_string);
 	darling_windows_CFRelease(directory_url);

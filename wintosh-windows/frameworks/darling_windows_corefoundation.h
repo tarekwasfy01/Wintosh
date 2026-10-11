@@ -253,6 +253,8 @@ extern "C" double darling_windows_CFDateGetTimeIntervalSinceDate(
     darling_windows_CFDateRef value, darling_windows_CFDateRef reference);
 extern "C" darling_windows_CFURLRef darling_windows_CFURLCreateWithFileSystemPath(
 	const char* path);
+extern "C" darling_windows_CFURLRef darling_windows_CFURLCreateWithString(
+	darling_windows_CFStringRef string, darling_windows_CFURLRef base_url);
 extern "C" darling_windows_CFURLRef darling_windows_CFURLCreateFromFileSystemRepresentation(
 	const unsigned char* bytes, darling_windows_CFIndex length, bool is_directory);
 extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyFileSystemPath(

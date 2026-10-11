@@ -788,6 +788,10 @@ reference-date representation and does not claim calendar/time-zone support.
 dates; clock precision, adjustment, and calendar/time-zone behavior remain
 outside this bridge.
 
+The URL family also covers `CFURLCreateWithString` for non-empty absolute
+string values; relative base-URL resolution, escaping, normalization, and
+full RFC authority parsing remain open.
+
 The libc string/allocation family now also covers `reallocarray`,
 `reallocarrayf`, and `strsep`. The array helpers reject multiplication
 overflow before calling the Windows heap, while `strsep` preserves empty

@@ -1962,6 +1962,15 @@ extern "C" darling_windows_CFURLRef darling_windows_CFURLCreateWithFileSystemPat
 	return object;
 }
 
+extern "C" darling_windows_CFURLRef darling_windows_CFURLCreateWithString(
+	darling_windows_CFStringRef string, darling_windows_CFURLRef base_url)
+{
+	(void)base_url;
+	const auto* source = static_cast<const Object*>(string);
+	if (source == nullptr || source->kind != Kind::String || source->string.empty()) return nullptr;
+	return darling_windows_CFURLCreateWithFileSystemPath(source->string.c_str());
+}
+
 extern "C" darling_windows_CFURLRef darling_windows_CFURLCreateFromFileSystemRepresentation(
 	const unsigned char* bytes, darling_windows_CFIndex length, bool is_directory)
 {

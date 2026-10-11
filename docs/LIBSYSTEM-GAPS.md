@@ -96,6 +96,9 @@ main loop Windows-backed and distinct from worker-thread run-loop state.
 reference-date value as `CFDateGetAbsoluteTime`, with x64 and Win32 coverage.
 `CFDateCreateWithTimeIntervalSinceNow` now derives the Darwin 2001 reference
 date from the Windows system clock and is covered for future relative dates.
+`CFURLCreateWithString` now creates a URL object from a CoreFoundation string
+for the absolute/simple URL form used by this bridge; base-URL resolution is
+not claimed yet.
 
 ## Still required for broad compatibility
 

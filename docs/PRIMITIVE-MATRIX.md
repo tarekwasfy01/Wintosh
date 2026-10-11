@@ -767,6 +767,11 @@ environment propagation, spawn file actions, and `waitpid`/`wait4` on x64 and
 Win32. This is spawn-based compatibility and does not claim `fork` or
 copy-on-write equivalence.
 
+The CoreFoundation collection family now also exposes mutable constructors
+for arrays, dictionaries, and sets. Their capacity argument is validated but
+is not a hard allocation limit; the existing mutation, ownership, and
+collection-operation tests pass on both x64 and Win32.
+
 The libc string/allocation family now also covers `reallocarray`,
 `reallocarrayf`, and `strsep`. The array helpers reject multiplication
 overflow before calling the Windows heap, while `strsep` preserves empty

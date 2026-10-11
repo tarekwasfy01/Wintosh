@@ -76,6 +76,13 @@ following families with Windows-backed implementations:
 These are native Windows compatibility primitives. They are not a copied or
 relicensed Apple libSystem binary.
 
+Mutable CoreFoundation container constructors `CFArrayCreateMutable`,
+`CFDictionaryCreateMutable`, and `CFSetCreateMutable` are now available with
+negative-capacity rejection and subsequent mutation through the existing
+container APIs. Capacity is a non-binding reservation hint in this Windows
+bridge; allocator callbacks and full CoreFoundation object semantics remain
+outside this minimal ABI.
+
 ## Still required for broad compatibility
 
 The CoreFoundation string family now also includes the numeric accessors

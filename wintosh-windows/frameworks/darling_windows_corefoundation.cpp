@@ -1348,6 +1348,13 @@ extern "C" darling_windows_CFIndex darling_windows_CFArrayGetCount(darling_windo
 		static_cast<darling_windows_CFIndex>(object->array.size()) : 0;
 }
 
+extern "C" darling_windows_CFArrayRef darling_windows_CFArrayCreateMutable(
+	darling_windows_CFIndex capacity)
+{
+	if (capacity < 0) return nullptr;
+	return darling_windows_CFArrayCreate(nullptr, 0);
+}
+
 extern "C" darling_windows_CFArrayRef darling_windows_CFArrayCreateCopy(
 	darling_windows_CFArrayRef value)
 {
@@ -1592,6 +1599,13 @@ extern "C" darling_windows_CFIndex darling_windows_CFDictionaryGetCount(
 		static_cast<darling_windows_CFIndex>(object->dictionary.size()) : 0;
 }
 
+extern "C" darling_windows_CFDictionaryRef darling_windows_CFDictionaryCreateMutable(
+	darling_windows_CFIndex capacity)
+{
+	if (capacity < 0) return nullptr;
+	return darling_windows_CFDictionaryCreate(nullptr, nullptr, 0);
+}
+
 extern "C" darling_windows_CFDictionaryRef darling_windows_CFDictionaryCreateCopy(
 	darling_windows_CFDictionaryRef value)
 {
@@ -1721,6 +1735,13 @@ extern "C" darling_windows_CFIndex darling_windows_CFSetGetCount(darling_windows
 	const auto* object = static_cast<const Object*>(value);
 	return object != nullptr && object->kind == Kind::Set ?
 		static_cast<darling_windows_CFIndex>(object->array.size()) : 0;
+}
+
+extern "C" darling_windows_CFSetRef darling_windows_CFSetCreateMutable(
+	darling_windows_CFIndex capacity)
+{
+	if (capacity < 0) return nullptr;
+	return darling_windows_CFSetCreate(nullptr, 0);
 }
 
 extern "C" darling_windows_CFSetRef darling_windows_CFSetCreateCopy(

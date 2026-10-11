@@ -140,6 +140,8 @@ extern "C" bool darling_windows_CFDataSetLength(darling_windows_CFDataRef value,
 extern "C" bool darling_windows_CFDataClear(darling_windows_CFDataRef value);
 extern "C" darling_windows_CFArrayRef darling_windows_CFArrayCreate(
 	const void* const* values, darling_windows_CFIndex count);
+extern "C" darling_windows_CFArrayRef darling_windows_CFArrayCreateMutable(
+	darling_windows_CFIndex capacity);
 extern "C" darling_windows_CFArrayRef darling_windows_CFArrayCreateCopy(
 	darling_windows_CFArrayRef value);
 extern "C" darling_windows_CFIndex darling_windows_CFArrayGetCount(
@@ -181,6 +183,8 @@ extern "C" bool darling_windows_CFNumberGetDouble(const void* value, double* res
 extern "C" int darling_windows_CFNumberCompare(const void* left, const void* right);
 extern "C" darling_windows_CFDictionaryRef darling_windows_CFDictionaryCreate(
 	const void* const* keys, const void* const* values, darling_windows_CFIndex count);
+extern "C" darling_windows_CFDictionaryRef darling_windows_CFDictionaryCreateMutable(
+	darling_windows_CFIndex capacity);
 extern "C" darling_windows_CFDictionaryRef darling_windows_CFDictionaryCreateCopy(
 	darling_windows_CFDictionaryRef value);
 extern "C" darling_windows_CFIndex darling_windows_CFDictionaryGetCount(
@@ -204,6 +208,8 @@ extern "C" bool darling_windows_CFDictionaryMerge(darling_windows_CFDictionaryRe
 	darling_windows_CFDictionaryRef source);
 extern "C" darling_windows_CFSetRef darling_windows_CFSetCreate(
 	const void* const* values, darling_windows_CFIndex count);
+extern "C" darling_windows_CFSetRef darling_windows_CFSetCreateMutable(
+	darling_windows_CFIndex capacity);
 extern "C" darling_windows_CFSetRef darling_windows_CFSetCreateCopy(
 	darling_windows_CFSetRef value);
 extern "C" darling_windows_CFIndex darling_windows_CFSetGetCount(darling_windows_CFSetRef value);

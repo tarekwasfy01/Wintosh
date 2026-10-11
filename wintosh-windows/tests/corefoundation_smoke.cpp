@@ -724,11 +724,11 @@ int main()
 	std::int64_t binary_uid_value = 0;
 	const bool binary_uid_ok = parsed_binary_uid != nullptr &&
 		darling_windows_CFNumberGetInteger(parsed_binary_uid, &binary_uid_value) && binary_uid_value == 7;
-	const auto mutable_array = darling_windows_CFArrayCreate(nullptr, 0);
+	const auto mutable_array = darling_windows_CFArrayCreateMutable(4);
 	const void* mutable_array_replacement[] = {data};
 	const void* mutable_array_alias_replacement = nullptr;
-	const auto mutable_dictionary = darling_windows_CFDictionaryCreate(nullptr, nullptr, 0);
-	const auto mutable_set = darling_windows_CFSetCreate(nullptr, 0);
+	const auto mutable_dictionary = darling_windows_CFDictionaryCreateMutable(4);
+	const auto mutable_set = darling_windows_CFSetCreateMutable(4);
 	const bool mutable_array_ok = darling_windows_CFArrayAppendValue(mutable_array, string) &&
 		darling_windows_CFArrayInsertValueAtIndex(mutable_array, 0, prefix) &&
 		darling_windows_CFArrayGetCount(mutable_array) == 2 &&

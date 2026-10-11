@@ -265,6 +265,75 @@ int wmain()
 			"INVALID_MACH_IPC_REQUEST";
 		std::cout << "BROKER_DISPOSITION_VALIDATION=" <<
 			(broker_disposition_validation ? "PASS" : "FAIL") << "\n";
+		auto send_envelope = [&](const darling::windows_host::MachIpcEnvelope& envelope) {
+			auto bytes = darling::windows_host::EncodeMachIpcEnvelope(envelope);
+			client.Write(std::string(bytes.begin(), bytes.end()));
+		};
+		auto receive_envelope = [&] {
+			const auto wire = client.Read();
+			return darling::windows_host::DecodeMachIpcEnvelope(
+				std::vector<std::uint8_t>(wire.begin(), wire.end()));
+		};
+		darling::windows_host::MachIpcEnvelope raw_allocate{
+			darling::windows_host::MachIpcOperation::Allocate, 0x7798, 0, 0, {}};
+		raw_allocate.session_token = session_token;
+		send_envelope(raw_allocate);
+		const auto raw_capability_response = receive_envelope();
+		const auto raw_capability = raw_capability_response.port_token;
+		if (raw_capability == 0) throw std::runtime_error("raw Mach IPC allocation failed");
+		darling::windows_host::MachIpcEnvelope make_send_once{
+			darling::windows_host::MachIpcOperation::Send, 0x779b, raw_capability, 0,
+			{0x10, 0x11, 0x12, 0x13}};
+		make_send_once.session_token = session_token;
+		make_send_once.port_descriptor_tokens = {raw_capability};
+		make_send_once.port_descriptor_dispositions = {21};
+		send_envelope(make_send_once);
+		const auto make_send_once_response = receive_envelope();
+		darling::windows_host::MachIpcEnvelope receive_make_send_once{
+			darling::windows_host::MachIpcOperation::Receive, 0x779c, raw_capability, 0, {}};
+		receive_make_send_once.session_token = session_token;
+		send_envelope(receive_make_send_once);
+		const auto receive_make_send_once_response = receive_envelope();
+		const bool make_send_once_ok = make_send_once_response.operation == darling::windows_host::MachIpcOperation::Send &&
+			receive_make_send_once_response.operation == darling::windows_host::MachIpcOperation::Receive;
+
+		darling::windows_host::MachIpcEnvelope make_send = make_send_once;
+		make_send.request_id = 0x779d;
+		make_send.port_descriptor_dispositions = {20};
+		send_envelope(make_send);
+		const auto make_send_response = receive_envelope();
+		darling::windows_host::MachIpcEnvelope receive_make_send = receive_make_send_once;
+		receive_make_send.request_id = 0x779e;
+		send_envelope(receive_make_send);
+		const auto receive_make_send_response = receive_envelope();
+
+		darling::windows_host::MachIpcEnvelope move_send = make_send;
+		move_send.request_id = 0x779f;
+		move_send.port_descriptor_dispositions = {17};
+		send_envelope(move_send);
+		const auto move_send_response = receive_envelope();
+		darling::windows_host::MachIpcEnvelope receive_move_send = receive_make_send_once;
+		receive_move_send.request_id = 0x77a0;
+		send_envelope(receive_move_send);
+		const auto receive_move_send_response = receive_envelope();
+		const bool make_send_ok = make_send_response.operation == darling::windows_host::MachIpcOperation::Send &&
+			receive_make_send_response.operation == darling::windows_host::MachIpcOperation::Receive;
+		const bool move_send_ok = move_send_response.operation == darling::windows_host::MachIpcOperation::Send &&
+			receive_move_send_response.operation == darling::windows_host::MachIpcOperation::Receive;
+
+		darling::windows_host::MachIpcEnvelope move_send_once = make_send_once;
+		move_send_once.request_id = 0x77a1;
+		move_send_once.port_descriptor_dispositions = {18};
+		send_envelope(move_send_once);
+		const auto move_send_once_response = receive_envelope();
+		darling::windows_host::MachIpcEnvelope receive_move_send_once = receive_make_send_once;
+		receive_move_send_once.request_id = 0x77a2;
+		send_envelope(receive_move_send_once);
+		const auto receive_move_send_once_response = receive_envelope();
+		const bool move_send_once_ok = move_send_once_response.operation == darling::windows_host::MachIpcOperation::Send &&
+			receive_move_send_once_response.operation == darling::windows_host::MachIpcOperation::Receive;
+		std::cout << "BROKER_MACH_MOVE_DISPOSITIONS=" <<
+			(make_send_once_ok && make_send_ok && move_send_ok && move_send_once_ok ? "PASS" : "FAIL") << "\n";
 		darling::windows_host::NamedPipeRpcClient transfer_client =
 			darling::windows_host::NamedPipeRpcClient::Connect(pipe_name);
 		const auto transfer_session = darling::windows_host::OpenMachIpcSession(transfer_client);

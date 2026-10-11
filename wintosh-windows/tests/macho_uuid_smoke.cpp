@@ -46,10 +46,22 @@ int wmain()
 	header.command_count = 2;
 	header.command_bytes = sizeof(command) + sizeof(LinkeditCommand);
 	const LinkeditCommand signature{darling::windows_host::LC_CODE_SIGNATURE, 16,
-		static_cast<std::uint32_t>(sizeof(header) + sizeof(command) + sizeof(LinkeditCommand)), 12};
-	const std::array<std::uint8_t, 12> super_blob{
-		0xfa, 0xde, 0x0c, 0xc0, 0x00, 0x00, 0x00, 0x0c,
-		0x00, 0x00, 0x00, 0x00};
+		static_cast<std::uint32_t>(sizeof(header) + sizeof(command) + sizeof(LinkeditCommand)), 64};
+	std::array<std::uint8_t, 64> super_blob{};
+	const auto put_be32 = [&super_blob](std::size_t offset, std::uint32_t value) {
+		super_blob[offset] = static_cast<std::uint8_t>(value >> 24);
+		super_blob[offset + 1] = static_cast<std::uint8_t>(value >> 16);
+		super_blob[offset + 2] = static_cast<std::uint8_t>(value >> 8);
+		super_blob[offset + 3] = static_cast<std::uint8_t>(value);
+	};
+	put_be32(0, 0xfade0cc0u);
+	put_be32(4, 64);
+	put_be32(8, 1);
+	put_be32(12, 0);
+	put_be32(16, 20);
+	put_be32(20, 0xfade0c02u);
+	put_be32(24, 44);
+	put_be32(28, 0x00020400u);
 	{
 		std::ofstream output(path, std::ios::binary);
 		output.write(reinterpret_cast<const char*>(&header), sizeof(header));

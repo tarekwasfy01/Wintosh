@@ -1262,6 +1262,9 @@ bool MachOImage::HasValidCodeSignatureSuperBlob() const noexcept
 		if (blob_offset > length || length - blob_offset < 8) return false;
 		const auto blob_length = read_be32(blob + blob_offset + 4);
 		if (blob_length < 8 || blob_length > length - blob_offset) return false;
+		if (read_be32(blob + 12 + index * 8) == 0 &&
+			(blob_length < 44 || read_be32(blob + blob_offset) != 0xfade0c02u))
+			return false;
 	}
 	return true;
 }

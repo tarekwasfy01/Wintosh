@@ -19,8 +19,9 @@ MIG, OOL lifetime, and arbitrary Darwin IPC compatibility remain open.
 
 Mach-O code signatures now also have a structural gate:
 `HasValidCodeSignatureSuperBlob()` validates the embedded SuperBlob magic,
-length, count, and nested blob bounds. This is format validation only; it does
-not validate Apple CodeDirectory hashes, CMS signatures, or authenticity.
+length, count, nested blob bounds, and the CodeDirectory magic/minimum
+structure when that slot is present. This is format validation only; it does
+not validate CodeDirectory hashes, CMS signatures, or authenticity.
 
 | Area | Current state | Evidence / limitation |
 |---|---|---|

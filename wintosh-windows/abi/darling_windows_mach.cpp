@@ -767,13 +767,13 @@ extern "C" darling_kern_return_t darling_windows_thread_set_state(
 	}
 	if (flavor == darling_x86_float_state64_flavor) {
 		const auto* source = static_cast<const darling_x86_float_state64*>(state);
-		// Darwin places MXCSR at byte 32 (after its two reserved words);
-		// Windows XSAVE_FORMAT places it at byte 24.  Start with this
-		// independently valid control register instead of passing Darwin's
-		// reserved/tag-word representation wholesale to SetThreadContext.
-		std::uint32_t mxcsr = 0;
-		std::memcpy(&mxcsr, reinterpret_cast<const std::uint8_t*>(source) + 32, sizeof(mxcsr));
-		context.FltSave.MxCsr = mxcsr;
+		// Darwin's 524-byte x86_FLOAT_STATE64 has two leading reserved words,
+		// followed by the Windows-compatible 512-byte XSAVE_FORMAT payload.
+		// Preserve the complete x87/MMX/SSE state instead of reducing the
+		// foreign-thread writeback to MXCSR alone.
+		std::memcpy(&context.FltSave,
+			reinterpret_cast<const std::uint8_t*>(source) + 8,
+			sizeof(context.FltSave));
 		const BOOL applied = SetThreadContext(handle, &context);
 		ResumeThread(handle); CloseHandle(handle);
 		return applied ? 0 : 4;

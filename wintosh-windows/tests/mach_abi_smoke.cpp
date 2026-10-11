@@ -21,6 +21,12 @@ int main()
 	static_assert(sizeof(darling_mach_msg_ool_descriptor) == 24);
 	static_assert(sizeof(darling_mach_msg_trailer) == 8);
 	const auto task = darling_windows_mach_task_self();
+	darling_mach_port_name_t current_task = 0;
+	if (darling_windows_task_for_pid(darling_windows_mach_host_self(),
+		static_cast<DWORD>(GetCurrentProcessId()), &current_task) != 0 || current_task != task ||
+		darling_windows_task_for_pid(0, static_cast<DWORD>(GetCurrentProcessId()), &current_task) == 0 ||
+		darling_windows_task_for_pid(darling_windows_mach_host_self(), 0, &current_task) == 0)
+		return 1;
 	const auto thread = darling_windows_mach_thread_self();
 	darling_thread_precedence_policy_info precedence{};
 	darling_thread_time_constraint_policy_info time_constraint{100, 10, 20, 1};

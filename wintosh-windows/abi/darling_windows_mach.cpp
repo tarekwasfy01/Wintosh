@@ -216,6 +216,23 @@ extern "C" darling_mach_port_name_t darling_windows_mach_host_self()
 	return 1;
 }
 
+extern "C" darling_kern_return_t darling_windows_task_for_pid(
+	darling_mach_port_name_t host, std::uint32_t pid, darling_mach_port_name_t* task)
+{
+	if (host == 0 || pid == 0 || task == nullptr || host != darling_windows_mach_host_self())
+		return 4;
+	if (pid == GetCurrentProcessId()) {
+		*task = darling_windows_mach_task_self();
+		return 0;
+	}
+	const HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+	if (process == nullptr)
+		return 4;
+	CloseHandle(process);
+	*task = static_cast<darling_mach_port_name_t>(pid);
+	return 0;
+}
+
 extern "C" darling_kern_return_t darling_windows_thread_policy_set(
 	darling_mach_port_name_t thread, std::uint32_t flavor, const void* policy,
 	std::uint32_t count)

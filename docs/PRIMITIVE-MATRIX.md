@@ -532,6 +532,12 @@ the bounded memory snapshot and publishes both only after both phases succeed.
 It deliberately fails when the host exposes no queryable regions; therefore a
 successful Darwin task snapshot still requires a host with permitted
 cross-process VM inspection.
+
+The Mach ABI now exposes `task_for_pid` through the Windows host symbol table.
+It validates the host token and PID, probes `PROCESS_QUERY_LIMITED_INFORMATION`,
+and represents an accessible Windows PID as the corresponding minimal Darwin
+task name. This establishes task lookup, but not Darwin entitlement/security
+semantics or a transferable Mach task-port object.
 The same boundary now exposes `AllocateMemory`, `ProtectMemory`, and
 `FreeMemory`, completing the basic remote-VM operation shape needed by a future
 restore path. The smoke covers invalid-operation rejection; successful remote

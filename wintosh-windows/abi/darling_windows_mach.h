@@ -142,6 +142,8 @@ constexpr darling_kern_return_t darling_mach_send_queue_full = 0x10004002;
 extern "C" darling_mach_port_name_t darling_windows_mach_task_self();
 extern "C" darling_mach_port_name_t darling_windows_mach_thread_self();
 extern "C" darling_mach_port_name_t darling_windows_mach_host_self();
+extern "C" darling_kern_return_t darling_windows_task_for_pid(
+	darling_mach_port_name_t host, std::uint32_t pid, darling_mach_port_name_t* task);
 constexpr std::uint32_t darling_thread_extended_policy = 1;
 constexpr std::uint32_t darling_thread_time_constraint_policy = 2;
 constexpr std::uint32_t darling_thread_precedence_policy = 3;

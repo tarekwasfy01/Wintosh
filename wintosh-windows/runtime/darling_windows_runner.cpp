@@ -286,7 +286,15 @@ int wmain(int argc, wchar_t** argv)
 					(header.cpu_type == darling::windows_host::CPU_TYPE_ARM64 ? L"arm64" : L"x86_64")) << L"\n"
 				<< L"file_type=" << header.file_type << L"\n"
 				<< L"segments=" << inspected.Segments().size() << L"\n"
+				<< L"sections=" << inspected.Sections().size() << L"\n"
 				<< L"dependencies=" << inspected.Dependencies().size() << L"\n";
+			for (const auto& section : inspected.Sections())
+				std::wcout << L"section="
+					<< std::wstring(section.segment_name.begin(), section.segment_name.end())
+					<< L"," << std::wstring(section.section_name.begin(), section.section_name.end())
+					<< L" address=0x" << std::hex << section.address
+					<< L" size=0x" << section.size
+					<< L" file_offset=0x" << section.file_offset << std::dec << L"\n";
 			for (const auto& dependency : inspected.Dependencies())
 				std::wcout << L"dependency=" << std::wstring(dependency.begin(), dependency.end()) << L"\n";
 			const auto graph = darling::windows_host::DylibGraph::Load(

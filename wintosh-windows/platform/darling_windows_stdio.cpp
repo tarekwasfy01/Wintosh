@@ -5682,6 +5682,9 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 	if (std::strcmp(name, "_ffs") == 0 || std::strcmp(name, "ffs") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_ffs);
 	}
+	if (std::strcmp(name, "_fls") == 0 || std::strcmp(name, "fls") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_fls);
+	}
 	if (std::strcmp(name, "_strncasecmp") == 0 || std::strcmp(name, "strncasecmp") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_strncasecmp);
 	}
@@ -8094,6 +8097,15 @@ extern "C" int darling_windows_ffs(int value)
 	const auto bits = static_cast<unsigned int>(value);
 	int position = 1;
 	for (auto mask = 1u; (bits & mask) == 0; mask <<= 1) ++position;
+	return position;
+}
+
+extern "C" int darling_windows_fls(int value)
+{
+	if (value == 0) return 0;
+	const auto bits = static_cast<unsigned int>(value);
+	int position = 0;
+	for (auto remaining = bits; remaining != 0; remaining >>= 1) ++position;
 	return position;
 }
 

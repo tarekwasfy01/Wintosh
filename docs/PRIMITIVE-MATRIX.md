@@ -580,6 +580,10 @@ The same foreign allocation path now also verifies `mach_vm_protect` for a
 read-only transition followed by restoration to read/write. This confirms the
 basic protection mapping, but not Darwin maximum-protection inheritance or
 copy-on-write behavior.
+The x64 smoke also verifies `mach_vm_copy` between two remote allocations by
+comparing the copied bytes after a remote read. This is an explicit copy
+operation; it must not be confused with Darwin VM copy-on-write sharing or
+snapshot rollback.
 The x64 Mach smoke now consumes every returned `task_threads` entry through
 `thread_get_state` before deallocation, proving the enumeration-to-thread-state
 chain for the current task. This still does not create durable Mach thread-port

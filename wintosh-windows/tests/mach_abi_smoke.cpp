@@ -139,6 +139,34 @@ int main()
 		cleanup_child();
 		return 1;
 	}
+	darling_mach_vm_address_t copy_source = 0;
+	darling_mach_vm_address_t copy_destination = 0;
+	bool copy_ok = darling_windows_mach_vm_allocate(child_task, &copy_source,
+		remote_page_size, 0) == 0 &&
+		darling_windows_mach_vm_allocate(child_task, &copy_destination,
+		remote_page_size, 0) == 0 &&
+		darling_windows_mach_vm_write(child_task, copy_source, remote_value.data(),
+		remote_value.size()) == 0 &&
+		darling_windows_mach_vm_copy(child_task, copy_source, remote_value.size(),
+		copy_destination) == 0;
+	if (copy_ok) {
+		darling_mach_vm_address_t copy_read_data = 0;
+		darling_mach_vm_size_t copy_read_size = 0;
+		copy_ok = darling_windows_mach_vm_read(child_task, copy_destination,
+			remote_value.size(), &copy_read_data, &copy_read_size) == 0 &&
+			copy_read_data != 0 && copy_read_size == remote_value.size() &&
+			std::memcmp(reinterpret_cast<const void*>(static_cast<std::uintptr_t>(copy_read_data)),
+				remote_value.data(), remote_value.size()) == 0 &&
+			darling_windows_mach_vm_deallocate(child_task, copy_read_data, copy_read_size) == 0;
+	}
+	if (copy_source != 0)
+		(void)darling_windows_mach_vm_deallocate(child_task, copy_source, remote_page_size);
+	if (copy_destination != 0)
+		(void)darling_windows_mach_vm_deallocate(child_task, copy_destination, remote_page_size);
+	if (!copy_ok) {
+		cleanup_child();
+		return 1;
+	}
 	cleanup_child();
 	PROCESS_INFORMATION terminated_child{};
 	wchar_t terminate_command[] = L"cmd.exe /d /c ping 127.0.0.1 -n 30 > nul";

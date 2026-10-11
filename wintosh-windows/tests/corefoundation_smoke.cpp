@@ -612,6 +612,9 @@ int main()
 		equal_string) == number;
 	auto loop = darling_windows_CFRunLoopGetCurrent();
 	const bool runloop_main_ok = darling_windows_CFRunLoopGetMain() != nullptr;
+	const bool runloop_time_boundary_ok =
+		darling_windows_CFRunLoopRunInMode(std::numeric_limits<double>::quiet_NaN(), false) == -1 &&
+		darling_windows_CFRunLoopRunInMode(std::numeric_limits<double>::infinity(), false) == -1;
 	bool loop_started = false;
 	darling_windows_CFRunLoopRef worker_loop = nullptr;
 	std::thread loop_thread([&] {
@@ -623,7 +626,7 @@ int main()
 		darling_windows_CFRunLoopIsRunning(worker_loop);
 	darling_windows_CFRunLoopStop(worker_loop);
 	loop_thread.join();
-	const bool runloop_ok = runloop_main_ok && loop_started && !darling_windows_CFRunLoopIsRunning(worker_loop) &&
+	const bool runloop_ok = runloop_main_ok && runloop_time_boundary_ok && loop_started && !darling_windows_CFRunLoopIsRunning(worker_loop) &&
 		!darling_windows_CFRunLoopIsRunning(loop);
 	int callback_value = 7;
 	runloop_callback_value = 0;
@@ -650,8 +653,13 @@ int main()
 	int timer_value = 0;
 	const bool timer_queued = darling_windows_CFRunLoopPerformOneShotTimer(
 		loop, 0.01, RunLoopCallback, &callback_value);
+	const bool timer_boundary_ok =
+		!darling_windows_CFRunLoopPerformOneShotTimer(loop,
+			std::numeric_limits<double>::quiet_NaN(), RunLoopCallback, &callback_value) &&
+		!darling_windows_CFRunLoopPerformOneShotTimer(loop,
+			std::numeric_limits<double>::infinity(), RunLoopCallback, &callback_value);
 	darling_windows_CFRunLoopRunInMode(1.0, true);
-	const bool timer_ok = timer_queued && runloop_callback_value == 7;
+	const bool timer_ok = timer_queued && timer_boundary_ok && runloop_callback_value == 7;
 	const auto center = darling_windows_CFNotificationCenterGetLocal();
 	const int notification_object = 1;
 	const bool notification_ok = darling_windows_CFNotificationCenterAddObserver(

@@ -314,6 +314,11 @@ The same scalar family now rejects non-finite and out-of-range floating-point
 to-int64 conversions without invoking undefined behavior, and gives NaN number
 comparisons a deterministic unordered result.
 
+RunLoop mode and one-shot timer durations now reject NaN and infinite values
+before entering `std::chrono`; the CoreFoundation smoke covers both invalid
+mode and timer inputs. Real CFRunLoop sources, modes, cancellation, and timer
+invalidations remain outside this minimal adapter.
+
 The Release Clang build currently passes 60/60 CTest entries, including the
 Mach-O printf bundle end-to-end test. The latest five local commits are ahead
 of the configured remote and have not been pushed in this work cycle.

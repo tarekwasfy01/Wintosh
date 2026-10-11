@@ -2489,7 +2489,7 @@ extern "C" darling_windows_CFRunLoopRef darling_windows_CFRunLoopGetMain()
 
 extern "C" int darling_windows_CFRunLoopRunInMode(double seconds, bool return_after_source)
 {
-	if (seconds < 0) return -1;
+	if (!std::isfinite(seconds) || seconds < 0) return -1;
 	auto& loop = current_run_loop;
 	const auto state = loop.state;
 	std::unique_lock lock(state->mutex);
@@ -2562,7 +2562,7 @@ extern "C" bool darling_windows_CFRunLoopPerformOneShotTimer(
 	darling_windows_CFRunLoopRef value, double seconds,
 	darling_windows_CFRunLoopBlock block, void* context)
 {
-	if (value == nullptr || block == nullptr || seconds < 0) return false;
+	if (value == nullptr || block == nullptr || !std::isfinite(seconds) || seconds < 0) return false;
 	auto* loop = static_cast<RunLoop*>(value);
 	const auto state = loop->state;
 	std::thread([state, seconds, block, context] {

@@ -59,6 +59,8 @@ following families with Windows-backed implementations:
 - The error introspection pair `strerrorname_np` and `strerrordesc_np` now
   covers a broad common Darwin errno subset; descriptions remain bounded to
   the currently mapped stable messages and unknown values return `nullptr`.
+- BSD/Darwin `fnmatch` is now available with `*`, `?`, bracket classes,
+  pathname boundaries, leading-period handling, and escaped-character support.
 - Legacy BSD IPv4 conversion helpers `inet_addr`, `inet_aton`, and
   `inet_network` are now Windows-backed and host-symbol-resolvable, including
   invalid-input handling and network-byte-order coverage.

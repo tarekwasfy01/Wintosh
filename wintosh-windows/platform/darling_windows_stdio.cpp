@@ -6074,6 +6074,9 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 	if (std::strcmp(name, "_strsignal") == 0 || std::strcmp(name, "strsignal") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_strsignal);
 	}
+	if (std::strcmp(name, "_fnmatch") == 0 || std::strcmp(name, "fnmatch") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_fnmatch);
+	}
 	if (std::strcmp(name, "strerrorname_np") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_strerrorname_np);
 	}
@@ -8832,6 +8835,69 @@ extern "C" const char* darling_windows_strerrordesc_np(int error_number)
 	case 63: return "No route to host";
 	default: return nullptr;
 	}
+}
+
+namespace {
+constexpr int darling_fnm_pathname = 0x01;
+constexpr int darling_fnm_period = 0x02;
+constexpr int darling_fnm_noescape = 0x04;
+
+bool DarlingFnmatchClass(const char*& pattern, char value)
+{
+	bool inverted = false;
+	if (*pattern == '!' || *pattern == '^') { inverted = true; ++pattern; }
+	bool matched = false;
+	char previous = '\0';
+	while (*pattern != '\0' && *pattern != ']') {
+		if (*pattern == '-' && previous != '\0' && pattern[1] != '\0' && pattern[1] != ']') {
+			const char upper = pattern[1];
+			if (value >= previous && value <= upper) matched = true;
+			pattern += 2; previous = upper; continue;
+		}
+		if (*pattern == value) matched = true;
+		previous = *pattern++;
+	}
+	if (*pattern == ']') ++pattern;
+	return inverted ? !matched : matched;
+}
+
+bool DarlingFnmatchImpl(const char* pattern, const char* value, int flags, bool at_start)
+{
+	if ((flags & darling_fnm_period) != 0 && at_start && value[0] == '.' &&
+		pattern[0] != '.') return false;
+	while (*pattern != '\0') {
+		if (*pattern == '*') {
+			while (*pattern == '*') ++pattern;
+			if (*pattern == '\0') return (flags & darling_fnm_pathname) == 0 || std::strchr(value, '/') == nullptr;
+			for (const char* cursor = value;; ++cursor) {
+				if ((flags & darling_fnm_pathname) != 0 && cursor != value && cursor[-1] == '/') break;
+				if (DarlingFnmatchImpl(pattern, cursor, flags, false)) return true;
+				if (*cursor == '\0') break;
+			}
+			return false;
+		}
+		if (*pattern == '?' && *value != '\0') {
+			if ((flags & darling_fnm_pathname) != 0 && *value == '/') return false;
+			++pattern; ++value; at_start = false; continue;
+		}
+		if (*pattern == '[' && *value != '\0') {
+			const char* class_cursor = pattern + 1;
+			if (DarlingFnmatchClass(class_cursor, *value)) { pattern = class_cursor; ++value; at_start = false; continue; }
+			return false;
+		}
+		if (*pattern == '\\' && (flags & darling_fnm_noescape) == 0) ++pattern;
+		if (*pattern == '\0' || *pattern != *value) return false;
+		if ((flags & darling_fnm_period) != 0 && at_start && *value == '.' && *pattern != '.') return false;
+		++pattern; if (*value != '\0') ++value; at_start = false;
+	}
+	return *value == '\0';
+}
+}
+
+extern "C" int darling_windows_fnmatch(const char* pattern, const char* value, int flags)
+{
+	if (pattern == nullptr || value == nullptr) return 1;
+	return DarlingFnmatchImpl(pattern, value, flags, true) ? 0 : 1;
 }
 
 extern "C" const char* darling_windows_strsignal(int signal_number)

@@ -912,6 +912,16 @@ int main()
 		std::cerr << "HOST_API_SMOKE_ERROR=strsignal\n";
 		return 1;
 	}
+	const bool fnmatch_ok = darling_windows_fnmatch("*.txt", "report.txt", 0) == 0 &&
+		darling_windows_fnmatch("*.txt", "report.bin", 0) != 0 &&
+		darling_windows_fnmatch("a[0-9].txt", "a7.txt", 0) == 0 &&
+		darling_windows_fnmatch("a/*.txt", "a/b.txt", 0x01) == 0 &&
+		darling_windows_fnmatch("*", ".hidden", 0x02) != 0 &&
+		darling_windows_fnmatch(nullptr, "x", 0) != 0 && darling_windows_host_symbol("fnmatch") != 0;
+	if (!fnmatch_ok) {
+		std::cerr << "HOST_API_SMOKE_ERROR=fnmatch\n";
+		return 1;
+	}
 	IN_ADDR legacy_ipv4{};
 	const bool legacy_inet_ok = darling_windows_inet_addr("127.0.0.1") == htonl(0x7f000001u) &&
 		darling_windows_inet_aton("192.0.2.17", &legacy_ipv4) == 1 &&

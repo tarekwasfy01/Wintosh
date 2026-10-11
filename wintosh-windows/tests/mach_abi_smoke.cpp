@@ -262,6 +262,7 @@ int main()
 				darling_windows_task_info(moved, darling_task_basic_info_flavor,
 					&info, &info_count) != 0;
 		}(released_task) &&
+		darling_windows_mach_port_deallocate(task, released_task) == 0 &&
 		darling_windows_mach_port_deallocate(task, released_task) == 0;
 	darling_task_basic_info released_info{};
 	std::uint32_t released_info_count = darling_task_basic_info_count;

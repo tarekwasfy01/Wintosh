@@ -8936,8 +8936,18 @@ bool DarlingFnmatchImpl(const char* pattern, const char* value, int flags, bool 
 		}
 		if (*pattern == '[' && *value != '\0') {
 			const char* class_cursor = pattern + 1;
-			if (DarlingFnmatchClass(class_cursor, *value, flags)) { pattern = class_cursor; ++value; at_start = false; continue; }
-			return false;
+			if (std::strchr(class_cursor, ']') != nullptr) {
+				if (DarlingFnmatchClass(class_cursor, *value, flags)) {
+					pattern = class_cursor; ++value; at_start = false; continue;
+				}
+				return false;
+			}
+			while (*pattern != '\0' && *value != '\0' &&
+				DarlingFnmatchFold(*pattern, flags) == DarlingFnmatchFold(*value, flags)) {
+				++pattern;
+				++value;
+			}
+			return *pattern == '\0' && *value == '\0';
 		}
 		if (*pattern == '\\' && (flags & darling_fnm_noescape) == 0) ++pattern;
 		if (*pattern == '\0' || DarlingFnmatchFold(*pattern, flags) != DarlingFnmatchFold(*value, flags)) return false;

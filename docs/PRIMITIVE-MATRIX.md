@@ -844,6 +844,8 @@ device-path-specific leading-directory semantics remain open.
 ASCII POSIX bracket classes `digit`, `alpha`, `alnum`, `lower`, `upper`,
 `xdigit`, `blank`, `space`, `cntrl`, `graph`, `print`, and `punct` are now
 recognized in `[[:class:]]` expressions.
+Unclosed bracket expressions are treated as literal `[` patterns, matching the
+Darwin/POSIX fallback behavior; locale-specific parsing remains open.
 The path-string family also includes `basename` and `dirname` for common
 slash-separated, backslash-separated, and drive-letter cases; UNC/device-path
 edge semantics remain open.

@@ -933,6 +933,8 @@ int main()
 		darling_windows_fnmatch("[[:graph:]]", "!", 0) == 0 &&
 		darling_windows_fnmatch("[[:print:]]", " ", 0) == 0 &&
 		darling_windows_fnmatch("[[:punct:]]", "!", 0) == 0 &&
+		darling_windows_fnmatch("[abc", "[abc", 0) == 0 &&
+		darling_windows_fnmatch("[abc", "a", 0) != 0 &&
 		darling_windows_fnmatch(nullptr, "x", 0) != 0 && darling_windows_host_symbol("fnmatch") != 0;
 	if (!fnmatch_ok) {
 		std::cerr << "HOST_API_SMOKE_ERROR=fnmatch\n";

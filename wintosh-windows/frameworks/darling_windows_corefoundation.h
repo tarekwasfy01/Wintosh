@@ -144,6 +144,8 @@ extern "C" darling_windows_CFArrayRef darling_windows_CFArrayCreateMutable(
 	darling_windows_CFIndex capacity);
 extern "C" darling_windows_CFArrayRef darling_windows_CFArrayCreateCopy(
 	darling_windows_CFArrayRef value);
+extern "C" darling_windows_CFArrayRef darling_windows_CFArrayCreateMutableCopy(
+	darling_windows_CFIndex capacity, darling_windows_CFArrayRef value);
 extern "C" darling_windows_CFIndex darling_windows_CFArrayGetCount(
 	darling_windows_CFArrayRef value);
 extern "C" darling_windows_CFTypeID darling_windows_CFArrayGetTypeID();
@@ -187,6 +189,8 @@ extern "C" darling_windows_CFDictionaryRef darling_windows_CFDictionaryCreateMut
 	darling_windows_CFIndex capacity);
 extern "C" darling_windows_CFDictionaryRef darling_windows_CFDictionaryCreateCopy(
 	darling_windows_CFDictionaryRef value);
+extern "C" darling_windows_CFDictionaryRef darling_windows_CFDictionaryCreateMutableCopy(
+	darling_windows_CFIndex capacity, darling_windows_CFDictionaryRef value);
 extern "C" darling_windows_CFIndex darling_windows_CFDictionaryGetCount(
 	darling_windows_CFDictionaryRef value);
 extern "C" darling_windows_CFTypeID darling_windows_CFDictionaryGetTypeID();
@@ -212,6 +216,8 @@ extern "C" darling_windows_CFSetRef darling_windows_CFSetCreateMutable(
 	darling_windows_CFIndex capacity);
 extern "C" darling_windows_CFSetRef darling_windows_CFSetCreateCopy(
 	darling_windows_CFSetRef value);
+extern "C" darling_windows_CFSetRef darling_windows_CFSetCreateMutableCopy(
+	darling_windows_CFIndex capacity, darling_windows_CFSetRef value);
 extern "C" darling_windows_CFIndex darling_windows_CFSetGetCount(darling_windows_CFSetRef value);
 extern "C" darling_windows_CFTypeID darling_windows_CFSetGetTypeID();
 extern "C" bool darling_windows_CFSetContainsValue(darling_windows_CFSetRef value,

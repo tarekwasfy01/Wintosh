@@ -83,6 +83,11 @@ container APIs. Capacity is a non-binding reservation hint in this Windows
 bridge; allocator callbacks and full CoreFoundation object semantics remain
 outside this minimal ABI.
 
+Mutable-copy constructors `CFArrayCreateMutableCopy`,
+`CFDictionaryCreateMutableCopy`, and `CFSetCreateMutableCopy` now preserve
+independent retained container state and pass mutation checks on x64 and
+Win32. The capacity argument remains a non-binding reservation hint.
+
 ## Still required for broad compatibility
 
 The CoreFoundation string family now also includes the numeric accessors

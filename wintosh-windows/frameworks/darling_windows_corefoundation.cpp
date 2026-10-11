@@ -1364,6 +1364,13 @@ extern "C" darling_windows_CFArrayRef darling_windows_CFArrayCreateCopy(
 		static_cast<darling_windows_CFIndex>(object->array.size()));
 }
 
+extern "C" darling_windows_CFArrayRef darling_windows_CFArrayCreateMutableCopy(
+	darling_windows_CFIndex capacity, darling_windows_CFArrayRef value)
+{
+	if (capacity < 0) return nullptr;
+	return darling_windows_CFArrayCreateCopy(value);
+}
+
 extern "C" darling_windows_CFTypeRef darling_windows_CFArrayGetValueAtIndex(
 	darling_windows_CFArrayRef value, darling_windows_CFIndex index)
 {
@@ -1623,6 +1630,13 @@ extern "C" darling_windows_CFDictionaryRef darling_windows_CFDictionaryCreateCop
 		static_cast<darling_windows_CFIndex>(keys.size()));
 }
 
+extern "C" darling_windows_CFDictionaryRef darling_windows_CFDictionaryCreateMutableCopy(
+	darling_windows_CFIndex capacity, darling_windows_CFDictionaryRef value)
+{
+	if (capacity < 0) return nullptr;
+	return darling_windows_CFDictionaryCreateCopy(value);
+}
+
 extern "C" darling_windows_CFTypeRef darling_windows_CFDictionaryGetValue(
 	darling_windows_CFDictionaryRef value, const void* key)
 {
@@ -1751,6 +1765,13 @@ extern "C" darling_windows_CFSetRef darling_windows_CFSetCreateCopy(
 	if (object == nullptr || object->kind != Kind::Set) return nullptr;
 	return darling_windows_CFSetCreate(object->array.data(),
 		static_cast<darling_windows_CFIndex>(object->array.size()));
+}
+
+extern "C" darling_windows_CFSetRef darling_windows_CFSetCreateMutableCopy(
+	darling_windows_CFIndex capacity, darling_windows_CFSetRef value)
+{
+	if (capacity < 0) return nullptr;
+	return darling_windows_CFSetCreateCopy(value);
 }
 
 extern "C" bool darling_windows_CFSetContainsValue(darling_windows_CFSetRef value,

@@ -725,10 +725,13 @@ int main()
 	const bool binary_uid_ok = parsed_binary_uid != nullptr &&
 		darling_windows_CFNumberGetInteger(parsed_binary_uid, &binary_uid_value) && binary_uid_value == 7;
 	const auto mutable_array = darling_windows_CFArrayCreateMutable(4);
+	const auto mutable_array_copy = darling_windows_CFArrayCreateMutableCopy(4, mutable_array);
 	const void* mutable_array_replacement[] = {data};
 	const void* mutable_array_alias_replacement = nullptr;
 	const auto mutable_dictionary = darling_windows_CFDictionaryCreateMutable(4);
+	const auto mutable_dictionary_copy = darling_windows_CFDictionaryCreateMutableCopy(4, mutable_dictionary);
 	const auto mutable_set = darling_windows_CFSetCreateMutable(4);
+	const auto mutable_set_copy = darling_windows_CFSetCreateMutableCopy(4, mutable_set);
 	const bool mutable_array_ok = darling_windows_CFArrayAppendValue(mutable_array, string) &&
 		darling_windows_CFArrayInsertValueAtIndex(mutable_array, 0, prefix) &&
 		darling_windows_CFArrayGetCount(mutable_array) == 2 &&
@@ -745,6 +748,10 @@ int main()
 		darling_windows_CFArrayAppendValue(mutable_array, string) &&
 		darling_windows_CFArrayAppendArray(mutable_array, mutable_array) &&
 		darling_windows_CFArrayGetCount(mutable_array) == 2;
+	const bool mutable_copy_ok = mutable_array_copy != nullptr && mutable_dictionary_copy != nullptr &&
+		mutable_set_copy != nullptr && darling_windows_CFArrayAppendValue(mutable_array_copy, string) &&
+		darling_windows_CFDictionarySetValue(mutable_dictionary_copy, string, number) &&
+		darling_windows_CFSetAddValue(mutable_set_copy, string);
 	const bool mutable_dictionary_ok = darling_windows_CFDictionarySetValue(mutable_dictionary, string, number) &&
 		darling_windows_CFDictionaryContainsKey(mutable_dictionary, string) &&
 		darling_windows_CFDictionarySetValue(mutable_dictionary, string, real_number) &&
@@ -858,8 +865,11 @@ int main()
 	darling_windows_CFRelease(parsed_binary_real);
 	darling_windows_CFRelease(parsed_binary_uid);
 	darling_windows_CFRelease(mutable_array);
+	darling_windows_CFRelease(mutable_array_copy);
 	darling_windows_CFRelease(mutable_dictionary);
+	darling_windows_CFRelease(mutable_dictionary_copy);
 	darling_windows_CFRelease(mutable_set);
+	darling_windows_CFRelease(mutable_set_copy);
 	darling_windows_CFRelease(escaped_plist);
 	darling_windows_CFRelease(escaped_dictionary);
 	darling_windows_CFRelease(escaped_string);
@@ -878,7 +888,7 @@ int main()
 	darling_windows_CFRelease(parsed_binary_extended);
 	darling_windows_CFRelease(parsed_binary_data);
 	darling_windows_CFRelease(string);
-	if (!dictionary_hash_ok || !set_hash_ok) return 1;
+	if (!dictionary_hash_ok || !set_hash_ok || !mutable_copy_ok) return 1;
 	std::cout << "DARWIN_COREF_FOUNDATION=\"" <<
 		(string_ok && formatted_string_ok && substring_ok && string_match_ok && string_find_ok && equal_ok && semantic_lookup_ok && collection_equal_ok && array_search_ok && data_ok && data_slice_ok && array_ok && array_values_ok && number_ok && real_number_ok && number_conversion_ok && dictionary_ok && dictionary_values_ok && set_ok && set_values_ok && date_url_ok && url_xml_ok && scalar_ok && runloop_ok && callback_ok && timer_ok && drain_sources_ok && notification_ok && delivered && plist_ok && array_plist_ok && data_plist_ok && date_plist_ok && real_plist_ok && escaping_ok && plist_parse_ok && plist_dict_parse_ok && plist_data_parse_ok && plist_date_parse_ok && plist_fractional_date_ok && plist_offset_date_ok && binary_plist_ok && binary_dictionary_ok && binary_utf16_ok && binary_extended_ok && binary_data_ok && binary_date_ok && binary_real_ok && binary_uid_ok && mutable_array_ok && mutable_dictionary_ok && mutable_set_ok && mutable_data_ok ? "PASS" : "FAIL") << "\n";
 	if (!string_number_ok || !system_encoding_ok || !maximum_encoding_size_ok || !mutable_creation_ok || !find_replace_ok || !scoped_find_replace_ok || !unicode_replace_ok || !unicode_bytes_ok || !utf16_characters_ok || !utf16_character_at_index_ok || !backwards_find_ok || !unicode_find_range_ok || !pascal_rejection_ok || !characters_creation_ok || !filesystem_string_ok || !filesystem_representation_ok || !string_split_ok) return 1;

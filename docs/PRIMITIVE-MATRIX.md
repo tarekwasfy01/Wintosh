@@ -772,6 +772,10 @@ for arrays, dictionaries, and sets. Their capacity argument is validated but
 is not a hard allocation limit; the existing mutation, ownership, and
 collection-operation tests pass on both x64 and Win32.
 
+Mutable-copy entry points for the same three container families are also
+covered; each returned copy can be mutated independently while retaining the
+existing ownership behavior.
+
 The libc string/allocation family now also covers `reallocarray`,
 `reallocarrayf`, and `strsep`. The array helpers reject multiplication
 overflow before calling the Windows heap, while `strsep` preserves empty

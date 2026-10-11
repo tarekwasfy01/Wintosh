@@ -7,6 +7,7 @@
  */
 
 #include "darling_windows_macho.h"
+#include "darling_windows_abi_bridge.h"
 #include "darling_windows_tlv.h"
 
 #include <algorithm>
@@ -2086,7 +2087,7 @@ void MachOImage::ExecuteEntryNoArgs(const Mapping& mapping) const
 	}
 	FlushInstructionCache(GetCurrentProcess(),
 		reinterpret_cast<void*>(mapping.EntryAddress()), 1);
-	using EntryFunction = void (*)();
+	using EntryFunction = abi::GuestVoidFn;
 	auto entry = reinterpret_cast<EntryFunction>(mapping.EntryAddress());
 	entry();
 }
@@ -2109,7 +2110,7 @@ void MachOImage::ExecuteInitializers(const Mapping& mapping) const
 				continue;
 			FlushInstructionCache(GetCurrentProcess(),
 				reinterpret_cast<void*>(function_address), 1);
-			using Initializer = void (*)();
+			using Initializer = abi::GuestVoidFn;
 			auto initializer = reinterpret_cast<Initializer>(function_address);
 			initializer();
 		}
@@ -2134,7 +2135,7 @@ void MachOImage::ExecuteTerminators(const Mapping& mapping) const
 				continue;
 			FlushInstructionCache(GetCurrentProcess(),
 				reinterpret_cast<void*>(function_address), 1);
-			using Terminator = void (*)();
+			using Terminator = abi::GuestVoidFn;
 			auto terminator = reinterpret_cast<Terminator>(function_address);
 			terminator();
 		}
@@ -2210,7 +2211,7 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 	}
 	FlushInstructionCache(GetCurrentProcess(),
 		reinterpret_cast<void*>(mapping.EntryAddress()), 1);
-	using EntryFunction = int (*)(int, char**, char**);
+	using EntryFunction = abi::GuestFn<int, int, char**, char**>;
 	auto entry = reinterpret_cast<EntryFunction>(mapping.EntryAddress());
 	return entry(static_cast<int>(arguments.size()), argv.data(), envp.data());
 }

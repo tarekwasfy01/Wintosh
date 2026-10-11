@@ -102,6 +102,14 @@ and System-V entry stack alignment.  This validates the toolchain and calling
 convention PoC only; the bridge is not yet connected to Wintosh's Mach-O
 loader or host-export table.
 
+The first loader integration is now present: `ExecuteEntryNoArgs`,
+`ExecuteInitializers`, `ExecuteTerminators`, and the compatible `main` entry
+are expressed through the Wintosh-owned `abi::GuestFn` aliases.  The default
+MSVC build intentionally uses the compatibility fallback; Clang Windows
+builds activate `sysv_abi`.  The targeted Mach-O and runner smokes pass after
+this change.  This is API plumbing only: the Clang bridge target, host export
+table, variadic stub, and real Mach-O fixture run remain outstanding.
+
 The dyld resolver now also checks `Contents/Frameworks` and `Contents/PlugIns`
 as scoped fallbacks for `@rpath/...` dependencies of a bundle executable when
 the image has no explicit `LC_RPATH`.  The dyld smoke fixture proves the

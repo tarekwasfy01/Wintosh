@@ -1,8 +1,20 @@
 # Wintosh current status
 
-Status date: 2026-10-10
+Status date: 2026-10-11
 
 ## Evidence summary
+
+### Mach IPC descriptor gate (2026-10-11)
+
+The native Clang Mach ABI smoke now passes the complex port-descriptor slice
+end to end (`MACH_NOTIFY_NO_SENDERS`, descriptor transfer, dead-name
+notification, broker capability, and self-deallocate; exit code 0). The
+Windows dispatcher now bounds OOL-type probing by the available descriptor
+bytes and keeps locally owned destination ports on the local queue instead of
+forcing them through the cross-process broker. Broker routing remains enabled
+for non-local destinations only when every transferred descriptor has a
+registered broker capability. This closes one ABI family; full Mach rights,
+MIG, OOL lifetime, and arbitrary Darwin IPC compatibility remain open.
 
 | Area | Current state | Evidence / limitation |
 |---|---|---|

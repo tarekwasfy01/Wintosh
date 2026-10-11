@@ -4,7 +4,7 @@ This file closes the gap between the working directory and the release
 documentation. The machine-readable inventory is
 [CURRENT-STATE-MANIFEST.csv](../CURRENT-STATE-MANIFEST.csv).
 
-## Contents confirmed on 2026-10-08
+## Contents confirmed on 2026-10-11
 
 - 13 complete reference/source checkouts remain available locally, but are not
   committed to the public Wintosh repository.

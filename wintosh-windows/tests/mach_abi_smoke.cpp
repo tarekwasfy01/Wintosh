@@ -248,6 +248,20 @@ int main()
 				darling_mach_copy_send, &extracted, &extracted_disposition) == 0 &&
 				extracted == value && extracted_disposition == darling_mach_copy_send;
 		}(released_task) &&
+		[task, &child] (darling_mach_port_name_t) {
+			darling_mach_port_name_t moved = 0;
+			if (darling_windows_task_for_pid(darling_windows_mach_host_self(),
+				child.dwProcessId, &moved) != 0 || moved == 0) return false;
+			darling_mach_port_name_t extracted = 0;
+			std::uint32_t extracted_disposition = 0;
+			darling_task_basic_info info{};
+			std::uint32_t info_count = darling_task_basic_info_count;
+			return darling_windows_mach_port_extract_right(task, moved,
+				darling_mach_move_send, &extracted, &extracted_disposition) == 0 &&
+				extracted == moved && extracted_disposition == darling_mach_move_send &&
+				darling_windows_task_info(moved, darling_task_basic_info_flavor,
+					&info, &info_count) != 0;
+		}(released_task) &&
 		darling_windows_mach_port_deallocate(task, released_task) == 0;
 	darling_task_basic_info released_info{};
 	std::uint32_t released_info_count = darling_task_basic_info_count;

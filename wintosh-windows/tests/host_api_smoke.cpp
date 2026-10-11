@@ -943,6 +943,14 @@ int main()
 		std::cerr << "HOST_API_SMOKE_ERROR=legacy_inet_text\n";
 		return 1;
 	}
+	const auto* numeric_host_entry = darling_windows_gethostbyname("127.0.0.1");
+	const bool legacy_hostent_ok = numeric_host_entry != nullptr && numeric_host_entry->h_addrtype == AF_INET &&
+		numeric_host_entry->h_addr_list != nullptr && darling_windows_gethostbyname(nullptr) == nullptr &&
+		darling_windows_host_symbol("gethostbyname") != 0;
+	if (!legacy_hostent_ok) {
+		std::cerr << "HOST_API_SMOKE_ERROR=gethostbyname\n";
+		return 1;
+	}
 	const bool file_values_ok = file_written == 3 && duplicate_written == 3 && file_end == 6 && file_start == 0 && truncate_ok;
 	const bool file_access_ok = darling_windows_access(file_path.c_str(), 0) == 0;
 	(void)DeleteFileA(renamed_file_path.c_str());

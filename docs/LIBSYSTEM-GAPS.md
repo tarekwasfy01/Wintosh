@@ -67,6 +67,8 @@ following families with Windows-backed implementations:
   classic class-A-style compatibility subset.
 - Legacy textual conversion through `inet_ntoa` and `inet_ntoa_r` is covered,
   including bounded output failure handling for the reentrant form.
+- The legacy `gethostbyname` resolver entry point now delegates to the native
+  Windows host resolver with null-input rejection and host-symbol coverage.
 - C++ static-initialization guard entry points `___cxa_guard_acquire`,
   `___cxa_guard_release`, and `___cxa_guard_abort`, backed by atomic
   Windows-host state transitions; acquire/release/abort behavior is covered

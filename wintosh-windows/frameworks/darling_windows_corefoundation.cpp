@@ -1050,6 +1050,7 @@ extern "C" darling_windows_CFRange darling_windows_CFStringFind(
 			UTF16Length(object->string.substr(0, position)), UTF16Length(candidate->string) };
 	}
 	if (candidate->string.empty()) return { backwards ? UTF16Length(object->string) : 0, 0 };
+	if (candidate->string.size() > object->string.size()) return { -1, 0 };
 	const auto begin = backwards ? object->string.size() - candidate->string.size() : 0;
 	for (std::size_t step = 0; step <= object->string.size() - candidate->string.size(); ++step) {
 		const auto position = backwards ? begin - step : step;

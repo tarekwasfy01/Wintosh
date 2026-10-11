@@ -110,7 +110,7 @@ MachIpcEnvelope DecodeMachIpcEnvelope(const std::vector<std::uint8_t>& bytes)
 	if (ReadU16(bytes, offset) != mach_ipc_version)
 		throw std::invalid_argument("unsupported Mach IPC envelope version");
 	const auto operation = ReadU16(bytes, offset);
-	if (operation < 1 || operation > static_cast<std::uint16_t>(MachIpcOperation::CapabilityTransferBatch))
+	if (operation < 1 || operation > static_cast<std::uint16_t>(MachIpcOperation::NotificationTransfer))
 		throw std::invalid_argument("unknown Mach IPC operation");
 	MachIpcEnvelope result;
 	result.operation = static_cast<MachIpcOperation>(operation);
@@ -909,6 +909,29 @@ bool TransferMachIpcCapabilities(NamedPipeRpcClient& client,
 	try {
 		const auto response = SendMachIpcEnvelope(client, request);
 		return response.operation == MachIpcOperation::CapabilityTransferBatch;
+	} catch (...) {
+		return false;
+	}
+}
+
+bool TransferMachIpcNotification(NamedPipeRpcClient& client,
+	std::uint64_t source_session_token, std::uint64_t notification_token,
+	std::uint64_t target_session_token)
+{
+	if (source_session_token == 0 || notification_token == 0 || target_session_token == 0)
+		return false;
+	MachIpcEnvelope request;
+	request.operation = MachIpcOperation::NotificationTransfer;
+	request.request_id = 1;
+	request.port_token = notification_token;
+	request.session_token = source_session_token;
+	request.payload.resize(8);
+	for (unsigned shift = 0; shift < 64; shift += 8)
+		request.payload[shift / 8] = static_cast<std::uint8_t>(target_session_token >> shift);
+	try {
+		const auto response = SendMachIpcEnvelope(client, request);
+		return response.operation == MachIpcOperation::NotificationTransfer &&
+			response.port_token == notification_token;
 	} catch (...) {
 		return false;
 	}

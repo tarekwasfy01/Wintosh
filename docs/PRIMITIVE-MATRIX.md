@@ -926,3 +926,8 @@ out-of-line regions together. A failed validation therefore cannot leave a
 partially transferred port set. Notification transfer and process-address-space
 inheritance remain separate open families.
 
+The broker now has a session-authenticated `NotificationTransfer` operation as
+well. It changes notification ownership only after validating the source and
+target sessions; the legacy unauthenticated notification path remains a
+compatibility mode and is not treated as child inheritance.
+

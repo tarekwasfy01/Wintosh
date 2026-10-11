@@ -43,7 +43,8 @@ enum class MachIpcOperation : std::uint16_t {
 	Cancel = 13,
 	MigDispatch = 14,
 	Peek = 15,
-	CapabilityTransferBatch = 16
+	CapabilityTransferBatch = 16,
+	NotificationTransfer = 17
 };
 
 struct MachIpcEnvelope final {
@@ -286,6 +287,9 @@ private:
 
 [[nodiscard]] bool TransferMachIpcCapabilities(NamedPipeRpcClient& client,
 	std::uint64_t source_session_token, const MachIpcCapabilityTable& capabilities,
+	std::uint64_t target_session_token);
+[[nodiscard]] bool TransferMachIpcNotification(NamedPipeRpcClient& client,
+	std::uint64_t source_session_token, std::uint64_t notification_token,
 	std::uint64_t target_session_token);
 
 } // namespace darling::windows_host

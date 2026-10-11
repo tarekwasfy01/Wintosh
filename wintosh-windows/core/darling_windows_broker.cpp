@@ -328,6 +328,27 @@ int wmain(int argc, wchar_t** argv)
 					server.Write(AsString(darling::windows_host::EncodeMachIpcEnvelope(response)));
 					continue;
 				}
+				if (envelope.operation == darling::windows_host::MachIpcOperation::NotificationTransfer) {
+					if (envelope.session_token == 0 || envelope.payload.size() != 8 ||
+						envelope.disposition_count != 0 || envelope.out_of_line_token != 0 ||
+						envelope.out_of_line_size != 0)
+						throw std::invalid_argument("invalid Mach IPC notification transfer");
+					std::uint64_t target_session = 0;
+					for (unsigned shift = 0; shift < 64; shift += 8)
+						target_session |= static_cast<std::uint64_t>(envelope.payload[shift / 8]) << shift;
+					if (target_session == 0 || !active_sessions.contains(target_session))
+						throw std::invalid_argument("unknown target Mach IPC notification session");
+					auto notification_owner = notification_session_owners.find(envelope.port_token);
+					if (notifications.find(envelope.port_token) == notifications.end() ||
+						notification_owner == notification_session_owners.end() ||
+						notification_owner->second != envelope.session_token)
+						throw std::invalid_argument("Mach IPC notification is not owned by this session");
+					notification_owner->second = target_session;
+					darling::windows_host::MachIpcEnvelope response{
+						envelope.operation, envelope.request_id, envelope.port_token, 0, {}};
+					server.Write(AsString(darling::windows_host::EncodeMachIpcEnvelope(response)));
+					continue;
+				}
 				if (envelope.operation == darling::windows_host::MachIpcOperation::NotificationSignal ||
 					envelope.operation == darling::windows_host::MachIpcOperation::NotificationReset ||
 					envelope.operation == darling::windows_host::MachIpcOperation::NotificationWait ||

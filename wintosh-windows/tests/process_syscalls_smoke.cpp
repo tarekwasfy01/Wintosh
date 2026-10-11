@@ -122,6 +122,7 @@ int wmain()
 			child_thread_ids.end()) {
 			throw std::runtime_error("Darwin child thread enumeration failed");
 		}
+		(void)suspended_process.MemoryRegions();
 		for (const auto thread_id : child_thread_ids) {
 			CONTEXT thread_context{};
 			(void)suspended_process.GetThreadContext(thread_id, thread_context);

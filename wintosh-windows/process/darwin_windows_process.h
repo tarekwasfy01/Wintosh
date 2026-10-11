@@ -27,6 +27,14 @@ struct DarwinX86ThreadState64 final {
 	std::uint64_t cs = 0, fs = 0, gs = 0;
 };
 
+struct ProcessMemoryRegion final {
+	std::uintptr_t base = 0;
+	std::size_t size = 0;
+	DWORD state = 0;
+	DWORD protect = 0;
+	DWORD type = 0;
+};
+
 class ProcessGroup;
 
 class Process final {
@@ -60,6 +68,7 @@ public:
 	[[nodiscard]] DWORD ProcessId() const noexcept;
 	[[nodiscard]] DWORD ThreadId() const noexcept { return m_thread_id; }
 	[[nodiscard]] std::vector<DWORD> ThreadIds() const;
+	[[nodiscard]] std::vector<ProcessMemoryRegion> MemoryRegions() const;
 	[[nodiscard]] bool GetPrimaryThreadContext(CONTEXT& context) const noexcept;
 	[[nodiscard]] bool SetPrimaryThreadContext(const CONTEXT& context) const noexcept;
 	[[nodiscard]] bool GetThreadContext(DWORD thread_id, CONTEXT& context) const noexcept;

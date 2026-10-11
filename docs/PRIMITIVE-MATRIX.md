@@ -506,6 +506,12 @@ Toolhelp entries when the host exposes them, so a restricted snapshot API does
 not erase known thread state. Per-thread context APIs are available for
 follow-up capture, but the smoke only proves the primary context round trip;
 secondary-thread context translation remains unverified.
+
+`Process::MemoryRegions()` provides a `VirtualQueryEx`-based committed-region
+inventory and fails closed when the host denies `PROCESS_QUERY_INFORMATION` or
+`PROCESS_VM_READ`. The current managed smoke host denies that cross-process
+query, so the API is compile- and non-crash-checked but the region contents are
+not yet runtime-verified here; this is not COW support.
 Quoted aggregate field names are skipped while parsing, matching common
 Objective-C runtime encodings.
 Quoted object class names (`@"NSString"`) and pointers to nested encodings

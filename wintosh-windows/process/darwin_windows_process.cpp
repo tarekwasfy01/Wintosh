@@ -222,6 +222,32 @@ std::vector<DWORD> Process::ThreadIds() const
 	return result;
 }
 
+std::vector<ProcessMemoryRegion> Process::MemoryRegions() const
+{
+	std::vector<ProcessMemoryRegion> result;
+	if (m_process == nullptr)
+		return result;
+	const HANDLE query_process = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ,
+		FALSE, GetProcessId(m_process));
+	if (query_process == nullptr)
+		return result;
+	std::uintptr_t address = 0;
+	MEMORY_BASIC_INFORMATION information{};
+	while (VirtualQueryEx(query_process, reinterpret_cast<const void*>(address),
+		&information, sizeof(information)) == sizeof(information)) {
+		if (information.State == MEM_COMMIT && information.RegionSize != 0) {
+			result.push_back({reinterpret_cast<std::uintptr_t>(information.BaseAddress),
+				information.RegionSize, information.State, information.Protect, information.Type});
+		}
+		const auto next = reinterpret_cast<std::uintptr_t>(information.BaseAddress) +
+			information.RegionSize;
+		if (next <= address) break;
+		address = next;
+	}
+	CloseHandle(query_process);
+	return result;
+}
+
 bool Process::GetPrimaryThreadContext(CONTEXT& context) const noexcept
 {
 	return GetThreadContext(m_thread_id, context);

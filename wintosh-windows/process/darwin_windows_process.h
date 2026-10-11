@@ -40,6 +40,11 @@ struct ProcessMemoryRegion final {
 	DWORD type = 0;
 };
 
+struct ProcessMemorySnapshot final {
+	ProcessMemoryRegion region{};
+	std::vector<std::uint8_t> bytes;
+};
+
 class ProcessGroup;
 
 class Process final {
@@ -83,6 +88,8 @@ public:
 	[[nodiscard]] bool ProtectMemory(std::uintptr_t address, std::size_t size,
 		DWORD protection) const noexcept;
 	[[nodiscard]] bool FreeMemory(std::uintptr_t address) const noexcept;
+	[[nodiscard]] bool CaptureMemoryRegion(const ProcessMemoryRegion& region,
+		ProcessMemorySnapshot& snapshot, std::size_t max_bytes = 64 * 1024 * 1024) const;
 	[[nodiscard]] bool GetPrimaryThreadContext(CONTEXT& context) const noexcept;
 	[[nodiscard]] bool SetPrimaryThreadContext(const CONTEXT& context) const noexcept;
 	[[nodiscard]] bool GetThreadContext(DWORD thread_id, CONTEXT& context) const noexcept;

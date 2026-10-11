@@ -131,6 +131,10 @@ int wmain()
 			suspended_process.ProtectMemory(0, 1, PAGE_READONLY) ||
 			suspended_process.FreeMemory(0))
 			throw std::runtime_error("invalid Darwin child VM operation was accepted");
+		darling::windows_host::ProcessMemorySnapshot invalid_snapshot;
+		if (suspended_process.CaptureMemoryRegion({1, 1, MEM_COMMIT, PAGE_READONLY, MEM_PRIVATE},
+			invalid_snapshot, 0))
+			throw std::runtime_error("oversized Darwin child snapshot was accepted");
 		for (const auto thread_id : child_thread_ids) {
 			CONTEXT thread_context{};
 			(void)suspended_process.GetThreadContext(thread_id, thread_context);

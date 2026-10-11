@@ -518,6 +518,11 @@ boundary used by a future snapshot copier. Both reject null/zero/invalid
 requests and reopen the child with the required Windows VM rights; the current
 smoke verifies invalid-address rejection only because the managed host denies
 valid cross-process VM access.
+`ProcessMemorySnapshot` now combines one bounded region's metadata and bytes:
+it rejects zero-sized or oversized regions and publishes the candidate only
+after the complete read succeeds. Valid cross-process capture is still not
+runtime-verified on this managed host, so this is not yet a full address-space
+snapshot, COW snapshot, or restore mechanism.
 The same boundary now exposes `AllocateMemory`, `ProtectMemory`, and
 `FreeMemory`, completing the basic remote-VM operation shape needed by a future
 restore path. The smoke covers invalid-operation rejection; successful remote

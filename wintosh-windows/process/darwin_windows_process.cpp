@@ -322,6 +322,20 @@ bool Process::FreeMemory(std::uintptr_t address) const noexcept
 	return result != FALSE;
 }
 
+bool Process::CaptureMemoryRegion(const ProcessMemoryRegion& region,
+	ProcessMemorySnapshot& snapshot, std::size_t max_bytes) const
+{
+	if (region.base == 0 || region.size == 0 || region.size > max_bytes)
+		return false;
+	ProcessMemorySnapshot candidate;
+	candidate.region = region;
+	candidate.bytes.resize(region.size);
+	if (!ReadMemory(region.base, candidate.bytes.data(), candidate.bytes.size()))
+		return false;
+	snapshot = std::move(candidate);
+	return true;
+}
+
 bool Process::GetPrimaryThreadContext(CONTEXT& context) const noexcept
 {
 	return GetThreadContext(m_thread_id, context);

@@ -46,6 +46,8 @@ following families with Windows-backed implementations:
 - CoreFoundation numeric/date copies `CFNumberCreateCopy` and
   `CFDateCreateCopy`, including integer/real type preservation and value
   equality checks on x64 and Win32.
+- CoreFoundation formatted strings through `CFStringCreateWithFormat`,
+  including variadic formatting and invalid-format handling on x64 and Win32.
 
 These are native Windows compatibility primitives. They are not a copied or
 relicensed Apple libSystem binary.

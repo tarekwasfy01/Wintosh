@@ -19,6 +19,8 @@
 #include <iomanip>
 #include <ctime>
 #include <cmath>
+#include <cstdarg>
+#include <cstdio>
 
 namespace {
 enum class Kind { String, Data, Array, Number, Real, Dictionary, Set, Date, URL, Boolean, Null };
@@ -623,6 +625,26 @@ extern "C" darling_windows_CFStringRef darling_windows_CFStringCreateWithCString
 	object->kind = Kind::String;
 	object->string = value;
 	return object;
+}
+
+extern "C" darling_windows_CFStringRef darling_windows_CFStringCreateWithFormat(
+	const char* format, ...)
+{
+	if (format == nullptr) return nullptr;
+	va_list arguments;
+	va_start(arguments, format);
+	va_list sizing;
+	va_copy(sizing, arguments);
+	const int required = std::vsnprintf(nullptr, 0, format, sizing);
+	va_end(sizing);
+	if (required < 0) {
+		va_end(arguments);
+		return nullptr;
+	}
+	std::string result(static_cast<std::size_t>(required) + 1, '\0');
+	std::vsnprintf(result.data(), result.size(), format, arguments);
+	va_end(arguments);
+	return darling_windows_CFStringCreateWithCString(result.c_str());
 }
 
 extern "C" darling_windows_CFStringRef darling_windows_CFStringCreateCopy(

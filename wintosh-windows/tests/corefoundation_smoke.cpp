@@ -54,6 +54,7 @@ int main()
 	std::cout << "COREFOUNDATION_RANGE_OVERFLOW=PASS\n";
 	const auto string = darling_windows_CFStringCreateWithCString("Wintosh");
 	const auto string_copy = darling_windows_CFStringCreateCopy(string);
+	const auto formatted_string = darling_windows_CFStringCreateWithFormat("%s-%d", "Darling", 42);
 	char buffer[32]{};
 	const bool string_ok = string != nullptr && string_copy != nullptr &&
 		darling_windows_CFEqual(string, string_copy) &&
@@ -61,6 +62,10 @@ int main()
 		 darling_windows_CFStringGetCString(string, buffer, sizeof(buffer)) &&
 		std::strcmp(buffer, "Wintosh") == 0 &&
 		std::strcmp(darling_windows_CFStringGetCStringPtr(string), "Wintosh") == 0;
+	char formatted_buffer[32]{};
+	const bool formatted_string_ok = formatted_string != nullptr &&
+		darling_windows_CFStringGetCString(formatted_string, formatted_buffer,
+			sizeof(formatted_buffer)) && std::strcmp(formatted_buffer, "Darling-42") == 0;
 	const auto prefix = darling_windows_CFStringCreateWithCString("Win");
 	const auto suffix = darling_windows_CFStringCreateWithCString("tosh");
 	const bool string_match_ok = darling_windows_CFStringHasPrefix(string, prefix) &&
@@ -586,6 +591,7 @@ int main()
 	darling_windows_CFRetain(string);
 	darling_windows_CFRelease(string);
 	darling_windows_CFRelease(string_copy);
+	darling_windows_CFRelease(formatted_string);
 	darling_windows_CFRelease(alias_data);
 	darling_windows_CFRelease(prefix);
 	darling_windows_CFRelease(suffix);
@@ -656,9 +662,9 @@ int main()
 	darling_windows_CFRelease(string);
 	if (!dictionary_hash_ok || !set_hash_ok) return 1;
 	std::cout << "DARWIN_COREF_FOUNDATION=\"" <<
-		(string_ok && string_match_ok && string_find_ok && equal_ok && semantic_lookup_ok && collection_equal_ok && array_search_ok && data_ok && data_slice_ok && array_ok && array_values_ok && number_ok && real_number_ok && number_conversion_ok && dictionary_ok && dictionary_values_ok && set_ok && set_values_ok && date_url_ok && url_xml_ok && scalar_ok && runloop_ok && callback_ok && timer_ok && drain_sources_ok && notification_ok && delivered && plist_ok && array_plist_ok && data_plist_ok && date_plist_ok && real_plist_ok && escaping_ok && plist_parse_ok && plist_dict_parse_ok && plist_data_parse_ok && plist_date_parse_ok && plist_fractional_date_ok && plist_offset_date_ok && binary_plist_ok && binary_dictionary_ok && binary_utf16_ok && binary_extended_ok && binary_data_ok && binary_date_ok && binary_real_ok && binary_uid_ok && mutable_array_ok && mutable_dictionary_ok && mutable_set_ok && mutable_data_ok ? "PASS" : "FAIL") << "\n";
+		(string_ok && formatted_string_ok && string_match_ok && string_find_ok && equal_ok && semantic_lookup_ok && collection_equal_ok && array_search_ok && data_ok && data_slice_ok && array_ok && array_values_ok && number_ok && real_number_ok && number_conversion_ok && dictionary_ok && dictionary_values_ok && set_ok && set_values_ok && date_url_ok && url_xml_ok && scalar_ok && runloop_ok && callback_ok && timer_ok && drain_sources_ok && notification_ok && delivered && plist_ok && array_plist_ok && data_plist_ok && date_plist_ok && real_plist_ok && escaping_ok && plist_parse_ok && plist_dict_parse_ok && plist_data_parse_ok && plist_date_parse_ok && plist_fractional_date_ok && plist_offset_date_ok && binary_plist_ok && binary_dictionary_ok && binary_utf16_ok && binary_extended_ok && binary_data_ok && binary_date_ok && binary_real_ok && binary_uid_ok && mutable_array_ok && mutable_dictionary_ok && mutable_set_ok && mutable_data_ok ? "PASS" : "FAIL") << "\n";
 	if (!identity_ok) return 1;
 	darling_windows_CFRelease(unicode_string);
 	darling_windows_CFRelease(unicode_whitespace);
-	return string_ok && string_match_ok && string_find_ok && unicode_length_ok && unicode_trim_ok && equal_ok && mutable_string_ok && string_bytes_ok && trim_ok && semantic_lookup_ok && array_search_ok && data_ok && data_slice_ok && array_ok && array_values_ok && array_overlap_copy_ok && array_empty_range_ok && number_ok && real_number_ok && number_conversion_ok && real_conversion_ok && number_compare_ok && numeric_equal_ok && dictionary_ok && duplicate_dictionary_ok && dictionary_values_ok && set_ok && set_values_ok && date_url_ok && url_xml_ok && date_compare_ok && date_interval_ok && negative_date_ok && date_rounding_ok && scalar_ok && singleton_lifetime_ok && singleton_still_valid && runloop_ok && callback_ok && queued_sources && one_source_ok && source_queue_ok && drain_sources_ok && timer_ok && notification_ok && wildcard_notification_ok && notification_global_remove_ok && notification_missing_remove_ok && delivered && plist_ok && array_plist_ok && data_plist_ok && date_plist_ok && real_plist_ok && escaping_ok && plist_parse_ok && plist_dict_parse_ok && plist_data_parse_ok && plist_date_parse_ok && plist_fractional_date_ok && plist_offset_date_ok && binary_plist_ok && binary_dictionary_ok && binary_utf16_ok && binary_extended_ok && binary_data_ok && binary_date_ok && binary_real_ok && binary_uid_ok && mutable_array_ok && mutable_dictionary_ok && mutable_set_ok && mutable_data_ok && mutable_data_alias_ok && data_overlap_copy_ok ? 0 : 1;
+	return string_ok && formatted_string_ok && string_match_ok && string_find_ok && unicode_length_ok && unicode_trim_ok && equal_ok && mutable_string_ok && string_bytes_ok && trim_ok && semantic_lookup_ok && array_search_ok && data_ok && data_slice_ok && array_ok && array_values_ok && array_overlap_copy_ok && array_empty_range_ok && number_ok && real_number_ok && number_conversion_ok && real_conversion_ok && number_compare_ok && numeric_equal_ok && dictionary_ok && duplicate_dictionary_ok && dictionary_values_ok && set_ok && set_values_ok && date_url_ok && url_xml_ok && date_compare_ok && date_interval_ok && negative_date_ok && date_rounding_ok && scalar_ok && singleton_lifetime_ok && singleton_still_valid && runloop_ok && callback_ok && queued_sources && one_source_ok && source_queue_ok && drain_sources_ok && timer_ok && notification_ok && wildcard_notification_ok && notification_global_remove_ok && notification_missing_remove_ok && delivered && plist_ok && array_plist_ok && data_plist_ok && date_plist_ok && real_plist_ok && escaping_ok && plist_parse_ok && plist_dict_parse_ok && plist_data_parse_ok && plist_date_parse_ok && plist_fractional_date_ok && plist_offset_date_ok && binary_plist_ok && binary_dictionary_ok && binary_utf16_ok && binary_extended_ok && binary_data_ok && binary_date_ok && binary_real_ok && binary_uid_ok && mutable_array_ok && mutable_dictionary_ok && mutable_set_ok && mutable_data_ok && mutable_data_alias_ok && data_overlap_copy_ok ? 0 : 1;
 }

@@ -894,6 +894,21 @@ MachIpcCapabilityTable MachIpcCapabilityTable::CloneForChild() const
 	return child;
 }
 
+MachIpcCapabilityTable MachIpcCapabilityTable::CloneForChild(
+	std::uint64_t child_session_token) const
+{
+	if (child_session_token == 0)
+		throw std::invalid_argument("invalid Mach IPC child session");
+	MachIpcCapabilityTable child;
+	std::lock_guard lock(m_mutex);
+	for (const auto& [local_name, capability] : m_entries) {
+		auto child_capability = capability;
+		child_capability.session_token = child_session_token;
+		child.m_entries.emplace(local_name, child_capability);
+	}
+	return child;
+}
+
 std::optional<MachIpcCapability> MachIpcCapabilityTable::Lookup(std::uint32_t local_name) const
 {
 	std::lock_guard lock(m_mutex);

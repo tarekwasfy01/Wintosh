@@ -266,6 +266,7 @@ public:
 	MachIpcCapabilityTable& operator=(MachIpcCapabilityTable&& other) noexcept;
 	void Bind(std::uint32_t local_name, MachIpcCapability capability);
 	[[nodiscard]] MachIpcCapabilityTable CloneForChild() const;
+	[[nodiscard]] MachIpcCapabilityTable CloneForChild(std::uint64_t child_session_token) const;
 	[[nodiscard]] std::optional<MachIpcCapability> Lookup(std::uint32_t local_name) const;
 	[[nodiscard]] std::optional<std::uint32_t> LookupLocal(std::uint64_t broker_token,
 		std::uint64_t session_token) const;

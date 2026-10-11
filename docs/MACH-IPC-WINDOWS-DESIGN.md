@@ -117,6 +117,11 @@ The exact XNU audit-element mask (`0x03000000`) is now accepted as
 `mach_audit_trailer_smoke` verifies the sequence and host PID/TID mapping on
 both targets. The two audit-token words are a documented Windows mapping, not
 Darwin kernel audit credentials, and the security token remains neutral.
+The official sender-element mask (`0x02000000`) is also accepted as
+`darling_mach_receive_trailer_sender` and emits the 20-byte security trailer;
+`mach_sender_trailer_smoke` verifies its sequence and nonzero Windows host
+identity words. These words are compatibility metadata, not Darwin security
+credentials.
 Queue shutdown returns a stable port-dead result. Session-authenticated request
 cancellation is now available through the `Cancel` operation with envelope
 validation and round-trip coverage: a blocked `Receive` registers its nonzero

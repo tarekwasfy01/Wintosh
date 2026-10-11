@@ -97,8 +97,11 @@ extern "C" darling_windows_NSRange darling_windows_NSOffsetRange(
 extern "C" darling_windows_NSRange darling_windows_NSInsetRange(
 	darling_windows_NSRange range, std::size_t inset)
 {
-	if (inset > range.length / 2) return { range.location + range.length / 2, 0 };
 	const auto max_value = (std::numeric_limits<std::size_t>::max)();
+	if (inset > range.length / 2) {
+		const auto half = range.length / 2;
+		return { range.location > max_value - half ? max_value : range.location + half, 0 };
+	}
 	return { range.location > max_value - inset ? max_value : range.location + inset,
 		range.length - inset * 2 };
 }

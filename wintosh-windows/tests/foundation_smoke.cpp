@@ -32,6 +32,12 @@ int main()
 		std::cerr << "FOUNDATION_NS_RANGE_SATURATION=FAIL\n";
 		return 1;
 	}
+	const auto oversized_inset = darling_windows_NSInsetRange(
+		darling_windows_NSMakeRange(static_cast<std::size_t>(-1) - 1, 4), 3);
+	if (oversized_inset.location != static_cast<std::size_t>(-1) || oversized_inset.length != 0) {
+		std::cerr << "FOUNDATION_NS_RANGE_OVERSIZED_INSET=FAIL\n";
+		return 1;
+	}
 	std::size_t size = 0;
 	std::size_t alignment = 0;
 	const auto int_end = darling_windows_NSGetSizeAndAlignment("iXYZ", &size, &alignment);

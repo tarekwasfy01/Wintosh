@@ -137,6 +137,35 @@ int wmain()
 			broker_audit_trailer.security.seqno.msgh_seqno != broker_audit_sequence ||
 			broker_audit_trailer.audit_token.val[0] == 0 || broker_audit_trailer.audit_token.val[1] == 0)
 			return 6;
+		std::uint32_t broker_sender_sequence = 0, broker_sender_size = 0;
+		darling_mach_msg_id_t broker_sender_id = 0;
+		std::uint32_t broker_sender_trailer_size = sizeof(darling_mach_msg_security_trailer);
+		darling_mach_msg_security_trailer broker_sender_trailer{};
+		const auto broker_sender_peek = darling_windows_mach_port_peek(
+			darling_windows_mach_task_self(), broker_local_port, 0x02000000,
+			&broker_sender_sequence, &broker_sender_size, &broker_sender_id,
+			&broker_sender_trailer, &broker_sender_trailer_size);
+		std::uint32_t broker_context_sequence = 0, broker_context_size = 0;
+		darling_mach_msg_id_t broker_context_id = 0;
+		std::uint32_t broker_context_trailer_size = sizeof(darling_mach_msg_context_trailer);
+		darling_mach_msg_context_trailer broker_context_trailer{};
+		const auto broker_context_peek = darling_windows_mach_port_peek(
+			darling_windows_mach_task_self(), broker_local_port, 0x04000000,
+			&broker_context_sequence, &broker_context_size, &broker_context_id,
+			&broker_context_trailer, &broker_context_trailer_size);
+		if (broker_sender_peek != 0 || broker_sender_id != 0x4242 ||
+			broker_sender_size != sizeof(broker_message) || broker_sender_sequence != broker_audit_sequence ||
+			broker_sender_trailer_size != sizeof(darling_mach_msg_security_trailer) ||
+			broker_sender_trailer.seqno.msgh_seqno != broker_sender_sequence ||
+			broker_sender_trailer.security_token.val[0] == 0 || broker_sender_trailer.security_token.val[1] == 0 ||
+			broker_context_peek != 0 || broker_context_id != 0x4242 ||
+			broker_context_size != sizeof(broker_message) || broker_context_sequence != broker_audit_sequence ||
+			broker_context_trailer_size != sizeof(darling_mach_msg_context_trailer) ||
+			broker_context_trailer.audit.security.seqno.msgh_seqno != broker_context_sequence ||
+			broker_context_trailer.audit.audit_token.val[0] == 0 ||
+			broker_context_trailer.audit.audit_token.val[1] == 0 ||
+			broker_context_trailer.msgh_context != broker_capability)
+			return 6;
 		broker_message.msgh_id = 0x4242;
 		std::uint32_t broker_peek_sequence = 0, broker_peek_size = 0;
 		darling_mach_msg_id_t broker_peek_id = 0;

@@ -667,7 +667,7 @@ int wmain(int argc, wchar_t** argv)
 						}
 						if (elements == 4) {
 							const auto context = envelope.port_token;
-							std::memcpy(response_payload.data() + offset + 52, &context, sizeof(context));
+							std::memcpy(response_payload.data() + offset + 56, &context, sizeof(context));
 						}
 					}
 					darling::windows_host::MachIpcEnvelope response{

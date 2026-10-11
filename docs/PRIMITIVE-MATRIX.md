@@ -81,9 +81,11 @@ sender, audit, or context trailer; `mach_peek_smoke` proves that a peek does
 not consume the message. The broker now has a versioned `Peek` operation that
 returns the same metadata without consuming its queue; the broker smoke now
 verifies this end to end on x64 and Win32. Broker-side trailer byte
-materialization is implemented for the supported layouts; broker PID/TID
-fields are Windows host metadata, while complete Darwin credentials and peek
-error parity remain open.
+materialization is implemented and covered for the sequence, sender, audit,
+and aligned context layouts on x64 and Win32; the context field is serialized
+at its Darwin-compatible 8-byte-aligned offset. Broker PID/TID fields are
+Windows host metadata, while complete Darwin credentials and peek error parity
+remain open.
 `MACH_RCV_LARGE` and `MACH_RCV_LARGE_IDENTITY` are now accepted at the option
 boundary and retain the queue-preserving Too-Large behavior; Darwin's complete
 large-message identity payload remains open.

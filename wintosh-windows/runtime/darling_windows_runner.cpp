@@ -97,12 +97,43 @@ void Usage()
 		<< L"\nOptions:\n"
 		<< L"  --help                 Show this help\n"
 		<< L"  --version              Show the Wintosh version\n"
+		<< L"  --diagnose-host        Report host and loader capabilities\n"
 		<< L"  --inspect              Inspect a Mach-O without executing it\n"
 		<< L"  --prefix <directory>   Set the initial Wintosh prefix\n"
 		<< L"  --rpath <directory>    Add a dynamic-library search path\n"
 		<< L"  --env KEY=VALUE        Add an environment entry\n"
 		<< L"                         WINTOSH_PREFIX may provide a default runtime root\n"
 		<< L"  --                    End options before the Mach-O path\n";
+}
+
+void DiagnoseHost()
+{
+	SYSTEM_INFO system{};
+	GetNativeSystemInfo(&system);
+	const wchar_t* architecture = L"unknown";
+	switch (system.wProcessorArchitecture) {
+	case PROCESSOR_ARCHITECTURE_AMD64: architecture = L"x86_64"; break;
+	case PROCESSOR_ARCHITECTURE_ARM64: architecture = L"arm64"; break;
+	case PROCESSOR_ARCHITECTURE_INTEL: architecture = L"x86"; break;
+	}
+	wchar_t prefix_buffer[32768]{};
+	const auto prefix_length = GetEnvironmentVariableW(L"WINTOSH_PREFIX",
+		prefix_buffer, static_cast<DWORD>(std::size(prefix_buffer)));
+	std::filesystem::path prefix;
+	if (prefix_length != 0 && prefix_length < std::size(prefix_buffer))
+		prefix.assign(prefix_buffer, prefix_buffer + prefix_length);
+	std::wcout << L"host_architecture=" << architecture << L"\n"
+		<< L"pointer_bits=" << (sizeof(void*) * 8) << L"\n"
+		<< L"mach_o_x86_64=" << (system.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_AMD64 ? L"yes" : L"no") << L"\n"
+		<< L"mach_o_arm64=" << (system.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_ARM64 ? L"yes" : L"no") << L"\n"
+		<< L"mach_o_i386=" << (sizeof(void*) == 4 ? L"inspect-only" : L"fail-closed") << L"\n"
+		<< L"prefix_source=" << (prefix.empty() ? L"image-parent-or-explicit" : L"WINTOSH_PREFIX") << L"\n";
+	if (!prefix.empty())
+		std::wcout << L"prefix=" << prefix.wstring() << L"\n"
+			<< L"prefix_exists=" << (std::filesystem::is_directory(prefix) ? L"yes" : L"no") << L"\n";
+	std::wcout << L"runtime_scope=loader-bootstrap-and-selected-host-primitives\n"
+		<< L"darwin_system_frameworks=not-bundled\n"
+		<< L"full_macos_compatibility=no\n";
 }
 
 void SetEnvironment(std::vector<std::string>& environment, std::string value)
@@ -155,6 +186,10 @@ std::filesystem::path DefaultPrefix(const std::filesystem::path& image)
 
 int wmain(int argc, wchar_t** argv)
 {
+	if (argc == 2 && std::wstring(argv[1]) == L"--diagnose-host") {
+		DiagnoseHost();
+		return 0;
+	}
 	if (argc < 2) {
 		Usage();
 		return 64;

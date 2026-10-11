@@ -780,6 +780,10 @@ The run-loop family also covers `CFRunLoopGetMain` on both target
 architectures. Full CoreFoundation mode/source and cross-thread scheduling
 semantics remain outside this minimal bridge.
 
+The CoreFoundation date family also covers
+`CFDateGetTimeIntervalSinceReferenceDate`; the bridge keeps one explicit
+reference-date representation and does not claim calendar/time-zone support.
+
 The libc string/allocation family now also covers `reallocarray`,
 `reallocarrayf`, and `strsep`. The array helpers reject multiplication
 overflow before calling the Windows heap, while `strsep` preserves empty

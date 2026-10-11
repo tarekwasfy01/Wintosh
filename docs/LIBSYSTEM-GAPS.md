@@ -92,6 +92,9 @@ Win32. The capacity argument remains a non-binding reservation hint.
 `CFRunLoopGetCurrent`; the current minimal single-process model keeps the
 main loop Windows-backed and distinct from worker-thread run-loop state.
 
+`CFDateGetTimeIntervalSinceReferenceDate` now exposes the same Darwin
+reference-date value as `CFDateGetAbsoluteTime`, with x64 and Win32 coverage.
+
 ## Still required for broad compatibility
 
 The CoreFoundation string family now also includes the numeric accessors

@@ -1910,6 +1910,12 @@ extern "C" double darling_windows_CFDateGetAbsoluteTime(darling_windows_CFDateRe
 	return object != nullptr && object->kind == Kind::Date ? object->date : 0;
 }
 
+extern "C" double darling_windows_CFDateGetTimeIntervalSinceReferenceDate(
+	darling_windows_CFDateRef value)
+{
+	return darling_windows_CFDateGetAbsoluteTime(value);
+}
+
 extern "C" int darling_windows_CFDateCompare(darling_windows_CFDateRef left,
 	darling_windows_CFDateRef right)
 {

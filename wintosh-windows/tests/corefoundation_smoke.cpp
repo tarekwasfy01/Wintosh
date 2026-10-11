@@ -370,6 +370,7 @@ int main()
 		!darling_windows_CFURLHasDirectoryPath(url) &&
 		darling_windows_CFURLHasDirectoryPath(directory_url) &&
 		darling_windows_CFEqual(date, date_copy) &&
+		darling_windows_CFDateGetTimeIntervalSinceReferenceDate(date) == 1234.5 &&
 		darling_windows_CFEqual(url, url_from_bytes) &&
 		darling_windows_CFEqual(url, absolute_url) &&
 		darling_windows_CFEqual(url_path, url_string) &&

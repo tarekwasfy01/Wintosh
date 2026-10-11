@@ -240,6 +240,8 @@ extern "C" darling_windows_CFDateRef darling_windows_CFDateCreate(double absolut
 extern "C" darling_windows_CFDateRef darling_windows_CFDateCreateCopy(
 	darling_windows_CFDateRef value);
 extern "C" double darling_windows_CFDateGetAbsoluteTime(darling_windows_CFDateRef value);
+extern "C" double darling_windows_CFDateGetTimeIntervalSinceReferenceDate(
+	darling_windows_CFDateRef value);
 extern "C" darling_windows_CFTypeID darling_windows_CFDateGetTypeID();
 extern "C" int darling_windows_CFDateCompare(darling_windows_CFDateRef left,
 	darling_windows_CFDateRef right);

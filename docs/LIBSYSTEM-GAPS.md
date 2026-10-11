@@ -133,6 +133,9 @@ or fragment delimiters.
 URL components without their delimiters and return null when absent.
 `CFURLCopyScheme` and `CFURLCopyResourceSpecifier` complete the basic URL
 decomposition for scheme-based callers.
+`CFURLCopyHostName` and `CFURLGetPortNumber` cover simple `scheme://authority`
+URLs for network-facing callers; full URL normalization and IPv6 authority
+parsing remain open.
 It now also provides path-extension extraction and extension removal for
 filesystem URLs.
 

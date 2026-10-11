@@ -1973,6 +1973,41 @@ extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyResourceSpecifie
 	return darling_windows_CFStringCreateWithCString(object->string.substr(colon + 1).c_str());
 }
 
+extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyHostName(
+	darling_windows_CFURLRef value)
+{
+	const auto* object = static_cast<const Object*>(value);
+	if (object == nullptr || object->kind != Kind::URL) return nullptr;
+	const auto scheme = object->string.find("://");
+	if (scheme == std::string::npos) return nullptr;
+	const auto start = scheme + 3;
+	const auto end = object->string.find_first_of("/:?#", start);
+	if (end == start) return nullptr;
+	return darling_windows_CFStringCreateWithCString(object->string.substr(
+		start, end == std::string::npos ? std::string::npos : end - start).c_str());
+}
+
+extern "C" int darling_windows_CFURLGetPortNumber(darling_windows_CFURLRef value)
+{
+	const auto* object = static_cast<const Object*>(value);
+	if (object == nullptr || object->kind != Kind::URL) return -1;
+	const auto scheme = object->string.find("://");
+	if (scheme == std::string::npos) return -1;
+	const auto start = scheme + 3;
+	const auto colon = object->string.find(':', start);
+	if (colon == std::string::npos) return -1;
+	const auto end = object->string.find_first_of("/?#", colon + 1);
+	const auto text = object->string.substr(colon + 1,
+		end == std::string::npos ? std::string::npos : end - colon - 1);
+	if (text.empty()) return -1;
+	try {
+		const auto port = std::stoi(text);
+		return port >= 0 && port <= 65535 ? port : -1;
+	} catch (...) {
+		return -1;
+	}
+}
+
 extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyLastPathComponent(
 	darling_windows_CFURLRef value)
 {

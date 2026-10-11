@@ -348,6 +348,8 @@ int main()
 	const auto scheme_url = darling_windows_CFURLCreateWithFileSystemPath("https://example.test/a");
 	const auto url_scheme = darling_windows_CFURLCopyScheme(scheme_url);
 	const auto url_resource = darling_windows_CFURLCopyResourceSpecifier(scheme_url);
+	const auto url_host = darling_windows_CFURLCopyHostName(scheme_url);
+	const auto port_url = darling_windows_CFURLCreateWithFileSystemPath("https://example.test:8443/a");
 	const auto url_last_component = darling_windows_CFURLCopyLastPathComponent(url);
 	const auto url_parent = darling_windows_CFURLCreateCopyDeletingLastPathComponent(url);
 	const auto url_extension = darling_windows_CFURLCopyPathExtension(extension_url);
@@ -411,6 +413,11 @@ int main()
 		darling_windows_CFStringGetCString(url_resource, url_resource_buffer, sizeof(url_resource_buffer)) &&
 		std::strcmp(url_scheme_buffer, "https") == 0 &&
 		std::strcmp(url_resource_buffer, "//example.test/a") == 0;
+	char url_host_buffer[64]{};
+	const bool url_authority_ok = url_host != nullptr && darling_windows_CFStringGetCString(
+		url_host, url_host_buffer, sizeof(url_host_buffer)) &&
+		std::strcmp(url_host_buffer, "example.test") == 0 &&
+		darling_windows_CFURLGetPortNumber(port_url) == 8443;
 	const auto url_xml = darling_windows_CFPropertyListCreateXML(url);
 	char url_xml_buffer[256]{};
 	const bool url_xml_ok = url_xml != nullptr &&
@@ -826,6 +833,8 @@ int main()
 	darling_windows_CFRelease(url_scheme);
 	darling_windows_CFRelease(url_resource);
 	darling_windows_CFRelease(scheme_url);
+	darling_windows_CFRelease(url_host);
+	darling_windows_CFRelease(port_url);
 	darling_windows_CFRelease(url_from_bytes);
 	darling_windows_CFRelease(absolute_url);
 	darling_windows_CFRelease(url_string);
@@ -875,7 +884,7 @@ int main()
 	if (!string_number_ok || !system_encoding_ok || !maximum_encoding_size_ok || !mutable_creation_ok || !find_replace_ok || !scoped_find_replace_ok || !unicode_replace_ok || !unicode_bytes_ok || !utf16_characters_ok || !utf16_character_at_index_ok || !backwards_find_ok || !unicode_find_range_ok || !pascal_rejection_ok || !characters_creation_ok || !filesystem_string_ok || !filesystem_representation_ok || !string_split_ok) return 1;
 	if (!identity_ok) return 1;
 	if (!bytes_string_ok) return 1;
-	if (!url_extension_ok || !url_path_ok || !url_query_ok || !url_scheme_ok || !case_conversion_ok || !capitalization_ok) return 1;
+	if (!url_extension_ok || !url_path_ok || !url_query_ok || !url_scheme_ok || !url_authority_ok || !case_conversion_ok || !capitalization_ok) return 1;
 	darling_windows_CFRelease(unicode_string);
 	darling_windows_CFRelease(unicode_whitespace);
 	darling_windows_CFRelease(case_source);

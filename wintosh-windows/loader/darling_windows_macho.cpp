@@ -20,6 +20,10 @@
 
 namespace darling::windows_host {
 
+#if defined(_WIN64)
+extern "C" void darling_windows_enter_darwin_start(void* entry, void* darwin_stack);
+#endif
+
 namespace {
 
 #pragma pack(push, 1)
@@ -2102,7 +2106,8 @@ void MachOImage::ExecuteTerminators(const Mapping& mapping) const
 int MachOImage::ExecuteEntry(const Mapping& mapping,
 	const std::vector<std::string>& arguments,
 	const std::vector<std::string>& environment,
-	const std::vector<std::string>& apple_parameters) const
+	const std::vector<std::string>& apple_parameters,
+	DarwinEntryAbi entry_abi) const
 {
 	RequireX86Execution(*this);
 	if (mapping.EntryAddress() == 0) {
@@ -2144,6 +2149,27 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 		apple.push_back(apple_storage.back().data());
 	}
 	apple.push_back(nullptr);
+	if (entry_abi == DarwinEntryAbi::DarwinStart) {
+#if defined(_WIN64)
+		// Darwin's crt1 entry receives argc at RSP, followed by argv, envp and
+		// the Apple parameter vector. Keep all pointed-to storage alive until
+		// the non-returning entry transfer.
+		std::vector<std::uintptr_t> startup_stack;
+		startup_stack.reserve(1 + argv.size() + envp.size() + apple.size());
+		startup_stack.push_back(static_cast<std::uintptr_t>(arguments.size()));
+		for (const auto value : argv)
+			startup_stack.push_back(reinterpret_cast<std::uintptr_t>(value));
+		for (const auto value : envp)
+			startup_stack.push_back(reinterpret_cast<std::uintptr_t>(value));
+		for (const auto value : apple)
+			startup_stack.push_back(reinterpret_cast<std::uintptr_t>(value));
+		darling_windows_enter_darwin_start(
+			reinterpret_cast<void*>(mapping.EntryAddress()), startup_stack.data());
+		throw std::runtime_error("Darwin startup entry returned unexpectedly");
+#else
+		throw std::runtime_error("Darwin startup ABI requires a 64-bit Windows host");
+#endif
+	}
 	FlushInstructionCache(GetCurrentProcess(),
 		reinterpret_cast<void*>(mapping.EntryAddress()), 1);
 	using EntryFunction = int (*)(int, char**, char**);

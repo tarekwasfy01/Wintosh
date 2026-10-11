@@ -26,6 +26,7 @@ struct DarwinLaunchOptions final {
 	// The current compatible entry ABI does not consume the latter yet, but
 	// keeping it explicit makes the future startup trampoline additive.
 	std::vector<std::string> apple_parameters;
+	DarwinEntryAbi entry_abi = DarwinEntryAbi::CompatibleMain;
 };
 
 class DarwinBootstrap final {

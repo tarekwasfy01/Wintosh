@@ -15,6 +15,7 @@ Example:
 wintosh-run.exe --inspect path\to\program
 wintosh-run.exe --diagnose-host
 wintosh-run.exe --init-prefix path\to\darwin-prefix
+wintosh-run.exe --startup-abi darwin path\to\darwin-start
 wintosh-run.exe path\to\program arg1 arg2
 ```
 
@@ -29,6 +30,11 @@ Darwin adapter.  It deliberately does not download or invent Apple system
 libraries; the current `libSystem` and `libobjc` boundary is provided by the
 host symbol table, while real Darwin dylibs and frameworks remain a separate
 licensed runtime component.
+`--startup-abi darwin` selects the x86_64 stack trampoline for a Mach-O whose
+entrypoint is a Darwin `crt1`/`dyld` start routine.  The default remains
+`--startup-abi main`, which is the compatible `int(argc, argv, envp)` path used
+by the repository's synthetic fixtures.  Do not select `darwin` for those
+fixtures; they intentionally use the compatible main ABI.
 The runner is therefore an adapter/loader milestone, not a complete Darling
 root filesystem or a full macOS framework runtime.
 

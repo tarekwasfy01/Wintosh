@@ -17,6 +17,8 @@
 
 namespace darling::windows_host {
 
+enum class DarwinEntryAbi { CompatibleMain, DarwinStart };
+
 constexpr std::uint32_t MH_MAGIC_64 = 0xfeedfacf;
 constexpr std::uint32_t MH_MAGIC = 0xfeedface;
 constexpr std::uint32_t FAT_MAGIC_BE = 0xbebafeca;
@@ -388,7 +390,8 @@ public:
 	[[nodiscard]] int ExecuteEntry(const Mapping& mapping,
 		const std::vector<std::string>& arguments,
 		const std::vector<std::string>& environment = {},
-		const std::vector<std::string>& apple_parameters = {}) const;
+		const std::vector<std::string>& apple_parameters = {},
+		DarwinEntryAbi entry_abi = DarwinEntryAbi::CompatibleMain) const;
 
 private:
 	MachOImage(HANDLE file, HANDLE mapping, const std::uint8_t* view,

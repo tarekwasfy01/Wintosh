@@ -313,7 +313,7 @@ int DarwinBootstrap::Run(const std::filesystem::path& image_path,
 	image.ExecuteInitializers(mapping);
 	RegisterObjectiveCSections(image, mapping);
 	const auto exit_code = image.ExecuteEntry(mapping, options.arguments,
-		options.environment, options.apple_parameters);
+		options.environment, options.apple_parameters, options.entry_abi);
 	image.ExecuteTerminators(mapping);
 	for (auto provider = providers.rbegin(); provider != providers.rend(); ++provider)
 		provider->image.ExecuteTerminators(provider->mapping);

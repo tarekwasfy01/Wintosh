@@ -104,6 +104,7 @@ void Usage()
 		<< L"  --prefix <directory>   Set the initial Wintosh prefix\n"
 		<< L"  --rpath <directory>    Add a dynamic-library search path\n"
 		<< L"  --env KEY=VALUE        Add an environment entry\n"
+		<< L"  --startup-abi <mode>   Use main or darwin entry ABI (default: main)\n"
 		<< L"                         WINTOSH_PREFIX may provide a default runtime root\n"
 		<< L"  --                    End options before the Mach-O path\n";
 }
@@ -235,7 +236,8 @@ int wmain(int argc, wchar_t** argv)
 				continue;
 			}
 			if (!end_options && (argument == L"--prefix" ||
-				argument == L"--rpath" || argument == L"--env")) {
+				argument == L"--rpath" || argument == L"--env" ||
+				argument == L"--startup-abi")) {
 				if (++index >= argc)
 					throw std::runtime_error("missing value for CLI option");
 				const auto value = Utf8(argv[index]);
@@ -243,8 +245,14 @@ int wmain(int argc, wchar_t** argv)
 					options.prefix = std::filesystem::path(argv[index]);
 				else if (argument == L"--rpath")
 					options.rpaths.emplace_back(argv[index]);
-				else
+				else if (argument == L"--env")
 					SetEnvironment(options.environment, value);
+				else if (value == "main")
+					options.entry_abi = darling::windows_host::DarwinEntryAbi::CompatibleMain;
+				else if (value == "darwin")
+					options.entry_abi = darling::windows_host::DarwinEntryAbi::DarwinStart;
+				else
+					throw std::runtime_error("--startup-abi expects main or darwin");
 				continue;
 			}
 			if (!end_options && image.empty() && !argument.empty() && argument[0] == L'-')

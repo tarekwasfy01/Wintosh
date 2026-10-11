@@ -83,6 +83,8 @@ pairs for non-BMP code points, with range validation on both targets.
 `CFStringGetCharacterAtIndex` uses the same validated UTF-16 indexing.
 `CFStringFind` now supports backwards searches, including combined
 case-insensitive/backwards flag handling.
+`CFStringCreateWithPascalString` now accepts the supported ASCII/UTF-8
+encoding identifiers and performs bounded length decoding.
 The URL family also includes last-component extraction and parent-path copies,
 covering path operations used by Darling's CoreAudio helpers.
 It now also provides path-extension extraction and extension removal for

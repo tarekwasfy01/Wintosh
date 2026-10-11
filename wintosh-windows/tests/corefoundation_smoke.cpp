@@ -56,6 +56,8 @@ int main()
 	const auto string_copy = darling_windows_CFStringCreateCopy(string);
 	const unsigned char formatted_input_bytes[] = {'B', 'y', 't', 'e', 's'};
 	const auto bytes_string = darling_windows_CFStringCreateWithBytes(formatted_input_bytes, 5, 1, false);
+	const std::uint8_t pascal_input[] = {6, 'W', 'i', 'n', 't', 'o', 's', 'h'};
+	const auto pascal_string = darling_windows_CFStringCreateWithPascalString(pascal_input, 1);
 	const auto formatted_string = darling_windows_CFStringCreateWithFormat("%s-%d", "Darling", 42);
 	const auto integer_string = darling_windows_CFStringCreateWithCString(" -42 ");
 	const auto real_string = darling_windows_CFStringCreateWithCString("3.125");
@@ -68,6 +70,7 @@ int main()
 		darling_windows_CFStringGetDoubleValue(invalid_number_string) == 0.0;
 	char buffer[32]{};
 	const bool string_ok = string != nullptr && string_copy != nullptr && bytes_string != nullptr &&
+		pascal_string != nullptr && darling_windows_CFStringGetLength(pascal_string) == 6 &&
 		darling_windows_CFEqual(string, string_copy) &&
 		darling_windows_CFStringGetLength(string) == 7 &&
 		 darling_windows_CFStringGetCString(string, buffer, sizeof(buffer)) &&

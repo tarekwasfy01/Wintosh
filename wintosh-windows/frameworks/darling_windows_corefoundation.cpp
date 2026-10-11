@@ -628,6 +628,15 @@ extern "C" darling_windows_CFStringRef darling_windows_CFStringCreateWithCString
 	return object;
 }
 
+extern "C" darling_windows_CFStringRef darling_windows_CFStringCreateWithPascalString(
+	const std::uint8_t* value, int encoding)
+{
+	if (value == nullptr || (encoding != 0 && encoding != 1 && encoding != 4)) return nullptr;
+	const auto length = static_cast<std::size_t>(value[0]);
+	std::string text(reinterpret_cast<const char*>(value + 1), length);
+	return darling_windows_CFStringCreateWithCString(text.c_str());
+}
+
 extern "C" darling_windows_CFStringRef darling_windows_CFStringCreateWithBytes(
 	const unsigned char* bytes, darling_windows_CFIndex length, int encoding,
 	bool is_external_representation)

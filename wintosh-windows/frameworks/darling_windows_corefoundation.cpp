@@ -861,13 +861,16 @@ extern "C" darling_windows_CFRange darling_windows_CFStringFind(
 	const auto* candidate = static_cast<const Object*>(needle);
 	if (object == nullptr || candidate == nullptr || object->kind != Kind::String || candidate->kind != Kind::String)
 		return { -1, 0 };
+	const bool backwards = (flags & darling_windows_CFCompareBackwards) != 0;
 	if ((flags & darling_windows_CFCompareCaseInsensitive) == 0) {
-		const auto position = object->string.find(candidate->string);
+		const auto position = backwards ? object->string.rfind(candidate->string) : object->string.find(candidate->string);
 		return position == std::string::npos ? darling_windows_CFRange{ -1, 0 } : darling_windows_CFRange{
 			static_cast<darling_windows_CFIndex>(position), static_cast<darling_windows_CFIndex>(candidate->string.size()) };
 	}
 	if (candidate->string.empty()) return { 0, 0 };
-	for (std::size_t position = 0; position + candidate->string.size() <= object->string.size(); ++position) {
+	const auto begin = backwards ? object->string.size() - candidate->string.size() : 0;
+	for (std::size_t step = 0; step <= object->string.size() - candidate->string.size(); ++step) {
+		const auto position = backwards ? begin - step : step;
 		bool match = true;
 		for (std::size_t offset = 0; offset < candidate->string.size(); ++offset) {
 			const auto lhs = static_cast<unsigned char>(object->string[position + offset]);

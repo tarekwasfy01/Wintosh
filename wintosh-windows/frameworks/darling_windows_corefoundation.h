@@ -203,6 +203,10 @@ extern "C" darling_windows_CFURLRef darling_windows_CFURLCreateFromFileSystemRep
 	const unsigned char* bytes, darling_windows_CFIndex length, bool is_directory);
 extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyFileSystemPath(
 	darling_windows_CFURLRef value);
+extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyLastPathComponent(
+	darling_windows_CFURLRef value);
+extern "C" darling_windows_CFURLRef darling_windows_CFURLCreateCopyDeletingLastPathComponent(
+	darling_windows_CFURLRef value);
 extern "C" darling_windows_CFURLRef darling_windows_CFURLCopyAbsoluteURL(
 	darling_windows_CFURLRef value);
 extern "C" darling_windows_CFStringRef darling_windows_CFURLGetString(

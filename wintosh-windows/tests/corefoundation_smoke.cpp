@@ -238,6 +238,8 @@ int main()
 	const auto url_from_bytes = darling_windows_CFURLCreateFromFileSystemRepresentation(
 		url_bytes, static_cast<darling_windows_CFIndex>(sizeof(url_bytes) - 1), false);
 	const auto url_path = darling_windows_CFURLCopyFileSystemPath(url);
+	const auto url_last_component = darling_windows_CFURLCopyLastPathComponent(url);
+	const auto url_parent = darling_windows_CFURLCreateCopyDeletingLastPathComponent(url);
 	const auto absolute_url = darling_windows_CFURLCopyAbsoluteURL(url);
 	const auto url_string = darling_windows_CFURLGetString(url);
 	char url_buffer[64]{};
@@ -267,7 +269,11 @@ int main()
 		url_representation_ok &&
 		darling_windows_CFDateGetAbsoluteTime(date) == 1234.5 && url != nullptr &&
 		url_path != nullptr && darling_windows_CFStringGetCString(url_path, url_buffer, sizeof(url_buffer)) &&
-		std::strcmp(url_buffer, "C:/Wintosh/app") == 0;
+		std::strcmp(url_buffer, "C:/Wintosh/app") == 0 && url_last_component != nullptr &&
+		url_parent != nullptr && darling_windows_CFStringGetCString(url_last_component, url_buffer, sizeof(url_buffer)) &&
+		std::strcmp(url_buffer, "app") == 0 && darling_windows_CFURLGetFileSystemRepresentation(
+			url_parent, false, url_representation, static_cast<darling_windows_CFIndex>(sizeof(url_representation))) &&
+		std::strcmp(reinterpret_cast<const char*>(url_representation), "C:/Wintosh/") == 0;
 	const auto url_xml = darling_windows_CFPropertyListCreateXML(url);
 	char url_xml_buffer[256]{};
 	const bool url_xml_ok = url_xml != nullptr &&

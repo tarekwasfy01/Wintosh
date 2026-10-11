@@ -78,6 +78,8 @@ relicensed Apple libSystem binary.
 The CoreFoundation string family now also includes the numeric accessors
 `CFStringGetIntValue` and `CFStringGetDoubleValue`, with strict trailing-input
 validation and bounded integer conversion on x64 and Win32.
+The URL family also includes last-component extraction and parent-path copies,
+covering path operations used by Darling's CoreAudio helpers.
 
 The CoreFoundation string family now also includes UTF-16-indexed
 `CFStringCreateWithSubstring`, with surrogate-pair-safe boundaries and

@@ -1628,6 +1628,30 @@ extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyFileSystemPath(
 	return darling_windows_CFStringCreateWithCString(object->string.c_str());
 }
 
+extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyLastPathComponent(
+	darling_windows_CFURLRef value)
+{
+	const auto* object = static_cast<const Object*>(value);
+	if (object == nullptr || object->kind != Kind::URL) return nullptr;
+	const auto end = object->string.find_last_not_of("/\\");
+	if (end == std::string::npos) return darling_windows_CFStringCreateWithCString("");
+	const auto separator = object->string.find_last_of("/\\", end);
+	const auto start = separator == std::string::npos ? 0 : separator + 1;
+	return darling_windows_CFStringCreateWithCString(object->string.substr(start, end - start + 1).c_str());
+}
+
+extern "C" darling_windows_CFURLRef darling_windows_CFURLCreateCopyDeletingLastPathComponent(
+	darling_windows_CFURLRef value)
+{
+	const auto* object = static_cast<const Object*>(value);
+	if (object == nullptr || object->kind != Kind::URL) return nullptr;
+	const auto end = object->string.find_last_not_of("/\\");
+	if (end == std::string::npos) return darling_windows_CFURLCreateWithFileSystemPath(object->string.c_str());
+	const auto separator = object->string.find_last_of("/\\", end);
+	if (separator == std::string::npos) return darling_windows_CFURLCreateWithFileSystemPath("");
+	return darling_windows_CFURLCreateWithFileSystemPath(object->string.substr(0, separator + 1).c_str());
+}
+
 extern "C" darling_windows_CFURLRef darling_windows_CFURLCopyAbsoluteURL(
 	darling_windows_CFURLRef value)
 {

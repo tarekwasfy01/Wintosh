@@ -4,7 +4,7 @@
 #include <iostream>
 #include <string>
 
-namespace { int observer_calls = 0; int reentrant_reads = 0; int self_removing_calls = 0; int late_observer_calls = 0; int destroying_observer_calls = 0; std::string observer_key; void Observer(const char* key, void*) { ++observer_calls; observer_key = key ? key : ""; } void LateObserver(const char*, void*) { ++late_observer_calls; } void ReentrantObserver(const char* key, void* context) { char value[64]{}; ++reentrant_reads; auto store = static_cast<darling_windows_preferences_ref>(context); darling_windows_preferences_get_string(store, key, value, sizeof value); if (reentrant_reads == 1) darling_windows_preferences_add_observer(store, LateObserver, nullptr); } void SelfRemovingObserver(const char*, void* context) { ++self_removing_calls; darling_windows_preferences_remove_observer(static_cast<darling_windows_preferences_ref>(context), SelfRemovingObserver, context); } void DestroyingObserver(const char*, void* context) { ++destroying_observer_calls; darling_windows_preferences_close(static_cast<darling_windows_preferences_ref>(context)); } }
+namespace { int observer_calls = 0; int reentrant_reads = 0; int self_removing_calls = 0; int late_observer_calls = 0; int destroying_observer_calls = 0; int external_observer_calls = 0; std::string observer_key; void Observer(const char* key, void*) { ++observer_calls; observer_key = key ? key : ""; } void LateObserver(const char*, void*) { ++late_observer_calls; } void ReentrantObserver(const char* key, void* context) { char value[64]{}; ++reentrant_reads; auto store = static_cast<darling_windows_preferences_ref>(context); darling_windows_preferences_get_string(store, key, value, sizeof value); if (reentrant_reads == 1) darling_windows_preferences_add_observer(store, LateObserver, nullptr); } void SelfRemovingObserver(const char*, void* context) { ++self_removing_calls; darling_windows_preferences_remove_observer(static_cast<darling_windows_preferences_ref>(context), SelfRemovingObserver, context); } void DestroyingObserver(const char*, void* context) { ++destroying_observer_calls; darling_windows_preferences_close(static_cast<darling_windows_preferences_ref>(context)); } void ExternalObserver(const char*, void*) { ++external_observer_calls; } }
 
 int main() {
     const auto root = std::filesystem::temp_directory_path() / "wintosh-preferences-smoke";
@@ -34,6 +34,7 @@ int main() {
     darling_windows_preferences_close(store);
     const bool path_ok = std::filesystem::exists(root / "Users" / "Default" / "Library" / "Preferences" / "com.wintosh.smoke.plist");
     auto watcher = darling_windows_preferences_open("com.wintosh.smoke");
+    const bool external_observer_added = watcher && darling_windows_preferences_add_observer(watcher, ExternalObserver, nullptr);
     bool initial_changed{}; const bool initial_poll = watcher && darling_windows_preferences_poll_external(watcher, &initial_changed) && !initial_changed;
     char queued_key[64]{}; bool queued_event{}; bool queue_drained = watcher;
     while (queue_drained && darling_windows_preferences_drain_external_event(watcher, queued_key, sizeof queued_key, &queued_event) && queued_event) {}
@@ -48,7 +49,7 @@ int main() {
         darling_windows_preferences_drain_external_event(watcher, second_event, sizeof second_event, &second_has_event) &&
         darling_windows_preferences_drain_external_event(watcher, third_event, sizeof third_event, &third_has_event) && first_has_event && second_has_event && third_has_event &&
         std::string(first_event) == "QueueA" && std::string(second_event) == "External" && std::string(third_event) == "QueueB";
-    const bool external_wait = watcher && darling_windows_preferences_wait_external(watcher, 1000, &external_changed) && external_changed &&
+    const bool external_wait = watcher && darling_windows_preferences_wait_external(watcher, 1000, &external_changed) && external_changed && external_observer_calls >= 3 &&
         darling_windows_preferences_get_string(watcher, "External", external_value, sizeof external_value) && std::string(external_value) == "updated";
     darling_windows_preferences_close(watcher);
     auto suite = darling_windows_preferences_open_suite("com.wintosh.smoke", "shared");

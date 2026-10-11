@@ -289,6 +289,12 @@ inside an observer until the callback snapshot and the active mutation lock
 are finished. The callback-destruction smoke covers this lifetime boundary;
 the full NSUserDefaults ABI and cross-process observer lifecycle remain open.
 
+External preference reloads now diff the previous and current domain and
+deliver changed and removed keys to the local observer snapshot during
+`poll_external`/`wait_external`. The cross-process smoke verifies FIFO order,
+reloaded values, and callback delivery; native Darwin notification-center
+semantics remain outside this adapter.
+
 The CoreFoundation collection family now snapshots and retains array, dictionary,
 and set values while applier callbacks run. Callbacks may remove or replace
 entries from the mutable collection without invalidating the active iteration;

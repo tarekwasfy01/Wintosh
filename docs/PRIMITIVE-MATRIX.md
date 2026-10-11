@@ -802,6 +802,9 @@ Bracketed IPv6 host and port extraction is covered as well; zone identifiers,
 authority escaping, and complete RFC URL normalization remain open.
 `CFURLCopyNetLocation` is covered for the same simple IPv4/IPv6 authority
 forms.
+The additive Wintosh bridge `darling_windows_CFURLCopyPathDecoded` covers
+percent-decoding of URL paths, while malformed escapes remain literal and
+complete RFC 3986 normalization remains open.
 Simple URL user-info extraction through `CFURLCopyUserName` and
 `CFURLCopyPassword` is covered; valid hexadecimal percent escapes are also
 covered, while malformed/Unicode escapes and full credential parsing remain

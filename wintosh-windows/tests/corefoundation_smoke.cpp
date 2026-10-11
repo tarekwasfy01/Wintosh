@@ -376,6 +376,15 @@ int main()
 		url_bytes, static_cast<darling_windows_CFIndex>(sizeof(url_bytes) - 1), false);
 	const auto url_path = darling_windows_CFURLCopyFileSystemPath(url);
 	const auto url_only_path = darling_windows_CFURLCopyPath(url);
+	const auto encoded_url_string = darling_windows_CFStringCreateWithCString(
+		"https://example.test/a%20b/%E2%82%AC?q=1#fragment");
+	const auto encoded_url = darling_windows_CFURLCreateWithString(encoded_url_string, nullptr);
+	const auto encoded_raw_path = darling_windows_CFURLCopyPath(encoded_url);
+	const auto encoded_decoded_path = darling_windows_CFURLCopyPathDecoded(encoded_url);
+	const auto encoded_raw_expected = darling_windows_CFStringCreateWithCString(
+		"https://example.test/a%20b/%E2%82%AC");
+	const auto encoded_decoded_expected = darling_windows_CFStringCreateWithCString(
+		"https://example.test/a b/\xE2\x82\xAC");
 	const auto query_url = darling_windows_CFURLCreateWithFileSystemPath("C:/Wintosh/app?mode=fast#top");
 	const auto url_query = darling_windows_CFURLCopyQueryString(query_url);
 	const auto url_fragment = darling_windows_CFURLCopyFragment(query_url);
@@ -410,6 +419,9 @@ int main()
 		std::strcmp(reinterpret_cast<const char*>(url_representation), "C:/Wintosh/app") == 0 &&
 		!darling_windows_CFURLGetFileSystemRepresentation(url, false, url_representation, 4);
 	const bool date_url_ok = date != nullptr && date_copy != nullptr && url_from_bytes != nullptr &&
+		encoded_url != nullptr && encoded_raw_path != nullptr && encoded_decoded_path != nullptr &&
+		darling_windows_CFStringCompare(encoded_raw_path, encoded_raw_expected) == 0 &&
+		darling_windows_CFStringCompare(encoded_decoded_path, encoded_decoded_expected) == 0 &&
 		url_from_string != nullptr && darling_windows_CFEqual(url_from_string, scheme_url) &&
 		relative_url != nullptr && darling_windows_CFURLGetString(relative_url) != nullptr &&
 		darling_windows_CFStringCompare(darling_windows_CFURLGetString(relative_url), relative_expected) == 0 &&

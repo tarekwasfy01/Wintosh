@@ -270,6 +270,10 @@ extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyFileSystemPath(
 	darling_windows_CFURLRef value);
 extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyPath(
 	darling_windows_CFURLRef value);
+// Wintosh additive bridge: returns the URL path after percent decoding.
+// Malformed escape sequences remain unchanged.
+extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyPathDecoded(
+	darling_windows_CFURLRef value);
 extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyQueryString(
 	darling_windows_CFURLRef value);
 extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyFragment(

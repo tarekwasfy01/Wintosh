@@ -94,6 +94,9 @@ following families with Windows-backed implementations:
   current filesystem-path URL value on x64 and Win32.
 - CoreFoundation URL string extraction through `CFURLGetString`, with URL /
   string equality checked on x64 and Win32.
+- The additive Wintosh bridge `darling_windows_CFURLCopyPathDecoded` now
+  exposes percent-decoded URL paths; malformed escapes remain literal and
+  complete RFC 3986 normalization and Unicode URL semantics remain open.
 - CoreFoundation directory-path detection through `CFURLHasDirectoryPath`,
   including file-vs-directory path checks on x64 and Win32.
 - CoreFoundation URL type identification through `CFURLGetTypeID`, matching

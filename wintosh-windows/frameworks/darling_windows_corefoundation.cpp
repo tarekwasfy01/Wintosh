@@ -2117,6 +2117,17 @@ extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyPath(
 	return darling_windows_CFStringCreateWithCString(path.c_str());
 }
 
+extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyPathDecoded(
+	darling_windows_CFURLRef value)
+{
+	const auto* object = static_cast<const Object*>(value);
+	if (object == nullptr || object->kind != Kind::URL) return nullptr;
+	const auto query = object->string.find_first_of("?#");
+	const auto path = query == std::string::npos ? object->string : object->string.substr(0, query);
+	const auto decoded = PercentDecode(path);
+	return darling_windows_CFStringCreateWithCString(decoded.c_str());
+}
+
 extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyQueryString(
 	darling_windows_CFURLRef value)
 {

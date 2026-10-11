@@ -861,6 +861,9 @@ Envelope version 5 now carries one disposition byte per port-descriptor token;
 the broker preserves and validates the metadata, and the C-ABI restores it on
 receive. This is transport-level right metadata, not yet full Darwin reference
 count behavior for every move/copy/make disposition.
+The broker disposition table now uses the Darwin numeric ABI exactly: 17 is
+`MOVE_SEND`, 18 is `MOVE_SEND_ONCE`, and unsupported values are rejected; the
+server-side send, receive, and rollback counters follow those meanings.
 Unknown disposition values are rejected and covered by
 `BROKER_DISPOSITION_VALIDATION=PASS`.
 Queue-capacity validation now occurs before rights mutation, preventing a

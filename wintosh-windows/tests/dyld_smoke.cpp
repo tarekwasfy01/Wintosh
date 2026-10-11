@@ -114,8 +114,10 @@ void WriteTLVProviderMachO(const std::filesystem::path& path, bool executable = 
 		main.entry_offset = 0x300;
 		std::memcpy(bytes.data() + sizeof(header) + sizeof(segment) +
 			section_count * sizeof(Section64), &main, sizeof(main));
-		// xor eax,eax; ret -- the loader still performs full TLV section
-		// initialization before this repository-owned entry is reached.
+		// xor eax,eax; ret.  The loader still performs full TLV section
+		// initialization before this repository-owned entry is reached.  The
+		// native TLV thunk itself is covered by tlv_smoke; a Mach-O-side call
+		// trampoline remains a separate ABI task.
 		bytes[0x300] = 0x31;
 		bytes[0x301] = 0xc0;
 		bytes[0x302] = 0xc3;

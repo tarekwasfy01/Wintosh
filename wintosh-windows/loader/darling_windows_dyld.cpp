@@ -191,6 +191,16 @@ std::filesystem::path DylibResolver::Resolve(
 			AddFrameworkCandidates(candidates, expanded.parent_path(),
 				expanded.filename().string());
 		}
+		// A normal .app executable commonly relies on dyld's bundle layout
+		// without carrying an explicit LC_RPATH: Contents/Frameworks and
+		// Contents/PlugIns are adjacent to Contents/MacOS.  Add these only as
+		// scoped fallbacks so ordinary prefix resolution keeps its precedence.
+		const auto contents = executable_directory.parent_path();
+		for (const auto& bundle_directory : {
+			contents / "Frameworks", contents / "PlugIns"}) {
+			AddFrameworkCandidates(candidates, bundle_directory,
+				suffix);
+		}
 	} else if (dependency.rfind(loader_token + "/", 0) == 0) {
 		AddFrameworkCandidates(candidates, image_directory,
 			dependency.substr(loader_token.size() + 1));

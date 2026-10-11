@@ -75,6 +75,12 @@ includes surrounding whitespace and an attribute on the `<string>` tag,
 covering these common plist formatting variants without claiming to be a
 complete property-list parser.
 
+The dyld resolver now also checks `Contents/Frameworks` and `Contents/PlugIns`
+as scoped fallbacks for `@rpath/...` dependencies of a bundle executable when
+the image has no explicit `LC_RPATH`.  The dyld smoke fixture proves the
+`Contents/Frameworks` case; this is path resolution only and does not imply
+that arbitrary Apple frameworks are executable on Windows.
+
 The Objective-C/CoreFoundation tests verify class and selector registration,
 typed message-send bridges, blocks, Foundation values, run loops, and
 CoreFoundation collections.  They do not provide an Objective-C exception

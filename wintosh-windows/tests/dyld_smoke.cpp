@@ -560,6 +560,22 @@ int wmain(int argc, wchar_t** argv)
 		}
 		std::cout << "DYLD_EXECUTABLE_PATH=PASS\n";
 		{
+			const auto app_executable = root / "Bundle.app" / "Contents" /
+				"MacOS" / "Bundle";
+			const auto bundled_framework = root / "Bundle.app" / "Contents" /
+				"Frameworks" / "Bundled.dylib";
+			std::filesystem::create_directories(app_executable.parent_path());
+			std::filesystem::create_directories(bundled_framework.parent_path());
+			WriteMachO(app_executable, nullptr, false, true);
+			WriteMachO(bundled_framework, nullptr, true, false);
+			const auto bundled_resolved = darling::windows_host::DylibResolver::Resolve(
+				app_executable, "@rpath/Bundled.dylib", {}, root,
+				app_executable);
+			if (bundled_resolved != bundled_framework)
+				throw std::runtime_error("app bundle Frameworks fallback did not resolve");
+		}
+		std::cout << "DYLD_APP_BUNDLE_FRAMEWORKS=PASS\n";
+		{
 			const auto framework = root / "Frameworks" / "Foundation.framework" / "Foundation";
 			std::filesystem::create_directories(framework.parent_path());
 			WriteMachO(framework, nullptr, true, false);

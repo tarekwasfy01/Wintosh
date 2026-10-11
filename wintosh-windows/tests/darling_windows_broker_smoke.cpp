@@ -1043,6 +1043,39 @@ int wmain()
 		}
 		std::cout << "BROKER_MACH_NOTIFICATION_DESTROY=PASS\n";
 
+		// Isolated authenticated notification transfer proof.  This deliberately
+		// uses a separate token so the legacy cross-client vectors above remain
+		// unauthenticated and unchanged.
+		darling::windows_host::MachIpcEnvelope transfer_notification_create{
+			darling::windows_host::MachIpcOperation::NotificationCreate, 2050, 0, 0, {}};
+		transfer_notification_create.session_token = session_response.session_token;
+		const auto transfer_notification_create_bytes = darling::windows_host::EncodeMachIpcEnvelope(
+			transfer_notification_create);
+		client.Write(std::string(transfer_notification_create_bytes.begin(), transfer_notification_create_bytes.end()));
+		const auto transfer_notification_wire = client.Read();
+		const auto transfer_notification_response = darling::windows_host::DecodeMachIpcEnvelope(
+			std::vector<std::uint8_t>(transfer_notification_wire.begin(), transfer_notification_wire.end()));
+		const auto transfer_notification_token = transfer_notification_response.port_token;
+		const bool transfer_notification_out = darling::windows_host::TransferMachIpcNotification(
+			client, session_response.session_token, transfer_notification_token, transfer_session);
+		const bool transfer_notification_back = transfer_notification_out &&
+			darling::windows_host::TransferMachIpcNotification(
+				transfer_client, transfer_session, transfer_notification_token,
+				session_response.session_token);
+		darling::windows_host::MachIpcEnvelope transfer_notification_destroy{
+			darling::windows_host::MachIpcOperation::NotificationDestroy, 2051,
+			transfer_notification_token, 0, {}};
+		transfer_notification_destroy.session_token = session_response.session_token;
+		const auto transfer_notification_destroy_bytes = darling::windows_host::EncodeMachIpcEnvelope(
+			transfer_notification_destroy);
+		client.Write(std::string(transfer_notification_destroy_bytes.begin(), transfer_notification_destroy_bytes.end()));
+		const bool transfer_notification_destroyed = !client.Read().empty();
+		if (!transfer_notification_back || !transfer_notification_destroyed) {
+			std::cerr << "BROKER_MACH_NOTIFICATION_TRANSFER=FAIL\n";
+			return 5;
+		}
+		std::cout << "BROKER_MACH_NOTIFICATION_TRANSFER=PASS\n";
+
 		}
 
 		// The first client is intentionally destroyed before reconnecting.  The

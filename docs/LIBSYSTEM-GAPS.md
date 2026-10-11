@@ -75,6 +75,11 @@ relicensed Apple libSystem binary.
 
 ## Still required for broad compatibility
 
+The CoreFoundation string family now also includes UTF-16-indexed
+`CFStringCreateWithSubstring`, with surrogate-pair-safe boundaries and
+fail-closed out-of-range handling on x64 and Win32. This covers the substring
+operation used by Darling's CoreAudio file-format helpers.
+
 1. A packaged Darwin-compatible libSystem surface with stable library/image
    identity and complete symbol-level ABI coverage.
 2. Correct startup and teardown ordering for libSystem, dyld, Objective-C,

@@ -670,6 +670,51 @@ extern "C" darling_windows_CFStringRef darling_windows_CFStringCreateCopy(
 	return darling_windows_CFStringCreateWithCString(object->string.c_str());
 }
 
+extern "C" darling_windows_CFStringRef darling_windows_CFStringCreateWithSubstring(
+	darling_windows_CFStringRef value, darling_windows_CFRange range)
+{
+	const auto* object = static_cast<const Object*>(value);
+	if (object == nullptr || object->kind != Kind::String || range.location < 0 ||
+		range.length < 0) return nullptr;
+	const auto& source = object->string;
+	const auto utf16_to_utf8 = [&source](darling_windows_CFIndex target) -> std::size_t {
+		if (target < 0) return std::string::npos;
+		std::size_t index = 0;
+		darling_windows_CFIndex units = 0;
+		while (index < source.size() && units < target) {
+			const auto first = static_cast<unsigned char>(source[index]);
+			std::size_t width = 1;
+			std::uint32_t codepoint = 0xfffd;
+			if (first < 0x80) codepoint = first;
+			else if (first >= 0xc2 && first <= 0xdf && index + 1 < source.size()) {
+				codepoint = ((first & 0x1f) << 6) |
+					(static_cast<unsigned char>(source[index + 1]) & 0x3f); width = 2;
+			} else if (first >= 0xe0 && first <= 0xef && index + 2 < source.size()) {
+				codepoint = ((first & 0x0f) << 12) |
+					((static_cast<unsigned char>(source[index + 1]) & 0x3f) << 6) |
+					(static_cast<unsigned char>(source[index + 2]) & 0x3f); width = 3;
+			} else if (first >= 0xf0 && first <= 0xf4 && index + 3 < source.size()) {
+				codepoint = ((first & 0x07) << 18) |
+					((static_cast<unsigned char>(source[index + 1]) & 0x3f) << 12) |
+					((static_cast<unsigned char>(source[index + 2]) & 0x3f) << 6) |
+					(static_cast<unsigned char>(source[index + 3]) & 0x3f); width = 4;
+			}
+			const auto consumed = codepoint > 0xffff ? 2 : 1;
+			if (units + consumed > target) return std::string::npos;
+			units += consumed;
+			index += width;
+		}
+		return units == target ? index : std::string::npos;
+	};
+	const auto start = utf16_to_utf8(range.location);
+	const auto end = utf16_to_utf8(range.location + range.length);
+	if (start == std::string::npos || end == std::string::npos || start > end) return nullptr;
+	auto* result = new Object;
+	result->kind = Kind::String;
+	result->string = source.substr(start, end - start);
+	return result;
+}
+
 extern "C" darling_windows_CFIndex darling_windows_CFStringGetLength(darling_windows_CFStringRef value)
 {
 	const auto* object = static_cast<const Object*>(value);

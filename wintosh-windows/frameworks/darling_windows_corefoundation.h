@@ -47,6 +47,8 @@ extern "C" darling_windows_CFStringRef darling_windows_CFStringCreateWithFormat(
 	const char* format, ...);
 extern "C" darling_windows_CFStringRef darling_windows_CFStringCreateCopy(
 	darling_windows_CFStringRef value);
+extern "C" darling_windows_CFStringRef darling_windows_CFStringCreateWithSubstring(
+	darling_windows_CFStringRef value, darling_windows_CFRange range);
 extern "C" darling_windows_CFIndex darling_windows_CFStringGetLength(
 	darling_windows_CFStringRef value);
 extern "C" darling_windows_CFTypeID darling_windows_CFStringGetTypeID();

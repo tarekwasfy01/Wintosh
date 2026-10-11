@@ -420,8 +420,9 @@ including surrogate-pair length for non-BMP code points; trimming recognizes
 the common Unicode whitespace set while malformed UTF-8 remains byte-local;
 callers must not retain that pointer beyond the lifetime of the CFString.
 The adapter also provides `CFRange`-based literal and ASCII case-insensitive
-substring search; Unicode collation and the complete CFString option set remain
-outside this boundary.
+substring search, including the additive `CFStringFindWithOptions` bounded
+search and `CFStringCompareWithOptions` comparison entry points; Unicode
+collation and the complete CFString option set remain outside this boundary.
 CFNumber integer and real values can also be read through either numeric
 accessor with explicit C++ conversion semantics, and `CFEqual` treats equal
 integer/real numeric values as equal; exact Apple overflow and

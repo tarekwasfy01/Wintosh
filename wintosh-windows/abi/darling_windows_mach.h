@@ -137,6 +137,16 @@ constexpr std::uint32_t darling_mach_copy_receive = 22;
 constexpr std::uint32_t darling_mach_dispose_receive = 24;
 constexpr std::uint32_t darling_mach_dispose_send = 25;
 constexpr std::uint32_t darling_mach_dispose_send_once = 26;
+static_assert(darling_mach_move_receive == 16);
+static_assert(darling_mach_move_send == 17);
+static_assert(darling_mach_move_send_once == 18);
+static_assert(darling_mach_copy_send == 19);
+static_assert(darling_mach_make_send == 20);
+static_assert(darling_mach_make_send_once == 21);
+static_assert(darling_mach_copy_receive == 22);
+static_assert(darling_mach_dispose_receive == 24);
+static_assert(darling_mach_dispose_send == 25);
+static_assert(darling_mach_dispose_send_once == 26);
 constexpr darling_kern_return_t darling_mach_send_queue_full = 0x10004002;
 
 extern "C" darling_mach_port_name_t darling_windows_mach_task_self();

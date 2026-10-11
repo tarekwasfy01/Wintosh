@@ -22,6 +22,8 @@ int main()
 	static_assert(sizeof(darling_mach_msg_port_descriptor) == 12);
 	static_assert(sizeof(darling_mach_msg_ool_descriptor) == 24);
 	static_assert(sizeof(darling_mach_msg_trailer) == 8);
+	static_assert(darling_mach_move_send == 17 && darling_mach_move_send_once == 18 &&
+		darling_mach_make_send == 20 && darling_mach_make_send_once == 21);
 	const auto task = darling_windows_mach_task_self();
 	darling_mach_port_name_t current_task = 0;
 	if (darling_windows_task_for_pid(darling_windows_mach_host_self(),

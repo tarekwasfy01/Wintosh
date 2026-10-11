@@ -101,6 +101,7 @@ void Usage()
 		<< L"  --prefix <directory>   Set the initial Wintosh prefix\n"
 		<< L"  --rpath <directory>    Add a dynamic-library search path\n"
 		<< L"  --env KEY=VALUE        Add an environment entry\n"
+		<< L"                         WINTOSH_PREFIX may provide a default runtime root\n"
 		<< L"  --                    End options before the Mach-O path\n";
 }
 
@@ -134,6 +135,20 @@ std::filesystem::path ResolveImage(std::filesystem::path image)
 	if (std::filesystem::is_regular_file(executable, error))
 		return executable;
 	throw std::runtime_error(".app bundle has no matching Contents/MacOS executable: " + image.string());
+}
+
+std::filesystem::path DefaultPrefix(const std::filesystem::path& image)
+{
+	wchar_t buffer[32768]{};
+	const auto length = GetEnvironmentVariableW(L"WINTOSH_PREFIX", buffer,
+		static_cast<DWORD>(std::size(buffer)));
+	if (length != 0 && length < std::size(buffer))
+		return std::filesystem::path(buffer, buffer + length);
+	const auto image_prefix = image.parent_path() / L"darwin-prefix";
+	std::error_code error;
+	if (std::filesystem::is_directory(image_prefix, error) && !error)
+		return image_prefix;
+	return image.parent_path();
 }
 
 } // namespace
@@ -199,7 +214,7 @@ int wmain(int argc, wchar_t** argv)
 		if (!options.arguments.empty())
 			options.arguments.front() = Utf8(image.c_str());
 		if (options.prefix.empty())
-			options.prefix = image.parent_path();
+			options.prefix = DefaultPrefix(image);
 		if (inspect) {
 			const auto inspected = darling::windows_host::MachOImage::Open(image.wstring());
 			const auto& header = inspected.Header();

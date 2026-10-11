@@ -897,7 +897,8 @@ int main()
 		sizeof(strerror_buffer)) == 0 && std::string(strerror_buffer).find("No such file") != std::string::npos;
 	const bool strerror_np_ok = std::strcmp(darling_windows_strerrorname_np(2), "ENOENT") == 0 &&
 		std::strcmp(darling_windows_strerrorname_np(13), "EACCES") == 0 &&
-		std::strcmp(darling_windows_strerrordesc_np(22), "Invalid argument") == 0 &&
+		std::strcmp(darling_windows_strerrordesc_np(13), "Permission denied") == 0 &&
+		std::strcmp(darling_windows_strerrordesc_np(61), "Connection refused") == 0 &&
 		darling_windows_strerrorname_np(999) == nullptr && darling_windows_strerrordesc_np(999) == nullptr &&
 		darling_windows_host_symbol("strerrorname_np") != 0 && darling_windows_host_symbol("strerrordesc_np") != 0;
 	if (!strerror_np_ok) {

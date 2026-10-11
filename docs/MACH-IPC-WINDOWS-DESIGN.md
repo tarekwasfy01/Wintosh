@@ -96,6 +96,8 @@ received local port rights and registered out-of-line payloads after a message
 has been consumed. Malformed or unsupported descriptor layouts are rejected;
 cross-process right accounting and complete Darwin notification/trailer
 behavior remain outside this primitive.
+The dedicated `mach_destroy_smoke` fixture verifies receive-right disposal on
+both x64 and Win32.
 Queue shutdown returns a stable port-dead result. Session-authenticated request
 cancellation is now available through the `Cancel` operation with envelope
 validation and round-trip coverage: a blocked `Receive` registers its nonzero

@@ -69,6 +69,8 @@ The Mach message ABI also exposes `darling_windows_mach_msg_destroy` for
 disposing received port descriptors and locally-owned out-of-line payloads.
 Malformed descriptor layouts fail closed. Distributed right accounting,
 notification-port delivery, and complete Darwin trailer semantics remain open.
+The dedicated `mach_destroy_smoke` test verifies receive-right disposal on both
+x64 and Win32.
 
 `OpenMachIpcSession` now performs the broker session handshake, including the
 current-process validation payload, and the broker smoke uses this helper for

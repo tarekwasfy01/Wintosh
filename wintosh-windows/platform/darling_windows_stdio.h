@@ -531,6 +531,8 @@ extern "C" char* darling_windows_ttyname(int descriptor);
 extern "C" void* darling_windows_malloc(std::size_t bytes);
 extern "C" void* darling_windows_calloc(std::size_t count, std::size_t bytes);
 extern "C" void* darling_windows_realloc(void* address, std::size_t bytes);
+extern "C" void* darling_windows_reallocarray(void* address, std::size_t count, std::size_t bytes);
+extern "C" void* darling_windows_reallocarrayf(void* address, std::size_t count, std::size_t bytes);
 extern "C" void darling_windows_free(void* address);
 extern "C" void* darling_windows_memcpy(void* destination, const void* source, std::size_t bytes);
 extern "C" void* darling_windows_memset(void* destination, int value, std::size_t bytes);
@@ -574,6 +576,7 @@ extern "C" std::size_t darling_windows_strcspn(const char* value, const char* re
 extern "C" const char* darling_windows_strpbrk(const char* value, const char* accepted);
 extern "C" char* darling_windows_strtok_r(char* value, const char* delimiters, char** state);
 extern "C" char* darling_windows_strtok(char* value, const char* delimiters);
+extern "C" char* darling_windows_strsep(char** value, const char* delimiters);
 extern "C" const char* darling_windows_strerror(int error_number);
 extern "C" int darling_windows_strerror_r(int error_number, char* buffer, std::size_t size);
 extern "C" int darling_windows_host_entry(int argc, char** argv, char** envp);

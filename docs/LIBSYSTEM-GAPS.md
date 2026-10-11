@@ -20,6 +20,9 @@ following families with Windows-backed implementations:
 - Mach virtual memory, IPC broker operations, ports, OOL data, and MIG dispatch.
 - compiler hardening entry points for `__stack_chk_fail` and its Darwin
   underscore aliases, plus the `__stack_chk_guard` data-symbol aliases;
+- BSD libc allocation/tokenization helpers `reallocarray`, `reallocarrayf`,
+  and `strsep`, including overflow rejection for array allocation and empty
+  delimiter fields, are now Windows-backed and host-symbol-resolvable;
 - C++ static-initialization guard entry points `___cxa_guard_acquire`,
   `___cxa_guard_release`, and `___cxa_guard_abort`, backed by atomic
   Windows-host state transitions; acquire/release/abort behavior is covered

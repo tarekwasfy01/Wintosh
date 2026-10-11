@@ -752,6 +752,13 @@ int main()
 		darling_windows_strnlen("darling", 32) == 7 &&
 		darling_windows_memchr(binary_data, 0x40, sizeof(binary_data)) == binary_data + 3 &&
 		darling_windows_memmem(binary_data, sizeof(binary_data), binary_needle, sizeof(binary_needle)) == binary_data + 2;
+	char reallocarray_input[] = "darling";
+	char* reallocarray_value = static_cast<char*>(darling_windows_reallocarray(
+		darling_windows_strdup(reallocarray_input), 2, 8));
+	const bool reallocarray_ok = reallocarray_value != nullptr &&
+		darling_windows_host_symbol("reallocarray") != 0 &&
+		darling_windows_host_symbol("reallocarrayf") != 0;
+	darling_windows_free(reallocarray_value);
 	const bool case_insensitive_ok = darling_windows_strcasecmp("Darling", "darling") == 0 &&
 		darling_windows_strncasecmp("Darling-Host", "darling-runtime", 7) == 0;
 	char tokenize_buffer[] = "darling,windows,runtime";
@@ -762,6 +769,15 @@ int main()
 	const bool tokenize_ok = token_one != nullptr && token_two != nullptr && token_three != nullptr &&
 		std::strcmp(token_one, "darling") == 0 && std::strcmp(token_two, "windows") == 0 &&
 		std::strcmp(token_three, "runtime") == 0;
+	char strsep_buffer[] = "darling::windows";
+	char* strsep_state = strsep_buffer;
+	const char* strsep_one = darling_windows_strsep(&strsep_state, ":");
+	const char* strsep_two = darling_windows_strsep(&strsep_state, ":");
+	const char* strsep_three = darling_windows_strsep(&strsep_state, ":");
+	const bool strsep_ok = strsep_one != nullptr && strsep_two != nullptr && strsep_three != nullptr &&
+		std::strcmp(strsep_one, "darling") == 0 && std::strcmp(strsep_two, "") == 0 &&
+		std::strcmp(strsep_three, "windows") == 0 && strsep_state == nullptr &&
+		darling_windows_host_symbol("strsep") != 0;
 	char append_buffer[32] = "darling";
 	const bool string_append_ok = darling_windows_strcat(append_buffer, "-windows") == append_buffer &&
 		std::strcmp(append_buffer, "darling-windows") == 0 &&
@@ -1922,7 +1938,7 @@ int main()
 	const bool clearenv_ok = umask_ok && loadavg_ok && page_sizes_ok && process_group_ok && thread_local_session_ok && identity_triplet_ok && normalized_identity_symbols_ok && supplementary_groups_ok && identity_mutation_ok && darling_windows_host_symbol("_clearenv") != 0 &&
 		darling_windows_clearenv() == 0 &&
 		darling_windows_getenv("DARLING_HOST_API_CLEARENV") == nullptr;
-	if (!pid_ok || !exit_symbol_ok || !parent_pid_ok || !waitpid_ok || !identity_ok || !login_ok || !executable_path_ok || !program_name_ok || !usage_ok || !times_ok || !dynamic_loader_ok || !dladdr_ok || !dyld_images_ok || !page_size_ok || !sysconf_ok || !confstr_ok || !pathconf_ok || !fpathconf_ok || !descriptor_limit_ok || !rlimit_ok || !priority_ok || !sysctl_ok || !sysctl_mib_ok || !scheduling_ok || !random_ok || !entropy_ok || !explicit_zero_ok || !kill_ok || !raise_ok || !hostname_ok || !domainname_ok || !terminal_names_ok || !directory_entries_ok || !uname_ok || !clock_ok || !mach_time_ok || !clock_resolution_ok || !sleep_ok || !wall_time_ok || !environment_ok || !environment_mutation_ok || !putenv_ok || !environ_ok || !nsget_environ_ok || !clearenv_ok || !errno_roundtrip_ok || !cwd_ok || !realpath_ok || !directory_ok || !pipe_read_ok || !poll_ok || !ignored_poll_ok || !select_ok || !standard_select_ok || !invalid_select_timeout_ok || !pselect_ok || !socket_api_ok || !datagram_ok || !socket_pair_ok || !message_ok || !rights_ok || !pipe2_ok || !mkstemp_ok || !mkstemps_ok || !mkdtemp_ok || !vector_ok || !fcntl_ok || !fcntl_duplicate_ok || !strerror_ok || !strerror_r_ok || !memory_overlap_ok || !bsd_memory_ok || !duplicate_string_ok || !calloc_ok || !realloc_ok || !parsing_ok || !floating_parsing_ok || !formatting_ok || !string_helpers_ok || !string_search_ok || !memory_search_ok || !case_insensitive_ok || !string_append_ok || !bounded_string_ok || !tokenize_ok || darling_windows_isatty(99) != 0 ||
+	if (!pid_ok || !exit_symbol_ok || !parent_pid_ok || !waitpid_ok || !identity_ok || !login_ok || !executable_path_ok || !program_name_ok || !usage_ok || !times_ok || !dynamic_loader_ok || !dladdr_ok || !dyld_images_ok || !page_size_ok || !sysconf_ok || !confstr_ok || !pathconf_ok || !fpathconf_ok || !descriptor_limit_ok || !rlimit_ok || !priority_ok || !sysctl_ok || !sysctl_mib_ok || !scheduling_ok || !random_ok || !entropy_ok || !explicit_zero_ok || !kill_ok || !raise_ok || !hostname_ok || !domainname_ok || !terminal_names_ok || !directory_entries_ok || !uname_ok || !clock_ok || !mach_time_ok || !clock_resolution_ok || !sleep_ok || !wall_time_ok || !environment_ok || !environment_mutation_ok || !putenv_ok || !environ_ok || !nsget_environ_ok || !clearenv_ok || !errno_roundtrip_ok || !cwd_ok || !realpath_ok || !directory_ok || !pipe_read_ok || !poll_ok || !ignored_poll_ok || !select_ok || !standard_select_ok || !invalid_select_timeout_ok || !pselect_ok || !socket_api_ok || !datagram_ok || !socket_pair_ok || !message_ok || !rights_ok || !pipe2_ok || !mkstemp_ok || !mkstemps_ok || !mkdtemp_ok || !vector_ok || !fcntl_ok || !fcntl_duplicate_ok || !strerror_ok || !strerror_r_ok || !memory_overlap_ok || !bsd_memory_ok || !duplicate_string_ok || !calloc_ok || !realloc_ok || !reallocarray_ok || !parsing_ok || !floating_parsing_ok || !formatting_ok || !string_helpers_ok || !string_search_ok || !memory_search_ok || !case_insensitive_ok || !string_append_ok || !bounded_string_ok || !bounded_copy_ok || !tokenize_ok || !strsep_ok || darling_windows_isatty(99) != 0 ||
 		!allocation_ok || !string_ok || !file_ok) {
 		darling_windows_free(allocation);
 		if (!file_rename_ok)

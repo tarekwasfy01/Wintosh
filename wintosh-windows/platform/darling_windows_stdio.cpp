@@ -5589,6 +5589,12 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 	if (std::strcmp(name, "_realloc") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_realloc);
 	}
+	if (std::strcmp(name, "_reallocarray") == 0 || std::strcmp(name, "reallocarray") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_reallocarray);
+	}
+	if (std::strcmp(name, "_reallocarrayf") == 0 || std::strcmp(name, "reallocarrayf") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_reallocarrayf);
+	}
 	if (std::strcmp(name, "_free") == 0 || std::strcmp(name, "free") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_free);
 	}
@@ -5717,6 +5723,9 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 	}
 	if (std::strcmp(name, "_strtok") == 0 || std::strcmp(name, "strtok") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_strtok);
+	}
+	if (std::strcmp(name, "_strsep") == 0 || std::strcmp(name, "strsep") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_strsep);
 	}
 	if (std::strcmp(name, "_strerror") == 0 || std::strcmp(name, "strerror") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_strerror);
@@ -7816,6 +7825,22 @@ extern "C" void* darling_windows_realloc(void* address, std::size_t bytes)
 	return resized;
 }
 
+extern "C" void* darling_windows_reallocarray(void* address, std::size_t count,
+	std::size_t bytes)
+{
+	if (count != 0 && bytes > (std::numeric_limits<std::size_t>::max)() / count) {
+		darling::windows_host::DarwinErrno::Set(12);
+		return nullptr;
+	}
+	return darling_windows_realloc(address, count * bytes);
+}
+
+extern "C" void* darling_windows_reallocarrayf(void* address, std::size_t count,
+	std::size_t bytes)
+{
+	return darling_windows_reallocarray(address, count, bytes);
+}
+
 extern "C" void darling_windows_free(void* address)
 {
 	if (address != nullptr) {
@@ -8180,6 +8205,17 @@ extern "C" char* darling_windows_strtok(char* value, const char* delimiters)
 {
 	static thread_local char* state = nullptr;
 	return darling_windows_strtok_r(value, delimiters, &state);
+}
+
+extern "C" char* darling_windows_strsep(char** value, const char* delimiters)
+{
+	if (value == nullptr || *value == nullptr || delimiters == nullptr) return nullptr;
+	char* token = *value;
+	char* cursor = token;
+	while (*cursor != '\0' && std::strchr(delimiters, *cursor) == nullptr) ++cursor;
+	if (*cursor == '\0') *value = nullptr;
+	else { *cursor = '\0'; *value = cursor + 1; }
+	return token;
 }
 
 extern "C" const char* darling_windows_strerror(int error_number)

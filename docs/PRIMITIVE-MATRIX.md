@@ -767,3 +767,10 @@ environment propagation, spawn file actions, and `waitpid`/`wait4` on x64 and
 Win32. This is spawn-based compatibility and does not claim `fork` or
 copy-on-write equivalence.
 
+The libc string/allocation family now also covers `reallocarray`,
+`reallocarrayf`, and `strsep`. The array helpers reject multiplication
+overflow before calling the Windows heap, while `strsep` preserves empty
+fields. The host API smoke verifies the normalized symbol names and runtime
+behavior on the native x64 build; Win32 matrix coverage remains part of the
+next full release rerun.
+

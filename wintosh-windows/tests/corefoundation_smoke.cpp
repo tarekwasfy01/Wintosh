@@ -57,6 +57,15 @@ int main()
 	const unsigned char formatted_input_bytes[] = {'B', 'y', 't', 'e', 's'};
 	const auto bytes_string = darling_windows_CFStringCreateWithBytes(formatted_input_bytes, 5, 1, false);
 	const auto formatted_string = darling_windows_CFStringCreateWithFormat("%s-%d", "Darling", 42);
+	const auto integer_string = darling_windows_CFStringCreateWithCString(" -42 ");
+	const auto real_string = darling_windows_CFStringCreateWithCString("3.125");
+	const auto invalid_number_string = darling_windows_CFStringCreateWithCString("12x");
+	const bool string_number_ok = integer_string != nullptr && real_string != nullptr &&
+		invalid_number_string != nullptr &&
+		darling_windows_CFStringGetIntValue(integer_string) == -42 &&
+		darling_windows_CFStringGetDoubleValue(real_string) == 3.125 &&
+		darling_windows_CFStringGetIntValue(invalid_number_string) == 0 &&
+		darling_windows_CFStringGetDoubleValue(invalid_number_string) == 0.0;
 	char buffer[32]{};
 	const bool string_ok = string != nullptr && string_copy != nullptr && bytes_string != nullptr &&
 		darling_windows_CFEqual(string, string_copy) &&
@@ -713,6 +722,7 @@ int main()
 	if (!dictionary_hash_ok || !set_hash_ok) return 1;
 	std::cout << "DARWIN_COREF_FOUNDATION=\"" <<
 		(string_ok && formatted_string_ok && substring_ok && string_match_ok && string_find_ok && equal_ok && semantic_lookup_ok && collection_equal_ok && array_search_ok && data_ok && data_slice_ok && array_ok && array_values_ok && number_ok && real_number_ok && number_conversion_ok && dictionary_ok && dictionary_values_ok && set_ok && set_values_ok && date_url_ok && url_xml_ok && scalar_ok && runloop_ok && callback_ok && timer_ok && drain_sources_ok && notification_ok && delivered && plist_ok && array_plist_ok && data_plist_ok && date_plist_ok && real_plist_ok && escaping_ok && plist_parse_ok && plist_dict_parse_ok && plist_data_parse_ok && plist_date_parse_ok && plist_fractional_date_ok && plist_offset_date_ok && binary_plist_ok && binary_dictionary_ok && binary_utf16_ok && binary_extended_ok && binary_data_ok && binary_date_ok && binary_real_ok && binary_uid_ok && mutable_array_ok && mutable_dictionary_ok && mutable_set_ok && mutable_data_ok ? "PASS" : "FAIL") << "\n";
+	if (!string_number_ok) return 1;
 	if (!identity_ok) return 1;
 	if (!bytes_string_ok) return 1;
 	darling_windows_CFRelease(unicode_string);

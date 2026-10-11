@@ -51,6 +51,10 @@ extern "C" darling_windows_CFStringRef darling_windows_CFStringCreateWithSubstri
 	darling_windows_CFStringRef value, darling_windows_CFRange range);
 extern "C" darling_windows_CFIndex darling_windows_CFStringGetLength(
 	darling_windows_CFStringRef value);
+extern "C" std::int32_t darling_windows_CFStringGetIntValue(
+	darling_windows_CFStringRef value);
+extern "C" double darling_windows_CFStringGetDoubleValue(
+	darling_windows_CFStringRef value);
 extern "C" darling_windows_CFTypeID darling_windows_CFStringGetTypeID();
 extern "C" bool darling_windows_CFStringGetCString(
 	darling_windows_CFStringRef value, char* buffer, darling_windows_CFIndex capacity);

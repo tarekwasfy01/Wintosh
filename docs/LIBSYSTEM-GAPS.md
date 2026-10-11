@@ -75,6 +75,10 @@ relicensed Apple libSystem binary.
 
 ## Still required for broad compatibility
 
+The CoreFoundation string family now also includes the numeric accessors
+`CFStringGetIntValue` and `CFStringGetDoubleValue`, with strict trailing-input
+validation and bounded integer conversion on x64 and Win32.
+
 The CoreFoundation string family now also includes UTF-16-indexed
 `CFStringCreateWithSubstring`, with surrogate-pair-safe boundaries and
 fail-closed out-of-range handling on x64 and Win32. This covers the substring

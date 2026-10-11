@@ -21,6 +21,7 @@
 #include <cmath>
 #include <cstdarg>
 #include <cstdio>
+#include <limits>
 
 namespace {
 enum class Kind { String, Data, Array, Number, Real, Dictionary, Set, Date, URL, Boolean, Null };
@@ -720,6 +721,37 @@ extern "C" darling_windows_CFIndex darling_windows_CFStringGetLength(darling_win
 	const auto* object = static_cast<const Object*>(value);
 	return object != nullptr && object->kind == Kind::String ?
 		UTF16Length(object->string) : 0;
+}
+
+extern "C" std::int32_t darling_windows_CFStringGetIntValue(
+	darling_windows_CFStringRef value)
+{
+	const auto* object = static_cast<const Object*>(value);
+	if (object == nullptr || object->kind != Kind::String) return 0;
+	const auto* start = object->string.c_str();
+	char* end = nullptr;
+	const auto parsed = std::strtoll(start, &end, 10);
+	if (end == start) return 0;
+	while (*end != '\0' && std::isspace(static_cast<unsigned char>(*end))) ++end;
+	if (*end != '\0') return 0;
+	if (parsed > (std::numeric_limits<std::int32_t>::max)())
+		return (std::numeric_limits<std::int32_t>::max)();
+	if (parsed < (std::numeric_limits<std::int32_t>::min)())
+		return (std::numeric_limits<std::int32_t>::min)();
+	return static_cast<std::int32_t>(parsed);
+}
+
+extern "C" double darling_windows_CFStringGetDoubleValue(
+	darling_windows_CFStringRef value)
+{
+	const auto* object = static_cast<const Object*>(value);
+	if (object == nullptr || object->kind != Kind::String) return 0.0;
+	const auto* start = object->string.c_str();
+	char* end = nullptr;
+	const auto parsed = std::strtod(start, &end);
+	if (end == start) return 0.0;
+	while (*end != '\0' && std::isspace(static_cast<unsigned char>(*end))) ++end;
+	return *end == '\0' && std::isfinite(parsed) ? parsed : 0.0;
 }
 
 extern "C" bool darling_windows_CFStringGetCString(darling_windows_CFStringRef value,

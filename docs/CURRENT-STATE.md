@@ -259,4 +259,7 @@ The Clang CTest suite now also runs `wintosh_macho_printf_e2e`. It generates a
 repository-owned temporary Mach-O which imports `_printf`, calls it through the
 loader's binding path, and verifies the output `mach-o printf 7`. This is the
 first verified Mach-O-to-variadic-bridge path; it remains a narrow integer-only
-fixture and does not establish general macOS framework compatibility.
+fixture. The same test now places that image in a minimal `Printf.app` bundle,
+resolves `Contents/Info.plist` and `Contents/MacOS/Printf`, and executes it
+through the bundle path. This validates bundle entry resolution, not system
+framework compatibility.

@@ -89,6 +89,10 @@ extern "C" bool darling_windows_CFStringHasPrefix(darling_windows_CFStringRef va
 	darling_windows_CFStringRef prefix);
 extern "C" bool darling_windows_CFStringHasSuffix(darling_windows_CFStringRef value,
 	darling_windows_CFStringRef suffix);
+extern "C" bool darling_windows_CFStringHasPrefixWithOptions(
+	darling_windows_CFStringRef value, darling_windows_CFStringRef prefix, int flags);
+extern "C" bool darling_windows_CFStringHasSuffixWithOptions(
+	darling_windows_CFStringRef value, darling_windows_CFStringRef suffix, int flags);
 extern "C" int darling_windows_CFStringCompare(darling_windows_CFStringRef left,
 	darling_windows_CFStringRef right);
 extern "C" int darling_windows_CFStringCompareWithOptions(

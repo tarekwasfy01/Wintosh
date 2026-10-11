@@ -129,6 +129,9 @@ pairs for non-BMP code points, with range validation on both targets.
 case-insensitive/backwards flag handling.
 The additive `CFStringFindWithOptions` entry point now applies the search to a
 validated UTF-16 range and returns locations relative to the original string.
+Options-based prefix and suffix checks are also available through additive
+`CFStringHasPrefixWithOptions` and `CFStringHasSuffixWithOptions` entry points;
+their case-insensitive behavior remains ASCII-focused.
 The additive `CFStringCompareWithOptions` entry point now provides the
 case-insensitive comparison subset without changing the existing two-argument
 bridge ABI.

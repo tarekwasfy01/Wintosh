@@ -1025,6 +1025,32 @@ extern "C" bool darling_windows_CFStringHasSuffix(darling_windows_CFStringRef va
 			candidate->string.size(), candidate->string) == 0;
 }
 
+extern "C" bool darling_windows_CFStringHasPrefixWithOptions(
+	darling_windows_CFStringRef value, darling_windows_CFStringRef prefix, int flags)
+{
+	const auto* object = static_cast<const Object*>(value);
+	const auto* candidate = static_cast<const Object*>(prefix);
+	if (object == nullptr || candidate == nullptr || object->kind != Kind::String ||
+		candidate->kind != Kind::String || candidate->string.size() > object->string.size()) return false;
+	Object scoped;
+	scoped.kind = Kind::String;
+	scoped.string = object->string.substr(0, candidate->string.size());
+	return darling_windows_CFStringCompareWithOptions(&scoped, candidate, flags) == 0;
+}
+
+extern "C" bool darling_windows_CFStringHasSuffixWithOptions(
+	darling_windows_CFStringRef value, darling_windows_CFStringRef suffix, int flags)
+{
+	const auto* object = static_cast<const Object*>(value);
+	const auto* candidate = static_cast<const Object*>(suffix);
+	if (object == nullptr || candidate == nullptr || object->kind != Kind::String ||
+		candidate->kind != Kind::String || candidate->string.size() > object->string.size()) return false;
+	Object scoped;
+	scoped.kind = Kind::String;
+	scoped.string = object->string.substr(object->string.size() - candidate->string.size());
+	return darling_windows_CFStringCompareWithOptions(&scoped, candidate, flags) == 0;
+}
+
 extern "C" int darling_windows_CFStringCompare(darling_windows_CFStringRef left,
 	darling_windows_CFStringRef right)
 {

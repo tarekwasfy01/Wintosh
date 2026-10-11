@@ -114,6 +114,8 @@ extern "C" bool darling_windows_CFStringLowercase(darling_windows_CFStringRef va
 	const void* locale);
 extern "C" bool darling_windows_CFStringUppercase(darling_windows_CFStringRef value,
 	const void* locale);
+extern "C" bool darling_windows_CFStringCapitalize(darling_windows_CFStringRef value,
+	const void* locale);
 extern "C" darling_windows_CFDataRef darling_windows_CFDataCreate(
 	const void* bytes, darling_windows_CFIndex length);
 extern "C" darling_windows_CFDataRef darling_windows_CFDataCreateCopy(

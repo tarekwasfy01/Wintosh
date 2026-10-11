@@ -1149,6 +1149,28 @@ extern "C" bool darling_windows_CFStringUppercase(darling_windows_CFStringRef va
 	return true;
 }
 
+extern "C" bool darling_windows_CFStringCapitalize(darling_windows_CFStringRef value,
+	const void* locale)
+{
+	(void)locale;
+	auto* object = As(value);
+	if (object == nullptr || object->kind != Kind::String) return false;
+	bool word_start = true;
+	for (auto& byte : object->string) {
+		if ((byte >= 'A' && byte <= 'Z') || (byte >= 'a' && byte <= 'z')) {
+			if (word_start) {
+				if (byte >= 'a' && byte <= 'z') byte = static_cast<char>(byte - 'a' + 'A');
+				word_start = false;
+			} else if (byte >= 'A' && byte <= 'Z') {
+				byte = static_cast<char>(byte - 'A' + 'a');
+			}
+		} else {
+			word_start = true;
+		}
+	}
+	return true;
+}
+
 extern "C" bool darling_windows_CFStringTrimWhitespace(darling_windows_CFStringRef value)
 {
 	auto* object = As(value);

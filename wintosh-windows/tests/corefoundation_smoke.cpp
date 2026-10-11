@@ -81,6 +81,9 @@ int main()
 		std::strcmp(darling_windows_CFStringGetCStringPtr(case_string), "mixed-\xC3\xA4") == 0 &&
 		darling_windows_CFStringUppercase(case_string, nullptr) &&
 		std::strcmp(darling_windows_CFStringGetCStringPtr(case_string), "MIXED-\xC3\xA4") == 0;
+	const bool capitalization_ok = case_conversion_ok &&
+		darling_windows_CFStringCapitalize(case_string, nullptr) &&
+		std::strcmp(darling_windows_CFStringGetCStringPtr(case_string), "Mixed-\xC3\xA4") == 0;
 	const bool unicode_replace_ok = unicode_mutable != nullptr &&
 		darling_windows_CFStringReplaceRange(unicode_mutable, 1, 2, "Q") &&
 		std::strcmp(darling_windows_CFStringGetCStringPtr(unicode_mutable), "AQZ") == 0;
@@ -872,7 +875,7 @@ int main()
 	if (!string_number_ok || !system_encoding_ok || !maximum_encoding_size_ok || !mutable_creation_ok || !find_replace_ok || !scoped_find_replace_ok || !unicode_replace_ok || !unicode_bytes_ok || !utf16_characters_ok || !utf16_character_at_index_ok || !backwards_find_ok || !unicode_find_range_ok || !pascal_rejection_ok || !characters_creation_ok || !filesystem_string_ok || !filesystem_representation_ok || !string_split_ok) return 1;
 	if (!identity_ok) return 1;
 	if (!bytes_string_ok) return 1;
-	if (!url_extension_ok || !url_path_ok || !url_query_ok || !url_scheme_ok || !case_conversion_ok) return 1;
+	if (!url_extension_ok || !url_path_ok || !url_query_ok || !url_scheme_ok || !case_conversion_ok || !capitalization_ok) return 1;
 	darling_windows_CFRelease(unicode_string);
 	darling_windows_CFRelease(unicode_whitespace);
 	darling_windows_CFRelease(case_source);

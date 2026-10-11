@@ -115,6 +115,8 @@ to UTF-8 storage offsets, including surrogate-pair-safe replacement.
 `CFStringLowercase` and `CFStringUppercase` provide safe ASCII case conversion
 for mutable strings; non-ASCII UTF-8 bytes are preserved until full
 locale-aware Unicode mappings are added.
+`CFStringCapitalize` applies the corresponding ASCII word-boundary behavior;
+locale-specific Unicode titlecasing remains outside the current bridge.
 `CFStringGetBytes` now uses the same UTF-16 range model while returning the
 UTF-8 byte count required by the Windows bridge.
 `CFStringCreateMutableCopy` now returns an independent mutable string; its

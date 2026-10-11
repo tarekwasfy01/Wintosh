@@ -118,7 +118,8 @@ extern "C" const char* darling_windows_NSGetSizeAndAlignment(
 		std::size_t component_alignment = 0;
 		const char* end = darling_windows_NSGetSizeAndAlignment(type + 1,
 			&component_size, &component_alignment);
-		if (end == nullptr) return nullptr;
+		if (end == nullptr || component_size > (std::numeric_limits<std::size_t>::max)() / 2)
+			return nullptr;
 		*size = component_size * 2;
 		*alignment = component_alignment;
 		return end;

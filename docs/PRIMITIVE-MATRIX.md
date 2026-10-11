@@ -798,6 +798,8 @@ and full RFC authority parsing remain open.
 Simple `/./` segments and a trailing `/.` are also covered.
 Bracketed IPv6 host and port extraction is covered as well; zone identifiers,
 authority escaping, and complete RFC URL normalization remain open.
+`CFURLCopyNetLocation` is covered for the same simple IPv4/IPv6 authority
+forms.
 
 The libc string/allocation family now also covers `reallocarray`,
 `reallocarrayf`, and `strsep`. The array helpers reject multiplication

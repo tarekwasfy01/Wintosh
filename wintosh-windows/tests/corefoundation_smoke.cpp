@@ -366,6 +366,8 @@ int main()
 	const auto ipv6_url = darling_windows_CFURLCreateWithFileSystemPath("https://[2001:db8::1]:9443/a");
 	const auto ipv6_host = darling_windows_CFURLCopyHostName(ipv6_url);
 	const auto ipv6_expected = darling_windows_CFStringCreateWithCString("2001:db8::1");
+	const auto ipv6_net_location = darling_windows_CFURLCopyNetLocation(ipv6_url);
+	const auto ipv6_net_expected = darling_windows_CFStringCreateWithCString("[2001:db8::1]:9443");
 	const auto url_last_component = darling_windows_CFURLCopyLastPathComponent(url);
 	const auto url_parent = darling_windows_CFURLCreateCopyDeletingLastPathComponent(url);
 	const auto url_extension = darling_windows_CFURLCopyPathExtension(extension_url);
@@ -399,6 +401,8 @@ int main()
 		darling_windows_CFEqual(url, absolute_url) &&
 		darling_windows_CFEqual(url_path, url_string) &&
 		ipv6_host != nullptr && darling_windows_CFStringCompare(ipv6_host, ipv6_expected) == 0 &&
+		ipv6_net_location != nullptr && darling_windows_CFStringCompare(ipv6_net_location,
+			ipv6_net_expected) == 0 &&
 		darling_windows_CFURLGetPortNumber(ipv6_url) == 9443 &&
 		darling_windows_CFStringGetTypeID() == darling_windows_CFGetTypeID(string) &&
 		darling_windows_CFDataGetTypeID() == darling_windows_CFGetTypeID(data) &&
@@ -888,6 +892,8 @@ int main()
 	darling_windows_CFRelease(ipv6_url);
 	darling_windows_CFRelease(ipv6_host);
 	darling_windows_CFRelease(ipv6_expected);
+	darling_windows_CFRelease(ipv6_net_location);
+	darling_windows_CFRelease(ipv6_net_expected);
 	darling_windows_CFRelease(directory_url);
 	darling_windows_CFRelease(url);
 	darling_windows_CFRelease(date);

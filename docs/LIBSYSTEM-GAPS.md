@@ -108,6 +108,8 @@ Simple `/./` segments and a trailing `/.` are also collapsed in this path
 form; full RFC normalization remains unimplemented.
 Bracketed IPv6 authorities are now recognized by `CFURLCopyHostName` and
 `CFURLGetPortNumber`, including `[addr]:port`.
+`CFURLCopyNetLocation` now returns the authority component for simple
+`scheme://authority` URLs.
 
 ## Still required for broad compatibility
 

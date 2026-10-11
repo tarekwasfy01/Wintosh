@@ -2081,6 +2081,20 @@ extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyHostName(
 		start + offset, end == std::string::npos ? std::string::npos : end - start - offset).c_str());
 }
 
+extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyNetLocation(
+	darling_windows_CFURLRef value)
+{
+	const auto* object = static_cast<const Object*>(value);
+	if (object == nullptr || object->kind != Kind::URL) return nullptr;
+	const auto scheme = object->string.find("://");
+	if (scheme == std::string::npos) return nullptr;
+	const auto start = scheme + 3;
+	const auto end = object->string.find_first_of("/?#", start);
+	if (end == start) return nullptr;
+	return darling_windows_CFStringCreateWithCString(object->string.substr(
+		start, end == std::string::npos ? std::string::npos : end - start).c_str());
+}
+
 extern "C" int darling_windows_CFURLGetPortNumber(darling_windows_CFURLRef value)
 {
 	const auto* object = static_cast<const Object*>(value);

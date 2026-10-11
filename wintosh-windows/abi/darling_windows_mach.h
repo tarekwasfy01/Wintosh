@@ -128,11 +128,11 @@ constexpr std::uint32_t darling_mach_port_type_send = 2;
 constexpr std::uint32_t darling_mach_port_type_send_once = 4;
 // Darwin mach_msg disposition values used by the minimal host ABI.
 constexpr std::uint32_t darling_mach_move_receive = 16;
-constexpr std::uint32_t darling_mach_move_send_once = 17;
+constexpr std::uint32_t darling_mach_move_send = 17;
+constexpr std::uint32_t darling_mach_move_send_once = 18;
 constexpr std::uint32_t darling_mach_copy_send = 19;
-constexpr std::uint32_t darling_mach_move_send = 20;
-constexpr std::uint32_t darling_mach_make_send = 21;
-constexpr std::uint32_t darling_mach_make_send_once = 23;
+constexpr std::uint32_t darling_mach_make_send = 20;
+constexpr std::uint32_t darling_mach_make_send_once = 21;
 constexpr std::uint32_t darling_mach_copy_receive = 22;
 constexpr std::uint32_t darling_mach_dispose_receive = 24;
 constexpr std::uint32_t darling_mach_dispose_send = 25;

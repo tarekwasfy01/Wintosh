@@ -644,6 +644,10 @@ reports the expected send reference before cleanup.
 Local `MACH_MSG_TYPE_COPY_SEND` descriptors now increment the transferred
 send-right reference after successful queueing; the Mach smoke verifies that a
 source with one send reference reports two until the namespace is destroyed.
+The public disposition constants now use the Darwin values for
+`MOVE_SEND(17)`, `MOVE_SEND_ONCE(18)`, `MAKE_SEND(20)`, and
+`MAKE_SEND_ONCE(21)` instead of the earlier adapter-local substitutions; this
+keeps compiled callers ABI-compatible with the documented Mach names.
 Thread lifecycle cleanup now also removes adapter suspend counters for every
 thread discovered during task termination, and `thread_info(BASIC)` reports
 the tracked suspend count instead of always returning zero. The scheduler and

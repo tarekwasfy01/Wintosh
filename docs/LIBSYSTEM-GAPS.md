@@ -23,6 +23,8 @@ following families with Windows-backed implementations:
 - BSD libc allocation/tokenization helpers `reallocarray`, `reallocarrayf`,
   and `strsep`, including overflow rejection for array allocation and empty
   delimiter fields, are now Windows-backed and host-symbol-resolvable;
+- BSD/Darwin bounded substring search `strnstr` is now Windows-backed and
+  host-symbol-resolvable, including limit enforcement and empty-needle behavior;
 - C++ static-initialization guard entry points `___cxa_guard_acquire`,
   `___cxa_guard_release`, and `___cxa_guard_abort`, backed by atomic
   Windows-host state transitions; acquire/release/abort behavior is covered

@@ -5709,6 +5709,9 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 	if (std::strcmp(name, "_strcasestr") == 0 || std::strcmp(name, "strcasestr") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_strcasestr);
 	}
+	if (std::strcmp(name, "_strnstr") == 0 || std::strcmp(name, "strnstr") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_strnstr);
+	}
 	if (std::strcmp(name, "_strspn") == 0 || std::strcmp(name, "strspn") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_strspn);
 	}
@@ -8143,6 +8146,20 @@ extern "C" const char* darling_windows_strrchr(const char* value, int character)
 extern "C" const char* darling_windows_strstr(const char* value, const char* search)
 {
 	return std::strstr(value, search);
+}
+
+extern "C" const char* darling_windows_strnstr(const char* value, const char* search,
+	std::size_t limit)
+{
+	if (value == nullptr || search == nullptr) return nullptr;
+	const auto needle_length = std::strlen(search);
+	if (needle_length == 0) return value;
+	if (needle_length > limit) return nullptr;
+	for (std::size_t offset = 0; offset + needle_length <= limit; ++offset) {
+		if (value[offset] == '\0') return nullptr;
+		if (std::memcmp(value + offset, search, needle_length) == 0) return value + offset;
+	}
+	return nullptr;
 }
 
 extern "C" const char* darling_windows_strcasestr(const char* value, const char* search)

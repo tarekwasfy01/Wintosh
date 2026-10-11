@@ -742,6 +742,8 @@ int main()
 		darling_windows_strchr("darling", 'l') != nullptr &&
 		darling_windows_strrchr("darling", 'g') != nullptr;
 	const bool string_search_ok = darling_windows_strstr("darling-windows", "windows") != nullptr &&
+		darling_windows_strnstr("darling-windows", "windows", 15) != nullptr &&
+		darling_windows_strnstr("darling-windows", "windows", 14) == nullptr &&
 		darling_windows_strspn("123abc", "0123456789") == 3 &&
 		darling_windows_strcspn("darling-windows", "-") == 7 &&
 		darling_windows_strpbrk("darling-windows", "sw") != nullptr &&

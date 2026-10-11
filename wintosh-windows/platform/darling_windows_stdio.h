@@ -570,6 +570,7 @@ extern "C" std::size_t darling_windows_strlcat(char* destination, const char* so
 extern "C" const char* darling_windows_strchr(const char* value, int character);
 extern "C" const char* darling_windows_strrchr(const char* value, int character);
 extern "C" const char* darling_windows_strstr(const char* value, const char* search);
+extern "C" const char* darling_windows_strnstr(const char* value, const char* search, std::size_t limit);
 extern "C" const char* darling_windows_strcasestr(const char* value, const char* search);
 extern "C" std::size_t darling_windows_strspn(const char* value, const char* accepted);
 extern "C" std::size_t darling_windows_strcspn(const char* value, const char* rejected);

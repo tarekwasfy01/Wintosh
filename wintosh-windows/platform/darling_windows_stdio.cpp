@@ -1693,6 +1693,30 @@ extern "C" const char* darling_windows_inet_ntop(int family, const void* source,
 	return result;
 }
 
+extern "C" std::uint32_t darling_windows_inet_addr(const char* source)
+{
+	IN_ADDR address{};
+	if (source == nullptr || ::InetPtonA(AF_INET, source, &address) != 1)
+		return INADDR_NONE;
+	return address.S_un.S_addr;
+}
+
+extern "C" int darling_windows_inet_aton(const char* source, void* destination)
+{
+	if (destination == nullptr) return 0;
+	const auto value = darling_windows_inet_addr(source);
+	if (value == INADDR_NONE && (source == nullptr || std::strcmp(source, "255.255.255.255") != 0))
+		return 0;
+	static_cast<IN_ADDR*>(destination)->S_un.S_addr = value;
+	return 1;
+}
+
+extern "C" std::uint32_t darling_windows_inet_network(const char* source)
+{
+	const auto value = darling_windows_inet_addr(source);
+	return value == INADDR_NONE ? INADDR_NONE : ntohl(value);
+}
+
 extern "C" int darling_windows_select(int nfds, darling_fd_set* read_set,
 	darling_fd_set* write_set, darling_fd_set* exception_set, darling_timeval* timeout)
 {
@@ -4843,6 +4867,15 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 	}
 	if (std::strcmp(name, "_inet_ntop") == 0 || std::strcmp(name, "inet_ntop") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_inet_ntop);
+	}
+	if (std::strcmp(name, "_inet_addr") == 0 || std::strcmp(name, "inet_addr") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_inet_addr);
+	}
+	if (std::strcmp(name, "_inet_aton") == 0 || std::strcmp(name, "inet_aton") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_inet_aton);
+	}
+	if (std::strcmp(name, "_inet_network") == 0 || std::strcmp(name, "inet_network") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_inet_network);
 	}
 	if (std::strcmp(name, "_select") == 0 || std::strcmp(name, "select") == 0 ||
 		std::strcmp(name, "_select_nocancel") == 0 ||

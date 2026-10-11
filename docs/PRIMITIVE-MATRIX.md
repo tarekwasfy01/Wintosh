@@ -820,6 +820,9 @@ The libc string/allocation family now also covers `reallocarray`,
 signal-text family includes the common Darwin `strsignal` descriptions.
 The error-introspection family also includes a broad common `strerrorname_np`
 mapping and bounded `strerrordesc_np` descriptions for stable errno values.
+The resolver family additionally covers the legacy BSD IPv4 helpers
+`inet_addr`, `inet_aton`, and `inet_network`; full historical shorthand-address
+parsing remains outside this bridge.
 `flsll`; `timingsafe_bcmp` provides the constant-time byte comparison subset.
 The array helpers reject multiplication overflow before calling the Windows
 heap, while `strsep` preserves empty fields. Host API smoke coverage verifies

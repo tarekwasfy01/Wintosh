@@ -59,6 +59,9 @@ following families with Windows-backed implementations:
 - The error introspection pair `strerrorname_np` and `strerrordesc_np` now
   covers a broad common Darwin errno subset; descriptions remain bounded to
   the currently mapped stable messages and unknown values return `nullptr`.
+- Legacy BSD IPv4 conversion helpers `inet_addr`, `inet_aton`, and
+  `inet_network` are now Windows-backed and host-symbol-resolvable, including
+  invalid-input handling and network-byte-order coverage.
 - C++ static-initialization guard entry points `___cxa_guard_acquire`,
   `___cxa_guard_release`, and `___cxa_guard_abort`, backed by atomic
   Windows-host state transitions; acquire/release/abort behavior is covered

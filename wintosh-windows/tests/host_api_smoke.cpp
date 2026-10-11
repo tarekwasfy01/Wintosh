@@ -912,6 +912,18 @@ int main()
 		std::cerr << "HOST_API_SMOKE_ERROR=strsignal\n";
 		return 1;
 	}
+	IN_ADDR legacy_ipv4{};
+	const bool legacy_inet_ok = darling_windows_inet_addr("127.0.0.1") == htonl(0x7f000001u) &&
+		darling_windows_inet_aton("192.0.2.17", &legacy_ipv4) == 1 &&
+		legacy_ipv4.S_un.S_addr == htonl(0xc0000211u) &&
+		darling_windows_inet_network("192.0.2.17") == 0xc0000211u &&
+		darling_windows_inet_addr("not-an-ip") == INADDR_NONE &&
+		darling_windows_host_symbol("inet_addr") != 0 && darling_windows_host_symbol("inet_aton") != 0 &&
+		darling_windows_host_symbol("inet_network") != 0;
+	if (!legacy_inet_ok) {
+		std::cerr << "HOST_API_SMOKE_ERROR=legacy_inet\n";
+		return 1;
+	}
 	const bool file_values_ok = file_written == 3 && duplicate_written == 3 && file_end == 6 && file_start == 0 && truncate_ok;
 	const bool file_access_ok = darling_windows_access(file_path.c_str(), 0) == 0;
 	(void)DeleteFileA(renamed_file_path.c_str());

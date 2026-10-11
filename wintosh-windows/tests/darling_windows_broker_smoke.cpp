@@ -281,12 +281,34 @@ int wmain()
 		const auto raw_capability_response = receive_envelope();
 		const auto raw_capability = raw_capability_response.port_token;
 		if (raw_capability == 0) throw std::runtime_error("raw Mach IPC allocation failed");
+		darling::windows_host::MachIpcEnvelope raw_allocate_second = raw_allocate;
+		raw_allocate_second.request_id = 0x7797;
+		send_envelope(raw_allocate_second);
+		const auto raw_second_capability = receive_envelope().port_token;
+		if (raw_second_capability == 0) throw std::runtime_error("second raw Mach IPC allocation failed");
 		darling::windows_host::MachIpcEnvelope make_send_once{
 			darling::windows_host::MachIpcOperation::Send, 0x779b, raw_capability, 0,
 			{0x10, 0x11, 0x12, 0x13}};
 		make_send_once.session_token = session_token;
 		make_send_once.port_descriptor_tokens = {raw_capability};
 		make_send_once.port_descriptor_dispositions = {21};
+		darling::windows_host::MachIpcEnvelope multiple_descriptors = make_send_once;
+		multiple_descriptors.request_id = 0x7799;
+		multiple_descriptors.port_descriptor_tokens = {raw_capability, raw_second_capability};
+		multiple_descriptors.port_descriptor_dispositions = {21, 20};
+		send_envelope(multiple_descriptors);
+		const auto multiple_descriptors_response = receive_envelope();
+		darling::windows_host::MachIpcEnvelope receive_multiple_descriptors{
+			darling::windows_host::MachIpcOperation::Receive, 0x779a, raw_capability, 0, {}};
+		receive_multiple_descriptors.session_token = session_token;
+		send_envelope(receive_multiple_descriptors);
+		const auto receive_multiple_descriptors_response = receive_envelope();
+		const bool multiple_descriptors_ok =
+			multiple_descriptors_response.operation == darling::windows_host::MachIpcOperation::Send &&
+			receive_multiple_descriptors_response.operation == darling::windows_host::MachIpcOperation::Receive;
+		std::cout << "BROKER_MULTI_DESCRIPTOR_RIGHTS=" <<
+			(multiple_descriptors_ok ? "PASS" : "FAIL") << "\n";
+		if (!multiple_descriptors_ok) return 6;
 		send_envelope(make_send_once);
 		const auto make_send_once_response = receive_envelope();
 		darling::windows_host::MachIpcEnvelope receive_make_send_once{

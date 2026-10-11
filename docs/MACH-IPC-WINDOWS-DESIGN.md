@@ -85,6 +85,9 @@ ownership but is not equivalent to kernel-managed Mach rights.
 Send-right transfer is represented by a broker-issued capability descriptor,
 never by a raw Windows `HANDLE`. A descriptor is consumed exactly once on a
 successful transfer and is invalidated on session teardown.
+Multiple port-right descriptors can be carried in one envelope and are
+validated and accounted for independently; the broker smoke covers a
+two-descriptor transfer. The separate one-OOL-mapping limit is unchanged.
 
 ## Receive and failure semantics
 

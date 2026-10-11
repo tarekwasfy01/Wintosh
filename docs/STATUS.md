@@ -85,9 +85,10 @@ full OOL lifetime/disposition semantics. The broker now associates OOL
 regions with their owning port and releases them on `Deallocate`.
 Envelope decoding also rejects partially specified or oversized OOL
 descriptors (`MACH_IPC_DESCRIPTOR_VALIDATION=PASS`).
-The broker explicitly rejects disposition counts above one with
-`BROKER_MACH_DISPOSITION_LIMIT=PASS`; multiple rights/dispositions remain
-unimplemented rather than being silently collapsed.
+The broker explicitly rejects OOL disposition counts above one with
+`BROKER_MACH_DISPOSITION_LIMIT=PASS`; this is an intentional boundary of the
+single-mapping OOL transport. Port-right descriptor lists are supported for
+multiple entries and are covered by `BROKER_MULTI_DESCRIPTOR_RIGHTS=PASS`.
 The runtime now also provides named notification events with signal/reset and
 timed wait behavior; `MACH_IPC_NOTIFICATION=PASS` verifies the host primitive.
 The broker now routes `NotificationCreate`, `NotificationSignal`,

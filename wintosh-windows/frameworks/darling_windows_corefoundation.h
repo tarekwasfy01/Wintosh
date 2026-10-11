@@ -192,6 +192,8 @@ extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyFileSystemPath(
 	darling_windows_CFURLRef value);
 extern "C" darling_windows_CFURLRef darling_windows_CFURLCopyAbsoluteURL(
 	darling_windows_CFURLRef value);
+extern "C" darling_windows_CFStringRef darling_windows_CFURLGetString(
+	darling_windows_CFURLRef value);
 extern "C" bool darling_windows_CFURLGetFileSystemRepresentation(
 	darling_windows_CFURLRef value, bool resolve_against_base, unsigned char* buffer,
 	darling_windows_CFIndex buffer_capacity);

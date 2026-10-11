@@ -219,6 +219,7 @@ int main()
 		url_bytes, static_cast<darling_windows_CFIndex>(sizeof(url_bytes) - 1), false);
 	const auto url_path = darling_windows_CFURLCopyFileSystemPath(url);
 	const auto absolute_url = darling_windows_CFURLCopyAbsoluteURL(url);
+	const auto url_string = darling_windows_CFURLGetString(url);
 	char url_buffer[64]{};
 	unsigned char url_representation[64]{};
 	const bool url_representation_ok =
@@ -228,9 +229,11 @@ int main()
 		!darling_windows_CFURLGetFileSystemRepresentation(url, false, url_representation, 4);
 	const bool date_url_ok = date != nullptr && date_copy != nullptr && url_from_bytes != nullptr &&
 		absolute_url != nullptr &&
+		url_string != nullptr &&
 		darling_windows_CFEqual(date, date_copy) &&
 		darling_windows_CFEqual(url, url_from_bytes) &&
 		darling_windows_CFEqual(url, absolute_url) &&
+		darling_windows_CFEqual(url_path, url_string) &&
 		url_representation_ok &&
 		darling_windows_CFDateGetAbsoluteTime(date) == 1234.5 && url != nullptr &&
 		url_path != nullptr && darling_windows_CFStringGetCString(url_path, url_buffer, sizeof(url_buffer)) &&
@@ -642,6 +645,7 @@ int main()
 	darling_windows_CFRelease(url_path);
 	darling_windows_CFRelease(url_from_bytes);
 	darling_windows_CFRelease(absolute_url);
+	darling_windows_CFRelease(url_string);
 	darling_windows_CFRelease(url);
 	darling_windows_CFRelease(date);
 	darling_windows_CFRelease(date_copy);

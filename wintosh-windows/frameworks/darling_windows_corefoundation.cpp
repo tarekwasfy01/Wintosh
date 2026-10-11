@@ -1559,6 +1559,14 @@ extern "C" darling_windows_CFURLRef darling_windows_CFURLCopyAbsoluteURL(
 	return darling_windows_CFURLCreateWithFileSystemPath(object->string.c_str());
 }
 
+extern "C" darling_windows_CFStringRef darling_windows_CFURLGetString(
+	darling_windows_CFURLRef value)
+{
+	const auto* object = static_cast<const Object*>(value);
+	if (object == nullptr || object->kind != Kind::URL) return nullptr;
+	return darling_windows_CFStringCreateWithCString(object->string.c_str());
+}
+
 extern "C" bool darling_windows_CFURLGetFileSystemRepresentation(
 	darling_windows_CFURLRef value, bool resolve_against_base, unsigned char* buffer,
 	darling_windows_CFIndex buffer_capacity)

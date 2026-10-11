@@ -962,6 +962,16 @@ int main()
 		std::cerr << "HOST_API_SMOKE_ERROR=gethostbyaddr\n";
 		return 1;
 	}
+	const auto* http_service = darling_windows_getservbyname("http", "tcp");
+	const auto* port_service = darling_windows_getservbyport(htons(80), "tcp");
+	const bool service_lookup_ok = (http_service == nullptr || http_service->s_port == htons(80)) &&
+		(port_service == nullptr || port_service->s_port == htons(80)) &&
+		darling_windows_getservbyname(nullptr, "tcp") == nullptr &&
+		darling_windows_host_symbol("getservbyname") != 0 && darling_windows_host_symbol("getservbyport") != 0;
+	if (!service_lookup_ok) {
+		std::cerr << "HOST_API_SMOKE_ERROR=service_lookup\n";
+		return 1;
+	}
 	const bool file_values_ok = file_written == 3 && duplicate_written == 3 && file_end == 6 && file_start == 0 && truncate_ok;
 	const bool file_access_ok = darling_windows_access(file_path.c_str(), 0) == 0;
 	(void)DeleteFileA(renamed_file_path.c_str());

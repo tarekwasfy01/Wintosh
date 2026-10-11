@@ -16,6 +16,7 @@
 #include "darling_windows_signals.h"
 
 struct hostent;
+struct servent;
 
 struct darling_timespec final {
 	std::int64_t tv_sec = 0;
@@ -207,6 +208,8 @@ extern "C" int darling_windows_getaddrinfo(const char* node, const char* service
 extern "C" void darling_windows_freeaddrinfo(darling_addrinfo* result);
 extern "C" hostent* darling_windows_gethostbyname(const char* name);
 extern "C" hostent* darling_windows_gethostbyaddr(const void* address, int length, int type);
+extern "C" servent* darling_windows_getservbyname(const char* name, const char* protocol);
+extern "C" servent* darling_windows_getservbyport(int port, const char* protocol);
 extern "C" int darling_windows_getnameinfo(const void* address, int address_length,
 	char* host, std::size_t host_length, char* service, std::size_t service_length, int flags);
 extern "C" int darling_windows_inet_pton(int family, const char* source, void* destination);

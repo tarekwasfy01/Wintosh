@@ -832,6 +832,8 @@ thread-safety and the remaining historical hostent variants remain open.
 The reverse `gethostbyaddr` ABI and invalid-input path are covered for IPv4;
 successful PTR resolution remains environment-dependent, while IPv6-specific
 and fully reentrant hostent variants remain open.
+The service database pair `getservbyname`/`getservbyport` is also bridged;
+availability of local service-database entries remains environment-dependent.
 `flsll`; `timingsafe_bcmp` provides the constant-time byte comparison subset.
 The array helpers reject multiplication overflow before calling the Windows
 heap, while `strsep` preserves empty fields. Host API smoke coverage verifies

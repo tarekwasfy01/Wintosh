@@ -800,6 +800,9 @@ Bracketed IPv6 host and port extraction is covered as well; zone identifiers,
 authority escaping, and complete RFC URL normalization remain open.
 `CFURLCopyNetLocation` is covered for the same simple IPv4/IPv6 authority
 forms.
+Simple URL user-info extraction through `CFURLCopyUserName` and
+`CFURLCopyPassword` is covered; percent-encoding and full credential parsing
+remain open.
 
 The libc string/allocation family now also covers `reallocarray`,
 `reallocarrayf`, and `strsep`. The array helpers reject multiplication

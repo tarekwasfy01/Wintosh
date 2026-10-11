@@ -2095,6 +2095,40 @@ extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyNetLocation(
 		start, end == std::string::npos ? std::string::npos : end - start).c_str());
 }
 
+extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyUserName(
+	darling_windows_CFURLRef value)
+{
+	const auto* object = static_cast<const Object*>(value);
+	if (object == nullptr || object->kind != Kind::URL) return nullptr;
+	const auto scheme = object->string.find("://");
+	if (scheme == std::string::npos) return nullptr;
+	const auto start = scheme + 3;
+	const auto end = object->string.find_first_of("/?#", start);
+	const auto authority = object->string.substr(start, end == std::string::npos ? std::string::npos : end - start);
+	const auto at = authority.rfind('@');
+	if (at == std::string::npos) return nullptr;
+	const auto colon = authority.find(':');
+	return darling_windows_CFStringCreateWithCString(authority.substr(0,
+		colon == std::string::npos || colon > at ? at : colon).c_str());
+}
+
+extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyPassword(
+	darling_windows_CFURLRef value)
+{
+	const auto* object = static_cast<const Object*>(value);
+	if (object == nullptr || object->kind != Kind::URL) return nullptr;
+	const auto scheme = object->string.find("://");
+	if (scheme == std::string::npos) return nullptr;
+	const auto start = scheme + 3;
+	const auto end = object->string.find_first_of("/?#", start);
+	const auto authority = object->string.substr(start, end == std::string::npos ? std::string::npos : end - start);
+	const auto at = authority.rfind('@');
+	if (at == std::string::npos) return nullptr;
+	const auto colon = authority.find(':');
+	if (colon == std::string::npos || colon > at) return nullptr;
+	return darling_windows_CFStringCreateWithCString(authority.substr(colon + 1, at - colon - 1).c_str());
+}
+
 extern "C" int darling_windows_CFURLGetPortNumber(darling_windows_CFURLRef value)
 {
 	const auto* object = static_cast<const Object*>(value);

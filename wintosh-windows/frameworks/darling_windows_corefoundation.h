@@ -273,6 +273,10 @@ extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyHostName(
 	darling_windows_CFURLRef value);
 extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyNetLocation(
 	darling_windows_CFURLRef value);
+extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyUserName(
+	darling_windows_CFURLRef value);
+extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyPassword(
+	darling_windows_CFURLRef value);
 extern "C" int darling_windows_CFURLGetPortNumber(darling_windows_CFURLRef value);
 extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyLastPathComponent(
 	darling_windows_CFURLRef value);

@@ -110,6 +110,8 @@ Bracketed IPv6 authorities are now recognized by `CFURLCopyHostName` and
 `CFURLGetPortNumber`, including `[addr]:port`.
 `CFURLCopyNetLocation` now returns the authority component for simple
 `scheme://authority` URLs.
+`CFURLCopyUserName` and `CFURLCopyPassword` now expose simple user-info
+components before the authority host.
 
 ## Still required for broad compatibility
 

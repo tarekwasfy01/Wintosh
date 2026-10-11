@@ -368,6 +368,11 @@ int main()
 	const auto ipv6_expected = darling_windows_CFStringCreateWithCString("2001:db8::1");
 	const auto ipv6_net_location = darling_windows_CFURLCopyNetLocation(ipv6_url);
 	const auto ipv6_net_expected = darling_windows_CFStringCreateWithCString("[2001:db8::1]:9443");
+	const auto userinfo_url = darling_windows_CFURLCreateWithFileSystemPath("https://user:secret@example.test/a");
+	const auto userinfo_name = darling_windows_CFURLCopyUserName(userinfo_url);
+	const auto userinfo_password = darling_windows_CFURLCopyPassword(userinfo_url);
+	const auto userinfo_name_expected = darling_windows_CFStringCreateWithCString("user");
+	const auto userinfo_password_expected = darling_windows_CFStringCreateWithCString("secret");
 	const auto url_last_component = darling_windows_CFURLCopyLastPathComponent(url);
 	const auto url_parent = darling_windows_CFURLCreateCopyDeletingLastPathComponent(url);
 	const auto url_extension = darling_windows_CFURLCopyPathExtension(extension_url);
@@ -403,6 +408,9 @@ int main()
 		ipv6_host != nullptr && darling_windows_CFStringCompare(ipv6_host, ipv6_expected) == 0 &&
 		ipv6_net_location != nullptr && darling_windows_CFStringCompare(ipv6_net_location,
 			ipv6_net_expected) == 0 &&
+		userinfo_name != nullptr && userinfo_password != nullptr &&
+		darling_windows_CFStringCompare(userinfo_name, userinfo_name_expected) == 0 &&
+		darling_windows_CFStringCompare(userinfo_password, userinfo_password_expected) == 0 &&
 		darling_windows_CFURLGetPortNumber(ipv6_url) == 9443 &&
 		darling_windows_CFStringGetTypeID() == darling_windows_CFGetTypeID(string) &&
 		darling_windows_CFDataGetTypeID() == darling_windows_CFGetTypeID(data) &&
@@ -894,6 +902,11 @@ int main()
 	darling_windows_CFRelease(ipv6_expected);
 	darling_windows_CFRelease(ipv6_net_location);
 	darling_windows_CFRelease(ipv6_net_expected);
+	darling_windows_CFRelease(userinfo_url);
+	darling_windows_CFRelease(userinfo_name);
+	darling_windows_CFRelease(userinfo_password);
+	darling_windows_CFRelease(userinfo_name_expected);
+	darling_windows_CFRelease(userinfo_password_expected);
 	darling_windows_CFRelease(directory_url);
 	darling_windows_CFRelease(url);
 	darling_windows_CFRelease(date);

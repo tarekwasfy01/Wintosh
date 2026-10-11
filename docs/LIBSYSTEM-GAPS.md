@@ -124,6 +124,8 @@ The URL family also includes last-component extraction and parent-path copies,
 covering path operations used by Darling's CoreAudio helpers.
 `CFURLCopyPath` is also available for extracting the path portion before query
 or fragment delimiters.
+`CFURLCopyQueryString` and `CFURLCopyFragment` now expose the corresponding
+URL components without their delimiters and return null when absent.
 It now also provides path-extension extraction and extension removal for
 filesystem URLs.
 

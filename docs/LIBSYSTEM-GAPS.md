@@ -122,6 +122,8 @@ capacity-hint behavior and rejects negative capacities.
 storage.
 The URL family also includes last-component extraction and parent-path copies,
 covering path operations used by Darling's CoreAudio helpers.
+`CFURLCopyPath` is also available for extracting the path portion before query
+or fragment delimiters.
 It now also provides path-extension extraction and extension removal for
 filesystem URLs.
 

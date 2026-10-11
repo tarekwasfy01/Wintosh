@@ -723,6 +723,51 @@ extern "C" darling_windows_CFIndex darling_windows_CFStringGetLength(darling_win
 		UTF16Length(object->string) : 0;
 }
 
+extern "C" bool darling_windows_CFStringGetCharacters(
+	darling_windows_CFStringRef value, darling_windows_CFRange range, std::uint16_t* output)
+{
+	const auto* object = static_cast<const Object*>(value);
+	if (object == nullptr || object->kind != Kind::String || range.location < 0 ||
+		range.length < 0 || (range.length != 0 && output == nullptr) ||
+		range.location + range.length > UTF16Length(object->string)) return false;
+	std::size_t byte_index = 0;
+	darling_windows_CFIndex unit_index = 0;
+	darling_windows_CFIndex output_index = 0;
+	while (byte_index < object->string.size() && output_index < range.length) {
+		const auto first = static_cast<unsigned char>(object->string[byte_index]);
+		std::size_t width = 1;
+		std::uint32_t codepoint = 0xfffd;
+		if (first < 0x80) codepoint = first;
+		else if (first >= 0xc2 && first <= 0xdf && byte_index + 1 < object->string.size()) {
+			codepoint = ((first & 0x1f) << 6) |
+				(static_cast<unsigned char>(object->string[byte_index + 1]) & 0x3f); width = 2;
+		} else if (first >= 0xe0 && first <= 0xef && byte_index + 2 < object->string.size()) {
+			codepoint = ((first & 0x0f) << 12) |
+				((static_cast<unsigned char>(object->string[byte_index + 1]) & 0x3f) << 6) |
+				(static_cast<unsigned char>(object->string[byte_index + 2]) & 0x3f); width = 3;
+		} else if (first >= 0xf0 && first <= 0xf4 && byte_index + 3 < object->string.size()) {
+			codepoint = ((first & 0x07) << 18) |
+				((static_cast<unsigned char>(object->string[byte_index + 1]) & 0x3f) << 12) |
+				((static_cast<unsigned char>(object->string[byte_index + 2]) & 0x3f) << 6) |
+				(static_cast<unsigned char>(object->string[byte_index + 3]) & 0x3f); width = 4;
+		}
+		const auto units = codepoint > 0xffff ? 2 : 1;
+		if (unit_index + units > range.location && unit_index < range.location + range.length) {
+			if (unit_index < range.location) {
+				if (units != 1) return false;
+			} else if (units == 1) output[output_index++] = static_cast<std::uint16_t>(codepoint);
+			else {
+				output[output_index++] = static_cast<std::uint16_t>(0xd800 + ((codepoint - 0x10000) >> 10));
+				if (output_index < range.length)
+					output[output_index++] = static_cast<std::uint16_t>(0xdc00 + ((codepoint - 0x10000) & 0x3ff));
+			}
+		}
+		unit_index += units;
+		byte_index += width;
+	}
+	return output_index == range.length;
+}
+
 extern "C" std::int32_t darling_windows_CFStringGetIntValue(
 	darling_windows_CFStringRef value)
 {

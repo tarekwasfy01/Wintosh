@@ -13,12 +13,16 @@ Example:
 
 ```text
 wintosh-run.exe --inspect path\to\program
+wintosh-run.exe --diagnose-host
 wintosh-run.exe path\to\program arg1 arg2
 ```
 
 `--inspect` performs parsing and dependency/initialization-order inspection
 without entering the image. Execution of 32-bit i386 or ARM64 Mach-O images
 is rejected on x86_64 Windows because no CPU translation layer is included.
+`--diagnose-host` is independent of an input image and reports the current
+Windows architecture, pointer width, supported native Mach-O target, prefix
+source, and the deliberately unsupported full-macOS boundaries.
 The runner is therefore an adapter/loader milestone, not a complete Darling
 root filesystem or a full macOS framework runtime.
 

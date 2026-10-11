@@ -27,7 +27,9 @@ WSL-backed Darling execution is claimed or required for the native smoke-test
 suite.
 
 The native `wintosh.exe` Release target was built and verified with
-`--help` and `--version` (`Wintosh 0.1.1`). No standalone Mach-O fixture is
+`--help`, `--version` (`Wintosh 0.1.1`), and `--diagnose-host`. The host
+diagnostic confirms the current x86_64 native target and the fail-closed
+boundaries for i386/ARM64 on this host. No standalone Mach-O fixture is
 bundled in the current workspace, so `--inspect` and actual Mach-O execution
 remain unclaimed until a licensed test image is supplied.
 

@@ -929,6 +929,12 @@ The process wrapper also preserves the primary thread ID across `Resume()`.
 This gives a future register-context snapshot a stable thread target without
 keeping a stale Windows thread handle alive.
 
+`Process::GetPrimaryThreadContext` and `SetPrimaryThreadContext` now provide a
+controlled Windows `CONTEXT` read/write boundary for a suspended child. The
+process smoke performs a same-context round trip on x64 and Win32; mapping that
+context to Darwin `thread_state_t` and cloning all secondary threads remain
+open.
+
 The broker also exposes an atomic `CapabilityTransferBatch` operation. The
 client serializes the target session and complete broker-token list; the broker
 validates every current owner before changing any owner and moves associated

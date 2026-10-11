@@ -94,8 +94,11 @@ int wmain()
 		}
 		auto suspended_process = darling::windows_host::Process::LaunchSuspended(
 			L"C:\\Windows\\System32\\cmd.exe", L"cmd.exe /d /c exit 19");
+		CONTEXT suspended_context{};
 		if (!suspended_process.Valid() || suspended_process.ProcessId() == 0 ||
 			suspended_process.ThreadId() == 0 ||
+			!suspended_process.GetPrimaryThreadContext(suspended_context) ||
+			!suspended_process.SetPrimaryThreadContext(suspended_context) ||
 			suspended_process.Resume() == static_cast<DWORD>(-1) ||
 			suspended_process.Wait(10000) != WAIT_OBJECT_0 ||
 			suspended_process.ExitCode() != 19) {

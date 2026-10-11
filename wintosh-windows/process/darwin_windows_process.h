@@ -49,6 +49,8 @@ public:
 	[[nodiscard]] DWORD ExitCode() const noexcept;
 	[[nodiscard]] DWORD ProcessId() const noexcept;
 	[[nodiscard]] DWORD ThreadId() const noexcept { return m_thread_id; }
+	[[nodiscard]] bool GetPrimaryThreadContext(CONTEXT& context) const noexcept;
+	[[nodiscard]] bool SetPrimaryThreadContext(const CONTEXT& context) const noexcept;
 	[[nodiscard]] DWORD Suspend() noexcept;
 	[[nodiscard]] DWORD Resume() noexcept;
 	void Terminate(UINT exit_code = 1) noexcept;

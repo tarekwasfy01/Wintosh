@@ -196,6 +196,34 @@ DWORD Process::ProcessId() const noexcept
 	return m_process == nullptr ? 0 : GetProcessId(m_process);
 }
 
+bool Process::GetPrimaryThreadContext(CONTEXT& context) const noexcept
+{
+	if (m_thread_id == 0)
+		return false;
+	const HANDLE thread = OpenThread(THREAD_GET_CONTEXT | THREAD_QUERY_INFORMATION,
+		FALSE, m_thread_id);
+	if (thread == nullptr)
+		return false;
+	context.ContextFlags = CONTEXT_FULL;
+	const BOOL result = GetThreadContext(thread, &context);
+	CloseHandle(thread);
+	return result != FALSE;
+}
+
+bool Process::SetPrimaryThreadContext(const CONTEXT& context) const noexcept
+{
+	if (m_thread_id == 0)
+		return false;
+	const HANDLE thread = OpenThread(THREAD_SET_CONTEXT | THREAD_QUERY_INFORMATION,
+		FALSE, m_thread_id);
+	if (thread == nullptr)
+		return false;
+	CONTEXT copy = context;
+	const BOOL result = SetThreadContext(thread, &copy);
+	CloseHandle(thread);
+	return result != FALSE;
+}
+
 DWORD Process::Suspend() noexcept
 {
 	if (m_process == nullptr)

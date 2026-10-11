@@ -40,3 +40,7 @@ links; this index gives them a deliberate reading order.
 The public repository links to upstream source repositories instead of
 vendoring their large checkouts. The notes remain useful as analysis and
 provenance documentation, but they are not permission to copy code.
+
+The WSL1 transformation map is documented in
+[WSL1-TRANSFORM-MATRIX.md](WSL1-TRANSFORM-MATRIX.md). It distinguishes
+reusable Windows-host architecture from Linux-only or Darwin-only semantics.

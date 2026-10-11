@@ -4,7 +4,7 @@ param(
 )
 $ErrorActionPreference = 'SilentlyContinue'
 New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
-$names = @('LICENSE','LICENSE.txt','LICENSE.md','COPYING','COPYING.txt','NOTICE','NOTICE.txt','COPYRIGHT','COPYRIGHT.txt','LICENCE','LICENCE.txt','LICENCE.md')
+$names = @('LICENSE','LICENSE.txt','LICENSE.md','COPYING','COPYING.txt','NOTICE','NOTICE.txt','NOTICE.md','COPYRIGHT','COPYRIGHT.txt','LICENCE','LICENCE.txt','LICENCE.md','LICENSES/LICENSE','LICENSES/COPYING','docs/LICENSE','docs/COPYING','src/LICENSE','src/COPYING')
 $rows = @(Import-Csv $Inventory | Where-Object { $_.license_status -eq 'review-required' -and $_.upstream_origin -match '^https://github\.com/([^/]+)/([^/]+?)(?:\.git)?$' })
 $results = $rows | ForEach-Object -ThrottleLimit 12 -Parallel {
     $row = $_; $m = [regex]::Match($row.upstream_origin, '^https://github\.com/([^/]+)/([^/]+?)(?:\.git)?$')

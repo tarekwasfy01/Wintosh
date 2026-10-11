@@ -1103,7 +1103,7 @@ extern "C" darling_kern_return_t darling_windows_mach_broker_enable(const wchar_
 	if (pipe_name == nullptr || *pipe_name == L'\0') return 4;
 	try {
 		auto client = darling::windows_host::NamedPipeRpcClient::Connect(pipe_name);
-		const auto session = darling::windows_host::OpenMachIpcSession(client);
+		const auto session = darling::windows_host::OpenMachIpcSession(client, GetCurrentProcessId());
 		std::lock_guard lock(mach_broker_mutex);
 		mach_broker_client = std::make_unique<darling::windows_host::NamedPipeRpcClient>(std::move(client));
 		mach_broker_session = session;

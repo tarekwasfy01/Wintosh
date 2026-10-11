@@ -1089,6 +1089,27 @@ extern "C" darling_windows_CFRange darling_windows_CFStringFind(
 	return { -1, 0 };
 }
 
+extern "C" darling_windows_CFRange darling_windows_CFStringFindWithOptions(
+	darling_windows_CFStringRef value, darling_windows_CFRange range,
+	darling_windows_CFStringRef needle, int flags)
+{
+	const auto* object = static_cast<const Object*>(value);
+	if (object == nullptr || object->kind != Kind::String || range.location < 0 ||
+		range.length < 0 || range.location > UTF16Length(object->string) ||
+		range.length > UTF16Length(object->string) - range.location)
+		return { -1, 0 };
+	const auto start = UTF8OffsetForUTF16(object->string, range.location);
+	const auto end = UTF8OffsetForUTF16(object->string, range.location + range.length);
+	if (start == std::string::npos || end == std::string::npos || end < start)
+		return { -1, 0 };
+	Object scoped;
+	scoped.kind = Kind::String;
+	scoped.string = object->string.substr(start, end - start);
+	const auto found = darling_windows_CFStringFind(&scoped, needle, flags);
+	return found.location < 0 ? found : darling_windows_CFRange{
+		range.location + found.location, found.length };
+}
+
 extern "C" bool darling_windows_CFStringAppendCString(darling_windows_CFStringRef value,
 	const char* suffix)
 {

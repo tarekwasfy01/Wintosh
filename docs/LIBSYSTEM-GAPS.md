@@ -127,6 +127,8 @@ pairs for non-BMP code points, with range validation on both targets.
 `CFStringGetCharacterAtIndex` uses the same validated UTF-16 indexing.
 `CFStringFind` now supports backwards searches, including combined
 case-insensitive/backwards flag handling.
+The additive `CFStringFindWithOptions` entry point now applies the search to a
+validated UTF-16 range and returns locations relative to the original string.
 The additive `CFStringCompareWithOptions` entry point now provides the
 case-insensitive comparison subset without changing the existing two-argument
 bridge ABI.

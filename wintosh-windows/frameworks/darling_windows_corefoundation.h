@@ -95,6 +95,9 @@ extern "C" int darling_windows_CFStringCompareWithOptions(
 	darling_windows_CFStringRef left, darling_windows_CFStringRef right, int flags);
 extern "C" darling_windows_CFRange darling_windows_CFStringFind(
 	darling_windows_CFStringRef value, darling_windows_CFStringRef needle, int flags);
+extern "C" darling_windows_CFRange darling_windows_CFStringFindWithOptions(
+	darling_windows_CFStringRef value, darling_windows_CFRange range,
+	darling_windows_CFStringRef needle, int flags);
 extern "C" bool darling_windows_CFStringAppendCString(darling_windows_CFStringRef value,
 	const char* suffix);
 extern "C" bool darling_windows_CFStringAppend(darling_windows_CFStringRef value,

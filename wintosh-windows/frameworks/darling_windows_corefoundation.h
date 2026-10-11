@@ -41,6 +41,8 @@ extern "C" std::uint64_t darling_windows_CFHash(const void* value);
 extern "C" bool darling_windows_CFEqual(const void* left, const void* right);
 extern "C" darling_windows_CFStringRef darling_windows_CFStringCreateWithCString(
 	const char* value);
+extern "C" darling_windows_CFStringRef darling_windows_CFStringCreateWithCharacters(
+	const std::uint16_t* characters, darling_windows_CFIndex length);
 extern "C" darling_windows_CFStringRef darling_windows_CFStringCreateWithPascalString(
 	const std::uint8_t* value, int encoding);
 extern "C" darling_windows_CFStringRef darling_windows_CFStringCreateWithBytes(

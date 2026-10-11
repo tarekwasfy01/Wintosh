@@ -90,6 +90,8 @@ directional search contract.
 `CFStringCreateWithPascalString` now accepts the supported ASCII/UTF-8
 encoding identifiers, performs bounded length decoding, and rejects null or
 unsupported-encoding inputs.
+`CFStringCreateWithCharacters` now converts validated UTF-16 input, including
+surrogate pairs, for CoreServices/CarbonCore-style Unicode path handling.
 The URL family also includes last-component extraction and parent-path copies,
 covering path operations used by Darling's CoreAudio helpers.
 It now also provides path-extension extraction and extension removal for

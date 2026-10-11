@@ -628,6 +628,37 @@ extern "C" darling_windows_CFStringRef darling_windows_CFStringCreateWithCString
 	return object;
 }
 
+extern "C" darling_windows_CFStringRef darling_windows_CFStringCreateWithCharacters(
+	const std::uint16_t* characters, darling_windows_CFIndex length)
+{
+	if (length < 0 || (length != 0 && characters == nullptr)) return nullptr;
+	std::string text;
+	for (darling_windows_CFIndex index = 0; index < length; ++index) {
+		std::uint32_t codepoint = characters[index];
+		if (codepoint >= 0xd800 && codepoint <= 0xdbff) {
+			if (index + 1 >= length || characters[index + 1] < 0xdc00 || characters[index + 1] > 0xdfff)
+				return nullptr;
+			codepoint = 0x10000 + ((codepoint - 0xd800) << 10) +
+				(characters[++index] - 0xdc00);
+		} else if (codepoint >= 0xdc00 && codepoint <= 0xdfff) return nullptr;
+		if (codepoint < 0x80) text.push_back(static_cast<char>(codepoint));
+		else if (codepoint < 0x800) {
+			text.push_back(static_cast<char>(0xc0 | (codepoint >> 6)));
+			text.push_back(static_cast<char>(0x80 | (codepoint & 0x3f)));
+		} else if (codepoint < 0x10000) {
+			text.push_back(static_cast<char>(0xe0 | (codepoint >> 12)));
+			text.push_back(static_cast<char>(0x80 | ((codepoint >> 6) & 0x3f)));
+			text.push_back(static_cast<char>(0x80 | (codepoint & 0x3f)));
+		} else {
+			text.push_back(static_cast<char>(0xf0 | (codepoint >> 18)));
+			text.push_back(static_cast<char>(0x80 | ((codepoint >> 12) & 0x3f)));
+			text.push_back(static_cast<char>(0x80 | ((codepoint >> 6) & 0x3f)));
+			text.push_back(static_cast<char>(0x80 | (codepoint & 0x3f)));
+		}
+	}
+	return darling_windows_CFStringCreateWithCString(text.c_str());
+}
+
 extern "C" darling_windows_CFStringRef darling_windows_CFStringCreateWithPascalString(
 	const std::uint8_t* value, int encoding)
 {

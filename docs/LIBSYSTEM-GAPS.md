@@ -56,6 +56,9 @@ following families with Windows-backed implementations:
 - Darwin/BSD signal descriptions now include the common `strsignal` names and
   a deterministic unknown-signal fallback; localization and exact platform
   wording remain outside this bounded bridge;
+- The error introspection pair `strerrorname_np` and `strerrordesc_np` now
+  covers the already mapped Darwin errno subset; unknown values return
+  `nullptr`.
 - C++ static-initialization guard entry points `___cxa_guard_acquire`,
   `___cxa_guard_release`, and `___cxa_guard_abort`, backed by atomic
   Windows-host state transitions; acquire/release/abort behavior is covered

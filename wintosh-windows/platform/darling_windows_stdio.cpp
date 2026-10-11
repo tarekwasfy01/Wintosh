@@ -5757,6 +5757,12 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 	if (std::strcmp(name, "_strsignal") == 0 || std::strcmp(name, "strsignal") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_strsignal);
 	}
+	if (std::strcmp(name, "strerrorname_np") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_strerrorname_np);
+	}
+	if (std::strcmp(name, "strerrordesc_np") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_strerrordesc_np);
+	}
 	return 0;
 }
 
@@ -8374,6 +8380,38 @@ extern "C" int darling_windows_strerror_r(int error_number, char* buffer,
 		return 34;
 	}
 	return 0;
+}
+
+extern "C" const char* darling_windows_strerrorname_np(int error_number)
+{
+	switch (error_number) {
+	case 2: return "ENOENT";
+	case 4: return "EINTR";
+	case 9: return "EBADF";
+	case 12: return "ENOMEM";
+	case 22: return "EINVAL";
+	case 34: return "ERANGE";
+	case 35: return "EAGAIN";
+	case 40: return "EMSGSIZE";
+	case 61: return "ECONNREFUSED";
+	default: return nullptr;
+	}
+}
+
+extern "C" const char* darling_windows_strerrordesc_np(int error_number)
+{
+	switch (error_number) {
+	case 2: return "No such file or directory";
+	case 4: return "Interrupted system call";
+	case 9: return "Bad file descriptor";
+	case 12: return "Cannot allocate memory";
+	case 22: return "Invalid argument";
+	case 34: return "Result too large";
+	case 35: return "Resource temporarily unavailable";
+	case 40: return "Message too long";
+	case 61: return "Connection refused";
+	default: return nullptr;
+	}
 }
 
 extern "C" const char* darling_windows_strsignal(int signal_number)

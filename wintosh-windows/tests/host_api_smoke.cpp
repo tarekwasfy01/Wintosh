@@ -895,6 +895,14 @@ int main()
 	char strerror_buffer[64]{};
 	const bool strerror_r_ok = darling_windows_strerror_r(2, strerror_buffer,
 		sizeof(strerror_buffer)) == 0 && std::string(strerror_buffer).find("No such file") != std::string::npos;
+	const bool strerror_np_ok = std::strcmp(darling_windows_strerrorname_np(2), "ENOENT") == 0 &&
+		std::strcmp(darling_windows_strerrordesc_np(22), "Invalid argument") == 0 &&
+		darling_windows_strerrorname_np(999) == nullptr && darling_windows_strerrordesc_np(999) == nullptr &&
+		darling_windows_host_symbol("strerrorname_np") != 0 && darling_windows_host_symbol("strerrordesc_np") != 0;
+	if (!strerror_np_ok) {
+		std::cerr << "HOST_API_SMOKE_ERROR=strerror_np\n";
+		return 1;
+	}
 	const bool strsignal_ok = std::string(darling_windows_strsignal(SIGINT)).find("Interrupt") != std::string::npos &&
 		std::string(darling_windows_strsignal(SIGTERM)).find("Terminated") != std::string::npos &&
 		darling_windows_strsignal(999) != nullptr && darling_windows_host_symbol("strsignal") != 0;

@@ -637,6 +637,10 @@ adapter suspension is now reported as Darwin `TH_STATE_STOPPED`.
 Stored time-constraint policy records for those terminated threads are now
 removed in the same cleanup path, preventing a later Windows thread-ID reuse
 from inheriting stale Darwin policy data.
+`task_info(TASK_BASIC_INFO)` now reports the adapter's task-level suspend
+counter while a foreign process is suspended, rather than returning a constant
+zero; native Windows memory and time fields remain the authoritative portions
+of the structure.
 Task-level `task_set_exception_ports` and `task_get_exception_ports` now reuse
 the existing owner-keyed exception registry, so task and thread registrations
 have identical mask/filter behavior. Delivery is still only wired through the

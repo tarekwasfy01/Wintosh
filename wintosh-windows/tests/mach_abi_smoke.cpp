@@ -70,7 +70,15 @@ int main()
 	darling_mach_port_name_t child_task = 0;
 	if (darling_windows_task_for_pid(darling_windows_mach_host_self(), child.dwProcessId,
 		&child_task) != 0 || child_task == 0 || ResumeThread(child.hThread) == static_cast<DWORD>(-1) ||
-	darling_windows_task_suspend(child_task) != 0 || darling_windows_task_resume(child_task) != 0) {
+		darling_windows_task_suspend(child_task) != 0) {
+		cleanup_child();
+		return 1;
+	}
+	darling_task_basic_info suspended_task_info{};
+	std::uint32_t suspended_task_count = darling_task_basic_info_count;
+	if (darling_windows_task_info(child_task, darling_task_basic_info_flavor,
+		&suspended_task_info, &suspended_task_count) != 0 ||
+		suspended_task_info.suspend_count != 1 || darling_windows_task_resume(child_task) != 0) {
 		cleanup_child();
 		return 1;
 	}

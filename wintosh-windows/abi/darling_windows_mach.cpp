@@ -310,7 +310,12 @@ extern "C" darling_kern_return_t darling_windows_task_info(
 			static_cast<std::int32_t>((ticks % 10000000) / 10)};
 	};
 	auto* result = static_cast<darling_task_basic_info*>(info);
-	result->suspend_count = 0;
+	{
+		std::lock_guard lock(suspend_counts_mutex);
+		const auto found = task_suspend_counts.find(task);
+		result->suspend_count = found == task_suspend_counts.end() ? 0 :
+			static_cast<std::int32_t>(found->second);
+	}
 	result->virtual_size = memory.PagefileUsage;
 	result->resident_size = memory.WorkingSetSize;
 	result->resident_size_max = memory.PeakWorkingSetSize;

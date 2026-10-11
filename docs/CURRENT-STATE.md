@@ -38,6 +38,12 @@ minimal Darwin directory layout without downloading or fabricating Apple
 libraries.  The repository-owned x86_64 fixture now proves `--inspect` and
 native execution; real system dylibs and frameworks are still not bundled.
 
+The runtime-provider fixture now verifies a three-image provider chain:
+`RuntimeClient.macho` resolves and calls `_libSystemInit` from the repository's
+own `libSystem.B.dylib`, which itself depends on the repository's own
+`libsystem_platform.dylib`. This proves the native provider graph and call
+path, but these files are test providers rather than Apple's system libraries.
+
 ## What is included in a source release
 
 Include the Windows port source, all documentation, and the `licenses`

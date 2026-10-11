@@ -774,7 +774,11 @@ int main()
 		darling_windows_host_symbol("reallocarrayf") != 0;
 	darling_windows_free(reallocarray_value);
 	const bool case_insensitive_ok = darling_windows_strcasecmp("Darling", "darling") == 0 &&
-		darling_windows_strncasecmp("Darling-Host", "darling-runtime", 7) == 0;
+		darling_windows_strncasecmp("Darling-Host", "darling-runtime", 7) == 0 &&
+		darling_windows_strcasecmp(nullptr, nullptr) == 0 &&
+		darling_windows_strcasecmp(nullptr, "darling") < 0 &&
+		darling_windows_strncasecmp("darling", nullptr, 7) > 0 &&
+		darling_windows_strncasecmp(nullptr, "darling", 0) == 0;
 	const bool bit_scan_ok = darling_windows_ffs(0) == 0 && darling_windows_ffs(1) == 1 &&
 		darling_windows_ffs(0x10) == 5 && darling_windows_ffs(-8) == 4 &&
 		darling_windows_fls(0) == 0 && darling_windows_fls(1) == 1 &&

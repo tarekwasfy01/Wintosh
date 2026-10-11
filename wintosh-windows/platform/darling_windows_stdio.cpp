@@ -8097,6 +8097,8 @@ extern "C" int darling_windows_strcmp(const char* left, const char* right)
 
 extern "C" int darling_windows_strcasecmp(const char* left, const char* right)
 {
+	if (left == nullptr || right == nullptr)
+		return left == right ? 0 : (left == nullptr ? -1 : 1);
 	while (*left != '\0' && *right != '\0') {
 		const int left_value = std::tolower(static_cast<unsigned char>(*left));
 		const int right_value = std::tolower(static_cast<unsigned char>(*right));
@@ -8159,6 +8161,9 @@ extern "C" int darling_windows_timingsafe_bcmp(const void* left, const void* rig
 extern "C" int darling_windows_strncasecmp(const char* left, const char* right,
 	std::size_t bytes)
 {
+	if (bytes == 0) return 0;
+	if (left == nullptr || right == nullptr)
+		return left == right ? 0 : (left == nullptr ? -1 : 1);
 	for (std::size_t index = 0; index < bytes; ++index) {
 		const int left_value = std::tolower(static_cast<unsigned char>(left[index]));
 		const int right_value = std::tolower(static_cast<unsigned char>(right[index]));

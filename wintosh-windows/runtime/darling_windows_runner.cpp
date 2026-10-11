@@ -88,8 +88,14 @@ std::optional<std::string> BinaryPlistExecutable(const std::vector<std::uint8_t>
 	if (root_offset >= bytes.size() || (bytes[static_cast<std::size_t>(root_offset)] >> 4) != 0xd)
 		return std::nullopt;
 	const auto root_marker = bytes[static_cast<std::size_t>(root_offset)];
-	const auto pair_count = std::uint64_t(root_marker & 0x0f);
-	const auto refs = static_cast<std::size_t>(root_offset + 1);
+	std::uint64_t pair_count = root_marker & 0x0f;
+	std::size_t refs = static_cast<std::size_t>(root_offset + 1);
+	if (pair_count == 0x0f) {
+		if (refs >= bytes.size() || bytes[refs] >> 4 != 0x1) return std::nullopt;
+		const auto width = std::size_t(1) << (bytes[refs] & 0x0f);
+		pair_count = ReadBigEndian(bytes, refs + 1, width);
+		refs += 1 + width;
+	}
 	if (pair_count > (bytes.size() - refs) / (2 * reference_size)) return std::nullopt;
 	for (std::uint64_t index = 0; index < pair_count; ++index) {
 		const auto key = ReadBigEndian(bytes, refs + static_cast<std::size_t>(index * reference_size),

@@ -8847,9 +8847,17 @@ namespace {
 constexpr int darling_fnm_pathname = 0x01;
 constexpr int darling_fnm_period = 0x02;
 constexpr int darling_fnm_noescape = 0x04;
+constexpr int darling_fnm_casefold = 0x10;
 
-bool DarlingFnmatchClass(const char*& pattern, char value)
+char DarlingFnmatchFold(char value, int flags)
 {
+	if ((flags & darling_fnm_casefold) == 0 || value < 'A' || value > 'Z') return value;
+	return static_cast<char>(value - 'A' + 'a');
+}
+
+bool DarlingFnmatchClass(const char*& pattern, char value, int flags)
+{
+	value = DarlingFnmatchFold(value, flags);
 	bool inverted = false;
 	if (*pattern == '!' || *pattern == '^') { inverted = true; ++pattern; }
 	bool matched = false;
@@ -8857,10 +8865,11 @@ bool DarlingFnmatchClass(const char*& pattern, char value)
 	while (*pattern != '\0' && *pattern != ']') {
 		if (*pattern == '-' && previous != '\0' && pattern[1] != '\0' && pattern[1] != ']') {
 			const char upper = pattern[1];
-			if (value >= previous && value <= upper) matched = true;
+			if (value >= DarlingFnmatchFold(previous, flags) &&
+				value <= DarlingFnmatchFold(upper, flags)) matched = true;
 			pattern += 2; previous = upper; continue;
 		}
-		if (*pattern == value) matched = true;
+		if (DarlingFnmatchFold(*pattern, flags) == value) matched = true;
 		previous = *pattern++;
 	}
 	if (*pattern == ']') ++pattern;
@@ -8888,11 +8897,11 @@ bool DarlingFnmatchImpl(const char* pattern, const char* value, int flags, bool 
 		}
 		if (*pattern == '[' && *value != '\0') {
 			const char* class_cursor = pattern + 1;
-			if (DarlingFnmatchClass(class_cursor, *value)) { pattern = class_cursor; ++value; at_start = false; continue; }
+			if (DarlingFnmatchClass(class_cursor, *value, flags)) { pattern = class_cursor; ++value; at_start = false; continue; }
 			return false;
 		}
 		if (*pattern == '\\' && (flags & darling_fnm_noescape) == 0) ++pattern;
-		if (*pattern == '\0' || *pattern != *value) return false;
+		if (*pattern == '\0' || DarlingFnmatchFold(*pattern, flags) != DarlingFnmatchFold(*value, flags)) return false;
 		if ((flags & darling_fnm_period) != 0 && at_start && *value == '.' && *pattern != '.') return false;
 		++pattern; if (*value != '\0') ++value; at_start = false;
 	}

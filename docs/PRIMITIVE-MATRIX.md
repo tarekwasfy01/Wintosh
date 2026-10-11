@@ -834,6 +834,8 @@ mapping and bounded `strerrordesc_np` descriptions for stable errno values.
 The libc pattern family now includes `fnmatch` with the common wildcard,
 character-class, pathname, period, and escape flags; locale-specific collation
 and extended bracket expressions remain open.
+The ASCII `FNM_CASEFOLD` extension is now supported, including case-folded
+literal and bracket-class comparisons; locale-specific collation remains open.
 The path-string family also includes `basename` and `dirname` for common
 slash-separated, backslash-separated, and drive-letter cases; UNC/device-path
 edge semantics remain open.

@@ -12,6 +12,7 @@
 
 #include <atomic>
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <condition_variable>
 #include <cstring>
@@ -1603,6 +1604,74 @@ extern "C" darling_kern_return_t darling_windows_mach_port_lookup_broker(
 	if (!capability) return 4;
 	*broker_token = capability->broker_token;
 	*session_token = capability->session_token;
+	return 0;
+}
+
+extern "C" darling_kern_return_t darling_windows_mach_port_peek(
+	darling_mach_port_name_t task, darling_mach_port_name_t name,
+	std::uint32_t trailer_option, std::uint32_t* sequence,
+	std::uint32_t* message_size, darling_mach_msg_id_t* message_id,
+	void* trailer_info, std::uint32_t* trailer_size)
+{
+	if (task == 0 || task != darling_windows_mach_task_self() || name == 0 ||
+		sequence == nullptr || message_size == nullptr || message_id == nullptr ||
+		trailer_size == nullptr) return 4;
+	const auto port = FindPort(name);
+	if (port == nullptr) return 3;
+	std::lock_guard lock(port->mutex);
+	if (port->closed) return 3;
+	if (port->messages.empty()) return 5;
+	const auto& message = port->messages.front();
+	if (message.size() < sizeof(darling_mach_msg_header)) return 4;
+	const auto* header = reinterpret_cast<const darling_mach_msg_header*>(message.data());
+	const auto elements = (trailer_option >> 24) & 0xfu;
+	std::uint32_t required = sizeof(darling_mach_msg_trailer);
+	if (elements == 1) required = sizeof(darling_mach_msg_seqno_trailer);
+	else if (elements == 2) required = sizeof(darling_mach_msg_security_trailer);
+	else if (elements == 3) required = sizeof(darling_mach_msg_audit_trailer);
+	else if (elements == 4) required = sizeof(darling_mach_msg_context_trailer);
+	else if (elements != 0) return 4;
+	if (trailer_info != nullptr && *trailer_size < required) {
+		*trailer_size = required;
+		return 4;
+	}
+	*sequence = port->receive_sequence == (std::numeric_limits<std::uint32_t>::max)() ?
+		1 : port->receive_sequence + 1;
+	*message_size = static_cast<std::uint32_t>(message.size());
+	*message_id = header->msgh_id;
+	*trailer_size = required;
+	if (trailer_info == nullptr) return 0;
+	std::array<std::uint8_t, sizeof(darling_mach_msg_context_trailer)> trailer{};
+	const auto host_pid = GetCurrentProcessId();
+	const auto host_tid = GetCurrentThreadId();
+	if (elements == 4) {
+		auto* value = reinterpret_cast<darling_mach_msg_context_trailer*>(trailer.data());
+		value->audit.security.seqno.trailer.size = required;
+		value->audit.security.seqno.msgh_seqno = *sequence;
+		value->audit.audit_token.val[0] = host_pid;
+		value->audit.audit_token.val[1] = host_tid;
+		value->msgh_context = name;
+	} else if (elements == 3) {
+		auto* value = reinterpret_cast<darling_mach_msg_audit_trailer*>(trailer.data());
+		value->security.seqno.trailer.size = required;
+		value->security.seqno.msgh_seqno = *sequence;
+		value->audit_token.val[0] = host_pid;
+		value->audit_token.val[1] = host_tid;
+	} else if (elements == 2) {
+		auto* value = reinterpret_cast<darling_mach_msg_security_trailer*>(trailer.data());
+		value->seqno.trailer.size = required;
+		value->seqno.msgh_seqno = *sequence;
+		value->security_token.val[0] = host_pid;
+		value->security_token.val[1] = host_tid;
+	} else if (elements == 1) {
+		auto* value = reinterpret_cast<darling_mach_msg_seqno_trailer*>(trailer.data());
+		value->trailer.size = required;
+		value->msgh_seqno = *sequence;
+	} else {
+		auto* value = reinterpret_cast<darling_mach_msg_trailer*>(trailer.data());
+		value->size = required;
+	}
+	std::memcpy(trailer_info, trailer.data(), required);
 	return 0;
 }
 

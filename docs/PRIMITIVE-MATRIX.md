@@ -75,6 +75,11 @@ The companion `mach_destroy_ool_smoke` test verifies OOL receive ownership and
 rejects a second release on both targets.
 The `mach_too_large_smoke` test verifies that `MACH_MSG_TOO_LARGE` preserves
 the queued message for a subsequent receive on both targets.
+The native C ABI now also exposes non-destructive `mach_port_peek` for local
+ports, returning the queued message size/id and the requested null, sequence,
+sender, audit, or context trailer; `mach_peek_smoke` proves that a peek does
+not consume the message. Broker-backed peek and complete Darwin peek error
+parity remain open.
 `MACH_RCV_LARGE` and `MACH_RCV_LARGE_IDENTITY` are now accepted at the option
 boundary and retain the queue-preserving Too-Large behavior; Darwin's complete
 large-message identity payload remains open.

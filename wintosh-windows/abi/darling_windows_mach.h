@@ -390,6 +390,11 @@ extern "C" darling_kern_return_t darling_windows_mach_port_send(
 extern "C" darling_kern_return_t darling_windows_mach_port_receive(
 	darling_mach_port_name_t name, void* data, std::uint32_t capacity,
 	std::uint32_t* size, std::uint32_t timeout_ms);
+extern "C" darling_kern_return_t darling_windows_mach_port_peek(
+	darling_mach_port_name_t task, darling_mach_port_name_t name,
+	std::uint32_t trailer_option, std::uint32_t* sequence,
+	std::uint32_t* message_size, darling_mach_msg_id_t* message_id,
+	void* trailer_info, std::uint32_t* trailer_size);
 extern "C" darling_kern_return_t darling_windows_mach_msg(
 	darling_mach_msg_header* message, std::uint32_t option,
 	std::uint32_t send_size, std::uint32_t receive_size,

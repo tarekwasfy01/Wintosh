@@ -951,6 +951,17 @@ int main()
 		std::cerr << "HOST_API_SMOKE_ERROR=gethostbyname\n";
 		return 1;
 	}
+	IN_ADDR reverse_address{};
+	reverse_address.S_un.S_addr = htonl(0x7f000001u);
+	const auto* reverse_entry = darling_windows_gethostbyaddr(&reverse_address,
+		static_cast<int>(sizeof(reverse_address)), AF_INET);
+	const bool legacy_reverse_ok = (reverse_entry == nullptr || reverse_entry->h_addrtype == AF_INET) &&
+		darling_windows_gethostbyaddr(nullptr, sizeof(reverse_address), AF_INET) == nullptr &&
+		darling_windows_host_symbol("gethostbyaddr") != 0;
+	if (!legacy_reverse_ok) {
+		std::cerr << "HOST_API_SMOKE_ERROR=gethostbyaddr\n";
+		return 1;
+	}
 	const bool file_values_ok = file_written == 3 && duplicate_written == 3 && file_end == 6 && file_start == 0 && truncate_ok;
 	const bool file_access_ok = darling_windows_access(file_path.c_str(), 0) == 0;
 	(void)DeleteFileA(renamed_file_path.c_str());

@@ -1659,6 +1659,15 @@ extern "C" hostent* darling_windows_gethostbyname(const char* name)
 	return ::gethostbyname(name);
 }
 
+extern "C" hostent* darling_windows_gethostbyaddr(const void* address, int length, int type)
+{
+	if (address == nullptr || length <= 0) {
+		darling::windows_host::DarwinErrno::Set(22);
+		return nullptr;
+	}
+	return ::gethostbyaddr(static_cast<const char*>(address), length, type);
+}
+
 extern "C" int darling_windows_getnameinfo(const void* address, int address_length,
 	char* host, std::size_t host_length, char* service, std::size_t service_length, int flags)
 {
@@ -4909,6 +4918,9 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 	}
 	if (std::strcmp(name, "_gethostbyname") == 0 || std::strcmp(name, "gethostbyname") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_gethostbyname);
+	}
+	if (std::strcmp(name, "_gethostbyaddr") == 0 || std::strcmp(name, "gethostbyaddr") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_gethostbyaddr);
 	}
 	if (std::strcmp(name, "_getnameinfo") == 0 || std::strcmp(name, "getnameinfo") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_getnameinfo);

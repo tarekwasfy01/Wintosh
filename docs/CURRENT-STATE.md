@@ -299,6 +299,11 @@ Preference loading now compares the main plist and orphaned `.tmp` by write
 time and selects the newer valid source, covering recovery after an interrupted
 replacement even when an older main plist still exists.
 
+The external `.events` queue is now serialized by a named Windows mutex for
+both append and drain operations, so concurrent preference writers and readers
+cannot interleave truncation or consume partial records. This closes the local
+queue atomicity boundary, but not multi-file transactional journaling.
+
 The CoreFoundation collection family now snapshots and retains array, dictionary,
 and set values while applier callbacks run. Callbacks may remove or replace
 entries from the mutable collection without invalidating the active iteration;

@@ -628,6 +628,15 @@ extern "C" darling_windows_CFStringRef darling_windows_CFStringCreateWithCString
 	return object;
 }
 
+extern "C" darling_windows_CFStringRef darling_windows_CFStringCreateWithFileSystemRepresentation(
+	const unsigned char* bytes, darling_windows_CFIndex length)
+{
+	if (length < 0 || (length != 0 && bytes == nullptr)) return nullptr;
+	std::string path(reinterpret_cast<const char*>(bytes), static_cast<std::size_t>(length));
+	if (path.find('\0') != std::string::npos) return nullptr;
+	return darling_windows_CFStringCreateWithCString(path.c_str());
+}
+
 extern "C" darling_windows_CFStringRef darling_windows_CFStringCreateWithCharacters(
 	const std::uint16_t* characters, darling_windows_CFIndex length)
 {

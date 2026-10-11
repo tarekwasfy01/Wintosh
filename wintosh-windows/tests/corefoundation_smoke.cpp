@@ -60,6 +60,13 @@ int main()
 	const auto pascal_string = darling_windows_CFStringCreateWithPascalString(pascal_input, 1);
 	const std::uint16_t character_input[] = {'A', 0xd83d, 0xde00, 'Z'};
 	const auto characters_string = darling_windows_CFStringCreateWithCharacters(character_input, 4);
+	const unsigned char filesystem_path[] = "C:/Wintosh/Audio.app";
+	const auto filesystem_string = darling_windows_CFStringCreateWithFileSystemRepresentation(
+		filesystem_path, static_cast<darling_windows_CFIndex>(sizeof(filesystem_path) - 1));
+	const unsigned char filesystem_path_with_nul[] = {'a', 0, 'b'};
+	const bool filesystem_string_ok = filesystem_string != nullptr &&
+		darling_windows_CFStringGetLength(filesystem_string) == 20 &&
+		darling_windows_CFStringCreateWithFileSystemRepresentation(filesystem_path_with_nul, 3) == nullptr;
 	const std::uint16_t invalid_characters[] = {0xd83d, 'Z'};
 	const bool characters_creation_ok = characters_string != nullptr &&
 		darling_windows_CFStringGetLength(characters_string) == 4 &&
@@ -781,7 +788,7 @@ int main()
 	if (!dictionary_hash_ok || !set_hash_ok) return 1;
 	std::cout << "DARWIN_COREF_FOUNDATION=\"" <<
 		(string_ok && formatted_string_ok && substring_ok && string_match_ok && string_find_ok && equal_ok && semantic_lookup_ok && collection_equal_ok && array_search_ok && data_ok && data_slice_ok && array_ok && array_values_ok && number_ok && real_number_ok && number_conversion_ok && dictionary_ok && dictionary_values_ok && set_ok && set_values_ok && date_url_ok && url_xml_ok && scalar_ok && runloop_ok && callback_ok && timer_ok && drain_sources_ok && notification_ok && delivered && plist_ok && array_plist_ok && data_plist_ok && date_plist_ok && real_plist_ok && escaping_ok && plist_parse_ok && plist_dict_parse_ok && plist_data_parse_ok && plist_date_parse_ok && plist_fractional_date_ok && plist_offset_date_ok && binary_plist_ok && binary_dictionary_ok && binary_utf16_ok && binary_extended_ok && binary_data_ok && binary_date_ok && binary_real_ok && binary_uid_ok && mutable_array_ok && mutable_dictionary_ok && mutable_set_ok && mutable_data_ok ? "PASS" : "FAIL") << "\n";
-	if (!string_number_ok || !utf16_characters_ok || !utf16_character_at_index_ok || !backwards_find_ok || !unicode_find_range_ok || !pascal_rejection_ok || !characters_creation_ok || !string_split_ok) return 1;
+	if (!string_number_ok || !utf16_characters_ok || !utf16_character_at_index_ok || !backwards_find_ok || !unicode_find_range_ok || !pascal_rejection_ok || !characters_creation_ok || !filesystem_string_ok || !string_split_ok) return 1;
 	if (!identity_ok) return 1;
 	if (!bytes_string_ok) return 1;
 	if (!url_extension_ok) return 1;

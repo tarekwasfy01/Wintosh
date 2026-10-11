@@ -177,6 +177,29 @@ std::vector<unsigned char> DecodeBase64(const std::string& input)
 	}
 	return output;
 }
+std::string PercentDecode(const std::string& input)
+{
+	std::string output;
+	for (std::size_t index = 0; index < input.size(); ++index) {
+		if (input[index] == '%' && index + 2 < input.size()) {
+			const auto hex = [](char value) -> int {
+				if (value >= '0' && value <= '9') return value - '0';
+				if (value >= 'a' && value <= 'f') return value - 'a' + 10;
+				if (value >= 'A' && value <= 'F') return value - 'A' + 10;
+				return -1;
+			};
+			const auto high = hex(input[index + 1]);
+			const auto low = hex(input[index + 2]);
+			if (high >= 0 && low >= 0) {
+				output.push_back(static_cast<char>((high << 4) | low));
+				index += 2;
+				continue;
+			}
+		}
+		output.push_back(input[index]);
+	}
+	return output;
+}
 std::string DecodeUTF16BE(const unsigned char* bytes, std::size_t units)
 {
 	std::string output;
@@ -2108,8 +2131,8 @@ extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyUserName(
 	const auto at = authority.rfind('@');
 	if (at == std::string::npos) return nullptr;
 	const auto colon = authority.find(':');
-	return darling_windows_CFStringCreateWithCString(authority.substr(0,
-		colon == std::string::npos || colon > at ? at : colon).c_str());
+	return darling_windows_CFStringCreateWithCString(PercentDecode(authority.substr(0,
+		colon == std::string::npos || colon > at ? at : colon)).c_str());
 }
 
 extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyPassword(
@@ -2126,7 +2149,8 @@ extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyPassword(
 	if (at == std::string::npos) return nullptr;
 	const auto colon = authority.find(':');
 	if (colon == std::string::npos || colon > at) return nullptr;
-	return darling_windows_CFStringCreateWithCString(authority.substr(colon + 1, at - colon - 1).c_str());
+	return darling_windows_CFStringCreateWithCString(PercentDecode(authority.substr(
+		colon + 1, at - colon - 1)).c_str());
 }
 
 extern "C" int darling_windows_CFURLGetPortNumber(darling_windows_CFURLRef value)

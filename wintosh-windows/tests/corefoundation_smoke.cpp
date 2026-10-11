@@ -373,6 +373,9 @@ int main()
 	const auto userinfo_password = darling_windows_CFURLCopyPassword(userinfo_url);
 	const auto userinfo_name_expected = darling_windows_CFStringCreateWithCString("user");
 	const auto userinfo_password_expected = darling_windows_CFStringCreateWithCString("secret");
+	const auto encoded_userinfo_url = darling_windows_CFURLCreateWithFileSystemPath("https://u%73er:s%65cret@example.test/a");
+	const auto encoded_userinfo_name = darling_windows_CFURLCopyUserName(encoded_userinfo_url);
+	const auto encoded_userinfo_password = darling_windows_CFURLCopyPassword(encoded_userinfo_url);
 	const auto url_last_component = darling_windows_CFURLCopyLastPathComponent(url);
 	const auto url_parent = darling_windows_CFURLCreateCopyDeletingLastPathComponent(url);
 	const auto url_extension = darling_windows_CFURLCopyPathExtension(extension_url);
@@ -411,6 +414,9 @@ int main()
 		userinfo_name != nullptr && userinfo_password != nullptr &&
 		darling_windows_CFStringCompare(userinfo_name, userinfo_name_expected) == 0 &&
 		darling_windows_CFStringCompare(userinfo_password, userinfo_password_expected) == 0 &&
+		encoded_userinfo_name != nullptr && encoded_userinfo_password != nullptr &&
+		darling_windows_CFStringCompare(encoded_userinfo_name, userinfo_name_expected) == 0 &&
+		darling_windows_CFStringCompare(encoded_userinfo_password, userinfo_password_expected) == 0 &&
 		darling_windows_CFURLGetPortNumber(ipv6_url) == 9443 &&
 		darling_windows_CFStringGetTypeID() == darling_windows_CFGetTypeID(string) &&
 		darling_windows_CFDataGetTypeID() == darling_windows_CFGetTypeID(data) &&
@@ -907,6 +913,9 @@ int main()
 	darling_windows_CFRelease(userinfo_password);
 	darling_windows_CFRelease(userinfo_name_expected);
 	darling_windows_CFRelease(userinfo_password_expected);
+	darling_windows_CFRelease(encoded_userinfo_url);
+	darling_windows_CFRelease(encoded_userinfo_name);
+	darling_windows_CFRelease(encoded_userinfo_password);
 	darling_windows_CFRelease(directory_url);
 	darling_windows_CFRelease(url);
 	darling_windows_CFRelease(date);

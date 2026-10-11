@@ -112,6 +112,8 @@ Bracketed IPv6 authorities are now recognized by `CFURLCopyHostName` and
 `scheme://authority` URLs.
 `CFURLCopyUserName` and `CFURLCopyPassword` now expose simple user-info
 components before the authority host.
+Valid `%XX` escapes in those two user-info components are decoded by the
+Windows bridge; malformed escapes remain literal.
 
 ## Still required for broad compatibility
 

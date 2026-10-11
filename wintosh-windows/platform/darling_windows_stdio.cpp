@@ -7912,12 +7912,15 @@ extern "C" void darling_windows_explicit_bzero(void* destination, std::size_t by
 extern "C" void darling_windows_bcopy(const void* source, void* destination,
 	std::size_t bytes)
 {
-	std::memmove(destination, source, bytes);
+	if (bytes != 0 && source != nullptr && destination != nullptr)
+		std::memmove(destination, source, bytes);
 }
 
 extern "C" void* darling_windows_memccpy(void* destination, const void* source,
 	int byte, std::size_t bytes)
 {
+	if (bytes == 0) return nullptr;
+	if (source == nullptr || destination == nullptr) return nullptr;
 	const auto* source_bytes = static_cast<const unsigned char*>(source);
 	char* destination_bytes = static_cast<char*>(destination);
 	for (std::size_t index = 0; index < bytes; ++index) {

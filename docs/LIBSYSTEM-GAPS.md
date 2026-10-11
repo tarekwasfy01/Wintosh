@@ -33,6 +33,8 @@ following families with Windows-backed implementations:
   empty-range result;
 - `memcpy`, `memmove`, `memset`, `memcmp`, and `bzero` now handle empty ranges
   without dereferencing null pointers and reject invalid nonempty ranges;
+- `bcopy` and `memccpy` now apply the same empty-range and invalid-pointer
+  protection;
 - BSD/Darwin reverse byte search `memrchr` is now Windows-backed and
   host-symbol-resolvable, including bounded reverse scanning;
 - BSD/Darwin first-set-bit primitive `ffs` is now Windows-backed and

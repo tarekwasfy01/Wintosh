@@ -21,3 +21,7 @@ The 11 `APPLE_LICENSE` candidates all contain Apple Public Source License
 2.0 text. This is a separate Apple license family, not automatically MIT,
 BSD, GPL, or LGPL. Each component still requires source-file mapping,
 additional Apple notices, and compatibility review before redistribution.
+The inspected APSL text explicitly distinguishes unmodified and modified code,
+requires preservation of Apple notices, and imposes source-availability and
+modification-notice conditions for externally deployed modifications. Those
+conditions must be tracked separately from the Wintosh project license.

@@ -796,27 +796,28 @@ translation as described below.
 The matching simple `Receive` path is now broker-backed as well: the C ABI
 sends timeout and receive-capacity metadata, copies the returned inline bytes
 into the caller buffer, and appends the supported basic trailer. The broker
-smoke verifies Send -> Receive -> Destroy; OOL and descriptor responses still
-require dedicated translation.
+smoke verifies Send -> Receive -> Destroy; OOL and descriptor responses use the
+dedicated translation paths below.
 
 The C-ABI receive path now also accepts a broker response carrying a duplicated
 native mapping handle, copies it into locally owned memory, registers the OOL
 ownership, and writes a Mach OOL descriptor. This covers the materialization
-primitive; a full C-ABI OOL Send -> Receive test is still pending because the
-current envelope format does not preserve mixed inline-plus-OOL message data.
+primitive; the version-4 envelope below additionally preserves mixed
+inline-plus-OOL message data.
 
 That OOL-only path is now exercised end-to-end: `mach_msg` sends the copied OOL
 bytes as a broker disposition, the broker returns a duplicated mapping handle,
 and the C-ABI receive reconstructs and releases the local OOL allocation.
-`darling_windows_broker_smoke` reports `BROKER_C_ABI_OOL=PASS`. Mixed inline+OOL
-mixed inline+OOL messages remain unsupported in the broker bridge; port
-descriptors use the separate token path described below.
+`darling_windows_broker_smoke` reports `BROKER_C_ABI_OOL=PASS`. OOL-only and
+mixed inline+OOL messages use the dedicated mapping path; port descriptors use
+the separate token path described below.
 
 Complex messages containing only port descriptors now use the broker transport
-as a full inline message. The descriptor names intentionally remain local
-names, so this is valid only for a shared local namespace; true cross-process
-capability-token rewriting is still pending. OOL-only messages continue to use
-the dedicated mapping-disposition path above.
+as a full inline message. The descriptor names are translated through broker
+capability tokens and restored to local names on receive. The current
+implementation still requires one active session and does not yet model
+Darwin's complete cross-task right semantics. OOL-only messages continue to
+use the dedicated mapping-disposition path above.
 
 The envelope protocol now carries an explicit version-3 list of port-descriptor
 broker tokens, with encode/decode coverage in `MACH_IPC_DESCRIPTOR_TOKENS=PASS`.
@@ -864,8 +865,8 @@ its immediate exception paths, so mapping creation failure does not leave a
 partially consumed disposition.
 Queue insertion is also transactional: a late queue allocation failure removes
 the newly created OOL mapping and restores the saved rights snapshot.
-The complete native Windows regression matrix was rerun after this change:
-`40/40` CTest tests passed in Release configuration.
+The complete native Windows regression matrix currently contains 55 tests and
+passes `55/55` on both x64 and Win32 in Release configuration.
 The broker now maintains receive/send/send-once counters per capability for
 the supported move/copy/make cases and applies the first-level consume/create
 rules before queueing. This is covered by the updated make-send descriptor
@@ -879,7 +880,7 @@ Release configuration. This validates regression coverage across the current
 host/runtime/ABI families, but it does not expand the claimed compatibility
 boundary to full Darwin semantics.
 
-The current uncommitted batch also passes `Check-LicensePreflight.ps1`:
+The repository license preflight passes with:
 150 provenance rows, 22 license-inventory rows, all required bundled license
 files present, and zero port source files without a header notice. The
 preflight still marks source-provenance review items explicitly; PASS means

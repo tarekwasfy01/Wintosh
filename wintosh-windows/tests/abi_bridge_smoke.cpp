@@ -32,5 +32,10 @@ int main()
 		return 2;
 	}
 	std::puts("ABI_BRIDGE_VARIADIC_LOOKUP=PASS");
+	if (darling::windows_host::abi::darling_windows_abi_printf("unused %d", 7) != -1) {
+		std::fprintf(stderr, "ABI_BRIDGE_VARIADIC_FAIL_CLOSED=FAIL\n");
+		return 3;
+	}
+	std::puts("ABI_BRIDGE_VARIADIC_FAIL_CLOSED=PASS");
 	return 0;
 }

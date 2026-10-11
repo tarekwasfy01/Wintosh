@@ -105,6 +105,8 @@ identifier for stable CoreServices string conversion.
 capacity argument is treated as a non-binding reservation hint on Windows.
 `CFStringCreateMutable` now creates an empty mutable string with the same
 capacity-hint behavior and rejects negative capacities.
+`CFStringAppend` now appends another CFString without exposing the underlying
+storage.
 The URL family also includes last-component extraction and parent-path copies,
 covering path operations used by Darling's CoreAudio helpers.
 It now also provides path-extension extraction and extension removal for

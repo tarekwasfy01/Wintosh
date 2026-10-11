@@ -976,6 +976,17 @@ extern "C" bool darling_windows_CFStringAppendCString(darling_windows_CFStringRe
 	object->string += suffix; return true;
 }
 
+extern "C" bool darling_windows_CFStringAppend(darling_windows_CFStringRef value,
+	darling_windows_CFStringRef suffix)
+{
+	auto* object = As(value);
+	const auto* appended = static_cast<const Object*>(suffix);
+	if (object == nullptr || appended == nullptr || object->kind != Kind::String ||
+		appended->kind != Kind::String) return false;
+	object->string += appended->string;
+	return true;
+}
+
 extern "C" bool darling_windows_CFStringReplaceAll(darling_windows_CFStringRef value,
 	darling_windows_CFStringRef target, darling_windows_CFStringRef replacement)
 {

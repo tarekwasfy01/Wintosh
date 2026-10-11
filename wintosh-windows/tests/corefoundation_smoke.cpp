@@ -56,8 +56,10 @@ int main()
 	const auto string_copy = darling_windows_CFStringCreateCopy(string);
 	const auto mutable_copy = darling_windows_CFStringCreateMutableCopy(string, 64);
 	const auto empty_mutable_string = darling_windows_CFStringCreateMutable(16);
+	const auto mutable_suffix = darling_windows_CFStringCreateWithCString(" string");
 	const bool mutable_creation_ok = empty_mutable_string != nullptr &&
-		darling_windows_CFStringAppendCString(empty_mutable_string, "created") &&
+		mutable_suffix != nullptr && darling_windows_CFStringAppendCString(empty_mutable_string, "created") &&
+		darling_windows_CFStringAppend(empty_mutable_string, mutable_suffix) &&
 		darling_windows_CFStringCreateMutable(-1) == nullptr;
 	const unsigned char formatted_input_bytes[] = {'B', 'y', 't', 'e', 's'};
 	const auto bytes_string = darling_windows_CFStringCreateWithBytes(formatted_input_bytes, 5, 1, false);

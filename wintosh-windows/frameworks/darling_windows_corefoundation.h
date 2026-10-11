@@ -88,6 +88,8 @@ extern "C" darling_windows_CFRange darling_windows_CFStringFind(
 	darling_windows_CFStringRef value, darling_windows_CFStringRef needle, int flags);
 extern "C" bool darling_windows_CFStringAppendCString(darling_windows_CFStringRef value,
 	const char* suffix);
+extern "C" bool darling_windows_CFStringAppend(darling_windows_CFStringRef value,
+	darling_windows_CFStringRef suffix);
 extern "C" bool darling_windows_CFStringReplaceAll(darling_windows_CFStringRef value,
 	darling_windows_CFStringRef target, darling_windows_CFStringRef replacement);
 extern "C" darling_windows_CFArrayRef darling_windows_CFStringCreateArrayBySeparatingStrings(

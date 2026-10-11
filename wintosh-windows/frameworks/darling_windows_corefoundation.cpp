@@ -628,6 +628,13 @@ extern "C" darling_windows_CFStringRef darling_windows_CFStringCreateWithCString
 	return object;
 }
 
+extern "C" darling_windows_CFStringRef darling_windows_CFStringCreateWithCStringNoCopy(
+	const char* value, int encoding)
+{
+	if (encoding != 0 && encoding != 1 && encoding != 4) return nullptr;
+	return darling_windows_CFStringCreateWithCString(value);
+}
+
 extern "C" darling_windows_CFStringRef darling_windows_CFStringCreateWithFileSystemRepresentation(
 	const unsigned char* bytes, darling_windows_CFIndex length)
 {

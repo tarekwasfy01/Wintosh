@@ -63,9 +63,12 @@ int main()
 	const unsigned char filesystem_path[] = "C:/Wintosh/Audio.app";
 	const auto filesystem_string = darling_windows_CFStringCreateWithFileSystemRepresentation(
 		filesystem_path, static_cast<darling_windows_CFIndex>(sizeof(filesystem_path) - 1));
+	const auto no_copy_string = darling_windows_CFStringCreateWithCStringNoCopy("NoCopy", 1);
 	const unsigned char filesystem_path_with_nul[] = {'a', 0, 'b'};
-	const bool filesystem_string_ok = filesystem_string != nullptr &&
+	const bool filesystem_string_ok = filesystem_string != nullptr && no_copy_string != nullptr &&
 		darling_windows_CFStringGetLength(filesystem_string) == 20 &&
+		darling_windows_CFStringGetLength(no_copy_string) == 6 &&
+		darling_windows_CFStringCreateWithCStringNoCopy("NoCopy", 99) == nullptr &&
 		darling_windows_CFStringCreateWithFileSystemRepresentation(filesystem_path_with_nul, 3) == nullptr;
 	const std::uint16_t invalid_characters[] = {0xd83d, 'Z'};
 	const bool characters_creation_ok = characters_string != nullptr &&

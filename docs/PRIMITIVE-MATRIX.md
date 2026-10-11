@@ -808,9 +808,10 @@ covered, while malformed/Unicode escapes and full credential parsing remain
 open.
 
 The libc string/allocation family now also covers `reallocarray`,
-`reallocarrayf`, and `strsep`. The array helpers reject multiplication
-overflow before calling the Windows heap, while `strsep` preserves empty
-fields. The host API smoke verifies the normalized symbol names and runtime
-behavior on the native x64 build; Win32 matrix coverage remains part of the
-next full release rerun.
+`reallocarrayf`, `strsep`, and bounded `strnstr`. The memory family includes
+`memrchr`, while the BSD bit-scan family includes `ffs`, `fls`, `ffsll`, and
+`flsll`; `timingsafe_bcmp` provides the constant-time byte comparison subset.
+The array helpers reject multiplication overflow before calling the Windows
+heap, while `strsep` preserves empty fields. Host API smoke coverage verifies
+normalized symbol names and runtime behavior on both x64 and Win32.
 

@@ -380,6 +380,17 @@ extern "C" darling_kern_return_t darling_windows_task_get_exception_ports(
 		handlers, behaviors, flavors);
 }
 
+extern "C" darling_kern_return_t darling_windows_task_swap_exception_ports(
+	darling_mach_port_name_t task, darling_exception_mask_t mask,
+	darling_mach_port_name_t new_port, darling_exception_behavior_t new_behavior,
+	darling_exception_flavor_t new_flavor, darling_exception_mask_t* masks,
+	std::uint32_t* masks_count, darling_mach_port_name_t* handlers,
+	darling_exception_behavior_t* behaviors, darling_exception_flavor_t* flavors)
+{
+	return darling_windows_thread_swap_exception_ports(task, mask, new_port, new_behavior,
+		new_flavor, masks, masks_count, handlers, behaviors, flavors);
+}
+
 extern "C" darling_kern_return_t darling_windows_thread_policy_set(
 	darling_mach_port_name_t thread, std::uint32_t flavor, const void* policy,
 	std::uint32_t count)

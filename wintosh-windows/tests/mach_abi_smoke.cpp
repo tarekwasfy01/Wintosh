@@ -89,6 +89,13 @@ int main()
 		task_masks[0] != 1 || task_handlers[0] != 0x1234 || task_behaviors[0] != 1 ||
 		task_flavors[0] != 1)
 		return 1;
+	task_exception_count = 1;
+	if (darling_windows_task_swap_exception_ports(task, 1, 0x5678, 2, 2,
+		task_masks, &task_exception_count, task_handlers, task_behaviors, task_flavors) != 0 ||
+		task_exception_count != 1 || task_handlers[0] != 0x1234 ||
+		darling_windows_task_get_exception_ports(task, 1, task_masks, &task_exception_count,
+			task_handlers, task_behaviors, task_flavors) != 0 || task_handlers[0] != 0x5678)
+		return 1;
 	const auto thread = darling_windows_mach_thread_self();
 	darling_thread_precedence_policy_info precedence{};
 	darling_thread_time_constraint_policy_info time_constraint{100, 10, 20, 1};

@@ -560,6 +560,10 @@ the existing owner-keyed exception registry, so task and thread registrations
 have identical mask/filter behavior. Delivery is still only wired through the
 existing minimal exception dispatcher; full kernel exception routing is not
 implemented.
+`task_swap_exception_ports` now provides the corresponding atomic replace-and-
+return operation at task scope by reusing the established exception registry;
+the smoke verifies that the old handler is returned and the new handler is
+visible afterward. Exception delivery itself remains a minimal adapter.
 The same boundary now exposes `AllocateMemory`, `ProtectMemory`, and
 `FreeMemory`, completing the basic remote-VM operation shape needed by a future
 restore path. The smoke covers invalid-operation rejection; successful remote

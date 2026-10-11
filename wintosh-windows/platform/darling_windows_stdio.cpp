@@ -5683,6 +5683,7 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 	if (std::strcmp(name, "task_terminate") == 0 || std::strcmp(name, "_task_terminate") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_task_terminate);
 	if (std::strcmp(name, "task_set_exception_ports") == 0 || std::strcmp(name, "_task_set_exception_ports") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_task_set_exception_ports);
 	if (std::strcmp(name, "task_get_exception_ports") == 0 || std::strcmp(name, "_task_get_exception_ports") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_task_get_exception_ports);
+	if (std::strcmp(name, "task_swap_exception_ports") == 0 || std::strcmp(name, "_task_swap_exception_ports") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_task_swap_exception_ports);
 	if (std::strcmp(name, "mach_thread_self") == 0 || std::strcmp(name, "_mach_thread_self") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_mach_thread_self);
 	if (std::strcmp(name, "thread_policy_set") == 0 || std::strcmp(name, "_thread_policy_set") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_thread_policy_set);
 	if (std::strcmp(name, "thread_policy_get") == 0 || std::strcmp(name, "_thread_policy_get") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_thread_policy_get);

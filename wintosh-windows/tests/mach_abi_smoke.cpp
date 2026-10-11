@@ -77,6 +77,18 @@ int main()
 	CloseHandle(terminated_child.hThread);
 	CloseHandle(terminated_child.hProcess);
 	if (!terminate_ok) return 1;
+	if (darling_windows_task_set_exception_ports(task, 1, 0x1234, 1, 1) != 0)
+		return 1;
+	darling_exception_mask_t task_masks[1]{};
+	darling_mach_port_name_t task_handlers[1]{};
+	darling_exception_behavior_t task_behaviors[1]{};
+	darling_exception_flavor_t task_flavors[1]{};
+	std::uint32_t task_exception_count = 1;
+	if (darling_windows_task_get_exception_ports(task, 1, task_masks, &task_exception_count,
+		task_handlers, task_behaviors, task_flavors) != 0 || task_exception_count != 1 ||
+		task_masks[0] != 1 || task_handlers[0] != 0x1234 || task_behaviors[0] != 1 ||
+		task_flavors[0] != 1)
+		return 1;
 	const auto thread = darling_windows_mach_thread_self();
 	darling_thread_precedence_policy_info precedence{};
 	darling_thread_time_constraint_policy_info time_constraint{100, 10, 20, 1};

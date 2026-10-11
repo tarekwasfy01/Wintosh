@@ -555,6 +555,11 @@ hosting Darwin process; exact Darwin self-task semantics remain open.
 terminal state, and removes its adapter suspend-count entry. Self-termination
 is rejected intentionally; signal- and exception-based Darwin termination
 semantics are not yet represented.
+Task-level `task_set_exception_ports` and `task_get_exception_ports` now reuse
+the existing owner-keyed exception registry, so task and thread registrations
+have identical mask/filter behavior. Delivery is still only wired through the
+existing minimal exception dispatcher; full kernel exception routing is not
+implemented.
 The same boundary now exposes `AllocateMemory`, `ProtectMemory`, and
 `FreeMemory`, completing the basic remote-VM operation shape needed by a future
 restore path. The smoke covers invalid-operation rejection; successful remote

@@ -153,6 +153,15 @@ extern "C" darling_kern_return_t darling_windows_task_threads(
 extern "C" darling_kern_return_t darling_windows_task_suspend(darling_mach_port_name_t task);
 extern "C" darling_kern_return_t darling_windows_task_resume(darling_mach_port_name_t task);
 extern "C" darling_kern_return_t darling_windows_task_terminate(darling_mach_port_name_t task);
+extern "C" darling_kern_return_t darling_windows_task_set_exception_ports(
+	darling_mach_port_name_t task, darling_exception_mask_t mask,
+	darling_mach_port_name_t port, darling_exception_behavior_t behavior,
+	darling_exception_flavor_t flavor);
+extern "C" darling_kern_return_t darling_windows_task_get_exception_ports(
+	darling_mach_port_name_t task, darling_exception_mask_t mask,
+	darling_exception_mask_t* masks, std::uint32_t* masks_count,
+	darling_mach_port_name_t* handlers, darling_exception_behavior_t* behaviors,
+	darling_exception_flavor_t* flavors);
 constexpr std::uint32_t darling_thread_extended_policy = 1;
 constexpr std::uint32_t darling_thread_time_constraint_policy = 2;
 constexpr std::uint32_t darling_thread_precedence_policy = 3;

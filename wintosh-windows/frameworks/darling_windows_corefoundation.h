@@ -211,6 +211,10 @@ extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyLastPathComponen
 	darling_windows_CFURLRef value);
 extern "C" darling_windows_CFURLRef darling_windows_CFURLCreateCopyDeletingLastPathComponent(
 	darling_windows_CFURLRef value);
+extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyPathExtension(
+	darling_windows_CFURLRef value);
+extern "C" darling_windows_CFURLRef darling_windows_CFURLCreateCopyDeletingPathExtension(
+	darling_windows_CFURLRef value);
 extern "C" darling_windows_CFURLRef darling_windows_CFURLCopyAbsoluteURL(
 	darling_windows_CFURLRef value);
 extern "C" darling_windows_CFStringRef darling_windows_CFURLGetString(

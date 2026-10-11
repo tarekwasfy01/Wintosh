@@ -244,6 +244,7 @@ int main()
 	const auto earlier_date = darling_windows_CFDateCreate(1234.0);
 	const auto later_date = darling_windows_CFDateCreate(1235.0);
 	const auto url = darling_windows_CFURLCreateWithFileSystemPath("C:/Wintosh/app");
+	const auto extension_url = darling_windows_CFURLCreateWithFileSystemPath("C:/Wintosh/app.bin");
 	const auto directory_url = darling_windows_CFURLCreateWithFileSystemPath("C:/Wintosh/");
 	const unsigned char url_bytes[] = "C:/Wintosh/app";
 	const auto url_from_bytes = darling_windows_CFURLCreateFromFileSystemRepresentation(
@@ -251,6 +252,8 @@ int main()
 	const auto url_path = darling_windows_CFURLCopyFileSystemPath(url);
 	const auto url_last_component = darling_windows_CFURLCopyLastPathComponent(url);
 	const auto url_parent = darling_windows_CFURLCreateCopyDeletingLastPathComponent(url);
+	const auto url_extension = darling_windows_CFURLCopyPathExtension(extension_url);
+	const auto url_without_extension = darling_windows_CFURLCreateCopyDeletingPathExtension(extension_url);
 	const auto absolute_url = darling_windows_CFURLCopyAbsoluteURL(url);
 	const auto url_string = darling_windows_CFURLGetString(url);
 	char url_buffer[64]{};
@@ -285,6 +288,13 @@ int main()
 		std::strcmp(url_buffer, "app") == 0 && darling_windows_CFURLGetFileSystemRepresentation(
 			url_parent, false, url_representation, static_cast<darling_windows_CFIndex>(sizeof(url_representation))) &&
 		std::strcmp(reinterpret_cast<const char*>(url_representation), "C:/Wintosh/") == 0;
+	char extension_buffer[32]{};
+	const bool url_extension_ok = url_extension != nullptr && url_without_extension != nullptr &&
+		darling_windows_CFStringGetCString(url_extension, extension_buffer, sizeof(extension_buffer)) &&
+		std::strcmp(extension_buffer, "app") == 0 &&
+		darling_windows_CFURLGetFileSystemRepresentation(url_without_extension, false, url_representation,
+			static_cast<darling_windows_CFIndex>(sizeof(url_representation))) &&
+		std::strcmp(reinterpret_cast<const char*>(url_representation), "C:/Wintosh/app") == 0;
 	const auto url_xml = darling_windows_CFPropertyListCreateXML(url);
 	char url_xml_buffer[256]{};
 	const bool url_xml_ok = url_xml != nullptr &&

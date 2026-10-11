@@ -253,6 +253,7 @@ integer/pointer variadic arguments into a Windows helper call. The direct
 and newline handling. Floating point, length modifiers, positional arguments,
 and the full `printf` format language remain unsupported. The Clang trampoline
 also saves the SysV XMM register area and verifies `%f`/`%g` for `double`.
+The bridge now accepts the tested `l`/`ll` integer modifiers and `lf` alias.
 The MSVC build remains deliberately fail-closed
 and reports `SysV variadic printf bridge is not implemented`; it does not run
 real SysV guest code.

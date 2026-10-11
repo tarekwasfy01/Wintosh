@@ -45,10 +45,24 @@ extern "C" int darling_windows_abi_printf_windows_helper(const char* format, con
 		if (*p != '%') { std::fputc(*p, stdout); ++written; continue; }
 		++p;
 		if (*p == '%') { std::fputc('%', stdout); ++written; continue; }
-		if (*p == 'd' || *p == 'i') { std::int32_t v{}; if (!ReadGp(state, v)) return -1; written += std::fprintf(stdout, "%" PRId32, v); continue; }
-		if (*p == 'u') { std::uint32_t v{}; if (!ReadGp(state, v)) return -1; written += std::fprintf(stdout, "%" PRIu32, v); continue; }
-		if (*p == 'x' || *p == 'X') { std::uint32_t v{}; if (!ReadGp(state, v)) return -1; written += std::fprintf(stdout, *p == 'x' ? "%" PRIx32 : "%" PRIX32, v); continue; }
-		if (*p == 'c') { std::uint32_t v{}; if (!ReadGp(state, v)) return -1; std::fputc(static_cast<int>(v), stdout); ++written; continue; }
+		bool long_value = false;
+		if (*p == 'l') { long_value = true; ++p; if (*p == 'l') ++p; }
+		if (*p == 'd' || *p == 'i') {
+			if (long_value) { std::int64_t v{}; if (!ReadGp(state, v)) return -1; written += std::fprintf(stdout, "%" PRId64, v); }
+			else { std::int32_t v{}; if (!ReadGp(state, v)) return -1; written += std::fprintf(stdout, "%" PRId32, v); }
+			continue;
+		}
+		if (*p == 'u') {
+			if (long_value) { std::uint64_t v{}; if (!ReadGp(state, v)) return -1; written += std::fprintf(stdout, "%" PRIu64, v); }
+			else { std::uint32_t v{}; if (!ReadGp(state, v)) return -1; written += std::fprintf(stdout, "%" PRIu32, v); }
+			continue;
+		}
+		if (*p == 'x' || *p == 'X') {
+			if (long_value) { std::uint64_t v{}; if (!ReadGp(state, v)) return -1; written += std::fprintf(stdout, *p == 'x' ? "%" PRIx64 : "%" PRIX64, v); }
+			else { std::uint32_t v{}; if (!ReadGp(state, v)) return -1; written += std::fprintf(stdout, *p == 'x' ? "%" PRIx32 : "%" PRIX32, v); }
+			continue;
+		}
+		if (*p == 'c' && !long_value) { std::uint32_t v{}; if (!ReadGp(state, v)) return -1; std::fputc(static_cast<int>(v), stdout); ++written; continue; }
 		if (*p == 'f' || *p == 'g') { double v{}; if (!ReadFp(state, v)) return -1; written += std::fprintf(stdout, *p == 'f' ? "%.6f" : "%.6g", v); continue; }
 		if (*p == 's') { const char* v{}; if (!ReadGp(state, v)) return -1; const char* s = v ? v : "(null)"; if (std::fputs(s, stdout) < 0) return -1; written += static_cast<int>(std::strlen(s)); continue; }
 		return -1;

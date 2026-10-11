@@ -35,6 +35,10 @@ public:
 		const std::wstring& command_line,
 		const std::wstring& working_directory,
 		const std::vector<std::wstring>& environment);
+	static Process LaunchSuspended(const std::wstring& executable,
+		const std::wstring& command_line,
+		const std::wstring& working_directory = {},
+		const std::vector<std::wstring>& environment = {});
 	static Process LaunchInGroup(ProcessGroup& group,
 		const std::wstring& executable,
 		const std::wstring& command_line,
@@ -43,6 +47,7 @@ public:
 
 	[[nodiscard]] DWORD Wait(DWORD timeout_ms = INFINITE) const noexcept;
 	[[nodiscard]] DWORD ExitCode() const noexcept;
+	[[nodiscard]] DWORD Resume() noexcept;
 	void Terminate(UINT exit_code = 1) noexcept;
 	[[nodiscard]] bool Valid() const noexcept { return m_process != nullptr; }
 

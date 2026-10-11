@@ -907,3 +907,15 @@ The array helpers reject multiplication overflow before calling the Windows
 heap, while `strsep` preserves empty fields. Host API smoke coverage verifies
 normalized symbol names and runtime behavior on both x64 and Win32.
 
+### Suspended child bootstrap primitive
+
+The Windows process layer now exposes `Process::LaunchSuspended` and
+`Process::Resume`. The primitive creates the child with `CREATE_SUSPENDED`,
+keeps the primary-thread handle alive, and makes resumption explicit. This is
+the reusable hand-off point for a future Darwin child bootstrap and is covered
+by `wintosh_process_syscalls_smoke` on x64 and Win32.
+
+This does not implement `fork`, copy-on-write, register/address-space cloning,
+or a second Mach namespace. Until those pieces exist, the primitive remains a
+controlled spawn operation and must not be advertised as fork compatibility.
+

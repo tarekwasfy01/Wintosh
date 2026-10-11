@@ -75,6 +75,18 @@ Process Process::Launch(const std::wstring& executable,
 	const std::wstring& working_directory,
 	const std::vector<std::wstring>& environment)
 {
+	auto process = LaunchSuspended(executable, command_line, working_directory, environment);
+	if (process.Resume() == static_cast<DWORD>(-1)) {
+		return Process{};
+	}
+	return process;
+}
+
+Process Process::LaunchSuspended(const std::wstring& executable,
+	const std::wstring& command_line,
+	const std::wstring& working_directory,
+	const std::vector<std::wstring>& environment)
+{
 	std::wstring mutable_command_line = command_line;
 	if (mutable_command_line.empty())
 		mutable_command_line = L"\"" + executable + L"\"";
@@ -92,12 +104,12 @@ Process Process::Launch(const std::wstring& executable,
 		environment_block.push_back(L'\0');
 	}
 	if (!CreateProcessW(executable.empty() ? nullptr : executable.c_str(),
-		mutable_command_line.data(), nullptr, nullptr, FALSE, CREATE_UNICODE_ENVIRONMENT,
+		mutable_command_line.data(), nullptr, nullptr, FALSE,
+		CREATE_UNICODE_ENVIRONMENT | CREATE_SUSPENDED,
 		environment.empty() ? nullptr : environment_block.data(),
 		working_directory.empty() ? nullptr : working_directory.c_str(),
 		&startup, &process_info))
 		ThrowLastError("CreateProcessW");
-	CloseHandle(process_info.hThread);
 	HANDLE job = CreateJobObjectW(nullptr, nullptr);
 	if (job != nullptr) {
 		JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};
@@ -108,7 +120,7 @@ Process Process::Launch(const std::wstring& executable,
 			job = nullptr;
 		}
 	}
-	return Process(process_info.hProcess, nullptr, job, job != nullptr);
+	return Process(process_info.hProcess, process_info.hThread, job, job != nullptr);
 }
 
 Process Process::LaunchInGroup(ProcessGroup& group,
@@ -173,6 +185,19 @@ DWORD Process::ExitCode() const noexcept
 		return STILL_ACTIVE;
 	}
 	return exit_code;
+}
+
+DWORD Process::Resume() noexcept
+{
+	if (m_thread == nullptr) {
+		return static_cast<DWORD>(-1);
+	}
+	const DWORD result = ResumeThread(m_thread);
+	if (result != static_cast<DWORD>(-1)) {
+		CloseHandle(m_thread);
+		m_thread = nullptr;
+	}
+	return result;
 }
 
 void Process::Terminate(UINT exit_code) noexcept

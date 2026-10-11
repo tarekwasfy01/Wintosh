@@ -280,6 +280,15 @@ operations through `CreateProcessW`. Arguments are quoted into a Windows
 command line and the isolated child-process proof returns exit code 7 with
 `DARWIN_SYSCALL_PROCESS=PASS`.
 
+The expanded process family now verifies `posix_spawn`/`posix_spawnp` PATH
+lookup, inherited environment, spawn file actions, `waitpid`/`wait4`/`waitid`,
+session and process-group attributes, group waits, and signal-zero/group-kill
+behavior on both x64 and Win32. This remains a spawn-based adapter: `fork`,
+`vfork`, Darwin copy-on-write inheritance, and exact parent/child address-space
+semantics are not implemented. The next fork stage requires a suspended child
+bootstrap plus an explicit address-space snapshot or a documented shared-kernel
+backend; WSL source is reference material here, not a native Windows substitute.
+
 The thread boundary now also exposes a checked thread exit result through
 `GetExitCodeThread`; the TLS/thread smoke verifies join, exit code, and
 thread-local isolation together.

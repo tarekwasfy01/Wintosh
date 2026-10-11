@@ -110,3 +110,15 @@ of scope for the native Windows port.  No code is copied.
    explicitly permits a separated APSL component.
 4. Extend the CLI documentation with a platform-launch matrix concept without
    importing Venerable OS's desktop configuration.
+
+### QL-Win QuickLook
+
+Repository: https://github.com/QL-Win/QuickLook
+
+QuickLook is a GPL-3.0 Windows implementation of the macOS-style Space-bar
+preview workflow, with a plugin architecture and Windows Explorer integration.
+It is not a Mach-O loader and does not provide Darwin runtime code, but it is
+useful as a product/integration reference for a future Wintosh preview shell:
+file-type detection, `.app` bundle presentation, plugin isolation and a
+Windows-native UI boundary.  Its GPL-3.0 license is compatible with the
+project's GPL boundary, but QuickLook code is not copied into the runtime.

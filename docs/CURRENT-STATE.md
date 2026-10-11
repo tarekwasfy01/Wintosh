@@ -61,6 +61,13 @@ filesystem, socket, terminal, and Windows host-boundary families.  This is a
 repository-wide regression result for the current Wintosh implementation, not
 a claim of full Darling or macOS compatibility.
 
+The Objective-C/CoreFoundation tests verify class and selector registration,
+typed message-send bridges, blocks, Foundation values, run loops, and
+CoreFoundation collections.  They do not provide an Objective-C exception
+unwind ABI: no `@throw`/`@catch` personality routine or `objc_exception_*`
+compatibility layer is currently shipped.  C++ exceptions must not be treated
+as proof of that Darwin behavior.
+
 The focused TLS/pthread regression set was rerun on the current Release build:
 `wintosh_tlv_smoke`, `wintosh_thread_smoke`, `wintosh_pthread_sync_smoke`,
 `wintosh_host_api_smoke`, `wintosh_dyld_smoke`, and `wintosh_macho_smoke`

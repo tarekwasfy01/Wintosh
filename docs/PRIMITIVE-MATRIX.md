@@ -568,6 +568,10 @@ The foreign-task VM path now requests `PROCESS_QUERY_INFORMATION` for
 `task_for_pid -> mach_vm_region` on a real child. Memory reads/writes and
 remote allocation still require their separate VM rights and remain
 independently gated.
+The x64 smoke now walks foreign committed regions and proves `mach_vm_read`
+for one readable page, including returned-size validation and read-buffer
+deallocation. This is a bounded read proof, not yet a full task-memory dump or
+write/allocate transaction.
 The x64 Mach smoke now consumes every returned `task_threads` entry through
 `thread_get_state` before deallocation, proving the enumeration-to-thread-state
 chain for the current task. This still does not create durable Mach thread-port

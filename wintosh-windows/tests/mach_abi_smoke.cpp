@@ -84,6 +84,32 @@ int main()
 		cleanup_child();
 		return 1;
 	}
+	bool foreign_read_ok = false;
+	for (std::uint32_t attempt = 0; attempt < 64 && child_region_size != 0; ++attempt) {
+		if ((child_region_info.protection & darling_vm_prot_read) != 0) {
+			darling_mach_vm_address_t read_data = 0;
+			darling_mach_vm_size_t read_size = 0;
+		const auto requested = (std::min)(child_region_size,
+			static_cast<darling_mach_vm_size_t>(4096));
+			if (darling_windows_mach_vm_read(child_task, child_region_address, requested,
+				&read_data, &read_size) == 0 && read_data != 0 && read_size == requested &&
+				darling_windows_mach_vm_deallocate(child_task, read_data, read_size) == 0) {
+				foreign_read_ok = true;
+				break;
+			}
+		}
+		const auto next_address = child_region_address + child_region_size;
+		if (next_address <= child_region_address) break;
+		child_region_address = next_address;
+		child_region_count = darling_vm_region_basic_info_count;
+		if (darling_windows_mach_vm_region(child_task, &child_region_address, &child_region_size,
+			darling_vm_region_basic_info, &child_region_info, &child_region_count) != 0)
+			break;
+	}
+	if (!foreign_read_ok) {
+		cleanup_child();
+		return 1;
+	}
 	cleanup_child();
 	PROCESS_INFORMATION terminated_child{};
 	wchar_t terminate_command[] = L"cmd.exe /d /c ping 127.0.0.1 -n 30 > nul";

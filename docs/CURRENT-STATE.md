@@ -55,7 +55,7 @@ the `--emit-tlv` smoke utility and exercises section mapping and
 initialization; it remains synthetic and is not a redistributable Apple
 `libpthread` binary.
 
-The complete current Release CTest run passes 56/56 tests.  This includes the
+The complete current Release CTest run passes 57/57 tests.  This includes the
 Mach-O/dyld, Objective-C/CoreFoundation, errno/signal, Mach IPC, process,
 filesystem, socket, terminal, and Windows host-boundary families.  This is a
 repository-wide regression result for the current Wintosh implementation, not
@@ -67,6 +67,12 @@ CoreFoundation collections.  They do not provide an Objective-C exception
 unwind ABI: no `@throw`/`@catch` personality routine or `objc_exception_*`
 compatibility layer is currently shipped.  C++ exceptions must not be treated
 as proof of that Darwin behavior.
+
+The Wintosh-owned `objc_exception_smoke` additionally verifies a scoped
+callback exception carrier: an Objective-C object can cross the bridge and be
+caught by the matching Wintosh adapter, while normal callback return remains
+distinct.  This is a project-local transition API, not an Apple-compatible
+compiler personality or DWARF/SEH Objective-C unwind implementation.
 
 The focused TLS/pthread regression set was rerun on the current Release build:
 `wintosh_tlv_smoke`, `wintosh_thread_smoke`, `wintosh_pthread_sync_smoke`,

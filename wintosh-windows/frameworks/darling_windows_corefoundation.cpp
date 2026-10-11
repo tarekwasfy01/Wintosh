@@ -955,6 +955,29 @@ extern "C" bool darling_windows_CFStringReplaceAll(darling_windows_CFStringRef v
 	return true;
 }
 
+extern "C" darling_windows_CFArrayRef darling_windows_CFStringCreateArrayBySeparatingStrings(
+	darling_windows_CFStringRef value, darling_windows_CFStringRef separator)
+{
+	const auto* object = static_cast<const Object*>(value);
+	const auto* delimiter = static_cast<const Object*>(separator);
+	if (object == nullptr || delimiter == nullptr || object->kind != Kind::String ||
+		delimiter->kind != Kind::String || delimiter->string.empty()) return nullptr;
+	std::vector<const void*> parts;
+	std::size_t start = 0;
+	while (true) {
+		const auto end = object->string.find(delimiter->string, start);
+		const auto length = end == std::string::npos ? object->string.size() - start : end - start;
+		parts.push_back(darling_windows_CFStringCreateWithCString(
+			object->string.substr(start, length).c_str()));
+		if (end == std::string::npos) break;
+		start = end + delimiter->string.size();
+	}
+	const auto result = darling_windows_CFArrayCreate(parts.data(),
+		static_cast<darling_windows_CFIndex>(parts.size()));
+	for (const auto part : parts) darling_windows_CFRelease(part);
+	return result;
+}
+
 extern "C" bool darling_windows_CFStringReplaceRange(darling_windows_CFStringRef value,
 	darling_windows_CFIndex location, darling_windows_CFIndex length, const char* replacement)
 {

@@ -81,6 +81,8 @@ extern "C" bool darling_windows_CFStringAppendCString(darling_windows_CFStringRe
 	const char* suffix);
 extern "C" bool darling_windows_CFStringReplaceAll(darling_windows_CFStringRef value,
 	darling_windows_CFStringRef target, darling_windows_CFStringRef replacement);
+extern "C" darling_windows_CFArrayRef darling_windows_CFStringCreateArrayBySeparatingStrings(
+	darling_windows_CFStringRef value, darling_windows_CFStringRef separator);
 extern "C" bool darling_windows_CFStringReplaceRange(darling_windows_CFStringRef value,
 	darling_windows_CFIndex location, darling_windows_CFIndex length, const char* replacement);
 extern "C" darling_windows_CFIndex darling_windows_CFStringGetBytes(

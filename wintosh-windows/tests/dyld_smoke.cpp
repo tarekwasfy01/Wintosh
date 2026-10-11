@@ -319,9 +319,26 @@ void WriteMachO(const std::filesystem::path& path, const char* dependency,
 
 } // namespace
 
-int wmain()
+int wmain(int argc, wchar_t** argv)
 {
 	try {
+		if (argc == 3 && std::wcscmp(argv[1], L"--emit-runtime") == 0) {
+			const auto root = std::filesystem::path(argv[2]);
+			std::filesystem::create_directories(root);
+			WriteMachO(root / "libSystem.B.dylib", nullptr, true, false,
+				false, false, false, true, false, false, "_libSystemInit");
+			{
+				std::fstream provider(root / "libSystem.B.dylib",
+					std::ios::in | std::ios::out | std::ios::binary);
+				const std::uint8_t body[] = {0x31, 0xc0, 0xc3};
+				provider.seekp(0x200);
+				provider.write(reinterpret_cast<const char*>(body), sizeof(body));
+			}
+			WriteMachO(root / "RuntimeClient.macho",
+				"@loader_path/libSystem.B.dylib", false, true,
+				false, false, true, true, false, false, "_libSystemInit");
+			return 0;
+		}
 		wchar_t temp_path[MAX_PATH]{};
 		const DWORD temp_length = GetTempPathW(MAX_PATH, temp_path);
 		if (temp_length == 0 || temp_length >= MAX_PATH) {

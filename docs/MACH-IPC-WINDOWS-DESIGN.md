@@ -106,8 +106,12 @@ The ABI also exposes separately sized Darwin-compatible trailer building
 blocks for sequence numbers, security tokens, audit tokens, and their nested
 forms. `mach_trailer_abi_smoke` verifies their offsets and sizes on x64 and
 Win32. The existing compact 8-byte no-trailer record remains the default;
-option-driven trailer emission, real sequence-number assignment, and Darwin
-audit/security identity values are still pending.
+`MACH_RCV_LARGE_IDENTITY` now emits a 12-byte sequence-number trailer with a
+monotonic per-port local sequence (and a broker receive sequence while the
+broker is active), covered by `mach_seqno_trailer_smoke`. The sequence
+trailer is still a bounded compatibility step: its trailer type remains the
+compact no-trailer value, and Darwin audit/security identity fields and exact
+cross-process sequence semantics are still pending.
 Queue shutdown returns a stable port-dead result. Session-authenticated request
 cancellation is now available through the `Cancel` operation with envelope
 validation and round-trip coverage: a blocked `Receive` registers its nonzero

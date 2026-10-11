@@ -32,6 +32,8 @@ std::mutex mach_broker_mutex;
 std::unique_ptr<darling::windows_host::NamedPipeRpcClient> mach_broker_client;
 std::uint64_t mach_broker_session = 0;
 std::atomic<std::uint64_t> mach_broker_request{0x200000};
+std::atomic<std::uint32_t> mach_broker_receive_sequence{1};
+thread_local std::uint32_t mach_last_receive_sequence = 0;
 constexpr std::size_t max_port_queue_depth = 1024;
 constexpr std::size_t max_inline_message_size = 4 * 1024 * 1024;
 constexpr darling_mach_msg_id_t mach_notify_dead_name = 0x48;
@@ -70,9 +72,32 @@ struct PortQueue final {
 	std::uint32_t receive_refs = 1;
 	std::uint32_t send_refs = 0;
 	std::uint32_t send_once_refs = 0;
+	std::uint32_t receive_sequence = 0;
 	std::uint32_t total_refs() const { return receive_refs + send_refs + send_once_refs; }
 	bool closed = false;
 };
+
+void AppendReceiveTrailer(darling_mach_msg_header* message, std::uint32_t actual_size,
+	std::uint32_t capacity, std::uint32_t option, std::uint32_t sequence)
+{
+	const auto large_identity = (option & darling_mach_receive_large_identity) != 0;
+	const auto trailer_size = large_identity ? sizeof(darling_mach_msg_seqno_trailer) :
+		sizeof(darling_mach_msg_trailer);
+	if (capacity < actual_size + trailer_size) return;
+	if (large_identity) {
+		auto* trailer = reinterpret_cast<darling_mach_msg_seqno_trailer*>(
+			reinterpret_cast<std::uint8_t*>(message) + actual_size);
+		trailer->trailer.type = darling_mach_msg_trailer_none;
+		trailer->trailer.size = sizeof(darling_mach_msg_seqno_trailer);
+		trailer->msgh_seqno = sequence;
+	} else {
+		auto* trailer = reinterpret_cast<darling_mach_msg_trailer*>(
+			reinterpret_cast<std::uint8_t*>(message) + actual_size);
+		trailer->type = darling_mach_msg_trailer_none;
+		trailer->size = sizeof(darling_mach_msg_trailer);
+	}
+	message->msgh_size = actual_size + static_cast<std::uint32_t>(trailer_size);
+}
 std::mutex ports_mutex;
 // The current adapter deliberately has one process-local namespace. Public
 // entry points reject foreign task names; replacing this registry with
@@ -1590,6 +1615,9 @@ extern "C" darling_kern_return_t darling_windows_mach_port_receive(
 	port->messages.pop_front();
 	std::memcpy(data, message.data(), message.size());
 	*size = static_cast<std::uint32_t>(message.size());
+	port->receive_sequence = port->receive_sequence == (std::numeric_limits<std::uint32_t>::max)() ?
+		1 : port->receive_sequence + 1;
+	mach_last_receive_sequence = port->receive_sequence;
 	if (message.size() >= sizeof(darling_mach_msg_header) + sizeof(darling_mach_msg_body)) {
 		const auto* header = reinterpret_cast<const darling_mach_msg_header*>(data);
 		if ((header->msgh_bits & darling_mach_msg_complex) != 0) {
@@ -1939,13 +1967,9 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 									descriptors[index].disposition = response.port_descriptor_dispositions[index];
 						}
 					}
-					if (receive_size >= message->msgh_size + sizeof(darling_mach_msg_trailer)) {
-						auto* trailer = reinterpret_cast<darling_mach_msg_trailer*>(
-							reinterpret_cast<std::uint8_t*>(message) + message->msgh_size);
-						trailer->type = darling_mach_msg_trailer_none;
-						trailer->size = sizeof(darling_mach_msg_trailer);
-						message->msgh_size += sizeof(darling_mach_msg_trailer);
-					}
+					mach_last_receive_sequence = mach_broker_receive_sequence.fetch_add(1, std::memory_order_relaxed);
+					AppendReceiveTrailer(message, message->msgh_size, receive_size, option,
+						mach_last_receive_sequence);
 					return 0;
 				} catch (...) {
 					return 268;
@@ -1959,13 +1983,8 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 			receive_size, &actual_size, receive_timeout);
 		if (result != 0) return result;
 		message->msgh_size = actual_size;
-		if (receive_size >= actual_size + sizeof(darling_mach_msg_trailer)) {
-			auto* trailer = reinterpret_cast<darling_mach_msg_trailer*>(
-				reinterpret_cast<std::uint8_t*>(message) + actual_size);
-			trailer->type = darling_mach_msg_trailer_none;
-			trailer->size = sizeof(darling_mach_msg_trailer);
-			message->msgh_size = actual_size + sizeof(darling_mach_msg_trailer);
-		}
+		AppendReceiveTrailer(message, actual_size, receive_size, option,
+			mach_last_receive_sequence);
 	}
 	return 0;
 }

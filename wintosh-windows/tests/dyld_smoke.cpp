@@ -325,7 +325,21 @@ int wmain(int argc, wchar_t** argv)
 		if (argc == 3 && std::wcscmp(argv[1], L"--emit-runtime") == 0) {
 			const auto root = std::filesystem::path(argv[2]);
 			std::filesystem::create_directories(root);
+			WriteMachO(root / "libsystem_platform.dylib", nullptr, true, false,
+				false, false, false, true, false, false, "_platform_probe");
+			{
+				std::fstream platform(root / "libsystem_platform.dylib",
+					std::ios::in | std::ios::out | std::ios::binary);
+				const std::uint8_t body[] = {0x31, 0xc0, 0xc3};
+				platform.seekp(0x200);
+				platform.write(reinterpret_cast<const char*>(body), sizeof(body));
+			}
 			WriteMachO(root / "libSystem.B.dylib", nullptr, true, false,
+				false, false, false, true, false, false, "_libSystemInit");
+			// Re-emit libSystem with a platform dependency so the fixture covers
+			// a multi-level Darwin provider graph.
+			WriteMachO(root / "libSystem.B.dylib",
+				"@loader_path/libsystem_platform.dylib", true, false,
 				false, false, false, true, false, false, "_libSystemInit");
 			{
 				std::fstream provider(root / "libSystem.B.dylib",

@@ -937,3 +937,9 @@ parent connection. It is the reusable bridge for a suspended child bootstrap;
 it does not itself create the process, clone memory, or roll back an already
 opened session when a future resource family fails.
 
+The broker smoke now exercises this bridge with a real `CREATE_SUSPENDED`
+Windows child: a fresh parent-owned port is transferred to the child session,
+the child is resumed, and the port is destroyed through the child connection.
+This proves session/process hand-off only; it is not proof of address-space
+inheritance or Darwin `fork` semantics.
+

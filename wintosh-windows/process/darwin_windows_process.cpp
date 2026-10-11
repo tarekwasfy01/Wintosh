@@ -187,6 +187,11 @@ DWORD Process::ExitCode() const noexcept
 	return exit_code;
 }
 
+DWORD Process::ProcessId() const noexcept
+{
+	return m_process == nullptr ? 0 : GetProcessId(m_process);
+}
+
 DWORD Process::Resume() noexcept
 {
 	if (m_thread == nullptr) {

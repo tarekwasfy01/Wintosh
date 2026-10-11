@@ -1076,6 +1076,44 @@ int wmain()
 		}
 		std::cout << "BROKER_MACH_NOTIFICATION_TRANSFER=PASS\n";
 
+		auto suspended_child = darling::windows_host::Process::LaunchSuspended(
+			L"C:\\Windows\\System32\\cmd.exe", L"cmd.exe /d /c exit 23");
+		darling::windows_host::MachIpcEnvelope child_port_allocate{
+			darling::windows_host::MachIpcOperation::Allocate, 2060, 0, 0, {}};
+		child_port_allocate.session_token = session_response.session_token;
+		const auto child_port_allocate_bytes = darling::windows_host::EncodeMachIpcEnvelope(
+			child_port_allocate);
+		client.Write(std::string(child_port_allocate_bytes.begin(), child_port_allocate_bytes.end()));
+		const auto child_port_wire = client.Read();
+		const auto child_port_response = darling::windows_host::DecodeMachIpcEnvelope(
+			std::vector<std::uint8_t>(child_port_wire.begin(), child_port_wire.end()));
+		if (child_port_response.port_token == 0) {
+			std::cerr << "BROKER_CHILD_PORT_ALLOCATE=FAIL\n";
+			return 5;
+		}
+		darling::windows_host::MachIpcCapabilityTable child_capabilities;
+		child_capabilities.Bind(0x9101, {child_port_response.port_token, session_response.session_token});
+		const auto child_session = darling::windows_host::OpenAndTransferMachIpcChildSession(
+			client, transfer_client, session_response.session_token,
+			suspended_child.ProcessId(), child_capabilities);
+		const bool child_resumed = suspended_child.Resume() != static_cast<DWORD>(-1);
+		if (child_session != 0) {
+			darling::windows_host::MachIpcEnvelope child_port_destroy{
+				darling::windows_host::MachIpcOperation::Destroy, 2061,
+				child_port_response.port_token, 0, {}};
+			child_port_destroy.session_token = child_session;
+			const auto child_port_destroy_bytes = darling::windows_host::EncodeMachIpcEnvelope(
+				child_port_destroy);
+			transfer_client.Write(std::string(child_port_destroy_bytes.begin(), child_port_destroy_bytes.end()));
+			(void)transfer_client.Read();
+		}
+		if (child_session == 0 || !child_resumed ||
+			suspended_child.Wait(10000) != WAIT_OBJECT_0 || suspended_child.ExitCode() != 23) {
+			std::cerr << "BROKER_CHILD_BOOTSTRAP=FAIL\n";
+			return 5;
+		}
+		std::cout << "BROKER_CHILD_BOOTSTRAP=PASS\n";
+
 		}
 
 		// The first client is intentionally destroyed before reconnecting.  The

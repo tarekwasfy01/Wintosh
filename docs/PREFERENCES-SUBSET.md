@@ -39,8 +39,11 @@ making ordinary application stores read-only.
 
 Observers can be registered and removed through the C ABI. A successful
 persisted set operation reports the changed key synchronously to observers on
-that store instance; callbacks must not re-enter the store. The smoke test
-covers registration, delivery, and removal.
+that store instance. Delivery uses a snapshot of the observer list and a
+recursive store lock, so an observer may read the same store or adjust its
+registrations during delivery. The smoke test covers this reentrant read path,
+registration, delivery, and removal. Destroying the store from inside its own
+callback remains unsupported.
 
 `poll_external` provides an explicit cross-process polling primitive based on
 the preference file modification time. It reloads changed application values

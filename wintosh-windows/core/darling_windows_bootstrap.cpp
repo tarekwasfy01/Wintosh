@@ -291,7 +291,7 @@ int DarwinBootstrap::Run(const std::filesystem::path& image_path,
 			provider.image.ApplyRelocations(provider.mapping, relocation_addresses, true);
 		if (!resolved.empty()) {
 			provider.image.ApplyBindActions(provider.mapping, resolved);
-			provider.image.ApplyLazyBindActions(provider.mapping, resolved);
+			MachOLazyBindingSession(provider.image, provider.mapping, resolved).ApplyAll();
 			provider.image.ApplyChainedFixups(provider.mapping, resolved);
 		}
 		provider.image.ApplyIndirectImportBindings(provider.mapping, resolved);
@@ -318,7 +318,7 @@ int DarwinBootstrap::Run(const std::filesystem::path& image_path,
 		image.ApplyRelocations(mapping, relocation_addresses, true);
 	if (!resolved.empty()) {
 		image.ApplyBindActions(mapping, resolved);
-		image.ApplyLazyBindActions(mapping, resolved);
+		MachOLazyBindingSession(image, mapping, resolved).ApplyAll();
 		image.ApplyChainedFixups(mapping, resolved);
 	}
 	image.ApplyIndirectImportBindings(mapping, resolved);

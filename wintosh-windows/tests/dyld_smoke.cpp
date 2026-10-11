@@ -834,8 +834,32 @@ int wmain(int argc, wchar_t** argv)
 				*chained_rebase_address != static_cast<std::uintptr_t>(0x1100 + app_mapping.Slide())) {
 				throw std::runtime_error("Mach-O chained fixup was not applied");
 			}
-			app_image.ApplyLazyBindAction(6, app_mapping,
-				{{"_libSystemInit", relocation_apply_target}});
+			const std::vector<DyldResolvedBinding> lazy_bindings{
+				{"_libSystemInit", relocation_apply_target}};
+			MachOLazyBindingSession lazy_session(app_image, app_mapping, lazy_bindings);
+			if (MachOLazyBindingSession::Current() != nullptr)
+				throw std::runtime_error("Mach-O lazy binding session leaked into test");
+			{
+				auto activation = lazy_session.Activate();
+				if (MachOLazyBindingSession::Current() != &lazy_session)
+					throw std::runtime_error("Mach-O lazy binding session was not activated");
+				{
+					auto nested_activation = lazy_session.Activate();
+					if (MachOLazyBindingSession::Current() != &lazy_session)
+						throw std::runtime_error("Mach-O nested lazy session was not active");
+				}
+				if (MachOLazyBindingSession::Current() != &lazy_session)
+					throw std::runtime_error("Mach-O nested lazy session did not restore outer scope");
+			}
+			if (MachOLazyBindingSession::Current() != nullptr)
+				throw std::runtime_error("Mach-O lazy binding session activation leaked");
+			const auto lazy_slot_address = static_cast<std::uintptr_t>(0x1240) +
+				static_cast<std::intptr_t>(app_mapping.Slide());
+			const auto lazy_action = lazy_session.FindActionForSlot(lazy_slot_address);
+			if (!lazy_action.has_value() || *lazy_action != 6 ||
+				lazy_session.FindActionForSlot(lazy_slot_address + 8).has_value())
+				throw std::runtime_error("Mach-O lazy slot did not resolve to exactly one action");
+			lazy_session.ApplyOne(*lazy_action);
 			const auto lazy_address = reinterpret_cast<const std::uintptr_t*>(
 				static_cast<std::intptr_t>(0x1240) + app_mapping.Slide());
 			if (*lazy_address != relocation_apply_target) {

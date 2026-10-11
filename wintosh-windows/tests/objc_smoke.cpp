@@ -49,11 +49,26 @@ std::int64_t AddSeven(id, SEL, std::int64_t value)
 std::int64_t ReturnInt64(id, SEL) { return 42; }
 std::uint64_t ReturnUInt64(id, SEL) { return 42; }
 std::uint64_t AddUInt64(id, SEL, std::uint64_t value) { return value + 7; }
+std::uint64_t AddUInt64Pair(id, SEL, std::uint64_t first, std::uint64_t second) { return first + second; }
 bool ReturnTrue(id, SEL) { return true; }
 double ReturnDouble(id, SEL) { return 3.5; }
 float ReturnFloat(id, SEL) { return 3.5f; }
 float ScaleFloat(id, SEL, float value) { return value * 2.0f; }
 float AddFloats(id, SEL, float first, float second) { return first + second; }
+DarlingObjcRect observed_rect{};
+void ObserveRect(id, SEL, DarlingObjcRect value) { observed_rect = value; }
+id observed_object_first = nullptr;
+id observed_object_second = nullptr;
+void ObserveObject(id, SEL, id value) { observed_object_first = value; observed_object_second = nullptr; }
+void ObserveObjects(id, SEL, id first, id second) { observed_object_first = first; observed_object_second = second; }
+double observed_double = 0.0;
+float observed_float = 0.0f;
+void ObserveDouble(id, SEL, double value) { observed_double = value; }
+void ObserveFloat(id, SEL, float value) { observed_float = value; }
+void ObserveDoubles(id, SEL, double first, double second) { observed_double = first + second; }
+void ObserveFloats(id, SEL, float first, float second) { observed_float = first + second; }
+DarlingObjcCallbackBlock* observed_block = nullptr;
+void ObserveBlock(id, SEL, DarlingObjcCallbackBlock* value) { observed_block = value; }
 void* ReturnPointer(id, SEL) {
 	return reinterpret_cast<void*>(static_cast<std::uintptr_t>(0x4321));
 }
@@ -68,6 +83,7 @@ int AddFiveInt(id, SEL, int value)
 int ReturnInt(id, SEL) { return 42; }
 unsigned int ReturnUInt(id, SEL) { return 42; }
 unsigned int AddUInt(id, SEL, unsigned int value) { return value + 7; }
+unsigned int AddUIntPair(id, SEL, unsigned int first, unsigned int second) { return first + second; }
 
 void MarkCalled(id, SEL)
 {
@@ -307,6 +323,8 @@ int main()
 			reinterpret_cast<IMP>(&AddFiveInt), "i@:i") ||
 		!class_addMethod(child, object_pair_selector,
 			reinterpret_cast<IMP>(&ReturnSecondArgument), "@@:@@") ||
+		!class_addMethod(root, object_selector,
+			reinterpret_cast<IMP>(&ReturnArgument), "@@:@") ||
 		!class_addMethod(root, super_pair_selector,
 			reinterpret_cast<IMP>(&ReturnSecondArgument), "@@:@@") ||
 		!class_addMethod(root, super_pointer_selector,
@@ -352,6 +370,15 @@ int main()
 	if (objc_msgSendSuper(object, root, super_pair_selector, object,
 		reinterpret_cast<id>(child)) != reinterpret_cast<id>(child))
 		return 93;
+	if (darling_objc_msgSendSuper_object0(object, root, self_selector) != object ||
+		darling_objc_msgSendSuper_object1(object, root, object_selector, object) != object ||
+		darling_objc_msgSendSuper_object2(object, root, super_pair_selector, object,
+			reinterpret_cast<id>(child)) != reinterpret_cast<id>(child))
+		return 95;
+	if (darling_objc_msgSendSuper_pointer0(object, root, pointer_zero_selector) !=
+		reinterpret_cast<void*>(static_cast<std::uintptr_t>(0x4321)) ||
+		darling_objc_msgSendSuper_pointer1(object, root, super_pointer_selector, marker) != marker)
+		return 96;
 	darling_objc_msgSend_void0(object, void_selector);
 	SEL bool_selector = sel_registerName("positive:");
 	SEL super_bool_selector = sel_registerName("superPositive:");
@@ -359,15 +386,25 @@ int main()
 	SEL double_pair_selector = sel_registerName("addDoubles:");
 	SEL void_int64_selector = sel_registerName("observeInt64:");
 	SEL void_int_selector = sel_registerName("observeInt:");
+	SEL void_object_selector = sel_registerName("observeObject:");
+	SEL void_objects_selector = sel_registerName("observeObjects:");
+	SEL void_double_selector = sel_registerName("observeDouble:");
+	SEL void_float_selector = sel_registerName("observeFloat:");
+	SEL void_doubles_selector = sel_registerName("observeDoubles:");
+	SEL void_floats_selector = sel_registerName("observeFloats:");
 	SEL int64_zero_selector = sel_registerName("answer");
+	SEL int64_selector = sel_registerName("addSeven:");
+	SEL int64_pair_selector = sel_registerName("addPairSeven:");
 	SEL bool_zero_selector = sel_registerName("isReady");
 	SEL double_zero_selector = sel_registerName("piValue");
 	SEL pointer_zero_selector = sel_registerName("context");
 	SEL int_zero_selector = sel_registerName("answerInt");
 	SEL uint64_zero_selector = sel_registerName("answerUInt");
 	SEL uint64_selector = sel_registerName("addUInt:");
+	SEL uint64_pair_selector = sel_registerName("addUIntPair:");
 	SEL uint_zero_selector = sel_registerName("answerUInt32");
 	SEL uint_selector = sel_registerName("addUInt32:");
+	SEL uint_pair_selector = sel_registerName("addUInt32Pair:");
 	SEL float_zero_selector = sel_registerName("floatValue");
 	SEL float_selector = sel_registerName("scaleFloat:");
 	SEL float_pair_selector = sel_registerName("addFloats:");
@@ -380,7 +417,41 @@ int main()
 		!class_addMethod(child, double_selector,
 			reinterpret_cast<IMP>(&Scale), "d@:d") ||
 		!class_addMethod(child, double_pair_selector,
-			reinterpret_cast<IMP>(&AddDoubles), "d@:dd"))
+			reinterpret_cast<IMP>(&AddDoubles), "d@:dd") ||
+		!class_addMethod(root, double_zero_selector,
+			reinterpret_cast<IMP>(&ReturnDouble), "d@:") ||
+		!class_addMethod(root, double_selector,
+			reinterpret_cast<IMP>(&Scale), "d@:d") ||
+		!class_addMethod(root, double_pair_selector,
+			reinterpret_cast<IMP>(&AddDoubles), "d@:dd") ||
+		!class_addMethod(root, uint64_zero_selector,
+			reinterpret_cast<IMP>(&ReturnUInt64), "Q@:") ||
+		!class_addMethod(root, uint64_selector,
+			reinterpret_cast<IMP>(&AddUInt64), "Q@:Q") ||
+		!class_addMethod(root, uint64_pair_selector,
+			reinterpret_cast<IMP>(&AddUInt64Pair), "Q@:QQ") ||
+		!class_addMethod(root, uint_zero_selector,
+			reinterpret_cast<IMP>(&ReturnUInt), "I@:") ||
+		!class_addMethod(root, uint_selector,
+			reinterpret_cast<IMP>(&AddUInt), "I@:I") ||
+		!class_addMethod(root, uint_pair_selector,
+			reinterpret_cast<IMP>(&AddUIntPair), "I@:II") ||
+		!class_addMethod(root, int64_zero_selector,
+			reinterpret_cast<IMP>(&ReturnInt64), "q@:") ||
+		!class_addMethod(root, int64_selector,
+			reinterpret_cast<IMP>(&AddSeven), "q@:q") ||
+		!class_addMethod(root, int64_pair_selector,
+			reinterpret_cast<IMP>(&AddTwo), "q@:qq") ||
+		!class_addMethod(root, int_selector,
+			reinterpret_cast<IMP>(&AddFiveInt), "i@:i") ||
+		!class_addMethod(root, int_zero_selector,
+			reinterpret_cast<IMP>(&ReturnInt), "i@:") ||
+		!class_addMethod(root, bool_zero_selector,
+			reinterpret_cast<IMP>(&ReturnTrue), "B@:") ||
+		!class_addMethod(root, bool_selector,
+			reinterpret_cast<IMP>(&IsPositive), "B@:B") ||
+		!class_addMethod(root, pointer_zero_selector,
+			reinterpret_cast<IMP>(&ReturnPointer), "^v@:"))
 		return 10;
 	if (!class_addMethod(child, void_int64_selector,
 		reinterpret_cast<IMP>(&ObserveInt64), "v@:q") ||
@@ -392,14 +463,27 @@ int main()
 		!class_addMethod(root, void_int_selector,
 			reinterpret_cast<IMP>(&ObserveInt), "v@:i"))
 		return 10;
+	if (!class_addMethod(root, void_object_selector, reinterpret_cast<IMP>(&ObserveObject), "v@:@") ||
+		!class_addMethod(root, void_objects_selector, reinterpret_cast<IMP>(&ObserveObjects), "v@:@@") ||
+		!class_addMethod(root, void_double_selector, reinterpret_cast<IMP>(&ObserveDouble), "v@:d") ||
+		!class_addMethod(root, void_float_selector, reinterpret_cast<IMP>(&ObserveFloat), "v@:f") ||
+		!class_addMethod(root, void_doubles_selector, reinterpret_cast<IMP>(&ObserveDoubles), "v@:dd") ||
+		!class_addMethod(root, void_floats_selector, reinterpret_cast<IMP>(&ObserveFloats), "v@:ff"))
+		return 10;
 	if (!class_addMethod(child, int64_zero_selector, reinterpret_cast<IMP>(&ReturnInt64), "q@:") ||
+		!class_addMethod(child, int64_pair_selector, reinterpret_cast<IMP>(&AddTwo), "q@:qq") ||
 		!class_addMethod(child, uint64_zero_selector, reinterpret_cast<IMP>(&ReturnUInt64), "Q@:") ||
 		!class_addMethod(child, uint64_selector, reinterpret_cast<IMP>(&AddUInt64), "Q@:Q") ||
+		!class_addMethod(child, uint64_pair_selector, reinterpret_cast<IMP>(&AddUInt64Pair), "Q@:QQ") ||
 		!class_addMethod(child, uint_zero_selector, reinterpret_cast<IMP>(&ReturnUInt), "I@:") ||
 		!class_addMethod(child, uint_selector, reinterpret_cast<IMP>(&AddUInt), "I@:I") ||
+		!class_addMethod(child, uint_pair_selector, reinterpret_cast<IMP>(&AddUIntPair), "I@:II") ||
 		!class_addMethod(child, float_zero_selector, reinterpret_cast<IMP>(&ReturnFloat), "f@:") ||
 		!class_addMethod(child, float_selector, reinterpret_cast<IMP>(&ScaleFloat), "f@:f") ||
 		!class_addMethod(child, float_pair_selector, reinterpret_cast<IMP>(&AddFloats), "f@:ff") ||
+		!class_addMethod(root, float_zero_selector, reinterpret_cast<IMP>(&ReturnFloat), "f@:") ||
+		!class_addMethod(root, float_selector, reinterpret_cast<IMP>(&ScaleFloat), "f@:f") ||
+		!class_addMethod(root, float_pair_selector, reinterpret_cast<IMP>(&AddFloats), "f@:ff") ||
 		!class_addMethod(child, mark_pointer_selector, reinterpret_cast<IMP>(&MarkPointer), "v@:^v") ||
 		!class_addMethod(child, object_pointer_selector, reinterpret_cast<IMP>(&ReturnPointerAsObject), "@@:^v") ||
 		!class_addMethod(child, int_zero_selector, reinterpret_cast<IMP>(&ReturnInt), "i@:") ||
@@ -421,14 +505,33 @@ int main()
 		double_result.floating != 5.0 ||
 		darling_objc_msgSend_double1(object, double_selector, 3.5) != 7.0 ||
 		darling_objc_msgSend_double2(object, double_pair_selector, 1.25, 2.75) != 4.0 ||
+		darling_objc_msgSendSuper_double0(object, root, double_zero_selector) != 3.5 ||
+		darling_objc_msgSendSuper_double1(object, root, double_selector, 3.5) != 7.0 ||
+		darling_objc_msgSendSuper_double2(object, root, double_pair_selector, 1.25, 2.75) != 4.0 ||
 		darling_objc_msgSend_int64_0(object, int64_zero_selector) != 42 ||
 		darling_objc_msgSend_uint64_0(object, uint64_zero_selector) != 42 ||
 		darling_objc_msgSend_uint64_1(object, uint64_selector, 35) != 42 ||
+		darling_objc_msgSendSuper_uint64_0(object, root, uint64_zero_selector) != 42 ||
+		darling_objc_msgSendSuper_uint64_1(object, root, uint64_selector, 35) != 42 ||
+		darling_objc_msgSendSuper_uint64_2(object, root, uint64_pair_selector, 20, 22) != 42 ||
 		darling_objc_msgSend_uint0(object, uint_zero_selector) != 42 ||
 		darling_objc_msgSend_uint1(object, uint_selector, 35) != 42 ||
+		darling_objc_msgSendSuper_uint0(object, root, uint_zero_selector) != 42 ||
+		darling_objc_msgSendSuper_uint1(object, root, uint_selector, 35) != 42 ||
+		darling_objc_msgSendSuper_uint2(object, root, uint_pair_selector, 20, 22) != 42 ||
+		darling_objc_msgSendSuper_bool0(object, root, bool_zero_selector) != true ||
+		darling_objc_msgSendSuper_bool1(object, root, bool_selector, true) != true ||
+		darling_objc_msgSendSuper_int0(object, root, int_zero_selector) != 42 ||
+		darling_objc_msgSendSuper_int1(object, root, int_selector, 37) != 42 ||
+		darling_objc_msgSendSuper_int64_0(object, root, int64_zero_selector) != 42 ||
+		darling_objc_msgSendSuper_int64_1(object, root, int64_selector, 35) != 42 ||
+		darling_objc_msgSendSuper_int64_2(object, root, int64_pair_selector, 20, 22) != 42 ||
 		darling_objc_msgSend_float0(object, float_zero_selector) != 3.5f ||
 		darling_objc_msgSend_float1(object, float_selector, 3.5f) != 7.0f ||
 		darling_objc_msgSend_float2(object, float_pair_selector, 1.25f, 2.75f) != 4.0f ||
+		darling_objc_msgSendSuper_float0(object, root, float_zero_selector) != 3.5f ||
+		darling_objc_msgSendSuper_float1(object, root, float_selector, 3.5f) != 7.0f ||
+		darling_objc_msgSendSuper_float2(object, root, float_pair_selector, 1.25f, 2.75f) != 4.0f ||
 		darling_objc_msgSend_int0(object, int_zero_selector) != 42 ||
 		darling_objc_msgSend_int1(object, int_selector, 37) != 42 ||
 		!darling_objc_msgSend_bool0(object, bool_zero_selector) ||
@@ -446,6 +549,32 @@ int main()
 	objc_msgSendSuper(object, root, void_int_selector, 654321);
 	if (observed_void_int64 != 0x987654321LL || observed_void_int != 654321)
 		return 94;
+	darling_objc_msgSendSuper_void_object1(object, root, void_object_selector, object);
+	darling_objc_msgSendSuper_void_object2(object, root, void_objects_selector, object,
+		reinterpret_cast<id>(child));
+	if (observed_object_first != object || observed_object_second != reinterpret_cast<id>(child))
+		return 97;
+	darling_objc_msgSend_void1_object(object, void_object_selector, object);
+	darling_objc_msgSend_void2_object(object, void_objects_selector, object,
+		reinterpret_cast<id>(child));
+	if (observed_object_first != object || observed_object_second != reinterpret_cast<id>(child))
+		return 97;
+	darling_objc_msgSendSuper_void_double1(object, root, void_double_selector, 3.25);
+	darling_objc_msgSendSuper_void_float1(object, root, void_float_selector, 4.5f);
+	if (observed_double != 3.25 || observed_float != 4.5f)
+		return 98;
+	darling_objc_msgSend_void1_double(object, void_double_selector, 6.5);
+	darling_objc_msgSend_void1_float(object, void_float_selector, 7.5f);
+	if (observed_double != 6.5 || observed_float != 7.5f)
+		return 98;
+	darling_objc_msgSendSuper_void_double2(object, root, void_doubles_selector, 1.25, 2.75);
+	darling_objc_msgSendSuper_void_float2(object, root, void_floats_selector, 1.25f, 2.75f);
+	if (observed_double != 4.0 || observed_float != 4.0f)
+		return 99;
+	darling_objc_msgSend_void2_double(object, void_doubles_selector, 2.0, 3.0);
+	darling_objc_msgSend_void2_float(object, void_floats_selector, 2.0f, 3.0f);
+	if (observed_double != 5.0 || observed_float != 5.0f)
+		return 99;
 	SEL pointer_selector = sel_registerName("pointer:");
 	SEL two_selector = sel_registerName("addTwo:");
 	if (!class_addMethod(child, pointer_selector,
@@ -496,11 +625,20 @@ int main()
 		return 16;
 	SEL rect_selector = sel_registerName("frame");
 	SEL rect_argument_selector = sel_registerName("offsetFrame:");
+	SEL rect_void_selector = sel_registerName("observeFrame:");
 	if (!class_addMethod(child, rect_selector,
 		reinterpret_cast<IMP>(&MakeRect),
 		"{CGRect={CGPoint=dd}{CGSize=dd}}@:"))
 		return 17;
 	if (!class_addMethod(child, rect_argument_selector, reinterpret_cast<IMP>(&EchoRect),
+		"{CGRect={CGPoint=dd}{CGSize=dd}}@:{CGRect={CGPoint=dd}{CGSize=dd}}"))
+		return 17;
+	if (!class_addMethod(root, rect_void_selector, reinterpret_cast<IMP>(&ObserveRect),
+		"v@:{CGRect={CGPoint=dd}{CGSize=dd}}"))
+		return 17;
+	if (!class_addMethod(root, rect_selector, reinterpret_cast<IMP>(&MakeRect),
+		"{CGRect={CGPoint=dd}{CGSize=dd}}@:") ||
+		!class_addMethod(root, rect_argument_selector, reinterpret_cast<IMP>(&EchoRect),
 		"{CGRect={CGPoint=dd}{CGSize=dd}}@:{CGRect={CGPoint=dd}{CGSize=dd}}"))
 		return 17;
 	const DarlingObjcRect rect = darling_objc_invoke_rect0(object,
@@ -511,6 +649,20 @@ int main()
 		rect.height != 240.0 || direct_rect.x != 1.0 || direct_rect.y != 2.0 ||
 		direct_rect.width != 320.0 || direct_rect.height != 240.0)
 			return 18;
+	const DarlingObjcRect super_rect = darling_objc_msgSendSuper_rect0(object, root,
+		rect_selector);
+	const DarlingObjcRect super_rect_argument = darling_objc_msgSendSuper_rect1(object,
+		root, rect_argument_selector, DarlingObjcRect{4.0, 5.0, 6.0, 7.0});
+	if (super_rect.x != 1.0 || super_rect.y != 2.0 || super_rect.width != 320.0 ||
+		super_rect.height != 240.0 || super_rect_argument.x != 5.0 ||
+		super_rect_argument.y != 6.0 || super_rect_argument.width != 6.0 ||
+		super_rect_argument.height != 7.0)
+		return 18;
+	darling_objc_msgSendSuper_void_rect1(object, root, rect_void_selector,
+		DarlingObjcRect{8.0, 9.0, 10.0, 11.0});
+	if (observed_rect.x != 8.0 || observed_rect.y != 9.0 ||
+		observed_rect.width != 10.0 || observed_rect.height != 11.0)
+		return 18;
 	SEL factory_selector = sel_registerName("factory");
 	if (!class_addClassMethod(child, factory_selector,
 		reinterpret_cast<IMP>(&ClassIdentity), "@@:") ||
@@ -943,8 +1095,17 @@ int main()
 	darling_objc_block_release(callback);
 	darling_objc_block_release(callback);
 	SEL apply_selector = sel_registerName("apply:");
+	SEL observe_block_selector = sel_registerName("observeBlock:");
 	if (!class_addMethod(child, apply_selector,
 		reinterpret_cast<IMP>(&ApplyBlock), "@@:@?"))
+		return 30;
+	if (!class_addMethod(root, apply_selector,
+		reinterpret_cast<IMP>(&ApplyBlock), "@@:@?"))
+		return 30;
+	if (!class_addMethod(child, observe_block_selector,
+		reinterpret_cast<IMP>(&ObserveBlock), "v@:@?") ||
+		!class_addMethod(root, observe_block_selector,
+			reinterpret_cast<IMP>(&ObserveBlock), "v@:@?"))
 		return 30;
 	DarlingObjcCallbackBlock* bridge_callback = darling_objc_block_create1(
 		&CallbackIdentity, nullptr);
@@ -955,6 +1116,17 @@ int main()
 		return 31;
 	if (darling_objc_msgSend_block1(object, apply_selector, bridge_callback) !=
 		reinterpret_cast<id>(bridge_callback))
+		return 33;
+	if (darling_objc_msgSendSuper_block1(object, root, apply_selector,
+		bridge_callback) != reinterpret_cast<id>(bridge_callback))
+		return 33;
+	darling_objc_msgSend_void1_block(object, observe_block_selector, bridge_callback);
+	if (observed_block != bridge_callback)
+		return 33;
+	observed_block = nullptr;
+	darling_objc_msgSendSuper_void1_block(object, root, observe_block_selector,
+		bridge_callback);
+	if (observed_block != bridge_callback)
 		return 33;
 	darling_objc_block_release(bridge_callback);
 	if (objc_msgSend(object, self_selector) != object ||

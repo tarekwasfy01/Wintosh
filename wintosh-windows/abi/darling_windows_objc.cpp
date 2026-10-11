@@ -2116,6 +2116,340 @@ extern "C" id objc_msgSendSuper(id receiver, Class superclass, SEL selector, ...
 	return result;
 }
 
+extern "C" id darling_objc_msgSendSuper_object0(id receiver, Class superclass, SEL selector)
+{
+	if (!receiver || !superclass || !selector) return nullptr;
+	const char* types = class_getMethodTypeEncoding(superclass, selector);
+	if (!types || std::strcmp(types, "@@:") != 0) return nullptr;
+	const IMP implementation = class_getMethodImplementation(superclass, selector);
+	return implementation ? reinterpret_cast<id (*)(id, SEL)>(implementation)(receiver, selector) : nullptr;
+}
+
+extern "C" id darling_objc_msgSendSuper_object1(id receiver, Class superclass,
+	SEL selector, id argument)
+{
+	if (!receiver || !superclass || !selector) return nullptr;
+	const char* types = class_getMethodTypeEncoding(superclass, selector);
+	if (!types || std::strcmp(types, "@@:@") != 0) return nullptr;
+	const IMP implementation = class_getMethodImplementation(superclass, selector);
+	return implementation ? reinterpret_cast<id (*)(id, SEL, id)>(implementation)(receiver, selector, argument) : nullptr;
+}
+
+extern "C" id darling_objc_msgSendSuper_object2(id receiver, Class superclass,
+	SEL selector, id first, id second)
+{
+	if (!receiver || !superclass || !selector) return nullptr;
+	const char* types = class_getMethodTypeEncoding(superclass, selector);
+	if (!types || std::strcmp(types, "@@:@@") != 0) return nullptr;
+	const IMP implementation = class_getMethodImplementation(superclass, selector);
+	return implementation ? reinterpret_cast<id (*)(id, SEL, id, id)>(implementation)(receiver, selector, first, second) : nullptr;
+}
+
+extern "C" void* darling_objc_msgSendSuper_pointer0(id receiver, Class superclass, SEL selector)
+{
+	if (!receiver || !superclass || !selector) return nullptr;
+	const char* types = class_getMethodTypeEncoding(superclass, selector);
+	if (!types || std::strcmp(types, "^v@:") != 0) return nullptr;
+	const IMP implementation = class_getMethodImplementation(superclass, selector);
+	return implementation ? reinterpret_cast<void* (*)(id, SEL)>(implementation)(receiver, selector) : nullptr;
+}
+
+extern "C" void* darling_objc_msgSendSuper_pointer1(id receiver, Class superclass,
+	SEL selector, void* argument)
+{
+	if (!receiver || !superclass || !selector) return nullptr;
+	const char* types = class_getMethodTypeEncoding(superclass, selector);
+	if (!types || std::strcmp(types, "^v@:^v") != 0) return nullptr;
+	const IMP implementation = class_getMethodImplementation(superclass, selector);
+	return implementation ? reinterpret_cast<void* (*)(id, SEL, void*)>(implementation)(receiver, selector, argument) : nullptr;
+}
+
+extern "C" void darling_objc_msgSendSuper_void_object1(id receiver,
+	Class superclass, SEL selector, id argument)
+{
+	if (!receiver || !superclass || !selector) return;
+	const char* types = class_getMethodTypeEncoding(superclass, selector);
+	if (!types || std::strcmp(types, "v@:@") != 0) return;
+	const IMP implementation = class_getMethodImplementation(superclass, selector);
+	if (implementation)
+		reinterpret_cast<void (*)(id, SEL, id)>(implementation)(receiver, selector, argument);
+}
+
+extern "C" void darling_objc_msgSendSuper_void_object2(id receiver,
+	Class superclass, SEL selector, id first, id second)
+{
+	if (!receiver || !superclass || !selector) return;
+	const char* types = class_getMethodTypeEncoding(superclass, selector);
+	if (!types || std::strcmp(types, "v@:@@") != 0) return;
+	const IMP implementation = class_getMethodImplementation(superclass, selector);
+	if (implementation)
+		reinterpret_cast<void (*)(id, SEL, id, id)>(implementation)(receiver, selector, first, second);
+}
+
+extern "C" void darling_objc_msgSendSuper_void_double1(id receiver,
+	Class superclass, SEL selector, double argument)
+{
+	if (!receiver || !superclass || !selector) return;
+	const char* types = class_getMethodTypeEncoding(superclass, selector);
+	if (!types || std::strcmp(types, "v@:d") != 0) return;
+	const IMP implementation = class_getMethodImplementation(superclass, selector);
+	if (implementation)
+		reinterpret_cast<void (*)(id, SEL, double)>(implementation)(receiver, selector, argument);
+}
+
+extern "C" void darling_objc_msgSendSuper_void_float1(id receiver,
+	Class superclass, SEL selector, float argument)
+{
+	if (!receiver || !superclass || !selector) return;
+	const char* types = class_getMethodTypeEncoding(superclass, selector);
+	if (!types || std::strcmp(types, "v@:f") != 0) return;
+	const IMP implementation = class_getMethodImplementation(superclass, selector);
+	if (implementation)
+		reinterpret_cast<void (*)(id, SEL, float)>(implementation)(receiver, selector, argument);
+}
+
+extern "C" void darling_objc_msgSendSuper_void_double2(id receiver,
+	Class superclass, SEL selector, double first, double second)
+{
+	if (!receiver || !superclass || !selector) return;
+	const char* types = class_getMethodTypeEncoding(superclass, selector);
+	if (!types || std::strcmp(types, "v@:dd") != 0) return;
+	const IMP implementation = class_getMethodImplementation(superclass, selector);
+	if (implementation)
+		reinterpret_cast<void (*)(id, SEL, double, double)>(implementation)(receiver, selector, first, second);
+}
+
+extern "C" void darling_objc_msgSendSuper_void_float2(id receiver,
+	Class superclass, SEL selector, float first, float second)
+{
+	if (!receiver || !superclass || !selector) return;
+	const char* types = class_getMethodTypeEncoding(superclass, selector);
+	if (!types || std::strcmp(types, "v@:ff") != 0) return;
+	const IMP implementation = class_getMethodImplementation(superclass, selector);
+	if (implementation)
+		reinterpret_cast<void (*)(id, SEL, float, float)>(implementation)(receiver, selector, first, second);
+}
+
+extern "C" double darling_objc_msgSendSuper_double0(id receiver, Class superclass,
+	SEL selector)
+{
+	if (!receiver || !superclass || !selector ||
+		std::strcmp(class_getMethodTypeEncoding(superclass, selector), "d@:") != 0)
+		return 0.0;
+	const IMP implementation = class_getMethodImplementation(superclass, selector);
+	return implementation ? reinterpret_cast<double (*)(id, SEL)>(implementation)(receiver, selector) : 0.0;
+}
+
+extern "C" double darling_objc_msgSendSuper_double1(id receiver, Class superclass,
+	SEL selector, double argument)
+{
+	if (!receiver || !superclass || !selector ||
+		std::strcmp(class_getMethodTypeEncoding(superclass, selector), "d@:d") != 0)
+		return 0.0;
+	const IMP implementation = class_getMethodImplementation(superclass, selector);
+	return implementation ? reinterpret_cast<double (*)(id, SEL, double)>(implementation)(
+		receiver, selector, argument) : 0.0;
+}
+
+extern "C" double darling_objc_msgSendSuper_double2(id receiver, Class superclass,
+	SEL selector, double first, double second)
+{
+	if (!receiver || !superclass || !selector ||
+		std::strcmp(class_getMethodTypeEncoding(superclass, selector), "d@:dd") != 0)
+		return 0.0;
+	const IMP implementation = class_getMethodImplementation(superclass, selector);
+	return implementation ? reinterpret_cast<double (*)(id, SEL, double, double)>(implementation)(
+		receiver, selector, first, second) : 0.0;
+}
+
+extern "C" float darling_objc_msgSendSuper_float0(id receiver, Class superclass,
+	SEL selector)
+{
+	if (!receiver || !superclass || !selector ||
+		std::strcmp(class_getMethodTypeEncoding(superclass, selector), "f@:") != 0)
+		return 0.0f;
+	const IMP implementation = class_getMethodImplementation(superclass, selector);
+	return implementation ? reinterpret_cast<float (*)(id, SEL)>(implementation)(receiver, selector) : 0.0f;
+}
+
+extern "C" float darling_objc_msgSendSuper_float1(id receiver, Class superclass,
+	SEL selector, float argument)
+{
+	if (!receiver || !superclass || !selector ||
+		std::strcmp(class_getMethodTypeEncoding(superclass, selector), "f@:f") != 0)
+		return 0.0f;
+	const IMP implementation = class_getMethodImplementation(superclass, selector);
+	return implementation ? reinterpret_cast<float (*)(id, SEL, float)>(implementation)(
+		receiver, selector, argument) : 0.0f;
+}
+
+extern "C" float darling_objc_msgSendSuper_float2(id receiver, Class superclass,
+	SEL selector, float first, float second)
+{
+	if (!receiver || !superclass || !selector ||
+		std::strcmp(class_getMethodTypeEncoding(superclass, selector), "f@:ff") != 0)
+		return 0.0f;
+	const IMP implementation = class_getMethodImplementation(superclass, selector);
+	return implementation ? reinterpret_cast<float (*)(id, SEL, float, float)>(implementation)(
+		receiver, selector, first, second) : 0.0f;
+}
+
+extern "C" std::uint64_t darling_objc_msgSendSuper_uint64_0(id receiver,
+	Class superclass, SEL selector)
+{
+	if (!receiver || !superclass || !selector)
+		return 0;
+	const char* types = class_getMethodTypeEncoding(superclass, selector);
+	if (!types || std::strcmp(types, "Q@:") != 0)
+		return 0;
+	const IMP implementation = class_getMethodImplementation(superclass, selector);
+	return implementation ? reinterpret_cast<std::uint64_t (*)(id, SEL)>(implementation)(
+		receiver, selector) : 0;
+}
+
+extern "C" std::uint64_t darling_objc_msgSendSuper_uint64_1(id receiver,
+	Class superclass, SEL selector, std::uint64_t argument)
+{
+	if (!receiver || !superclass || !selector)
+		return 0;
+	const char* types = class_getMethodTypeEncoding(superclass, selector);
+	if (!types || std::strcmp(types, "Q@:Q") != 0)
+		return 0;
+	const IMP implementation = class_getMethodImplementation(superclass, selector);
+	return implementation ? reinterpret_cast<std::uint64_t (*)(id, SEL, std::uint64_t)>(implementation)(
+		receiver, selector, argument) : 0;
+}
+
+extern "C" std::uint64_t darling_objc_msgSendSuper_uint64_2(id receiver,
+	Class superclass, SEL selector, std::uint64_t first, std::uint64_t second)
+{
+	if (!receiver || !superclass || !selector) return 0;
+	const char* types = class_getMethodTypeEncoding(superclass, selector);
+	if (!types || std::strcmp(types, "Q@:QQ") != 0) return 0;
+	const IMP implementation = class_getMethodImplementation(superclass, selector);
+	return implementation ? reinterpret_cast<std::uint64_t (*)(id, SEL, std::uint64_t, std::uint64_t)>(implementation)(receiver, selector, first, second) : 0;
+}
+
+extern "C" unsigned int darling_objc_msgSendSuper_uint0(id receiver,
+	Class superclass, SEL selector)
+{
+	if (!receiver || !superclass || !selector)
+		return 0;
+	const char* types = class_getMethodTypeEncoding(superclass, selector);
+	if (!types || std::strcmp(types, "I@:") != 0)
+		return 0;
+	const IMP implementation = class_getMethodImplementation(superclass, selector);
+	return implementation ? reinterpret_cast<unsigned int (*)(id, SEL)>(implementation)(
+		receiver, selector) : 0;
+}
+
+extern "C" unsigned int darling_objc_msgSendSuper_uint1(id receiver,
+	Class superclass, SEL selector, unsigned int argument)
+{
+	if (!receiver || !superclass || !selector)
+		return 0;
+	const char* types = class_getMethodTypeEncoding(superclass, selector);
+	if (!types || std::strcmp(types, "I@:I") != 0)
+		return 0;
+	const IMP implementation = class_getMethodImplementation(superclass, selector);
+	return implementation ? reinterpret_cast<unsigned int (*)(id, SEL, unsigned int)>(implementation)(
+		receiver, selector, argument) : 0;
+}
+
+extern "C" unsigned int darling_objc_msgSendSuper_uint2(id receiver,
+	Class superclass, SEL selector, unsigned int first, unsigned int second)
+{
+	if (!receiver || !superclass || !selector) return 0;
+	const char* types = class_getMethodTypeEncoding(superclass, selector);
+	if (!types || std::strcmp(types, "I@:II") != 0) return 0;
+	const IMP implementation = class_getMethodImplementation(superclass, selector);
+	return implementation ? reinterpret_cast<unsigned int (*)(id, SEL, unsigned int, unsigned int)>(implementation)(receiver, selector, first, second) : 0;
+}
+
+extern "C" bool darling_objc_msgSendSuper_bool0(id receiver, Class superclass, SEL selector)
+{
+	if (!receiver || !superclass || !selector)
+		return false;
+	const char* types = class_getMethodTypeEncoding(superclass, selector);
+	if (!types || std::strcmp(types, "B@:") != 0)
+		return false;
+	const IMP implementation = class_getMethodImplementation(superclass, selector);
+	return implementation && reinterpret_cast<bool (*)(id, SEL)>(implementation)(receiver, selector);
+}
+
+extern "C" bool darling_objc_msgSendSuper_bool1(id receiver, Class superclass,
+	SEL selector, bool argument)
+{
+	if (!receiver || !superclass || !selector)
+		return false;
+	const char* types = class_getMethodTypeEncoding(superclass, selector);
+	if (!types || std::strcmp(types, "B@:B") != 0)
+		return false;
+	const IMP implementation = class_getMethodImplementation(superclass, selector);
+	return implementation && reinterpret_cast<bool (*)(id, SEL, bool)>(implementation)(
+		receiver, selector, argument);
+}
+
+extern "C" int darling_objc_msgSendSuper_int0(id receiver, Class superclass, SEL selector)
+{
+	if (!receiver || !superclass || !selector)
+		return 0;
+	const char* types = class_getMethodTypeEncoding(superclass, selector);
+	if (!types || std::strcmp(types, "i@:") != 0)
+		return 0;
+	const IMP implementation = class_getMethodImplementation(superclass, selector);
+	return implementation ? reinterpret_cast<int (*)(id, SEL)>(implementation)(receiver, selector) : 0;
+}
+
+extern "C" int darling_objc_msgSendSuper_int1(id receiver, Class superclass,
+	SEL selector, int argument)
+{
+	if (!receiver || !superclass || !selector)
+		return 0;
+	const char* types = class_getMethodTypeEncoding(superclass, selector);
+	if (!types || std::strcmp(types, "i@:i") != 0)
+		return 0;
+	const IMP implementation = class_getMethodImplementation(superclass, selector);
+	return implementation ? reinterpret_cast<int (*)(id, SEL, int)>(implementation)(
+		receiver, selector, argument) : 0;
+}
+
+extern "C" std::int64_t darling_objc_msgSendSuper_int64_0(id receiver,
+	Class superclass, SEL selector)
+{
+	if (!receiver || !superclass || !selector)
+		return 0;
+	const char* types = class_getMethodTypeEncoding(superclass, selector);
+	if (!types || std::strcmp(types, "q@:") != 0)
+		return 0;
+	const IMP implementation = class_getMethodImplementation(superclass, selector);
+	return implementation ? reinterpret_cast<std::int64_t (*)(id, SEL)>(implementation)(
+		receiver, selector) : 0;
+}
+
+extern "C" std::int64_t darling_objc_msgSendSuper_int64_1(id receiver,
+	Class superclass, SEL selector, std::int64_t argument)
+{
+	if (!receiver || !superclass || !selector)
+		return 0;
+	const char* types = class_getMethodTypeEncoding(superclass, selector);
+	if (!types || std::strcmp(types, "q@:q") != 0)
+		return 0;
+	const IMP implementation = class_getMethodImplementation(superclass, selector);
+	return implementation ? reinterpret_cast<std::int64_t (*)(id, SEL, std::int64_t)>(implementation)(
+		receiver, selector, argument) : 0;
+}
+
+extern "C" std::int64_t darling_objc_msgSendSuper_int64_2(id receiver,
+	Class superclass, SEL selector, std::int64_t first, std::int64_t second)
+{
+	if (!receiver || !superclass || !selector) return 0;
+	const char* types = class_getMethodTypeEncoding(superclass, selector);
+	if (!types || std::strcmp(types, "q@:qq") != 0) return 0;
+	const IMP implementation = class_getMethodImplementation(superclass, selector);
+	return implementation ? reinterpret_cast<std::int64_t (*)(id, SEL, std::int64_t, std::int64_t)>(implementation)(receiver, selector, first, second) : 0;
+}
+
 extern "C" id darling_objc_msgSend_class0(Class cls, SEL selector)
 {
 	if (!cls || !selector)
@@ -2194,6 +2528,17 @@ extern "C" id darling_objc_msgSend_block1(id receiver, SEL selector,
 	using BlockMethod = id (*)(id, SEL, DarlingObjcCallbackBlock*);
 	return reinterpret_cast<BlockMethod>(implementation)(receiver, selector,
 		argument);
+}
+
+extern "C" id darling_objc_msgSendSuper_block1(id receiver, Class superclass,
+	SEL selector, DarlingObjcCallbackBlock* argument)
+{
+	if (!receiver || !superclass || !selector) return nullptr;
+	const char* types = class_getMethodTypeEncoding(superclass, selector);
+	if (!types || std::strcmp(types, "@@:@?") != 0) return nullptr;
+	const IMP implementation = class_getMethodImplementation(superclass, selector);
+	using BlockMethod = id (*)(id, SEL, DarlingObjcCallbackBlock*);
+	return implementation ? reinterpret_cast<BlockMethod>(implementation)(receiver, selector, argument) : nullptr;
 }
 
 extern "C" std::int64_t darling_objc_msgSend_int64_1(id receiver, SEL selector,
@@ -2439,6 +2784,79 @@ extern "C" void darling_objc_msgSend_void0(id receiver, SEL selector)
 	reinterpret_cast<VoidMethod>(implementation)(receiver, selector);
 }
 
+extern "C" void darling_objc_msgSend_void1_double(id receiver, SEL selector, double argument)
+{
+	const IMP implementation = FindMethod(receiver, selector);
+	const char* types = class_getMethodTypeEncoding(object_getClass(receiver), selector);
+	if (!implementation || !types || std::strcmp(types, "v@:d") != 0) return;
+	reinterpret_cast<void (*)(id, SEL, double)>(implementation)(receiver, selector, argument);
+}
+
+extern "C" void darling_objc_msgSend_void1_float(id receiver, SEL selector, float argument)
+{
+	const IMP implementation = FindMethod(receiver, selector);
+	const char* types = class_getMethodTypeEncoding(object_getClass(receiver), selector);
+	if (!implementation || !types || std::strcmp(types, "v@:f") != 0) return;
+	reinterpret_cast<void (*)(id, SEL, float)>(implementation)(receiver, selector, argument);
+}
+
+extern "C" void darling_objc_msgSend_void2_double(id receiver, SEL selector,
+	double first, double second)
+{
+	const IMP implementation = FindMethod(receiver, selector);
+	const char* types = class_getMethodTypeEncoding(object_getClass(receiver), selector);
+	if (!implementation || !types || std::strcmp(types, "v@:dd") != 0) return;
+	reinterpret_cast<void (*)(id, SEL, double, double)>(implementation)(receiver, selector, first, second);
+}
+
+extern "C" void darling_objc_msgSend_void2_float(id receiver, SEL selector,
+	float first, float second)
+{
+	const IMP implementation = FindMethod(receiver, selector);
+	const char* types = class_getMethodTypeEncoding(object_getClass(receiver), selector);
+	if (!implementation || !types || std::strcmp(types, "v@:ff") != 0) return;
+	reinterpret_cast<void (*)(id, SEL, float, float)>(implementation)(receiver, selector, first, second);
+}
+
+extern "C" void darling_objc_msgSend_void1_object(id receiver, SEL selector, id argument)
+{
+	const IMP implementation = FindMethod(receiver, selector);
+	const char* types = class_getMethodTypeEncoding(object_getClass(receiver), selector);
+	if (!implementation || !types || std::strcmp(types, "v@:@") != 0) return;
+	reinterpret_cast<void (*)(id, SEL, id)>(implementation)(receiver, selector, argument);
+}
+
+extern "C" void darling_objc_msgSend_void2_object(id receiver, SEL selector,
+	id first, id second)
+{
+	const IMP implementation = FindMethod(receiver, selector);
+	const char* types = class_getMethodTypeEncoding(object_getClass(receiver), selector);
+	if (!implementation || !types || std::strcmp(types, "v@:@@") != 0) return;
+	reinterpret_cast<void (*)(id, SEL, id, id)>(implementation)(receiver, selector, first, second);
+}
+
+extern "C" void darling_objc_msgSend_void1_block(id receiver, SEL selector,
+	DarlingObjcCallbackBlock* argument)
+{
+	const IMP implementation = FindMethod(receiver, selector);
+	const char* types = class_getMethodTypeEncoding(object_getClass(receiver), selector);
+	if (!implementation || !types || std::strcmp(types, "v@:@?") != 0) return;
+	reinterpret_cast<void (*)(id, SEL, DarlingObjcCallbackBlock*)>(implementation)(
+		receiver, selector, argument);
+}
+
+extern "C" void darling_objc_msgSendSuper_void1_block(id receiver, Class superclass,
+	SEL selector, DarlingObjcCallbackBlock* argument)
+{
+	if (!receiver || !superclass || !selector) return;
+	const char* types = class_getMethodTypeEncoding(superclass, selector);
+	if (!types || std::strcmp(types, "v@:@?") != 0) return;
+	const IMP implementation = class_getMethodImplementation(superclass, selector);
+	if (implementation)
+		reinterpret_cast<void (*)(id, SEL, DarlingObjcCallbackBlock*)>(implementation)(
+			receiver, selector, argument);
+}
+
 extern "C" DarlingObjcRect darling_objc_msgSend_rect0(id receiver, SEL selector)
 {
 	const DarlingObjcRect empty{};
@@ -2463,6 +2881,47 @@ extern "C" DarlingObjcRect darling_objc_msgSend_rect1(id receiver, SEL selector,
 		return empty;
 	using RectMethod = DarlingObjcRect (*)(id, SEL, DarlingObjcRect);
 	return reinterpret_cast<RectMethod>(implementation)(receiver, selector, argument);
+}
+
+extern "C" DarlingObjcRect darling_objc_msgSendSuper_rect0(id receiver,
+	Class superclass, SEL selector)
+{
+	const DarlingObjcRect empty{};
+	if (!receiver || !superclass || !selector) return empty;
+	const char* types = class_getMethodTypeEncoding(superclass, selector);
+	if (!types || std::strcmp(types, "{CGRect={CGPoint=dd}{CGSize=dd}}@:") != 0)
+		return empty;
+	const IMP implementation = class_getMethodImplementation(superclass, selector);
+	using RectMethod = DarlingObjcRect (*)(id, SEL);
+	return implementation ? reinterpret_cast<RectMethod>(implementation)(receiver, selector) : empty;
+}
+
+extern "C" DarlingObjcRect darling_objc_msgSendSuper_rect1(id receiver,
+	Class superclass, SEL selector, DarlingObjcRect argument)
+{
+	const DarlingObjcRect empty{};
+	if (!receiver || !superclass || !selector) return empty;
+	const char* types = class_getMethodTypeEncoding(superclass, selector);
+	if (!types || std::strcmp(types,
+		"{CGRect={CGPoint=dd}{CGSize=dd}}@:{CGRect={CGPoint=dd}{CGSize=dd}}") != 0)
+		return empty;
+	const IMP implementation = class_getMethodImplementation(superclass, selector);
+	using RectMethod = DarlingObjcRect (*)(id, SEL, DarlingObjcRect);
+	return implementation ? reinterpret_cast<RectMethod>(implementation)(receiver, selector, argument) : empty;
+}
+
+extern "C" void darling_objc_msgSendSuper_void_rect1(id receiver,
+	Class superclass, SEL selector, DarlingObjcRect argument)
+{
+	if (!receiver || !superclass || !selector) return;
+	const char* types = class_getMethodTypeEncoding(superclass, selector);
+	if (!types || std::strcmp(types,
+		"v@:{CGRect={CGPoint=dd}{CGSize=dd}}") != 0)
+		return;
+	const IMP implementation = class_getMethodImplementation(superclass, selector);
+	if (implementation)
+		reinterpret_cast<void (*)(id, SEL, DarlingObjcRect)>(implementation)(
+			receiver, selector, argument);
 }
 
 extern "C" DarlingObjcValue darling_objc_invoke0(id receiver, SEL selector)

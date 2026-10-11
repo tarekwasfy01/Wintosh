@@ -330,6 +330,62 @@ The same Super bridge now covers void integer and void int64 arguments
 extends fixed-arity ABI coverage only; it does not provide arbitrary variadic
 or aggregate Objective-C dispatch.
 
+The Super bridge now has separate ABI-safe typed entry points for the complete
+currently supported scalar floating-point arities: `d@:`/`d@:d`/`d@:dd` and
+`f@:`/`f@:f`/`f@:ff`. These return `double` or `float` directly instead of
+forcing a floating-point result through the untyped `id objc_msgSendSuper`
+signature; the Objective-C smoke exercises all six Root-class paths. This is
+still a fixed-signature bridge, not general Apple variadic ABI support.
+
+Unsigned integer Super dispatch now also has typed `Q@:`/`Q@:Q` and
+`I@:`/`I@:I` entry points for 64-bit and 32-bit results. The smoke covers
+zero- and one-argument Root-class methods; the untyped Super entry point is
+not used for these scalar returns.
+
+The integer Super family now also includes tested two-argument typed forms
+`q@:qq`, `Q@:QQ`, and `I@:II`, all returning native scalar values directly.
+
+The CGRect-like aggregate family now has typed Super entry points for zero- and
+one-argument methods. They return `DarlingObjcRect` directly and are checked
+field-by-field by the Objective-C smoke; arbitrary aggregate encodings remain
+unsupported.
+
+The same CGRect family also supports a typed void Super call carrying one
+CGRect argument (`v@:{CGRect=...}`), with all four fields verified.
+
+Object-returning Super dispatch now also has typed zero-, one-, and
+two-object entry points for `@@:`, `@@:@`, and `@@:@@`. The smoke verifies
+the returned object identity through the Root implementation.
+
+Callback-block Super dispatch now has a typed `@@:@?` entry point. The smoke
+passes a bridge block through the Root implementation and verifies identity;
+full Apple block ABI and arbitrary block signatures remain outside scope.
+
+Typed void Super dispatch now also covers one and two object arguments
+(`v@:@` and `v@:@@`), with the smoke checking both received identities.
+
+Void Super scalar dispatch now also covers one `double` or `float` argument
+(`v@:d` and `v@:f`), with exact value checks in the Objective-C smoke.
+
+The same void floating-point Super family now includes two-argument forms
+`v@:dd` and `v@:ff`, verified through sum-producing fixture methods.
+
+The normal typed `objc_msgSend` path now exposes the same four void floating
+forms, so direct and Super dispatch share the tested `double`/`float` surface.
+
+Direct typed void object dispatch now mirrors the Super forms `v@:@` and
+`v@:@@`, with both received identities checked by the smoke.
+
+Void callback-block dispatch now has typed direct and Super entry points for
+`v@:@?`; the smoke verifies the same bridge block arrives in both methods.
+
+Typed pointer Super dispatch now covers `^v@:` and `^v@:^v`, including
+pointer return and argument propagation through the Root implementation.
+
+The same typed Super surface now covers Boolean, signed 32-bit, and signed
+64-bit results with zero- and one-argument forms (`B`, `i`, and `q`). The
+Objective-C smoke verifies all six additional entry points.
+
 The Release Clang build currently passes 60/60 CTest entries, including the
 Mach-O printf bundle end-to-end test. The latest five local commits are ahead
 of the configured remote and have not been pushed in this work cycle.

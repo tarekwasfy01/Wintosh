@@ -148,6 +148,60 @@ id objc_moveWeak(id* destination, id* source);
 id objc_msgSend(id receiver, SEL selector, ...);
 id objc_msgSendSuper(id receiver, Class superclass, SEL selector, ...);
 id darling_objc_msgSend_class0(Class cls, SEL selector);
+id darling_objc_msgSendSuper_object0(id receiver, Class superclass, SEL selector);
+id darling_objc_msgSendSuper_object1(id receiver, Class superclass, SEL selector,
+	id argument);
+id darling_objc_msgSendSuper_object2(id receiver, Class superclass, SEL selector,
+	id first, id second);
+void* darling_objc_msgSendSuper_pointer0(id receiver, Class superclass, SEL selector);
+void* darling_objc_msgSendSuper_pointer1(id receiver, Class superclass, SEL selector,
+	void* argument);
+void darling_objc_msgSendSuper_void_object1(id receiver, Class superclass, SEL selector,
+	id argument);
+void darling_objc_msgSendSuper_void_object2(id receiver, Class superclass, SEL selector,
+	id first, id second);
+void darling_objc_msgSendSuper_void_double1(id receiver, Class superclass, SEL selector,
+	double argument);
+void darling_objc_msgSendSuper_void_float1(id receiver, Class superclass, SEL selector,
+	float argument);
+void darling_objc_msgSendSuper_void_double2(id receiver, Class superclass, SEL selector,
+	double first, double second);
+void darling_objc_msgSendSuper_void_float2(id receiver, Class superclass, SEL selector,
+	float first, float second);
+double darling_objc_msgSendSuper_double0(id receiver, Class superclass, SEL selector);
+double darling_objc_msgSendSuper_double1(id receiver, Class superclass, SEL selector,
+	double argument);
+double darling_objc_msgSendSuper_double2(id receiver, Class superclass, SEL selector,
+	double first, double second);
+float darling_objc_msgSendSuper_float0(id receiver, Class superclass, SEL selector);
+float darling_objc_msgSendSuper_float1(id receiver, Class superclass, SEL selector,
+	float argument);
+float darling_objc_msgSendSuper_float2(id receiver, Class superclass, SEL selector,
+	float first, float second);
+std::uint64_t darling_objc_msgSendSuper_uint64_0(id receiver, Class superclass,
+	SEL selector);
+std::uint64_t darling_objc_msgSendSuper_uint64_1(id receiver, Class superclass,
+	SEL selector, std::uint64_t argument);
+std::uint64_t darling_objc_msgSendSuper_uint64_2(id receiver, Class superclass,
+	SEL selector, std::uint64_t first, std::uint64_t second);
+unsigned int darling_objc_msgSendSuper_uint0(id receiver, Class superclass,
+	SEL selector);
+unsigned int darling_objc_msgSendSuper_uint1(id receiver, Class superclass,
+	SEL selector, unsigned int argument);
+unsigned int darling_objc_msgSendSuper_uint2(id receiver, Class superclass,
+	SEL selector, unsigned int first, unsigned int second);
+bool darling_objc_msgSendSuper_bool0(id receiver, Class superclass, SEL selector);
+bool darling_objc_msgSendSuper_bool1(id receiver, Class superclass, SEL selector,
+	bool argument);
+int darling_objc_msgSendSuper_int0(id receiver, Class superclass, SEL selector);
+int darling_objc_msgSendSuper_int1(id receiver, Class superclass, SEL selector,
+	int argument);
+std::int64_t darling_objc_msgSendSuper_int64_0(id receiver, Class superclass,
+	SEL selector);
+std::int64_t darling_objc_msgSendSuper_int64_1(id receiver, Class superclass,
+	SEL selector, std::int64_t argument);
+std::int64_t darling_objc_msgSendSuper_int64_2(id receiver, Class superclass,
+	SEL selector, std::int64_t first, std::int64_t second);
 
 // Typed entry points used by the Windows bridge until a full variadic ABI
 // trampoline is available. The names are deliberately project-specific.
@@ -165,6 +219,8 @@ unsigned int darling_objc_msgSend_uint0(id receiver, SEL selector);
 unsigned int darling_objc_msgSend_uint1(id receiver, SEL selector,
 	unsigned int argument);
 id darling_objc_msgSend_block1(id receiver, SEL selector,
+	DarlingObjcCallbackBlock* argument);
+id darling_objc_msgSendSuper_block1(id receiver, Class superclass, SEL selector,
 	DarlingObjcCallbackBlock* argument);
 std::int64_t darling_objc_msgSend_int64_1(id receiver, SEL selector,
 	std::int64_t argument);
@@ -187,6 +243,16 @@ float darling_objc_msgSend_float1(id receiver, SEL selector, float argument);
 float darling_objc_msgSend_float2(id receiver, SEL selector, float first,
 	float second);
 void darling_objc_msgSend_void0(id receiver, SEL selector);
+void darling_objc_msgSend_void1_double(id receiver, SEL selector, double argument);
+void darling_objc_msgSend_void1_float(id receiver, SEL selector, float argument);
+void darling_objc_msgSend_void2_double(id receiver, SEL selector, double first, double second);
+void darling_objc_msgSend_void2_float(id receiver, SEL selector, float first, float second);
+void darling_objc_msgSend_void1_object(id receiver, SEL selector, id argument);
+void darling_objc_msgSend_void2_object(id receiver, SEL selector, id first, id second);
+void darling_objc_msgSend_void1_block(id receiver, SEL selector,
+	DarlingObjcCallbackBlock* argument);
+void darling_objc_msgSendSuper_void1_block(id receiver, Class superclass, SEL selector,
+	DarlingObjcCallbackBlock* argument);
 enum DarlingObjcValueKind : std::uint32_t {
 	DARLING_OBJC_VOID = 0,
 	DARLING_OBJC_OBJECT = 1,
@@ -219,6 +285,12 @@ struct DarlingObjcRect final {
 DarlingObjcRect darling_objc_msgSend_rect0(id receiver, SEL selector);
 DarlingObjcRect darling_objc_msgSend_rect1(id receiver, SEL selector,
 	DarlingObjcRect argument);
+DarlingObjcRect darling_objc_msgSendSuper_rect0(id receiver, Class superclass,
+	SEL selector);
+DarlingObjcRect darling_objc_msgSendSuper_rect1(id receiver, Class superclass,
+	SEL selector, DarlingObjcRect argument);
+void darling_objc_msgSendSuper_void_rect1(id receiver, Class superclass,
+	SEL selector, DarlingObjcRect argument);
 
 using DarlingObjcCallback1 = id (*)(void* context, id argument);
 

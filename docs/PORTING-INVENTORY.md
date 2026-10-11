@@ -926,6 +926,48 @@ and the complete Release suite is still 22/22.
 through the selected superclass implementation, with ordered vararg reads.
 The Objective-C fixture and complete Release suite remain green at 22/22.
 
+The same family now includes ABI-safe typed superclass floating-point entry
+points for zero, one, and two `double` arguments and for zero, one, and two
+`float` arguments. The smoke verifies the direct floating-point return values;
+the untyped variadic Super entry point intentionally remains unchanged.
+
+Unsigned integer Super returns are now covered by typed `Q` and `I` zero- and
+one-argument bridges and are exercised by the Objective-C smoke fixture.
+
+Boolean and signed integer Super return families now have matching typed
+zero- and one-argument bridges and smoke coverage.
+
+The same integer family now includes tested two-argument `q`, `Q`, and `I`
+Super return bridges.
+
+The CGRect compatibility family now also has typed Super zero- and
+one-argument bridges with field-level smoke coverage.
+
+The CGRect family also includes a tested void Super call carrying one
+CGRect-like aggregate argument.
+
+The Objective-C object Super family now includes typed zero-, one-, and
+two-object return bridges with identity checks.
+
+Callback-block Super dispatch now has a tested typed `@@:@?` bridge.
+
+Pointer Super dispatch now has tested typed zero- and one-argument bridges.
+
+The void-object Super family now has tested one- and two-object forms.
+
+The void scalar Super family now has tested `double` and `float` argument
+forms.
+
+The two-argument `v@:dd` and `v@:ff` forms are tested too.
+
+Direct typed void floating dispatch now mirrors the Super family and is tested
+for one and two arguments.
+
+Direct typed void object dispatch now mirrors the tested one- and two-object
+Super forms.
+
+Direct and Super void callback-block bridges are now tested for `v@:@?`.
+
 Super dispatch now also covers pointer (`^v@:^v`) and callback-block
 (`@@:@?`) arguments, including pointer return propagation. Full Release
 verification remains `SMOKE_COUNT=22`, `SMOKE_PASS=22`, `SMOKE_FAIL=0`.

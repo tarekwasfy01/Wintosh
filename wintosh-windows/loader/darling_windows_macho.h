@@ -12,6 +12,7 @@
 
 #include <cstdint>
 #include <array>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -480,6 +481,42 @@ private:
 	std::uintptr_t m_entry_address = 0;
 	std::intptr_t m_slide = 0;
 	std::size_t m_reservation_bytes = 0;
+};
+
+// Explicit lifetime boundary for future on-demand dyld binding. The session
+// keeps the image, mapping, and resolved dependency table together so a
+// binder cannot accidentally apply an action to a different image.
+class MachOLazyBindingSession final {
+public:
+	class Activation final {
+	public:
+		Activation(const Activation&) = delete;
+		Activation& operator=(const Activation&) = delete;
+		Activation(Activation&& other) noexcept;
+		Activation& operator=(Activation&& other) noexcept;
+		~Activation() noexcept;
+	private:
+		friend class MachOLazyBindingSession;
+		explicit Activation(const MachOLazyBindingSession* session) noexcept;
+		const MachOLazyBindingSession* previous_ = nullptr;
+		bool active_ = false;
+	};
+
+	MachOLazyBindingSession(const MachOImage& image, const MachOImage::Mapping& mapping,
+		const std::vector<DyldResolvedBinding>& bindings) noexcept
+		: m_image(image), m_mapping(mapping), m_bindings(bindings) {}
+
+	void ApplyOne(std::size_t action_index) const;
+	void ApplyAll() const;
+	[[nodiscard]] std::optional<std::size_t> FindActionForSlot(
+		std::uintptr_t slot_address) const noexcept;
+	[[nodiscard]] Activation Activate() const noexcept { return Activation(this); }
+	[[nodiscard]] static const MachOLazyBindingSession* Current() noexcept;
+
+private:
+	const MachOImage& m_image;
+	const MachOImage::Mapping& m_mapping;
+	const std::vector<DyldResolvedBinding>& m_bindings;
 };
 
 } // namespace darling::windows_host

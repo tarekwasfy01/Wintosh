@@ -21,6 +21,10 @@
 
 namespace darling::windows_host {
 
+namespace {
+thread_local const MachOLazyBindingSession* active_lazy_binding_session = nullptr;
+}
+
 #if defined(_WIN64)
 extern "C" void darling_windows_enter_darwin_start(void* entry, void* darwin_stack);
 #endif
@@ -2459,6 +2463,70 @@ void MachOImage::Mapping::Reset() noexcept
 		m_reservation = nullptr;
 	}
 	m_reservation_bytes = 0;
+}
+
+void MachOLazyBindingSession::ApplyOne(std::size_t action_index) const
+{
+	m_image.ApplyLazyBindAction(action_index, m_mapping, m_bindings);
+}
+
+void MachOLazyBindingSession::ApplyAll() const
+{
+	m_image.ApplyLazyBindActions(m_mapping, m_bindings);
+}
+
+std::optional<std::size_t> MachOLazyBindingSession::FindActionForSlot(
+	std::uintptr_t slot_address) const noexcept
+{
+	for (std::size_t index = 0; index < m_image.BindActions().size(); ++index) {
+		const auto& action = m_image.BindActions()[index];
+		if (!action.lazy || action.segment_index >= m_image.Segments().size())
+			continue;
+		const auto& segment = m_image.Segments()[action.segment_index];
+		const auto candidate = static_cast<std::uintptr_t>(segment.vm_address) +
+			static_cast<std::uintptr_t>(action.segment_offset) +
+			static_cast<std::intptr_t>(m_mapping.Slide());
+		if (candidate == slot_address)
+			return index;
+	}
+	return std::nullopt;
+}
+
+MachOLazyBindingSession::Activation::Activation(
+	const MachOLazyBindingSession* session) noexcept
+	: previous_(active_lazy_binding_session), active_(true)
+{
+	active_lazy_binding_session = session;
+}
+
+MachOLazyBindingSession::Activation::Activation(Activation&& other) noexcept
+	: previous_(other.previous_), active_(other.active_)
+{
+	other.active_ = false;
+}
+
+MachOLazyBindingSession::Activation& MachOLazyBindingSession::Activation::operator=(
+	Activation&& other) noexcept
+{
+	if (this != &other) {
+		if (active_)
+			active_lazy_binding_session = previous_;
+		previous_ = other.previous_;
+		active_ = other.active_;
+		other.active_ = false;
+	}
+	return *this;
+}
+
+MachOLazyBindingSession::Activation::~Activation() noexcept
+{
+	if (active_)
+		active_lazy_binding_session = previous_;
+}
+
+const MachOLazyBindingSession* MachOLazyBindingSession::Current() noexcept
+{
+	return active_lazy_binding_session;
 }
 
 } // namespace darling::windows_host

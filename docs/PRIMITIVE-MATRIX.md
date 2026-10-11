@@ -709,6 +709,49 @@ entry points, plus the tested `method_exchangeImplementations` path. These
 are fixed signatures backed by the custom runtime; they do not claim a
 general variadic Apple ABI or complete method-cache/swizzling semantics.
 
+The same Super family includes ABI-safe unsigned scalar entry points for
+`Q@:`/`Q@:Q` and `I@:`/`I@:I`, with direct `uint64_t` and `unsigned int`
+returns.
+
+Two-argument typed Super bridges are available for signed 64-bit, unsigned
+64-bit, and unsigned 32-bit integer results.
+
+CGRect-like aggregate Super dispatch is available for the tested zero- and
+one-argument encodings, via dedicated `DarlingObjcRect` return functions.
+
+A typed void-argument Super bridge for the same CGRect encoding is also
+covered; arbitrary struct encodings remain outside the matrix.
+
+Typed object-returning Super bridges cover zero, one, and two object
+arguments; arbitrary variadic object signatures remain unsupported.
+
+The callback-block family also has a typed Super bridge for `@@:@?`.
+
+The pointer family also has typed Super bridges for zero- and one-pointer
+forms (`^v@:` and `^v@:^v`).
+
+Void Super calls with one or two object arguments are covered by typed
+`v@:@` and `v@:@@` bridges.
+
+Typed void Super bridges also cover one `double` and one `float` argument.
+
+Two-argument `double` and `float` void Super forms are covered as well.
+
+The corresponding direct-send entry points are covered for all four forms.
+
+Direct typed void object entry points cover one and two object arguments.
+
+Typed void callback-block dispatch is covered for both direct and Super
+messages (`v@:@?`).
+
+Signed scalar Super returns are also exposed through ABI-safe `B`, `i`, and
+`q` zero-/one-argument bridges; these are separate from untyped `id` dispatch.
+
+The superclass family has matching typed floating-point entry points for
+`d@:`, `d@:d`, `d@:dd`, `f@:`, `f@:f`, and `f@:ff`. They are deliberately
+separate from the untyped `objc_msgSendSuper` return path so that Windows does
+not silently reinterpret an XMM-register result as an object pointer.
+
 CoreGraphics geometry now has an independent partial adapter for affine
 transforms, point/rectangle application, inversion, containment, intersection,
 transform equality, integral rectangles,

@@ -592,6 +592,9 @@ so unsupported Darwin flags cannot silently become a Windows protection mode.
 later protection requests cannot add rights beyond it. The smoke verifies a
 read-only maximum rejects a later read/write expansion; this is a bounded
 maximum-rights model, not full Darwin inheritance or COW.
+Maximum-right entries are now removed when the corresponding VM allocation is
+deallocated and when a task terminates, preventing protection metadata from
+leaking across allocation or process lifetimes.
 The x64 smoke also verifies `mach_vm_copy` between two remote allocations by
 comparing the copied bytes after a remote read. This is an explicit copy
 operation; it must not be confused with Darwin VM copy-on-write sharing or

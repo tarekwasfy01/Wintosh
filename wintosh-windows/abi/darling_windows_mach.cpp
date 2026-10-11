@@ -396,6 +396,13 @@ extern "C" darling_kern_return_t darling_windows_task_terminate(darling_mach_por
 		for (const auto thread : child_threads)
 			exception_ports.erase(thread);
 	}
+	{
+		std::lock_guard lock(vm_maximum_protections_mutex);
+		for (auto it = vm_maximum_protections.begin(); it != vm_maximum_protections.end();) {
+			if (it->first.task == task) it = vm_maximum_protections.erase(it);
+			else ++it;
+		}
+	}
 	return 0;
 }
 
@@ -1074,6 +1081,10 @@ extern "C" darling_kern_return_t darling_windows_mach_vm_deallocate(
 	const BOOL released = VirtualFreeEx(process,
 		reinterpret_cast<void*>(static_cast<std::uintptr_t>(address)), 0, MEM_RELEASE);
 	CloseVmProcess(process, owned);
+	if (released) {
+		std::lock_guard lock(vm_maximum_protections_mutex);
+		vm_maximum_protections.erase(VmMaximumProtectionKey{task, address});
+	}
 	return released ? 0 : 4;
 }
 

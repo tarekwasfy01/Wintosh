@@ -805,6 +805,9 @@ forms.
 The additive Wintosh bridge `darling_windows_CFURLCopyPathDecoded` covers
 percent-decoding of URL paths, while malformed escapes remain literal and
 complete RFC 3986 normalization remains open.
+The corresponding `darling_windows_CFURLCopyQueryStringDecoded` and
+`darling_windows_CFURLCopyFragmentDecoded` bridges cover the same bounded
+decoding behavior for query and fragment values.
 Simple URL user-info extraction through `CFURLCopyUserName` and
 `CFURLCopyPassword` is covered; valid hexadecimal percent escapes are also
 covered, while malformed/Unicode escapes and full credential parsing remain

@@ -97,6 +97,9 @@ following families with Windows-backed implementations:
 - The additive Wintosh bridge `darling_windows_CFURLCopyPathDecoded` now
   exposes percent-decoded URL paths; malformed escapes remain literal and
   complete RFC 3986 normalization and Unicode URL semantics remain open.
+- Matching additive bridges now expose percent-decoded query and fragment
+  values; these remain a bounded compatibility subset, not complete URL
+  normalization or security-policy validation.
 - CoreFoundation directory-path detection through `CFURLHasDirectoryPath`,
   including file-vs-directory path checks on x64 and Win32.
 - CoreFoundation URL type identification through `CFURLGetTypeID`, matching

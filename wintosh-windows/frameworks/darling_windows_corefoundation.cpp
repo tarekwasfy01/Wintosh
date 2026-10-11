@@ -2140,6 +2140,19 @@ extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyQueryString(
 		query + 1, end == std::string::npos ? std::string::npos : end - query - 1).c_str());
 }
 
+extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyQueryStringDecoded(
+	darling_windows_CFURLRef value)
+{
+	const auto* object = static_cast<const Object*>(value);
+	if (object == nullptr || object->kind != Kind::URL) return nullptr;
+	const auto query = object->string.find('?');
+	if (query == std::string::npos) return nullptr;
+	const auto end = object->string.find('#', query + 1);
+	const auto raw = object->string.substr(
+		query + 1, end == std::string::npos ? std::string::npos : end - query - 1);
+	return darling_windows_CFStringCreateWithCString(PercentDecode(raw).c_str());
+}
+
 extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyFragment(
 	darling_windows_CFURLRef value)
 {
@@ -2148,6 +2161,17 @@ extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyFragment(
 	const auto fragment = object->string.find('#');
 	if (fragment == std::string::npos) return nullptr;
 	return darling_windows_CFStringCreateWithCString(object->string.substr(fragment + 1).c_str());
+}
+
+extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyFragmentDecoded(
+	darling_windows_CFURLRef value)
+{
+	const auto* object = static_cast<const Object*>(value);
+	if (object == nullptr || object->kind != Kind::URL) return nullptr;
+	const auto fragment = object->string.find('#');
+	if (fragment == std::string::npos) return nullptr;
+	return darling_windows_CFStringCreateWithCString(
+		PercentDecode(object->string.substr(fragment + 1)).c_str());
 }
 
 extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyScheme(

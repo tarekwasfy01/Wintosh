@@ -276,7 +276,13 @@ extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyPathDecoded(
 	darling_windows_CFURLRef value);
 extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyQueryString(
 	darling_windows_CFURLRef value);
+// Wintosh additive bridge: returns the URL query after percent decoding.
+extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyQueryStringDecoded(
+	darling_windows_CFURLRef value);
 extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyFragment(
+	darling_windows_CFURLRef value);
+// Wintosh additive bridge: returns the URL fragment after percent decoding.
+extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyFragmentDecoded(
 	darling_windows_CFURLRef value);
 extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyScheme(
 	darling_windows_CFURLRef value);

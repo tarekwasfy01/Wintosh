@@ -35,6 +35,8 @@ entrypoint is a Darwin `crt1`/`dyld` start routine.  The default remains
 `--startup-abi main`, which is the compatible `int(argc, argv, envp)` path used
 by the repository's synthetic fixtures.  Do not select `darwin` for those
 fixtures; they intentionally use the compatible main ABI.
+The runner automatically adds `executable_path=<resolved-image>` to the Apple
+parameter vector. Additional entries can be supplied with `--apple-param`.
 The runner is therefore an adapter/loader milestone, not a complete Darling
 root filesystem or a full macOS framework runtime.
 

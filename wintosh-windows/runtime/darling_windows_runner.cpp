@@ -105,6 +105,7 @@ void Usage()
 		<< L"  --rpath <directory>    Add a dynamic-library search path\n"
 		<< L"  --env KEY=VALUE        Add an environment entry\n"
 		<< L"  --startup-abi <mode>   Use main or darwin entry ABI (default: main)\n"
+		<< L"  --apple-param VALUE    Add a Darwin Apple startup parameter\n"
 		<< L"                         WINTOSH_PREFIX may provide a default runtime root\n"
 		<< L"  --                    End options before the Mach-O path\n";
 }
@@ -237,7 +238,7 @@ int wmain(int argc, wchar_t** argv)
 			}
 			if (!end_options && (argument == L"--prefix" ||
 				argument == L"--rpath" || argument == L"--env" ||
-				argument == L"--startup-abi")) {
+				argument == L"--startup-abi" || argument == L"--apple-param")) {
 				if (++index >= argc)
 					throw std::runtime_error("missing value for CLI option");
 				const auto value = Utf8(argv[index]);
@@ -247,6 +248,8 @@ int wmain(int argc, wchar_t** argv)
 					options.rpaths.emplace_back(argv[index]);
 				else if (argument == L"--env")
 					SetEnvironment(options.environment, value);
+				else if (argument == L"--apple-param")
+					options.apple_parameters.push_back(value);
 				else if (value == "main")
 					options.entry_abi = darling::windows_host::DarwinEntryAbi::CompatibleMain;
 				else if (value == "darwin")
@@ -269,6 +272,8 @@ int wmain(int argc, wchar_t** argv)
 			return 64;
 		}
 		image = ResolveImage(image);
+		options.apple_parameters.insert(options.apple_parameters.begin(),
+			"executable_path=" + Utf8(image.c_str()));
 		if (!options.arguments.empty())
 			options.arguments.front() = Utf8(image.c_str());
 		if (options.prefix.empty())

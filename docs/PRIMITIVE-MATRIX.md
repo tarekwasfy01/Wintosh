@@ -65,6 +65,11 @@ by `MACH_IPC_RPC=PASS`. This is the operational serialization bridge, not yet
 automatic routing of the local C `mach_msg` entry point through the broker
 session.
 
+The Mach message ABI also exposes `darling_windows_mach_msg_destroy` for
+disposing received port descriptors and locally-owned out-of-line payloads.
+Malformed descriptor layouts fail closed. Distributed right accounting,
+notification-port delivery, and complete Darwin trailer semantics remain open.
+
 `OpenMachIpcSession` now performs the broker session handshake, including the
 current-process validation payload, and the broker smoke uses this helper for
 the authenticated session path. This makes session establishment reusable by

@@ -90,6 +90,12 @@ successful transfer and is invalidated on session teardown.
 
 Receive supports bounded timeout and an explicit `MACH_RCV_TOO_LARGE`-style
 response containing the required inline size without consuming the message.
+
+The ABI also exposes `darling_windows_mach_msg_destroy`, which releases
+received local port rights and registered out-of-line payloads after a message
+has been consumed. Malformed or unsupported descriptor layouts are rejected;
+cross-process right accounting and complete Darwin notification/trailer
+behavior remain outside this primitive.
 Queue shutdown returns a stable port-dead result. Session-authenticated request
 cancellation is now available through the `Cancel` operation with envelope
 validation and round-trip coverage: a blocked `Receive` registers its nonzero

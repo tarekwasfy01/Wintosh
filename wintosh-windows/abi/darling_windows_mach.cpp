@@ -1973,3 +1973,50 @@ extern "C" darling_kern_return_t darling_windows_mach_ool_release(void* address)
 {
 	return mach_ool_ownership.ReleaseReceiver(address) ? 0 : 4;
 }
+
+extern "C" darling_kern_return_t darling_windows_mach_msg_destroy(
+	darling_mach_msg_header* message)
+{
+	if (message == nullptr || message->msgh_size < sizeof(darling_mach_msg_header)) return 4;
+	if ((message->msgh_bits & darling_mach_msg_complex) == 0) return 0;
+	if (message->msgh_size < sizeof(darling_mach_msg_header) + sizeof(darling_mach_msg_body)) return 4;
+	const auto* body = reinterpret_cast<const darling_mach_msg_body*>(
+		reinterpret_cast<const std::uint8_t*>(message) + sizeof(darling_mach_msg_header));
+	const auto remaining = message->msgh_size - sizeof(darling_mach_msg_header) - sizeof(*body);
+	if (body->msgh_descriptor_count == 1 && remaining >= sizeof(darling_mach_msg_ool_descriptor)) {
+		const auto* descriptor = reinterpret_cast<const darling_mach_msg_ool_descriptor*>(body + 1);
+		if (descriptor->type == darling_mach_msg_descriptor_ool && descriptor->address != 0) {
+			if (!mach_ool_ownership.ReleaseReceiver(reinterpret_cast<void*>(
+				static_cast<std::uintptr_t>(descriptor->address)))) return 4;
+			return 0;
+		}
+	}
+	const auto descriptor_bytes = static_cast<std::uint64_t>(body->msgh_descriptor_count) *
+		sizeof(darling_mach_msg_port_descriptor);
+	if (descriptor_bytes > remaining) return 4;
+	const auto* descriptors = reinterpret_cast<const darling_mach_msg_port_descriptor*>(body + 1);
+	for (std::uint32_t index = 0; index < body->msgh_descriptor_count; ++index) {
+		std::uint32_t right = 0;
+		switch (descriptors[index].disposition) {
+		case darling_mach_copy_send:
+		case darling_mach_make_send:
+		case darling_mach_move_send:
+			right = darling_mach_port_type_send;
+			break;
+		case darling_mach_move_send_once:
+		case darling_mach_make_send_once:
+			right = darling_mach_port_type_send_once;
+			break;
+		case darling_mach_copy_receive:
+		case darling_mach_move_receive:
+			right = darling_mach_port_type_receive;
+			break;
+		default:
+			return 4;
+		}
+		if (descriptors[index].name == 0 || darling_windows_mach_port_mod_refs(
+			darling_windows_mach_task_self(), descriptors[index].name, right, -1) != 0)
+			return 4;
+	}
+	return 0;
+}

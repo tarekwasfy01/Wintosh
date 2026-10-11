@@ -336,6 +336,7 @@ public:
 	[[nodiscard]] std::size_t FileBytes() const noexcept { return m_file_bytes; }
 	[[nodiscard]] const std::vector<std::string>& Dependencies() const noexcept { return m_dependencies; }
 	[[nodiscard]] const std::string& InstallName() const noexcept { return m_install_name; }
+	[[nodiscard]] bool HasCodeSignature() const noexcept;
 	[[nodiscard]] bool IsWeakDependency(const std::string& name) const noexcept;
 	[[nodiscard]] const std::vector<std::string>& RPaths() const noexcept { return m_rpaths; }
 	[[nodiscard]] const std::vector<MachOSymbol>& Symbols() const noexcept { return m_symbols; }

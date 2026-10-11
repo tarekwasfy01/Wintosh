@@ -85,6 +85,11 @@ the implementation deliberately remains bounded to the executable lookup.
 Malformed binary-plist count metadata is rejected safely and uses the normal
 bundle-name fallback rather than being treated as executable metadata.
 
+`MachOImage::HasCodeSignature()` and `wintosh --inspect` now expose whether an
+`LC_CODE_SIGNATURE` load command is present.  This is metadata detection only:
+Wintosh still does not validate the embedded Apple CodeDirectory or CMS
+signature and never treats presence as authenticity.
+
 The dyld resolver now also checks `Contents/Frameworks` and `Contents/PlugIns`
 as scoped fallbacks for `@rpath/...` dependencies of a bundle executable when
 the image has no explicit `LC_RPATH`.  The dyld smoke fixture proves the

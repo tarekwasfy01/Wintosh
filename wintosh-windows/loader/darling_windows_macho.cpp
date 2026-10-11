@@ -1166,6 +1166,28 @@ void MachOImage::ApplyIndirectImportBindings(const Mapping& mapping,
 	}
 }
 
+bool MachOImage::HasCodeSignature() const noexcept
+{
+	if (m_view == nullptr || m_header == nullptr) return false;
+	const auto command_offset = m_image_offset + (m_is_32_bit ?
+		sizeof(MachHeader32) : sizeof(MachHeader64));
+	if (command_offset > m_file_bytes ||
+		m_header->command_bytes > m_file_bytes - command_offset)
+		return false;
+	const auto* cursor = m_view + command_offset;
+	const auto* end = cursor + m_header->command_bytes;
+	for (std::uint32_t index = 0; index < m_header->command_count; ++index) {
+		if (cursor + sizeof(LoadCommand) > end) return false;
+		const auto* command = reinterpret_cast<const LoadCommand*>(cursor);
+		if (command->command_bytes < sizeof(LoadCommand) ||
+			command->command_bytes > static_cast<std::size_t>(end - cursor))
+			return false;
+		if (command->command == LC_CODE_SIGNATURE) return true;
+		cursor += command->command_bytes;
+	}
+	return false;
+}
+
 bool MachOImage::IsWeakDependency(const std::string& name) const noexcept
 {
 	return std::find(m_weak_dependencies.begin(), m_weak_dependencies.end(), name)

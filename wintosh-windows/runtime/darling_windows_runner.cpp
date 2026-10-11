@@ -403,7 +403,8 @@ int wmain(int argc, wchar_t** argv)
 				<< L"file_type=" << header.file_type << L"\n"
 				<< L"segments=" << inspected.Segments().size() << L"\n"
 				<< L"sections=" << inspected.Sections().size() << L"\n"
-				<< L"dependencies=" << inspected.Dependencies().size() << L"\n";
+				<< L"dependencies=" << inspected.Dependencies().size() << L"\n"
+				<< L"code_signature=" << (inspected.HasCodeSignature() ? L"present" : L"absent") << L"\n";
 			for (const auto& section : inspected.Sections())
 				std::wcout << L"section="
 					<< std::wstring(section.segment_name.begin(), section.segment_name.end())

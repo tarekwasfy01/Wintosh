@@ -241,6 +241,10 @@ extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyQueryString(
 	darling_windows_CFURLRef value);
 extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyFragment(
 	darling_windows_CFURLRef value);
+extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyScheme(
+	darling_windows_CFURLRef value);
+extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyResourceSpecifier(
+	darling_windows_CFURLRef value);
 extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyLastPathComponent(
 	darling_windows_CFURLRef value);
 extern "C" darling_windows_CFURLRef darling_windows_CFURLCreateCopyDeletingLastPathComponent(

@@ -126,6 +126,8 @@ covering path operations used by Darling's CoreAudio helpers.
 or fragment delimiters.
 `CFURLCopyQueryString` and `CFURLCopyFragment` now expose the corresponding
 URL components without their delimiters and return null when absent.
+`CFURLCopyScheme` and `CFURLCopyResourceSpecifier` complete the basic URL
+decomposition for scheme-based callers.
 It now also provides path-extension extraction and extension removal for
 filesystem URLs.
 

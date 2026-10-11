@@ -1909,6 +1909,26 @@ extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyFragment(
 	return darling_windows_CFStringCreateWithCString(object->string.substr(fragment + 1).c_str());
 }
 
+extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyScheme(
+	darling_windows_CFURLRef value)
+{
+	const auto* object = static_cast<const Object*>(value);
+	if (object == nullptr || object->kind != Kind::URL) return nullptr;
+	const auto colon = object->string.find(':');
+	if (colon == std::string::npos || colon == 0) return nullptr;
+	return darling_windows_CFStringCreateWithCString(object->string.substr(0, colon).c_str());
+}
+
+extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyResourceSpecifier(
+	darling_windows_CFURLRef value)
+{
+	const auto* object = static_cast<const Object*>(value);
+	if (object == nullptr || object->kind != Kind::URL) return nullptr;
+	const auto colon = object->string.find(':');
+	if (colon == std::string::npos || colon + 1 >= object->string.size()) return nullptr;
+	return darling_windows_CFStringCreateWithCString(object->string.substr(colon + 1).c_str());
+}
+
 extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyLastPathComponent(
 	darling_windows_CFURLRef value)
 {

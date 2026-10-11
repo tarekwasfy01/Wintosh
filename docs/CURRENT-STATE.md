@@ -93,6 +93,15 @@ signature and never treats presence as authenticity.
 `CodeSignatureRange()` additionally exposes the validated payload offset and
 size for a future verifier, covered by the Mach-O UUID/signature smoke test.
 
+The supplied ABI-bridge PoC was independently re-run on this Windows x64
+host with LLVM 23.1.2: Clang compiled and linked it with the MSVC target, and
+the native executable reported `RESULT: PASS` with exit code 0.  Its measured
+checks cover eight integer arguments, mixed integer/floating-point arguments,
+the hand-written variadic save-area path, host-to-guest callee-saved registers,
+and System-V entry stack alignment.  This validates the toolchain and calling
+convention PoC only; the bridge is not yet connected to Wintosh's Mach-O
+loader or host-export table.
+
 The dyld resolver now also checks `Contents/Frameworks` and `Contents/PlugIns`
 as scoped fallbacks for `@rpath/...` dependencies of a bundle executable when
 the image has no explicit `LC_RPATH`.  The dyld smoke fixture proves the

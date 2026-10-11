@@ -82,6 +82,33 @@ darling_windows_CFIndex UTF16Length(const std::string& value)
 	}
 	return length;
 }
+std::size_t UTF8OffsetForUTF16(const std::string& value, darling_windows_CFIndex target)
+{
+	if (target < 0) return std::string::npos;
+	std::size_t index = 0;
+	darling_windows_CFIndex units = 0;
+	while (index < value.size() && units < target) {
+		const auto first = static_cast<unsigned char>(value[index]);
+		std::size_t width = 1;
+		std::uint32_t codepoint = 0xfffd;
+		if (first < 0x80) codepoint = first;
+		else if (first >= 0xc2 && first <= 0xdf && index + 1 < value.size()) {
+			codepoint = ((first & 0x1f) << 6) | (static_cast<unsigned char>(value[index + 1]) & 0x3f); width = 2;
+		} else if (first >= 0xe0 && first <= 0xef && index + 2 < value.size()) {
+			codepoint = ((first & 0x0f) << 12) | ((static_cast<unsigned char>(value[index + 1]) & 0x3f) << 6) |
+				(static_cast<unsigned char>(value[index + 2]) & 0x3f); width = 3;
+		} else if (first >= 0xf0 && first <= 0xf4 && index + 3 < value.size()) {
+			codepoint = ((first & 0x07) << 18) | ((static_cast<unsigned char>(value[index + 1]) & 0x3f) << 12) |
+				((static_cast<unsigned char>(value[index + 2]) & 0x3f) << 6) |
+				(static_cast<unsigned char>(value[index + 3]) & 0x3f); width = 4;
+		}
+		const auto consumed = codepoint > 0xffff ? 2 : 1;
+		if (units + consumed > target) return std::string::npos;
+		units += consumed;
+		index += width;
+	}
+	return units == target ? index : std::string::npos;
+}
 void ReleaseOwned(Object* object)
 {
 	if (object == nullptr || object->immortal) return;
@@ -1075,10 +1102,11 @@ extern "C" bool darling_windows_CFStringReplaceRange(darling_windows_CFStringRef
 	darling_windows_CFIndex location, darling_windows_CFIndex length, const char* replacement)
 {
 	auto* object = As(value);
-	if (object == nullptr || object->kind != Kind::String || location < 0 || length < 0 || replacement == nullptr ||
-		static_cast<std::size_t>(location) > object->string.size() ||
-		static_cast<std::size_t>(length) > object->string.size() - static_cast<std::size_t>(location)) return false;
-	object->string.replace(static_cast<std::size_t>(location), static_cast<std::size_t>(length), replacement);
+	if (object == nullptr || object->kind != Kind::String || location < 0 || length < 0 || replacement == nullptr) return false;
+	const auto start = UTF8OffsetForUTF16(object->string, location);
+	const auto end = UTF8OffsetForUTF16(object->string, location + length);
+	if (start == std::string::npos || end == std::string::npos || start > end) return false;
+	object->string.replace(start, end - start, replacement);
 	return true;
 }
 

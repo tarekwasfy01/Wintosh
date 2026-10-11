@@ -108,6 +108,8 @@ UTF-8/ASCII buffer bounds for CoreFoundation clients.
 conversion for LaunchServices-style callers.
 `CFStringFindAndReplace` now combines range-bounded lookup and replacement for
 the common CoreAudio/DirectoryService normalization path.
+`CFStringReplaceRange` now converts its location and length from UTF-16 units
+to UTF-8 storage offsets, including surrogate-pair-safe replacement.
 `CFStringCreateMutableCopy` now returns an independent mutable string; its
 capacity argument is treated as a non-binding reservation hint on Windows.
 `CFStringCreateMutable` now creates an empty mutable string with the same

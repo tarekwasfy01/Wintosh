@@ -5716,6 +5716,7 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 	if (std::strcmp(name, "mach_port_set_destroy") == 0 || std::strcmp(name, "_mach_port_set_destroy") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_mach_port_set_destroy);
 	if (std::strcmp(name, "mach_port_set_receive") == 0 || std::strcmp(name, "_mach_port_set_receive") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_mach_port_set_receive);
 	if (std::strcmp(name, "mach_msg") == 0 || std::strcmp(name, "_mach_msg") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_mach_msg);
+	if (std::strcmp(name, "mach_msg_destroy") == 0 || std::strcmp(name, "_mach_msg_destroy") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_mach_msg_destroy);
 	if (std::strcmp(name, "NSGetSizeAndAlignment") == 0 || std::strcmp(name, "_NSGetSizeAndAlignment") == 0) return reinterpret_cast<std::uintptr_t>(&darling_windows_NSGetSizeAndAlignment);
 	if (std::strcmp(name, "_getrlimit") == 0 || std::strcmp(name, "getrlimit") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_getrlimit);

@@ -694,6 +694,8 @@ int main()
 	const bool mach_time_ok = darling_windows_host_symbol("_mach_absolute_time") != 0 &&
 		darling_windows_host_symbol("_mach_continuous_time") != 0 &&
 		darling_windows_host_symbol("_mach_timebase_info") != 0 &&
+		darling_windows_host_symbol("mach_msg_destroy") != 0 &&
+		darling_windows_host_symbol("_mach_msg_destroy") != 0 &&
 		darling_windows_mach_timebase_info(&mach_timebase) == 0 &&
 		mach_timebase.numer != 0 && mach_timebase.denom != 0 &&
 		mach_time_second >= mach_time_first;

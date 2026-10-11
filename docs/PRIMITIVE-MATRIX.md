@@ -75,6 +75,8 @@ The companion `mach_destroy_ool_smoke` test verifies OOL receive ownership and
 rejects a second release on both targets.
 The `mach_too_large_smoke` test verifies that `MACH_MSG_TOO_LARGE` preserves
 the queued message for a subsequent receive on both targets.
+The dynamic host-symbol table now resolves both `mach_msg_destroy` spellings,
+so Mach-O imports can reach the destruction primitive through the loader.
 
 `OpenMachIpcSession` now performs the broker session handshake, including the
 current-process validation payload, and the broker smoke uses this helper for

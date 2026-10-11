@@ -8,6 +8,7 @@
 
 #include "darling_windows_runtime.h"
 #include "darling_windows_mig.h"
+#include "../abi/darling_windows_mach.h"
 
 #include <atomic>
 #include <iostream>
@@ -67,6 +68,7 @@ int wmain(int argc, wchar_t** argv)
 		std::unordered_map<std::uint64_t, PortRights> port_rights;
 		std::unordered_map<std::uint64_t, std::uint64_t> port_session_owners;
 		std::unordered_map<std::uint64_t, std::deque<darling::windows_host::MachIpcEnvelope>> port_queues;
+		std::unordered_map<std::uint64_t, std::uint32_t> port_receive_sequences;
 		std::unordered_map<std::uint64_t, darling::windows_host::MachIpcSharedMemory> out_of_line_regions;
 		std::unordered_map<std::uint64_t, std::uint64_t> out_of_line_owners;
 		std::unordered_map<std::uint64_t, std::uint64_t> out_of_line_session_owners;
@@ -608,6 +610,35 @@ int wmain(int argc, wchar_t** argv)
 					response.port_descriptor_dispositions = std::move(message.port_descriptor_dispositions);
 					response.inline_payload = std::move(message.inline_payload);
 					response.out_of_line_handle = duplicated_handle;
+					server.Write(AsString(darling::windows_host::EncodeMachIpcEnvelope(response)));
+					continue;
+				}
+				if (envelope.operation == darling::windows_host::MachIpcOperation::Peek) {
+					if (!allocated_ports.contains(envelope.port_token))
+						throw std::invalid_argument("unknown Mach IPC port token");
+					auto owner = port_session_owners.find(envelope.port_token);
+					if (owner != port_session_owners.end() && owner->second != envelope.session_token)
+						throw std::invalid_argument("Mach IPC port belongs to another session");
+					if (envelope.payload.size() != 8)
+						throw std::invalid_argument("invalid Mach IPC peek request");
+					auto& queue = port_queues.at(envelope.port_token);
+					if (queue.empty()) throw std::runtime_error("Mach IPC receive would block");
+					const auto& queued = queue.front();
+					const auto& bytes = queued.inline_payload.empty() ? queued.payload : queued.inline_payload;
+					if (bytes.size() < sizeof(darling_mach_msg_header))
+						throw std::invalid_argument("invalid Mach IPC peek message");
+					const auto* header = reinterpret_cast<const darling_mach_msg_header*>(bytes.data());
+					const auto next_sequence = port_receive_sequences[envelope.port_token] == UINT32_MAX ?
+						1 : port_receive_sequences[envelope.port_token] + 1;
+					std::vector<std::uint8_t> response_payload(12);
+					for (unsigned shift = 0; shift != 32; shift += 8) {
+						response_payload[shift / 8] = static_cast<std::uint8_t>(next_sequence >> shift);
+						response_payload[4 + shift / 8] = static_cast<std::uint8_t>(bytes.size() >> shift);
+						response_payload[8 + shift / 8] = static_cast<std::uint8_t>(header->msgh_id >> shift);
+					}
+					darling::windows_host::MachIpcEnvelope response{
+						darling::windows_host::MachIpcOperation::Peek, envelope.request_id,
+						envelope.port_token, 0, std::move(response_payload)};
 					server.Write(AsString(darling::windows_host::EncodeMachIpcEnvelope(response)));
 					continue;
 				}

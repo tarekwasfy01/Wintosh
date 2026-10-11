@@ -41,7 +41,8 @@ enum class MachIpcOperation : std::uint16_t {
 	CapabilityTransfer = 12
 	,
 	Cancel = 13,
-	MigDispatch = 14
+	MigDispatch = 14,
+	Peek = 15
 };
 
 struct MachIpcEnvelope final {

@@ -1616,6 +1616,35 @@ extern "C" darling_kern_return_t darling_windows_mach_port_peek(
 	if (task == 0 || task != darling_windows_mach_task_self() || name == 0 ||
 		sequence == nullptr || message_size == nullptr || message_id == nullptr ||
 		trailer_size == nullptr) return 4;
+	{
+		std::lock_guard broker_lock(mach_broker_mutex);
+		const auto capability = mach_ipc_capabilities.Lookup(name);
+		if (mach_broker_client && capability) {
+			try {
+				darling::windows_host::MachIpcEnvelope request;
+				request.operation = darling::windows_host::MachIpcOperation::Peek;
+				request.request_id = mach_broker_request.fetch_add(1, std::memory_order_relaxed);
+				request.port_token = capability->broker_token;
+				request.session_token = capability->session_token;
+				request.payload.resize(8);
+				for (unsigned shift = 0; shift != 32; shift += 8) {
+					request.payload[shift / 8] = static_cast<std::uint8_t>(trailer_option >> shift);
+					request.payload[4 + shift / 8] = static_cast<std::uint8_t>(*trailer_size >> shift);
+				}
+				const auto response = darling::windows_host::SendMachIpcEnvelope(*mach_broker_client, request);
+				if (response.operation != request.operation || response.request_id != request.request_id ||
+					response.port_token != request.port_token || response.payload.size() != 12) return 4;
+				*sequence = *message_size = 0;
+				for (unsigned shift = 0; shift != 32; shift += 8) {
+					*sequence |= static_cast<std::uint32_t>(response.payload[shift / 8]) << shift;
+					*message_size |= static_cast<std::uint32_t>(response.payload[4 + shift / 8]) << shift;
+					*message_id |= static_cast<darling_mach_msg_id_t>(static_cast<std::uint32_t>(response.payload[8 + shift / 8]) << shift);
+				}
+				*trailer_size = 0;
+				return 0;
+			} catch (...) { return 4; }
+		}
+	}
 	const auto port = FindPort(name);
 	if (port == nullptr) return 3;
 	std::lock_guard lock(port->mutex);

@@ -135,6 +135,10 @@ int wmain()
 		if (suspended_process.CaptureMemoryRegion({1, 1, MEM_COMMIT, PAGE_READONLY, MEM_PRIVATE},
 			invalid_snapshot, 0))
 			throw std::runtime_error("oversized Darwin child snapshot was accepted");
+	std::vector<darling::windows_host::ProcessMemorySnapshot> invalid_snapshots;
+	if (suspended_process.CaptureMemorySnapshot(
+		{{1, 1, MEM_COMMIT, PAGE_READONLY, MEM_PRIVATE}}, invalid_snapshots, 0))
+		throw std::runtime_error("oversized Darwin multi-region snapshot was accepted");
 		for (const auto thread_id : child_thread_ids) {
 			CONTEXT thread_context{};
 			(void)suspended_process.GetThreadContext(thread_id, thread_context);

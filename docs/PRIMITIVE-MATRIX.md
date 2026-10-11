@@ -523,6 +523,10 @@ it rejects zero-sized or oversized regions and publishes the candidate only
 after the complete read succeeds. Valid cross-process capture is still not
 runtime-verified on this managed host, so this is not yet a full address-space
 snapshot, COW snapshot, or restore mechanism.
+`Process::CaptureMemorySnapshot` extends this to a caller-provided region list,
+with checked cumulative byte limits and all-or-nothing publication of the
+result vector. It is the bounded primitive for a future Mach task-memory
+snapshot, not a claim that arbitrary Windows process memory is readable.
 The same boundary now exposes `AllocateMemory`, `ProtectMemory`, and
 `FreeMemory`, completing the basic remote-VM operation shape needed by a future
 restore path. The smoke covers invalid-operation rejection; successful remote

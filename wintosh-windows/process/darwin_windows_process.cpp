@@ -336,6 +336,30 @@ bool Process::CaptureMemoryRegion(const ProcessMemoryRegion& region,
 	return true;
 }
 
+bool Process::CaptureMemorySnapshot(const std::vector<ProcessMemoryRegion>& regions,
+	std::vector<ProcessMemorySnapshot>& snapshots, std::size_t max_total_bytes) const
+{
+	if (max_total_bytes == 0)
+		return false;
+
+	std::vector<ProcessMemorySnapshot> candidate;
+	std::size_t total_bytes = 0;
+	for (const auto& region : regions) {
+		if (region.size == 0 || region.size > max_total_bytes ||
+			total_bytes > max_total_bytes - region.size)
+			return false;
+
+		ProcessMemorySnapshot snapshot;
+		if (!CaptureMemoryRegion(region, snapshot, max_total_bytes - total_bytes))
+			return false;
+		candidate.push_back(std::move(snapshot));
+		total_bytes += region.size;
+	}
+
+	snapshots = std::move(candidate);
+	return true;
+}
+
 bool Process::GetPrimaryThreadContext(CONTEXT& context) const noexcept
 {
 	return GetThreadContext(m_thread_id, context);

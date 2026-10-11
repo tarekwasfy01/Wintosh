@@ -90,6 +90,9 @@ public:
 	[[nodiscard]] bool FreeMemory(std::uintptr_t address) const noexcept;
 	[[nodiscard]] bool CaptureMemoryRegion(const ProcessMemoryRegion& region,
 		ProcessMemorySnapshot& snapshot, std::size_t max_bytes = 64 * 1024 * 1024) const;
+	[[nodiscard]] bool CaptureMemorySnapshot(const std::vector<ProcessMemoryRegion>& regions,
+		std::vector<ProcessMemorySnapshot>& snapshots,
+		std::size_t max_total_bytes = 256 * 1024 * 1024) const;
 	[[nodiscard]] bool GetPrimaryThreadContext(CONTEXT& context) const noexcept;
 	[[nodiscard]] bool SetPrimaryThreadContext(const CONTEXT& context) const noexcept;
 	[[nodiscard]] bool GetThreadContext(DWORD thread_id, CONTEXT& context) const noexcept;

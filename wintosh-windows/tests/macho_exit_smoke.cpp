@@ -81,10 +81,15 @@ void WriteExitMachO(const std::filesystem::path& path)
 	std::memcpy(data.data() + symtab.symbol_offset, &symbol, sizeof(symbol));
 	std::memcpy(data.data() + symtab.string_offset + 1, "_exit", 6);
 
-	// mov ecx, 23; sub rsp, 0x28; mov rax, [rip + 0x30]; call rax.
+	// Set the exit argument in the active guest ABI, then call the bound slot.
 	const std::uint8_t entry[] = {
+		#if defined(__clang__) && defined(_WIN64)
+		0xbf, 0x17, 0x00, 0x00, 0x00,
+		0x48, 0x83, 0xec, 0x08,
+		#else
 		0xb9, 0x17, 0x00, 0x00, 0x00,
 		0x48, 0x83, 0xec, 0x28,
+		#endif
 		0x48, 0x8b, 0x05, 0x30, 0x00, 0x00, 0x00,
 		0xff, 0xd0, 0xc3};
 	std::memcpy(data.data() + 0x200, entry, sizeof(entry));
@@ -106,7 +111,13 @@ void WriteDarwinStartMachO(const std::filesystem::path& path)
 	// mov ecx, [rsp]; mov rax, [rip + 0x36]; call rax; ret
 	// The first stack word is Darwin argc; the bound _exit slot is at 0x240.
 	const std::uint8_t entry[] = {
-		0x8b, 0x0c, 0x24,
+		0x8b,
+#if defined(__clang__) && defined(_WIN64)
+		0x3c,
+#else
+		0x0c,
+#endif
+		0x24,
 		0x48, 0x8b, 0x05, 0x36, 0x00, 0x00, 0x00,
 		0xff, 0xd0, 0xc3};
 	output.seekp(0x200);

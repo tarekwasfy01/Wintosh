@@ -19,6 +19,12 @@ struct hostent;
 struct servent;
 struct protoent;
 
+#if defined(__clang__) && defined(_WIN64)
+#define DARLING_HOST_GUEST_ABI __attribute__((sysv_abi))
+#else
+#define DARLING_HOST_GUEST_ABI
+#endif
+
 struct darling_timespec final {
 	std::int64_t tv_sec = 0;
 	std::int64_t tv_nsec = 0;
@@ -617,4 +623,4 @@ extern "C" int darling_windows_fnmatch(const char* pattern, const char* value, i
 extern "C" char* darling_windows_basename(const char* path);
 extern "C" char* darling_windows_dirname(const char* path);
 extern "C" const char* darling_windows_strsignal(int signal_number);
-extern "C" int darling_windows_host_entry(int argc, char** argv, char** envp);
+extern "C" DARLING_HOST_GUEST_ABI int darling_windows_host_entry(int argc, char** argv, char** envp);

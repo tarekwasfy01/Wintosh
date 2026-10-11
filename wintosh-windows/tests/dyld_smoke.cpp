@@ -369,7 +369,11 @@ void WriteMachO(const std::filesystem::path& path, const char* dependency,
 		data[0x210] = 0x28; data[0x211] = 0xc3;
 	} else if (entry_returns_argc) {
 		data[0x200] = 0x8b;
+#if defined(__clang__) && defined(_WIN64)
+		data[0x201] = 0xc7;
+#else
 		data[0x201] = 0xc1;
+#endif
 		data[0x202] = 0xc3;
 	} else {
 		data[0x200] = 0xc3;
@@ -650,11 +654,11 @@ int wmain(int argc, wchar_t** argv)
 			const auto library_mapping = library_image.MapSegments();
 			library_image.ExecuteEntryNoArgs(library_mapping);
 			std::cout << "DYLD_EXECUTE_ENTRY=PASS\n";
-			if (library_image.ExecuteEntry(library_mapping,
+			const auto entry_result = library_image.ExecuteEntry(library_mapping,
 				{"Demo", "one", "two"}, {"PATH=/usr/bin"}, {},
-				darling::windows_host::DarwinEntryAbi::SyntheticCompatibleMain) != 3) {
-				throw std::runtime_error("Mach-O argc/argv entry did not receive arguments");
-			}
+				darling::windows_host::DarwinEntryAbi::SyntheticCompatibleMain);
+			if (entry_result != 3)
+				throw std::runtime_error("Mach-O argc/argv entry returned " + std::to_string(entry_result));
 			std::cout << "DYLD_EXECUTE_ARGV=PASS\n";
 			darling::windows_host::DarwinLaunchOptions launch_options;
 			launch_options.entry_abi = darling::windows_host::DarwinEntryAbi::SyntheticCompatibleMain;

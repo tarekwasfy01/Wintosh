@@ -9056,7 +9056,7 @@ extern "C" int darling_windows_write_stdout(const void* data, std::size_t bytes)
 	return written == static_cast<int>(bytes) ? written : -1;
 }
 
-extern "C" int darling_windows_host_entry(int argc, char**, char**)
+extern "C" DARLING_HOST_GUEST_ABI int darling_windows_host_entry(int argc, char**, char**)
 {
 	const char* message = argc == 3 ? "DARWIN_HOST_STDOUT=PASS argc=3\n" :
 		"DARWIN_HOST_STDOUT=PASS argc=other\n";

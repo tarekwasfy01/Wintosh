@@ -41,8 +41,13 @@ void WriteArgcMachO(const std::filesystem::path& path)
 	main.header = {LC_MAIN, static_cast<std::uint32_t>(sizeof(main))};
 	main.entry_offset = 0x200;
 	std::memcpy(data.data() + sizeof(header) + sizeof(segment), &main, sizeof(main));
-	// Windows x64 ABI: argc is in ECX when ExecuteEntry invokes the Mach-O entry.
+	// Clang builds invoke real x86_64 Mach-O entries with SysV argc in EDI;
+	// MSVC synthetic fixtures retain the explicitly documented ECX ABI.
+#if defined(__clang__) && defined(_WIN64)
+	const std::uint8_t entry[] = {0x89, 0xf8, 0xc3}; // mov eax, edi; ret
+#else
 	const std::uint8_t entry[] = {0x89, 0xc8, 0xc3}; // mov eax, ecx; ret
+#endif
 	std::memcpy(data.data() + 0x200, entry, sizeof(entry));
 #else
 	MachHeader32 header{MH_MAGIC, CPU_TYPE_X86, 3, MH_EXECUTE, 2,

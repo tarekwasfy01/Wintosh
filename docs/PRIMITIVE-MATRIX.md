@@ -818,8 +818,8 @@ The libc string/allocation family now also covers `reallocarray`,
 `memrchr`, while the BSD bit-scan family includes `ffs`, `fls`, `ffsll`, and
 `flsll`; constant-time byte comparison includes `timingsafe_bcmp`, and the
 signal-text family includes the common Darwin `strsignal` descriptions.
-The error-introspection family also includes bounded `strerrorname_np` and
-`strerrordesc_np` mappings for the supported errno values.
+The error-introspection family also includes a broad common `strerrorname_np`
+mapping and bounded `strerrordesc_np` descriptions for stable errno values.
 `flsll`; `timingsafe_bcmp` provides the constant-time byte comparison subset.
 The array helpers reject multiplication overflow before calling the Windows
 heap, while `strsep` preserves empty fields. Host API smoke coverage verifies

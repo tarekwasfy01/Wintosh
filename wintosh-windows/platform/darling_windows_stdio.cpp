@@ -8385,15 +8385,67 @@ extern "C" int darling_windows_strerror_r(int error_number, char* buffer,
 extern "C" const char* darling_windows_strerrorname_np(int error_number)
 {
 	switch (error_number) {
+	case 1: return "EPERM";
 	case 2: return "ENOENT";
+	case 3: return "ESRCH";
 	case 4: return "EINTR";
+	case 5: return "EIO";
+	case 6: return "ENXIO";
+	case 7: return "E2BIG";
+	case 8: return "ENOEXEC";
 	case 9: return "EBADF";
+	case 10: return "ECHILD";
+	case 11: return "EDEADLK";
 	case 12: return "ENOMEM";
+	case 13: return "EACCES";
+	case 14: return "EFAULT";
+	case 16: return "EBUSY";
+	case 17: return "EEXIST";
+	case 18: return "EXDEV";
+	case 19: return "ENODEV";
+	case 20: return "ENOTDIR";
+	case 21: return "EISDIR";
 	case 22: return "EINVAL";
+	case 23: return "ENFILE";
+	case 24: return "EMFILE";
+	case 25: return "ENOTTY";
+	case 26: return "ETXTBSY";
+	case 27: return "EFBIG";
+	case 28: return "ENOSPC";
+	case 29: return "ESPIPE";
+	case 30: return "EROFS";
+	case 31: return "EMLINK";
+	case 32: return "EPIPE";
+	case 33: return "EDOM";
 	case 34: return "ERANGE";
 	case 35: return "EAGAIN";
+	case 36: return "EINPROGRESS";
+	case 37: return "EALREADY";
+	case 38: return "ENOTSOCK";
+	case 39: return "EDESTADDRREQ";
 	case 40: return "EMSGSIZE";
+	case 41: return "EPROTONOSUPPORT";
+	case 42: return "ESOCKTNOSUPPORT";
+	case 43: return "ENOPROTOOPT";
+	case 44: return "EAFNOSUPPORT";
+	case 45: return "EADDRINUSE";
+	case 46: return "EADDRNOTAVAIL";
+	case 47: return "ENETDOWN";
+	case 48: return "ENETUNREACH";
+	case 49: return "ENETRESET";
+	case 50: return "ECONNABORTED";
+	case 51: return "ECONNRESET";
+	case 52: return "ENOBUFS";
+	case 53: return "EISCONN";
+	case 54: return "ENOTCONN";
+	case 55: return "ESHUTDOWN";
+	case 56: return "ETOOMANYREFS";
+	case 57: return "ETIMEDOUT";
+	case 58: return "ECONNRESET";
+	case 60: return "ELOOP";
 	case 61: return "ECONNREFUSED";
+	case 62: return "EHOSTDOWN";
+	case 63: return "EHOSTUNREACH";
 	default: return nullptr;
 	}
 }

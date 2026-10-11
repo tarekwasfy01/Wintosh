@@ -16,3 +16,8 @@ These five files provide useful licensing evidence, but none is promoted to
 `present` in the main provenance inventory until the remaining checks are
 complete. GPL/LGPL/MPL and mixed-license candidates remain in the prioritized
 manual-review group.
+
+The 11 `APPLE_LICENSE` candidates all contain Apple Public Source License
+2.0 text. This is a separate Apple license family, not automatically MIT,
+BSD, GPL, or LGPL. Each component still requires source-file mapping,
+additional Apple notices, and compatibility review before redistribution.

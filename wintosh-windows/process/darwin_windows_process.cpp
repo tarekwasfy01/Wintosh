@@ -248,6 +248,36 @@ std::vector<ProcessMemoryRegion> Process::MemoryRegions() const
 	return result;
 }
 
+bool Process::ReadMemory(std::uintptr_t address, void* buffer, std::size_t size) const noexcept
+{
+	if (m_process == nullptr || address == 0 || buffer == nullptr || size == 0)
+		return false;
+	const HANDLE query_process = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ,
+		FALSE, GetProcessId(m_process));
+	if (query_process == nullptr)
+		return false;
+	SIZE_T transferred = 0;
+	const BOOL result = ReadProcessMemory(query_process,
+		reinterpret_cast<const void*>(address), buffer, size, &transferred);
+	CloseHandle(query_process);
+	return result != FALSE && transferred == size;
+}
+
+bool Process::WriteMemory(std::uintptr_t address, const void* buffer, std::size_t size) const noexcept
+{
+	if (m_process == nullptr || address == 0 || buffer == nullptr || size == 0)
+		return false;
+	const HANDLE query_process = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_OPERATION |
+		PROCESS_VM_WRITE, FALSE, GetProcessId(m_process));
+	if (query_process == nullptr)
+		return false;
+	SIZE_T transferred = 0;
+	const BOOL result = WriteProcessMemory(query_process,
+		reinterpret_cast<void*>(address), buffer, size, &transferred);
+	CloseHandle(query_process);
+	return result != FALSE && transferred == size;
+}
+
 bool Process::GetPrimaryThreadContext(CONTEXT& context) const noexcept
 {
 	return GetThreadContext(m_thread_id, context);

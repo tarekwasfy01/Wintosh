@@ -123,6 +123,10 @@ int wmain()
 			throw std::runtime_error("Darwin child thread enumeration failed");
 		}
 		(void)suspended_process.MemoryRegions();
+		std::uint8_t memory_probe = 0;
+		if (suspended_process.ReadMemory(1, &memory_probe, sizeof(memory_probe)) ||
+			suspended_process.WriteMemory(1, &memory_probe, sizeof(memory_probe)))
+			throw std::runtime_error("invalid Darwin child memory access was accepted");
 		for (const auto thread_id : child_thread_ids) {
 			CONTEXT thread_context{};
 			(void)suspended_process.GetThreadContext(thread_id, thread_context);

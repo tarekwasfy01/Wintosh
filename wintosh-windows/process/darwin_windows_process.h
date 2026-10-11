@@ -69,6 +69,10 @@ public:
 	[[nodiscard]] DWORD ThreadId() const noexcept { return m_thread_id; }
 	[[nodiscard]] std::vector<DWORD> ThreadIds() const;
 	[[nodiscard]] std::vector<ProcessMemoryRegion> MemoryRegions() const;
+	[[nodiscard]] bool ReadMemory(std::uintptr_t address, void* buffer,
+		std::size_t size) const noexcept;
+	[[nodiscard]] bool WriteMemory(std::uintptr_t address, const void* buffer,
+		std::size_t size) const noexcept;
 	[[nodiscard]] bool GetPrimaryThreadContext(CONTEXT& context) const noexcept;
 	[[nodiscard]] bool SetPrimaryThreadContext(const CONTEXT& context) const noexcept;
 	[[nodiscard]] bool GetThreadContext(DWORD thread_id, CONTEXT& context) const noexcept;

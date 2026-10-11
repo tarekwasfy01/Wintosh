@@ -512,6 +512,12 @@ inventory and fails closed when the host denies `PROCESS_QUERY_INFORMATION` or
 `PROCESS_VM_READ`. The current managed smoke host denies that cross-process
 query, so the API is compile- and non-crash-checked but the region contents are
 not yet runtime-verified here; this is not COW support.
+
+`Process::ReadMemory` and `WriteMemory` now form the explicit VM access
+boundary used by a future snapshot copier. Both reject null/zero/invalid
+requests and reopen the child with the required Windows VM rights; the current
+smoke verifies invalid-address rejection only because the managed host denies
+valid cross-process VM access.
 Quoted aggregate field names are skipped while parsing, matching common
 Objective-C runtime encodings.
 Quoted object class names (`@"NSString"`) and pointers to nested encodings

@@ -807,7 +807,10 @@ zero port source files missing a header notice, while provenance rows marked
 The process family additionally verifies native `posix_spawnp` PATH lookup,
 environment propagation, spawn file actions, and `waitpid`/`wait4` on x64 and
 Win32. This is spawn-based compatibility and does not claim `fork` or
-copy-on-write equivalence.
+copy-on-write equivalence. `fork` remains intentionally unimplemented rather
+than being silently misrepresented by `CreateProcess`; a future implementation
+needs an explicit suspended-process/address-space strategy and a documented
+Darwin-compatible parent/child memory contract.
 
 The CoreFoundation collection family now also exposes mutable constructors
 for arrays, dictionaries, and sets. Their capacity argument is validated but

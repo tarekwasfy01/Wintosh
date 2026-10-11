@@ -923,6 +923,9 @@ int main()
 		darling_windows_fnmatch("usr/bin", "usr/bin/tool", 0) != 0 &&
 		darling_windows_fnmatch("a\\*.txt", "a\\b.txt", 0x01 | 0x04) == 0 &&
 		darling_windows_fnmatch("a\\*.txt", "a\\b\\c.txt", 0x01 | 0x04) != 0 &&
+		darling_windows_fnmatch("[[:digit:]].txt", "7.txt", 0) == 0 &&
+		darling_windows_fnmatch("[[:alpha:]].txt", "7.txt", 0) != 0 &&
+		darling_windows_fnmatch("[[:alnum:]].txt", "Z.txt", 0) == 0 &&
 		darling_windows_fnmatch(nullptr, "x", 0) != 0 && darling_windows_host_symbol("fnmatch") != 0;
 	if (!fnmatch_ok) {
 		std::cerr << "HOST_API_SMOKE_ERROR=fnmatch\n";

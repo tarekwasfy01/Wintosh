@@ -8867,6 +8867,28 @@ bool DarlingFnmatchClass(const char*& pattern, char value, int flags)
 	value = DarlingFnmatchFold(value, flags);
 	bool inverted = false;
 	if (*pattern == '!' || *pattern == '^') { inverted = true; ++pattern; }
+	if (pattern[0] == '[' && pattern[1] == ':') {
+		const char* const class_end = std::strstr(pattern + 2, ":]]");
+		if (class_end != nullptr) {
+			const std::string class_name(pattern + 2, class_end);
+			bool class_match = false;
+			if (class_name == "digit") class_match = value >= '0' && value <= '9';
+			else if (class_name == "alpha") class_match =
+				(value >= 'a' && value <= 'z') || (value >= 'A' && value <= 'Z');
+			else if (class_name == "alnum") class_match =
+				(value >= '0' && value <= '9') || (value >= 'a' && value <= 'z') ||
+				(value >= 'A' && value <= 'Z');
+			else if (class_name == "lower") class_match = value >= 'a' && value <= 'z';
+			else if (class_name == "upper") class_match = value >= 'A' && value <= 'Z';
+			else if (class_name == "xdigit") class_match =
+				(value >= '0' && value <= '9') || (value >= 'a' && value <= 'f') ||
+				(value >= 'A' && value <= 'F');
+			else if (class_name == "space") class_match = value == ' ' || value == '\t' ||
+				value == '\n' || value == '\r' || value == '\f' || value == '\v';
+			pattern = class_end + 3;
+			return inverted ? !class_match : class_match;
+		}
+	}
 	bool matched = false;
 	char previous = '\0';
 	while (*pattern != '\0' && *pattern != ']') {

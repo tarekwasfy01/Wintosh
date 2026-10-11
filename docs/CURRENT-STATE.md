@@ -319,6 +319,12 @@ before entering `std::chrono`; the CoreFoundation smoke covers both invalid
 mode and timer inputs. Real CFRunLoop sources, modes, cancellation, and timer
 invalidations remain outside this minimal adapter.
 
+The Objective-C bridge now covers `objc_msgSendSuper` with a boolean argument
+(`B@:B`) in addition to the existing direct-send path; the registry smoke
+executes a Root-class super method to prove the argument promotion and return
+value boundary. General variadic Objective-C dispatch and aggregate signatures
+remain incomplete.
+
 The Release Clang build currently passes 60/60 CTest entries, including the
 Mach-O printf bundle end-to-end test. The latest five local commits are ahead
 of the configured remote and have not been pushed in this work cycle.

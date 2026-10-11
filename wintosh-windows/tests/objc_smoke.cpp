@@ -354,6 +354,7 @@ int main()
 		return 93;
 	darling_objc_msgSend_void0(object, void_selector);
 	SEL bool_selector = sel_registerName("positive:");
+	SEL super_bool_selector = sel_registerName("superPositive:");
 	SEL double_selector = sel_registerName("scale:");
 	SEL double_pair_selector = sel_registerName("addDoubles:");
 	SEL void_int64_selector = sel_registerName("observeInt64:");
@@ -374,6 +375,8 @@ int main()
 	SEL object_pointer_selector = sel_registerName("objectFromPointer:");
 	if (!class_addMethod(child, bool_selector,
 		reinterpret_cast<IMP>(&IsPositive), "B@:B") ||
+		!class_addMethod(root, super_bool_selector,
+			reinterpret_cast<IMP>(&IsPositive), "B@:B") ||
 		!class_addMethod(child, double_selector,
 			reinterpret_cast<IMP>(&Scale), "d@:d") ||
 		!class_addMethod(child, double_pair_selector,
@@ -408,6 +411,8 @@ int main()
 		void_selector);
 	if (bool_result.kind != DARLING_OBJC_BOOL || !bool_result.boolean ||
 		darling_objc_msgSend_bool1(object, bool_selector, true) != true ||
+		reinterpret_cast<std::uintptr_t>(objc_msgSendSuper(object, root,
+			super_bool_selector, true)) != 1 ||
 		double_result.kind != DARLING_OBJC_DOUBLE ||
 		double_result.floating != 5.0 ||
 		darling_objc_msgSend_double1(object, double_selector, 3.5) != 7.0 ||

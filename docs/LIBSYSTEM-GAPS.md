@@ -103,6 +103,8 @@ normalization and escaping remain unimplemented; one or more leading `../`
 segments are handled for simple path bases.
 Simple `/./` segments and a trailing `/.` are also collapsed in this path
 form; full RFC normalization remains unimplemented.
+Bracketed IPv6 authorities are now recognized by `CFURLCopyHostName` and
+`CFURLGetPortNumber`, including `[addr]:port`.
 
 ## Still required for broad compatibility
 

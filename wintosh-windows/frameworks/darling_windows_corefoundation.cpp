@@ -2073,10 +2073,12 @@ extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyHostName(
 	const auto scheme = object->string.find("://");
 	if (scheme == std::string::npos) return nullptr;
 	const auto start = scheme + 3;
-	const auto end = object->string.find_first_of("/:?#", start);
+	const auto end = object->string[start] == '[' ? object->string.find(']', start) :
+		object->string.find_first_of("/:?#", start);
 	if (end == start) return nullptr;
+	const auto offset = object->string[start] == '[' ? 1 : 0;
 	return darling_windows_CFStringCreateWithCString(object->string.substr(
-		start, end == std::string::npos ? std::string::npos : end - start).c_str());
+		start + offset, end == std::string::npos ? std::string::npos : end - start - offset).c_str());
 }
 
 extern "C" int darling_windows_CFURLGetPortNumber(darling_windows_CFURLRef value)
@@ -2086,7 +2088,8 @@ extern "C" int darling_windows_CFURLGetPortNumber(darling_windows_CFURLRef value
 	const auto scheme = object->string.find("://");
 	if (scheme == std::string::npos) return -1;
 	const auto start = scheme + 3;
-	const auto colon = object->string.find(':', start);
+	const auto colon = object->string[start] == '[' ? object->string.find(':', object->string.find(']', start)) :
+		object->string.find(':', start);
 	if (colon == std::string::npos) return -1;
 	const auto end = object->string.find_first_of("/?#", colon + 1);
 	const auto text = object->string.substr(colon + 1,

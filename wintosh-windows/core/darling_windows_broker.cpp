@@ -495,7 +495,7 @@ int wmain(int argc, wchar_t** argv)
 						case 16: if (rights->second.receive == 0) throw std::invalid_argument("no receive right"); --rights->second.receive; break;
 						case 17: if (rights->second.send == 0) throw std::invalid_argument("no send right"); --rights->second.send; break;
 						case 18: if (rights->second.send_once == 0) throw std::invalid_argument("no send-once right"); --rights->second.send_once; break;
-						case 19: if (rights->second.send == 0) throw std::invalid_argument("no send right"); break;
+		case 19: if (rights->second.send == 0) throw std::invalid_argument("no send right"); ++rights->second.send; break;
 						case 20: if (rights->second.receive == 0) throw std::invalid_argument("no receive right"); ++rights->second.send; break;
 						case 21: if (rights->second.receive == 0) throw std::invalid_argument("no receive right"); ++rights->second.send_once; break;
 						case 22: if (rights->second.receive == 0) throw std::invalid_argument("no receive right"); ++rights->second.receive; break;

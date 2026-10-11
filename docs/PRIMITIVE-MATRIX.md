@@ -869,6 +869,8 @@ Unknown disposition values are rejected and covered by
 The end-to-end broker smoke now exercises `MAKE_SEND_ONCE`, `MAKE_SEND`,
 `MOVE_SEND`, and `MOVE_SEND_ONCE` against a broker-owned port and reports
 `BROKER_MACH_MOVE_DISPOSITIONS=PASS` on both x64 and Win32.
+`COPY_SEND` now increments the broker-side send-right count and is covered by
+the same end-to-end sequence before two independent send-right consumptions.
 Queue-capacity validation now occurs before rights mutation, preventing a
 full-queue failure from consuming a move right without enqueueing its message.
 The OOL allocation/mapping block now snapshots and restores affected rights on

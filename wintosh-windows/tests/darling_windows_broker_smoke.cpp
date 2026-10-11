@@ -332,8 +332,29 @@ int wmain()
 		const auto receive_move_send_once_response = receive_envelope();
 		const bool move_send_once_ok = move_send_once_response.operation == darling::windows_host::MachIpcOperation::Send &&
 			receive_move_send_once_response.operation == darling::windows_host::MachIpcOperation::Receive;
+		darling::windows_host::MachIpcEnvelope copy_send = make_send;
+		copy_send.request_id = 0x77a3;
+		copy_send.port_descriptor_dispositions = {19};
+		send_envelope(copy_send);
+		const auto copy_send_response = receive_envelope();
+		darling::windows_host::MachIpcEnvelope receive_copy_send = receive_make_send_once;
+		receive_copy_send.request_id = 0x77a4;
+		send_envelope(receive_copy_send);
+		const auto receive_copy_send_response = receive_envelope();
+		darling::windows_host::MachIpcEnvelope consume_copy = move_send;
+		consume_copy.request_id = 0x77a5;
+		send_envelope(consume_copy);
+		const auto consume_copy_response = receive_envelope();
+		darling::windows_host::MachIpcEnvelope receive_consume_copy = receive_make_send_once;
+		receive_consume_copy.request_id = 0x77a6;
+		send_envelope(receive_consume_copy);
+		const auto receive_consume_copy_response = receive_envelope();
+		const bool copy_send_ok = copy_send_response.operation == darling::windows_host::MachIpcOperation::Send &&
+			receive_copy_send_response.operation == darling::windows_host::MachIpcOperation::Receive &&
+			consume_copy_response.operation == darling::windows_host::MachIpcOperation::Send &&
+			receive_consume_copy_response.operation == darling::windows_host::MachIpcOperation::Receive;
 		std::cout << "BROKER_MACH_MOVE_DISPOSITIONS=" <<
-			(make_send_once_ok && make_send_ok && move_send_ok && move_send_once_ok ? "PASS" : "FAIL") << "\n";
+			(make_send_once_ok && make_send_ok && move_send_ok && move_send_once_ok && copy_send_ok ? "PASS" : "FAIL") << "\n";
 		darling::windows_host::NamedPipeRpcClient transfer_client =
 			darling::windows_host::NamedPipeRpcClient::Connect(pipe_name);
 		const auto transfer_session = darling::windows_host::OpenMachIpcSession(transfer_client);

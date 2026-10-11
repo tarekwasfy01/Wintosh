@@ -224,28 +224,38 @@ std::vector<DWORD> Process::ThreadIds() const
 
 bool Process::GetPrimaryThreadContext(CONTEXT& context) const noexcept
 {
-	if (m_thread_id == 0)
+	return GetThreadContext(m_thread_id, context);
+}
+
+bool Process::GetThreadContext(DWORD thread_id, CONTEXT& context) const noexcept
+{
+	if (thread_id == 0)
 		return false;
 	const HANDLE thread = OpenThread(THREAD_GET_CONTEXT | THREAD_QUERY_INFORMATION,
-		FALSE, m_thread_id);
+		FALSE, thread_id);
 	if (thread == nullptr)
 		return false;
 	context.ContextFlags = CONTEXT_FULL;
-	const BOOL result = GetThreadContext(thread, &context);
+	const BOOL result = ::GetThreadContext(thread, &context);
 	CloseHandle(thread);
 	return result != FALSE;
 }
 
 bool Process::SetPrimaryThreadContext(const CONTEXT& context) const noexcept
 {
-	if (m_thread_id == 0)
+	return SetThreadContext(m_thread_id, context);
+}
+
+bool Process::SetThreadContext(DWORD thread_id, const CONTEXT& context) const noexcept
+{
+	if (thread_id == 0)
 		return false;
 	const HANDLE thread = OpenThread(THREAD_SET_CONTEXT | THREAD_QUERY_INFORMATION,
-		FALSE, m_thread_id);
+		FALSE, thread_id);
 	if (thread == nullptr)
 		return false;
 	CONTEXT copy = context;
-	const BOOL result = SetThreadContext(thread, &copy);
+	const BOOL result = ::SetThreadContext(thread, &copy);
 	CloseHandle(thread);
 	return result != FALSE;
 }

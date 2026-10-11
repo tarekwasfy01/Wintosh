@@ -62,6 +62,8 @@ public:
 	[[nodiscard]] std::vector<DWORD> ThreadIds() const;
 	[[nodiscard]] bool GetPrimaryThreadContext(CONTEXT& context) const noexcept;
 	[[nodiscard]] bool SetPrimaryThreadContext(const CONTEXT& context) const noexcept;
+	[[nodiscard]] bool GetThreadContext(DWORD thread_id, CONTEXT& context) const noexcept;
+	[[nodiscard]] bool SetThreadContext(DWORD thread_id, const CONTEXT& context) const noexcept;
 	[[nodiscard]] bool GetDarwinX86ThreadState64(DarwinX86ThreadState64& state) const noexcept;
 	[[nodiscard]] bool SetDarwinX86ThreadState64(const DarwinX86ThreadState64& state) const noexcept;
 	[[nodiscard]] DWORD Suspend() noexcept;

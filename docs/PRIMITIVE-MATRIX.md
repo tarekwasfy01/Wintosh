@@ -503,8 +503,9 @@ open.
 `Process::ThreadIds()` now provides a deduplicated child-thread inventory. It
 always retains the already verified primary thread and supplements it with
 Toolhelp entries when the host exposes them, so a restricted snapshot API does
-not erase known thread state. Secondary-thread context capture is still not
-implemented.
+not erase known thread state. Per-thread context APIs are available for
+follow-up capture, but the smoke only proves the primary context round trip;
+secondary-thread context translation remains unverified.
 Quoted aggregate field names are skipped while parsing, matching common
 Objective-C runtime encodings.
 Quoted object class names (`@"NSString"`) and pointers to nested encodings

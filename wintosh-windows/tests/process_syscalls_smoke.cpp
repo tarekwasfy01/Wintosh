@@ -122,6 +122,10 @@ int wmain()
 			child_thread_ids.end()) {
 			throw std::runtime_error("Darwin child thread enumeration failed");
 		}
+		for (const auto thread_id : child_thread_ids) {
+			CONTEXT thread_context{};
+			(void)suspended_process.GetThreadContext(thread_id, thread_context);
+		}
 #if defined(_M_X64) || defined(__x86_64__)
 		if (!darwin_state_ok) throw std::runtime_error(std::string("Darwin x86_64 thread-state mapping failed get=") +
 			(darwin_state_get ? "1" : "0") + " set=" + (darwin_state_set ? "1" : "0"));

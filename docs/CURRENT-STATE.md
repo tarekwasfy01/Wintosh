@@ -70,7 +70,10 @@ real-world application bundles or their Apple frameworks are runnable.
 The bundle resolver now honors a simple XML `Info.plist` value for
 `CFBundleExecutable` and falls back to the bundle directory name when the key
 is absent or malformed.  The runner smoke uses a deliberately different
-bundle name and executable name to verify this path.
+bundle name and executable name to verify this path.  The fixture also
+includes surrounding whitespace and an attribute on the `<string>` tag,
+covering these common plist formatting variants without claiming to be a
+complete property-list parser.
 
 The Objective-C/CoreFoundation tests verify class and selector registration,
 typed message-send bridges, blocks, Foundation values, run loops, and

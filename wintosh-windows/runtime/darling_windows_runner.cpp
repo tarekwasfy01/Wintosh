@@ -172,20 +172,23 @@ std::filesystem::path ResolveImage(std::filesystem::path image)
 	std::ifstream plist_input(plist, std::ios::binary);
 	if (plist_input) {
 		const std::string contents((std::istreambuf_iterator<char>(plist_input)), {});
-		const std::string key = "<key>CFBundleExecutable</key>";
-		const auto key_position = contents.find(key);
+		const auto key_position = contents.find("CFBundleExecutable");
 		if (key_position != std::string::npos) {
-			const auto string_start = contents.find("<string>", key_position + key.size());
-			const auto value_start = string_start == std::string::npos ? string_start :
-				string_start + std::string("<string>").size();
+			const auto string_tag_start = contents.find("<string", key_position);
+			const auto value_start = string_tag_start == std::string::npos ? string_tag_start :
+				contents.find('>', string_tag_start);
 			const auto value_end = value_start == std::string::npos ? value_start :
 				contents.find("</string>", value_start);
 			if (value_start != std::string::npos && value_end != std::string::npos &&
 				value_end > value_start && contents.find('<', value_start) >= value_end) {
-				const auto value = contents.substr(value_start, value_end - value_start);
-				if (!value.empty() && value.find('/') == std::string::npos &&
-					value.find('\\') == std::string::npos)
-					executable_name = std::filesystem::path(value);
+				const auto value = contents.substr(value_start + 1, value_end - value_start - 1);
+				const auto first = value.find_first_not_of(" \t\r\n");
+				const auto last = value.find_last_not_of(" \t\r\n");
+				const auto trimmed = first == std::string::npos ? std::string{} :
+					value.substr(first, last - first + 1);
+				if (!trimmed.empty() && trimmed.find('/') == std::string::npos &&
+					trimmed.find('\\') == std::string::npos)
+					executable_name = std::filesystem::path(trimmed);
 			}
 		}
 	}

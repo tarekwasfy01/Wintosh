@@ -102,8 +102,9 @@ int wmain()
 		{
 			std::ofstream plist(bundle / L"Contents" / L"Info.plist", std::ios::binary);
 			plist << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
-				"<plist><dict><key>CFBundleExecutable</key>"
-				"<string>ActualExecutable</string></dict></plist>\n";
+				"<plist><dict>\n  <key> CFBundleExecutable </key>\n"
+				"  <string xml:space=\"preserve\"> ActualExecutable </string>\n"
+				"</dict></plist>\n";
 		}
 		wchar_t executable[MAX_PATH]{};
 		const DWORD executable_length = GetModuleFileNameW(nullptr, executable, MAX_PATH);

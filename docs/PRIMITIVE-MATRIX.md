@@ -572,6 +572,10 @@ The x64 smoke now walks foreign committed regions and proves `mach_vm_read`
 for one readable page, including returned-size validation and read-buffer
 deallocation. This is a bounded read proof, not yet a full task-memory dump or
 write/allocate transaction.
+The x64 smoke now proves a complete bounded foreign-task transaction:
+`mach_vm_allocate -> mach_vm_write -> mach_vm_read -> mach_vm_deallocate`,
+including byte-for-byte validation. It does not yet provide COW semantics,
+protection transitions, or a rollback/restore transaction.
 The x64 Mach smoke now consumes every returned `task_threads` entry through
 `thread_get_state` before deallocation, proving the enumeration-to-thread-state
 chain for the current task. This still does not create durable Mach thread-port

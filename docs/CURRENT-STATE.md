@@ -120,6 +120,9 @@ The bridge translation unit also compiles successfully to a Windows object
 with `clang-cl` after matching the ABI attribute on declarations and
 definitions; full Clang linking is still blocked by this host's missing
 Windows resource compiler/CMake linker setup.
+The new `abi_bridge_smoke` additionally calls `_puts` directly and verifies
+that the Mach-O `_puts` lookup returns the same address; this is a fixed-arity
+host-export smoke only, not yet the Clang System-V guest-call gate.
 
 The dyld resolver now also checks `Contents/Frameworks` and `Contents/PlugIns`
 as scoped fallbacks for `@rpath/...` dependencies of a bundle executable when

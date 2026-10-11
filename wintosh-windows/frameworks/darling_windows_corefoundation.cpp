@@ -1645,7 +1645,15 @@ extern "C" bool darling_windows_CFNumberGetInteger(const void* value, std::int64
 	const auto* object = static_cast<const Object*>(value);
 	if (object == nullptr || result == nullptr ||
 		(object->kind != Kind::Number && object->kind != Kind::Real)) return false;
-	*result = object->kind == Kind::Number ? object->number : static_cast<std::int64_t>(object->real_number);
+	if (object->kind == Kind::Number) {
+		*result = object->number;
+		return true;
+	}
+	if (!std::isfinite(object->real_number)) return false;
+	const auto wide = static_cast<long double>(object->real_number);
+	if (wide < static_cast<long double>((std::numeric_limits<std::int64_t>::min)()) ||
+		wide > static_cast<long double>((std::numeric_limits<std::int64_t>::max)())) return false;
+	*result = static_cast<std::int64_t>(object->real_number);
 	return true;
 }
 
@@ -1675,6 +1683,7 @@ extern "C" int darling_windows_CFNumberCompare(const void* left, const void* rig
 		(rhs->kind != Kind::Number && rhs->kind != Kind::Real)) return 0;
 	const auto lhs_value = lhs->kind == Kind::Number ? static_cast<double>(lhs->number) : lhs->real_number;
 	const auto rhs_value = rhs->kind == Kind::Number ? static_cast<double>(rhs->number) : rhs->real_number;
+	if (std::isnan(lhs_value) || std::isnan(rhs_value)) return 0;
 	return lhs_value < rhs_value ? -1 : lhs_value > rhs_value ? 1 : 0;
 }
 

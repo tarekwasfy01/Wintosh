@@ -290,6 +290,10 @@ entries from the mutable collection without invalidating the active iteration;
 a dedicated mutation test covers all three collection types. This is still
 collection-ABI coverage, not the complete CoreFoundation object model.
 
+The same scalar family now rejects non-finite and out-of-range floating-point
+to-int64 conversions without invoking undefined behavior, and gives NaN number
+comparisons a deterministic unordered result.
+
 The Release Clang build currently passes 60/60 CTest entries, including the
 Mach-O printf bundle end-to-end test. The latest five local commits are ahead
 of the configured remote and have not been pushed in this work cycle.

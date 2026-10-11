@@ -133,6 +133,16 @@ int main()
 			remote_value.data(), remote_value.size()) == 0 &&
 		darling_windows_mach_vm_deallocate(child_task, remote_read_data, remote_read_size) == 0)
 		remote_transaction_ok = true;
+	std::array<std::uint8_t, 16> overwrite_value{};
+	darling_mach_vm_size_t overwrite_size = 0;
+	if (remote_transaction_ok &&
+		darling_windows_mach_vm_read_overwrite(child_task, remote_address, remote_value.size(),
+			reinterpret_cast<darling_mach_vm_address_t>(overwrite_value.data()),
+			&overwrite_size) != 0)
+		remote_transaction_ok = false;
+	if (remote_transaction_ok && (overwrite_size != remote_value.size() ||
+		std::memcmp(overwrite_value.data(), remote_value.data(), remote_value.size()) != 0))
+		remote_transaction_ok = false;
 	if (remote_allocated)
 		(void)darling_windows_mach_vm_deallocate(child_task, remote_address, remote_page_size);
 	if (!remote_transaction_ok) {

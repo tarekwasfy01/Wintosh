@@ -584,6 +584,9 @@ The x64 smoke also verifies `mach_vm_copy` between two remote allocations by
 comparing the copied bytes after a remote read. This is an explicit copy
 operation; it must not be confused with Darwin VM copy-on-write sharing or
 snapshot rollback.
+The x64 smoke additionally validates `mach_vm_read_overwrite` into a local
+buffer and checks the exact transferred size and bytes, covering both Darwin
+read return shapes for the same remote allocation.
 The x64 Mach smoke now consumes every returned `task_threads` entry through
 `thread_get_state` before deallocation, proving the enumeration-to-thread-state
 chain for the current task. This still does not create durable Mach thread-port

@@ -781,6 +781,7 @@ extern "C" darling_kern_return_t darling_windows_thread_set_state(
 			flavor == darling_x86_float_state64_flavor ? darling_x86_float_state64_count :
 			flavor == darling_x86_avx_state64_flavor ? darling_x86_avx_state64_count :
 			flavor == darling_x86_avx512_state64_flavor ? darling_x86_avx512_state64_count :
+			flavor == darling_x86_exception_state64_flavor ? darling_x86_exception_state64_count :
 			darling_x86_debug_state64_count))
 		return 4;
 	if (thread == darling_windows_mach_thread_self()) {
@@ -820,11 +821,11 @@ extern "C" darling_kern_return_t darling_windows_thread_set_state(
 			return 4;
 		}
 		DWORD64 features = 0;
-		const auto* legacy = LocateXStateFeature(xstate_context, XSTATE_LEGACY_SSE, nullptr);
-		const auto* avx = LocateXStateFeature(xstate_context, XSTATE_AVX, nullptr);
-		const auto* kmask = LocateXStateFeature(xstate_context, XSTATE_AVX512_KMASK, nullptr);
-		const auto* zmmh = LocateXStateFeature(xstate_context, XSTATE_AVX512_ZMM_H, nullptr);
-		const auto* zmm = LocateXStateFeature(xstate_context, XSTATE_AVX512_ZMM, nullptr);
+		auto* legacy = LocateXStateFeature(xstate_context, XSTATE_LEGACY_SSE, nullptr);
+		auto* avx = LocateXStateFeature(xstate_context, XSTATE_AVX, nullptr);
+		auto* kmask = LocateXStateFeature(xstate_context, XSTATE_AVX512_KMASK, nullptr);
+		auto* zmmh = LocateXStateFeature(xstate_context, XSTATE_AVX512_ZMM_H, nullptr);
+		auto* zmm = LocateXStateFeature(xstate_context, XSTATE_AVX512_ZMM, nullptr);
 		const bool supported = GetXStateFeaturesMask(xstate_context, &features) &&
 			(features & XSTATE_MASK_AVX) != 0 && legacy != nullptr && avx != nullptr &&
 			(flavor == darling_x86_avx_state64_flavor ||
@@ -1670,7 +1671,10 @@ extern "C" darling_kern_return_t darling_windows_mach_port_insert_right(
 	const auto port = FindPort(name);
 	if (port == nullptr) {
 		if (right == darling_mach_port_type_send && IsTaskPort(name)) {
-			*refs = 1;
+			std::lock_guard lock(task_ports_mutex);
+			auto& refs = task_port_send_refs[name];
+			if (refs == (std::numeric_limits<std::uint32_t>::max)()) return 3;
+			++refs;
 			return 0;
 		}
 		return 3;

@@ -801,6 +801,15 @@ extern "C" darling_windows_CFIndex darling_windows_CFStringGetLength(darling_win
 		UTF16Length(object->string) : 0;
 }
 
+extern "C" darling_windows_CFIndex darling_windows_CFStringGetMaximumSizeForEncoding(
+	darling_windows_CFIndex length, int encoding)
+{
+	if (length < 0 || (encoding != 0 && encoding != 1 && encoding != 4)) return 0;
+	const auto multiplier = encoding == 1 ? 4 : 1;
+	const auto maximum = (std::numeric_limits<darling_windows_CFIndex>::max)();
+	return length > maximum / multiplier ? maximum : length * multiplier;
+}
+
 extern "C" bool darling_windows_CFStringGetCharacters(
 	darling_windows_CFStringRef value, darling_windows_CFRange range, std::uint16_t* output)
 {

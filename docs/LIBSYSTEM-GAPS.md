@@ -101,6 +101,8 @@ on Windows it deliberately copies the input and therefore does not retain
 foreign allocator ownership.
 `CFStringGetSystemEncoding` reports the port's explicit UTF-8 system encoding
 identifier for stable CoreServices string conversion.
+`CFStringGetMaximumSizeForEncoding` now provides conservative overflow-safe
+UTF-8/ASCII buffer bounds for CoreFoundation clients.
 `CFStringCreateMutableCopy` now returns an independent mutable string; its
 capacity argument is treated as a non-binding reservation hint on Windows.
 `CFStringCreateMutable` now creates an empty mutable string with the same

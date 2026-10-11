@@ -15,3 +15,11 @@ The first manual-review group is the 17 files with multiple license markers:
 
 No candidate is considered approved until its source tree, nested notices,
 copyright holders, and compatibility with the Wintosh license are checked.
+
+Initial text-level triage found these useful leads, not approvals: compiler-rt
+states an Illinois BSD-like/MIT dual license; FMDB states MIT; ICU states its
+ICU permission terms; mDNSResponder describes Apache-2.0 and three-clause BSD
+areas; and xcbuild contains a BSD grant. CoreCrypto, Darling-DMG, Installer,
+Keymgr, and OpenJDK contain GPL text; DBusKit, Foundation, and JavaScriptCore
+contain LGPL text. The exact source-file scope and nested notices still need
+manual confirmation before any inventory status changes.

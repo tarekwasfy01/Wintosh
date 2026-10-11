@@ -122,3 +122,25 @@ useful as a product/integration reference for a future Wintosh preview shell:
 file-type detection, `.app` bundle presentation, plugin isolation and a
 Windows-native UI boundary.  Its GPL-3.0 license is compatible with the
 project's GPL boundary, but QuickLook code is not copied into the runtime.
+
+### OpenCore Legacy Patcher
+
+Repository: https://github.com/dortania/OpenCore-Legacy-Patcher
+
+OpenCore Legacy Patcher is a Python-based project built around OpenCorePkg and
+Lilu.  It patches or unlocks macOS installations on supported and unsupported
+Apple hardware, including boot configuration, recovery/safe-mode paths,
+graphics, Wi-Fi, SIP and related compatibility layers.  It is therefore not a
+Windows Mach-O loader and is not directly portable into the Wintosh runtime.
+
+The useful architectural lessons are the separation between platform-neutral
+policy, patch payloads, hardware capability detection and explicit boot-mode
+handling.  Wintosh may use those ideas for a future host-capability matrix and
+diagnostic mode, but no OpenCore, Lilu or patch payload code is copied.  The
+repository exposes a separate LICENSE.txt and its upstream credits must remain
+separate from Wintosh licensing.
+
+Resulting Wintosh work item: add a read-only `wintosh diagnose-host` report
+covering architecture, executable format, available runtime prefix, supported
+loader features and fail-closed reasons.  This is a host-diagnostics concept,
+not a firmware patcher or macOS installer.

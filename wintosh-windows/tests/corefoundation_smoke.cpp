@@ -342,6 +342,10 @@ int main()
 	const auto relative_url_string = darling_windows_CFStringCreateWithCString("child");
 	const auto relative_url = darling_windows_CFURLCreateWithString(relative_url_string, scheme_url);
 	const auto relative_expected = darling_windows_CFStringCreateWithCString("https://example.test/child");
+	const auto parent_base = darling_windows_CFURLCreateWithFileSystemPath("https://example.test/dir/a");
+	const auto parent_string = darling_windows_CFStringCreateWithCString("../child");
+	const auto parent_url = darling_windows_CFURLCreateWithString(parent_string, parent_base);
+	const auto parent_expected = darling_windows_CFStringCreateWithCString("https://example.test/child");
 	const auto extension_url = darling_windows_CFURLCreateWithFileSystemPath("C:/Wintosh/app.bin");
 	const auto directory_url = darling_windows_CFURLCreateWithFileSystemPath("C:/Wintosh/");
 	const unsigned char url_bytes[] = "C:/Wintosh/app";
@@ -373,6 +377,8 @@ int main()
 		url_from_string != nullptr && darling_windows_CFEqual(url_from_string, scheme_url) &&
 		relative_url != nullptr && darling_windows_CFURLGetString(relative_url) != nullptr &&
 		darling_windows_CFStringCompare(darling_windows_CFURLGetString(relative_url), relative_expected) == 0 &&
+		parent_url != nullptr && darling_windows_CFStringCompare(
+			darling_windows_CFURLGetString(parent_url), parent_expected) == 0 &&
 		now_date != nullptr && darling_windows_CFDateGetTimeIntervalSinceDate(now_date, date) > 0.0 &&
 		absolute_url != nullptr &&
 		url_string != nullptr &&
@@ -860,6 +866,10 @@ int main()
 	darling_windows_CFRelease(relative_url_string);
 	darling_windows_CFRelease(relative_url);
 	darling_windows_CFRelease(relative_expected);
+	darling_windows_CFRelease(parent_base);
+	darling_windows_CFRelease(parent_string);
+	darling_windows_CFRelease(parent_url);
+	darling_windows_CFRelease(parent_expected);
 	darling_windows_CFRelease(absolute_url);
 	darling_windows_CFRelease(url_string);
 	darling_windows_CFRelease(directory_url);

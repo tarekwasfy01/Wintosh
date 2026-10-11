@@ -99,7 +99,8 @@ date from the Windows system clock and is covered for future relative dates.
 `CFURLCreateWithString` now creates a URL object from a CoreFoundation string
 for the absolute/simple URL form used by this bridge; base-URL resolution is
 now also handles a simple relative path against a base URL. Full RFC
-normalization and escaping remain unimplemented.
+normalization and escaping remain unimplemented; one or more leading `../`
+segments are handled for simple path bases.
 
 ## Still required for broad compatibility
 

@@ -1976,7 +1976,17 @@ extern "C" darling_windows_CFURLRef darling_windows_CFURLCreateWithString(
 		const auto base_value = query == std::string::npos ? base->string : base->string.substr(0, query);
 		const auto slash = base_value.find_last_of('/');
 		if (slash == std::string::npos) return nullptr;
-		resolved = base_value.substr(0, slash + 1) + resolved;
+		std::string directory = base_value.substr(0, slash + 1);
+		while (resolved.rfind("../", 0) == 0) {
+			resolved.erase(0, 3);
+			if (directory.size() > 1) {
+				directory.erase(directory.size() - 1);
+				const auto parent_slash = directory.find_last_of('/');
+				directory = parent_slash == std::string::npos ? std::string{} :
+					directory.substr(0, parent_slash + 1);
+			}
+		}
+		resolved = directory + resolved;
 	}
 	return darling_windows_CFURLCreateWithFileSystemPath(resolved.c_str());
 }

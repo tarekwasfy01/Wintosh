@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <stdexcept>
 #include <system_error>
@@ -170,6 +171,17 @@ void InitializeTLVSections(const MachOImage& image,
 		std::memcpy(reinterpret_cast<void*>(slot), &descriptor, sizeof(descriptor));
 	}
 	RestoreSectionProtection(writable);
+	if (std::getenv("WINTOSH_TRACE_TLV") != nullptr) {
+		const auto* descriptors = reinterpret_cast<const DarwinTLVDescriptor*>(
+			descriptor_address);
+		const auto* pointers = reinterpret_cast<const std::uintptr_t*>(pointer_address);
+		std::fprintf(stderr,
+			"WINTOSH_TLV_TRACE descriptor=0x%llx thunk=0x%llx key=0x%llx pointer=0x%llx\\n",
+			static_cast<unsigned long long>(descriptor_address),
+			static_cast<unsigned long long>(reinterpret_cast<std::uintptr_t>(descriptors[0].thunk)),
+			static_cast<unsigned long long>(descriptors[0].key),
+			static_cast<unsigned long long>(pointers[0]));
+	}
 }
 
 }

@@ -33,3 +33,8 @@ Apple TLS code can already run.  The generated `TLVClient.macho` is an
 executable companion with the same sections and a repository-owned entry
 point; running it through `wintosh.exe` currently returns exit code `0` after
 TLV initialization.
+
+For loader diagnostics, set `WINTOSH_TRACE_TLV=1` before launching the client.
+The runner then prints the descriptor address, installed thunk, non-zero key,
+and `__thread_ptrs` value.  The variable is intentionally opt-in and is not
+part of normal runner output.

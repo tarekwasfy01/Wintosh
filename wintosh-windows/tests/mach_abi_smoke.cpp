@@ -74,6 +74,16 @@ int main()
 		cleanup_child();
 		return 1;
 	}
+	darling_mach_vm_address_t child_region_address = 0;
+	darling_mach_vm_size_t child_region_size = 0;
+	darling_mach_vm_region_basic_info child_region_info{};
+	std::uint32_t child_region_count = darling_vm_region_basic_info_count;
+	if (darling_windows_mach_vm_region(child_task, &child_region_address, &child_region_size,
+		darling_vm_region_basic_info, &child_region_info, &child_region_count) != 0 ||
+		child_region_size == 0 || child_region_count != darling_vm_region_basic_info_count) {
+		cleanup_child();
+		return 1;
+	}
 	cleanup_child();
 	PROCESS_INFORMATION terminated_child{};
 	wchar_t terminate_command[] = L"cmd.exe /d /c ping 127.0.0.1 -n 30 > nul";

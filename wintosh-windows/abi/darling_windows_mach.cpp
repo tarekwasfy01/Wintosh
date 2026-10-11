@@ -1205,7 +1205,7 @@ extern "C" darling_kern_return_t darling_windows_mach_vm_region(
 		*info_count < darling_vm_region_basic_info_count)
 		return 4;
 	bool owned = false;
-	const HANDLE process = OpenVmProcess(task, PROCESS_QUERY_LIMITED_INFORMATION,
+	const HANDLE process = OpenVmProcess(task, PROCESS_QUERY_INFORMATION,
 		owned);
 	if (process == nullptr) return 3;
 	MEMORY_BASIC_INFORMATION region{};

@@ -563,6 +563,11 @@ The termination path now snapshots the child's thread IDs before exit and
 removes their thread-level exception registrations as well, preventing stale
 per-thread owners. Global port objects and unrelated namespaces still require
 the future task-port lifecycle model.
+The foreign-task VM path now requests `PROCESS_QUERY_INFORMATION` for
+`VirtualQueryEx` instead of the limited query right, and the x64 smoke proves
+`task_for_pid -> mach_vm_region` on a real child. Memory reads/writes and
+remote allocation still require their separate VM rights and remain
+independently gated.
 The x64 Mach smoke now consumes every returned `task_threads` entry through
 `thread_get_state` before deallocation, proving the enumeration-to-thread-state
 chain for the current task. This still does not create durable Mach thread-port

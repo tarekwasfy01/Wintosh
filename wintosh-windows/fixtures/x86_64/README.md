@@ -15,3 +15,8 @@ It contains no Apple SDK, macOS system library, proprietary Apple code, or
 third-party binary.  It is therefore suitable as a repository-owned loader
 fixture, but it is not a real macOS application and does not prove framework
 compatibility.
+
+The Clang build also generates a temporary `--emit-printf` fixture during
+`wintosh_macho_printf_e2e`.  That fixture imports `_printf`, invokes the
+integer SysV variadic bridge, and verifies `mach-o printf 7`.  It is generated
+in the build tree rather than committed as a binary.

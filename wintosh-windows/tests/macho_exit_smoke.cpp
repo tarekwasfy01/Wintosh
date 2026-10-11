@@ -115,6 +115,84 @@ void WriteDarwinStartMachO(const std::filesystem::path& path)
 		throw std::runtime_error("cannot write Darwin startup fixture");
 }
 
+void WritePrintfMachO(const std::filesystem::path& path)
+{
+	using namespace darling::windows_host;
+	std::vector<std::uint8_t> data(0x400, 0);
+	MachHeader64 header{MH_MAGIC_64, CPU_TYPE_X86_64, 3, MH_EXECUTE, 5,
+		static_cast<std::uint32_t>(sizeof(SegmentCommand64) + sizeof(MainCommand) +
+			sizeof(SymtabCommand) + sizeof(DYSymtabCommand) + sizeof(DyldInfoCommand)), 0, 0};
+	std::memcpy(data.data(), &header, sizeof(header));
+
+	SegmentCommand64 segment{};
+	segment.header = {LC_SEGMENT_64, static_cast<std::uint32_t>(sizeof(segment))};
+	std::memcpy(segment.segment_name, "__TEXT", 6);
+	segment.vm_address = 0x1000;
+	segment.vm_size = 0x1000;
+	segment.file_offset = 0x200;
+	segment.file_size = 0x200;
+	segment.max_protection = 5;
+	segment.initial_protection = 5;
+	std::memcpy(data.data() + sizeof(header), &segment, sizeof(segment));
+
+	MainCommand main{};
+	main.header = {LC_MAIN, static_cast<std::uint32_t>(sizeof(main))};
+	main.entry_offset = 0x200;
+	std::memcpy(data.data() + sizeof(header) + sizeof(segment), &main, sizeof(main));
+
+	const auto symtab_offset = sizeof(header) + sizeof(segment) + sizeof(main);
+	SymtabCommand symtab{};
+	symtab.header = {LC_SYMTAB, static_cast<std::uint32_t>(sizeof(symtab))};
+	symtab.symbol_offset = 0x240;
+	symtab.symbol_count = 1;
+	symtab.string_offset = 0x260;
+	symtab.string_bytes = 9;
+	std::memcpy(data.data() + symtab_offset, &symtab, sizeof(symtab));
+
+	const auto dysymtab_offset = symtab_offset + sizeof(symtab);
+	DYSymtabCommand dysymtab{};
+	dysymtab.header = {LC_DYSYMTAB, static_cast<std::uint32_t>(sizeof(dysymtab))};
+	dysymtab.undefined_symbol_index = 0;
+	dysymtab.undefined_symbol_count = 1;
+	std::memcpy(data.data() + dysymtab_offset, &dysymtab, sizeof(dysymtab));
+
+	const auto dyld_info_offset = dysymtab_offset + sizeof(dysymtab);
+	DyldInfoCommand dyld_info{};
+	dyld_info.header = {LC_DYLD_INFO, static_cast<std::uint32_t>(sizeof(dyld_info))};
+	dyld_info.binding_offset = 0x300;
+	const std::uint8_t bind_stream[] = {
+		0x11, 0x40, '_', 'p', 'r', 'i', 'n', 't', 'f', 0, 0x51, 0x70, 0x40, 0x90, 0x00};
+	dyld_info.binding_size = sizeof(bind_stream);
+	std::memcpy(data.data() + dyld_info_offset, &dyld_info, sizeof(dyld_info));
+	std::memcpy(data.data() + dyld_info.binding_offset, bind_stream, sizeof(bind_stream));
+
+	NList64 symbol{};
+	symbol.name_offset = 1;
+	symbol.type = 0x01;
+	std::memcpy(data.data() + symtab.symbol_offset, &symbol, sizeof(symbol));
+	std::memcpy(data.data() + symtab.string_offset + 1, "_printf", 7);
+
+	// lea rdi, format; mov esi, 7; align SysV stack; call bound printf; return 0.
+	const std::uint8_t entry[] = {
+		0x48, 0x8d, 0x3d, 0x19, 0x00, 0x00, 0x00,
+		0xbe, 0x07, 0x00, 0x00, 0x00,
+		0x48, 0x83, 0xec, 0x08,
+		0x48, 0x8b, 0x05, 0x29, 0x00, 0x00, 0x00,
+		0xff, 0xd0,
+		0x48, 0x83, 0xc4, 0x08,
+		0x31, 0xc0, 0xc3};
+	std::memcpy(data.data() + 0x200, entry, sizeof(entry));
+	const char format[] = "mach-o printf %d\n";
+	std::memcpy(data.data() + 0x220, format, sizeof(format));
+
+	std::ofstream output(path, std::ios::binary);
+	output.write(reinterpret_cast<const char*>(data.data()),
+		static_cast<std::streamsize>(data.size()));
+	if (!output) {
+		throw std::runtime_error("cannot write Mach-O printf fixture");
+	}
+}
+
 std::vector<wchar_t> CommandLine(const std::wstring& value)
 {
 	std::vector<wchar_t> result(value.begin(), value.end());
@@ -137,6 +215,10 @@ int wmain(int argc, wchar_t** argv)
 		}
 		if (argc == 3 && std::wcscmp(argv[1], L"--emit") == 0) {
 			WriteExitMachO(argv[2]);
+			return 0;
+		}
+		if (argc == 3 && std::wcscmp(argv[1], L"--emit-printf") == 0) {
+			WritePrintfMachO(argv[2]);
 			return 0;
 		}
 		if (argc > 2 && std::wcscmp(argv[1], L"--child") == 0) {

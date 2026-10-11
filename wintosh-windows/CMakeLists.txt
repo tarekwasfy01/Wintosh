@@ -92,6 +92,16 @@ if (WIN32)
     add_executable(wintosh runtime/darling_windows_runner.cpp)
     target_link_libraries(wintosh PRIVATE wintosh_windows_host)
 
+    if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        add_test(NAME wintosh_macho_printf_e2e
+            COMMAND powershell.exe -NoProfile -ExecutionPolicy Bypass -File
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/macho_printf_e2e.ps1"
+                "$<TARGET_FILE:wintosh_macho_exit_smoke>"
+                "$<TARGET_FILE:wintosh>"
+                "${CMAKE_CURRENT_BINARY_DIR}/macho-printf-e2e.macho")
+        set_tests_properties(wintosh_macho_printf_e2e PROPERTIES RUN_SERIAL TRUE)
+    endif()
+
     install(TARGETS wintosh wintosh_broker
         RUNTIME DESTINATION bin
         LIBRARY DESTINATION lib

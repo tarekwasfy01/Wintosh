@@ -77,7 +77,9 @@ argument. The Clang build also has a direct variadic bridge smoke for integer
 and string/integer `%d`, `%s`, `%u`, `%x`, `%X`, `%c`, and `%%` calls;
 floating-point, length modifiers, and general `printf` compatibility remain
 unsupported. The MSVC build remains fail-closed for real guest entry
-and is used only for explicitly marked synthetic fixtures.
+and is used only for explicitly marked synthetic fixtures. Clang CTest also
+generates and executes a temporary Mach-O that imports `_printf` and verifies
+the loader-to-bridge path.
 
 The detailed build and evidence rules are in `../docs/BUILD-AND-TEST.md`.
 

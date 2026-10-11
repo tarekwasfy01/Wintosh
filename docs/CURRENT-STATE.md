@@ -254,3 +254,9 @@ and newline handling. Floating point, length modifiers, positional arguments,
 and the full `printf` format language remain unsupported. The MSVC build remains deliberately fail-closed
 and reports `SysV variadic printf bridge is not implemented`; it does not run
 real SysV guest code.
+
+The Clang CTest suite now also runs `wintosh_macho_printf_e2e`. It generates a
+repository-owned temporary Mach-O which imports `_printf`, calls it through the
+loader's binding path, and verifies the output `mach-o printf 7`. This is the
+first verified Mach-O-to-variadic-bridge path; it remains a narrow integer-only
+fixture and does not establish general macOS framework compatibility.

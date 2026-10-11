@@ -120,6 +120,24 @@ int wmain()
 		broker_message.msgh_id = 0x4242;
 		const auto broker_send = darling_windows_mach_msg(
 			&broker_message, darling_mach_send_msg, sizeof(broker_message), 0, 0, 0, 0);
+		broker_message.msgh_id = 0x4243;
+		const auto broker_audit_send = darling_windows_mach_msg(
+			&broker_message, darling_mach_send_msg, sizeof(broker_message), 0, 0, 0, 0);
+		std::uint32_t broker_audit_sequence = 0, broker_audit_size = 0;
+		darling_mach_msg_id_t broker_audit_id = 0;
+		std::uint32_t broker_audit_trailer_size = sizeof(darling_mach_msg_audit_trailer);
+		darling_mach_msg_audit_trailer broker_audit_trailer{};
+		const auto broker_audit_peek = darling_windows_mach_port_peek(
+			darling_windows_mach_task_self(), broker_local_port, 0x03000000,
+			&broker_audit_sequence, &broker_audit_size, &broker_audit_id,
+			&broker_audit_trailer, &broker_audit_trailer_size);
+		if (broker_audit_send != 0 || broker_audit_peek != 0 || broker_audit_id != 0x4242 ||
+			broker_audit_size != sizeof(broker_message) || broker_audit_sequence == 0 ||
+			broker_audit_trailer_size != sizeof(darling_mach_msg_audit_trailer) ||
+			broker_audit_trailer.security.seqno.msgh_seqno != broker_audit_sequence ||
+			broker_audit_trailer.audit_token.val[0] == 0 || broker_audit_trailer.audit_token.val[1] == 0)
+			return 6;
+		broker_message.msgh_id = 0x4242;
 		std::uint32_t broker_peek_sequence = 0, broker_peek_size = 0;
 		darling_mach_msg_id_t broker_peek_id = 0;
 		std::uint32_t broker_peek_trailer_size = sizeof(darling_mach_msg_seqno_trailer);
@@ -132,6 +150,10 @@ int wmain()
 		const auto broker_receive = darling_windows_mach_msg(
 			&broker_received, darling_mach_receive_msg | darling_mach_receive_timeout,
 			0, sizeof(broker_received), broker_local_port, 1000, 0);
+		darling_mach_msg_header broker_audit_received{};
+		const auto broker_audit_receive = darling_windows_mach_msg(
+			&broker_audit_received, darling_mach_receive_msg | darling_mach_receive_timeout,
+			0, sizeof(broker_audit_received), broker_local_port, 1000, 0);
 		std::array<std::uint8_t, 4> broker_ool_payload{0xde, 0xad, 0xbe, 0xef};
 		struct BrokerOolMessage final {
 			darling_mach_msg_header header;
@@ -250,12 +272,14 @@ int wmain()
 			 broker_peek_id == 0x4242 &&
 			 broker_peek_trailer_size == sizeof(darling_mach_msg_seqno_trailer) &&
 			 broker_peek_trailer.msgh_seqno == broker_peek_sequence &&
-			 broker_receive == 0 && broker_received.msgh_id == 0x4242 && broker_ool_ok &&
+				 broker_receive == 0 && broker_received.msgh_id == 0x4242 &&
+				 broker_audit_receive == 0 && broker_audit_received.msgh_id == 0x4243 && broker_ool_ok &&
 			 broker_port_ok && broker_descriptor_validation && broker_disposition_validation && broker_transfer_ok &&
 			 rebind_original == 0 && broker_destroy == 0 ? "PASS" : "FAIL") << "\n";
 		if (broker_enable != 0 || broker_allocate != 0 || broker_lookup != 0 ||
 			 broker_send != 0 || broker_peek != 0 || broker_peek_sequence == 0 || broker_peek_size != sizeof(broker_message) ||
-			 broker_peek_id != 0x4242 || broker_receive != 0 || broker_received.msgh_id != 0x4242 || !broker_ool_ok ||
+			 broker_peek_id != 0x4242 || broker_receive != 0 || broker_received.msgh_id != 0x4242 ||
+			 broker_audit_receive != 0 || broker_audit_received.msgh_id != 0x4243 || !broker_ool_ok ||
 			!broker_port_ok ||
 			!broker_descriptor_validation ||
 			!broker_disposition_validation ||

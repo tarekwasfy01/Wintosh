@@ -95,15 +95,32 @@ int wmain()
 		auto suspended_process = darling::windows_host::Process::LaunchSuspended(
 			L"C:\\Windows\\System32\\cmd.exe", L"cmd.exe /d /c exit 19");
 		CONTEXT suspended_context{};
+		darling::windows_host::DarwinX86ThreadState64 darwin_state{};
+		const bool darwin_state_get = suspended_process.GetDarwinX86ThreadState64(darwin_state);
+		const bool darwin_state_set = darwin_state_get &&
+			suspended_process.SetDarwinX86ThreadState64(darwin_state);
+		#if defined(_M_X64) || defined(__x86_64__)
+		const bool darwin_state_contract_ok = darwin_state_get && darwin_state_set;
+		#else
+		const bool darwin_state_contract_ok = !darwin_state_get && !darwin_state_set;
+		#endif
 		if (!suspended_process.Valid() || suspended_process.ProcessId() == 0 ||
 			suspended_process.ThreadId() == 0 ||
 			!suspended_process.GetPrimaryThreadContext(suspended_context) ||
 			!suspended_process.SetPrimaryThreadContext(suspended_context) ||
+			!darwin_state_contract_ok ||
 			suspended_process.Resume() == static_cast<DWORD>(-1) ||
 			suspended_process.Wait(10000) != WAIT_OBJECT_0 ||
 			suspended_process.ExitCode() != 19) {
 			throw std::runtime_error("suspended Darwin child bootstrap failed");
 		}
+		const bool darwin_state_ok = darwin_state_get && darwin_state_set;
+#if defined(_M_X64) || defined(__x86_64__)
+		if (!darwin_state_ok) throw std::runtime_error(std::string("Darwin x86_64 thread-state mapping failed get=") +
+			(darwin_state_get ? "1" : "0") + " set=" + (darwin_state_set ? "1" : "0"));
+#else
+		if (darwin_state_ok) throw std::runtime_error("Win32 accepted x86_64 thread state");
+#endif
 		auto controllable_process = darling::windows_host::Process::Launch(
 			L"C:\\Windows\\System32\\cmd.exe", L"cmd.exe /d /c exit 21");
 		if (!controllable_process.Valid() || controllable_process.Suspend() == static_cast<DWORD>(-1) ||

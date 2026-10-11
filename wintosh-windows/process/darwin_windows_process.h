@@ -12,10 +12,20 @@
 
 #include <windows.h>
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
 namespace darling::windows_host {
+
+struct DarwinX86ThreadState64 final {
+	std::uint64_t rax = 0, rbx = 0, rcx = 0, rdx = 0;
+	std::uint64_t rdi = 0, rsi = 0, rbp = 0, rsp = 0;
+	std::uint64_t r8 = 0, r9 = 0, r10 = 0, r11 = 0;
+	std::uint64_t r12 = 0, r13 = 0, r14 = 0, r15 = 0;
+	std::uint64_t rip = 0, rflags = 0;
+	std::uint64_t cs = 0, fs = 0, gs = 0;
+};
 
 class ProcessGroup;
 
@@ -51,6 +61,8 @@ public:
 	[[nodiscard]] DWORD ThreadId() const noexcept { return m_thread_id; }
 	[[nodiscard]] bool GetPrimaryThreadContext(CONTEXT& context) const noexcept;
 	[[nodiscard]] bool SetPrimaryThreadContext(const CONTEXT& context) const noexcept;
+	[[nodiscard]] bool GetDarwinX86ThreadState64(DarwinX86ThreadState64& state) const noexcept;
+	[[nodiscard]] bool SetDarwinX86ThreadState64(const DarwinX86ThreadState64& state) const noexcept;
 	[[nodiscard]] DWORD Suspend() noexcept;
 	[[nodiscard]] DWORD Resume() noexcept;
 	void Terminate(UINT exit_code = 1) noexcept;

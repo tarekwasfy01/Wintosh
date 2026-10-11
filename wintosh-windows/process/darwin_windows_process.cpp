@@ -224,6 +224,41 @@ bool Process::SetPrimaryThreadContext(const CONTEXT& context) const noexcept
 	return result != FALSE;
 }
 
+bool Process::GetDarwinX86ThreadState64(DarwinX86ThreadState64& state) const noexcept
+{
+#if defined(_M_X64) || defined(__x86_64__)
+	CONTEXT context{};
+	if (!GetPrimaryThreadContext(context)) return false;
+	state = {context.Rax, context.Rbx, context.Rcx, context.Rdx, context.Rdi, context.Rsi,
+		context.Rbp, context.Rsp, context.R8, context.R9, context.R10, context.R11,
+		context.R12, context.R13, context.R14, context.R15, context.Rip, context.EFlags,
+		context.SegCs, context.SegFs, context.SegGs};
+	return true;
+#else
+	(void)state;
+	return false;
+#endif
+}
+
+bool Process::SetDarwinX86ThreadState64(const DarwinX86ThreadState64& state) const noexcept
+{
+#if defined(_M_X64) || defined(__x86_64__)
+	CONTEXT context{};
+	if (!GetPrimaryThreadContext(context)) return false;
+	context.Rax = state.rax; context.Rbx = state.rbx; context.Rcx = state.rcx; context.Rdx = state.rdx;
+	context.Rdi = state.rdi; context.Rsi = state.rsi; context.Rbp = state.rbp; context.Rsp = state.rsp;
+	context.R8 = state.r8; context.R9 = state.r9; context.R10 = state.r10; context.R11 = state.r11;
+	context.R12 = state.r12; context.R13 = state.r13; context.R14 = state.r14; context.R15 = state.r15;
+	context.Rip = state.rip; context.EFlags = static_cast<DWORD>(state.rflags);
+	// Windows user-mode SetThreadContext does not permit arbitrary segment
+	// selector changes; retain the validated host selectors for this bridge.
+	return SetPrimaryThreadContext(context);
+#else
+	(void)state;
+	return false;
+#endif
+}
+
 DWORD Process::Suspend() noexcept
 {
 	if (m_process == nullptr)

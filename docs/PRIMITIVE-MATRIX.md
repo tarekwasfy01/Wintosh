@@ -935,6 +935,12 @@ process smoke performs a same-context round trip on x64 and Win32; mapping that
 context to Darwin `thread_state_t` and cloning all secondary threads remain
 open.
 
+The process layer now exposes an explicit `DarwinX86ThreadState64` bridge for
+x86_64 hosts. It maps the general registers, instruction pointer, flags, and
+segment metadata while retaining host-validated selectors on write; Win32
+rejects this 64-bit state explicitly. ARM64 state and secondary-thread
+translation remain separate gaps.
+
 The broker also exposes an atomic `CapabilityTransferBatch` operation. The
 client serializes the target session and complete broker-token list; the broker
 validates every current owner before changing any owner and moves associated

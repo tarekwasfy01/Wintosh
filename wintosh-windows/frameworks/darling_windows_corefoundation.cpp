@@ -881,7 +881,7 @@ extern "C" darling_windows_CFRange darling_windows_CFStringFind(
 	if ((flags & darling_windows_CFCompareCaseInsensitive) == 0) {
 		const auto position = backwards ? object->string.rfind(candidate->string) : object->string.find(candidate->string);
 		return position == std::string::npos ? darling_windows_CFRange{ -1, 0 } : darling_windows_CFRange{
-			static_cast<darling_windows_CFIndex>(position), static_cast<darling_windows_CFIndex>(candidate->string.size()) };
+			UTF16Length(object->string.substr(0, position)), UTF16Length(candidate->string) };
 	}
 	if (candidate->string.empty()) return { 0, 0 };
 	const auto begin = backwards ? object->string.size() - candidate->string.size() : 0;
@@ -893,8 +893,8 @@ extern "C" darling_windows_CFRange darling_windows_CFStringFind(
 			const auto rhs = static_cast<unsigned char>(candidate->string[offset]);
 			if (std::tolower(lhs) != std::tolower(rhs)) { match = false; break; }
 		}
-		if (match) return { static_cast<darling_windows_CFIndex>(position),
-			static_cast<darling_windows_CFIndex>(candidate->string.size()) };
+		if (match) return { UTF16Length(object->string.substr(0, position)),
+			UTF16Length(candidate->string) };
 	}
 	return { -1, 0 };
 }

@@ -98,6 +98,9 @@ int main()
 		darling_windows_CFStringFind(repeated_string, dot_string,
 			darling_windows_CFCompareBackwards).location == 3;
 	const auto unicode_string = darling_windows_CFStringCreateWithCString("A\xF0\x9F\x98\x80Z");
+	const auto unicode_needle = darling_windows_CFStringCreateWithCString("Z");
+	const bool unicode_find_range_ok = unicode_string != nullptr && unicode_needle != nullptr &&
+		darling_windows_CFStringFind(unicode_string, unicode_needle, 0).location == 3;
 	const auto substring = darling_windows_CFStringCreateWithSubstring(
 		string, darling_windows_CFRangeMake(1, 3));
 	const auto unicode_substring = darling_windows_CFStringCreateWithSubstring(
@@ -757,7 +760,7 @@ int main()
 	if (!dictionary_hash_ok || !set_hash_ok) return 1;
 	std::cout << "DARWIN_COREF_FOUNDATION=\"" <<
 		(string_ok && formatted_string_ok && substring_ok && string_match_ok && string_find_ok && equal_ok && semantic_lookup_ok && collection_equal_ok && array_search_ok && data_ok && data_slice_ok && array_ok && array_values_ok && number_ok && real_number_ok && number_conversion_ok && dictionary_ok && dictionary_values_ok && set_ok && set_values_ok && date_url_ok && url_xml_ok && scalar_ok && runloop_ok && callback_ok && timer_ok && drain_sources_ok && notification_ok && delivered && plist_ok && array_plist_ok && data_plist_ok && date_plist_ok && real_plist_ok && escaping_ok && plist_parse_ok && plist_dict_parse_ok && plist_data_parse_ok && plist_date_parse_ok && plist_fractional_date_ok && plist_offset_date_ok && binary_plist_ok && binary_dictionary_ok && binary_utf16_ok && binary_extended_ok && binary_data_ok && binary_date_ok && binary_real_ok && binary_uid_ok && mutable_array_ok && mutable_dictionary_ok && mutable_set_ok && mutable_data_ok ? "PASS" : "FAIL") << "\n";
-	if (!string_number_ok || !utf16_characters_ok || !utf16_character_at_index_ok || !backwards_find_ok) return 1;
+	if (!string_number_ok || !utf16_characters_ok || !utf16_character_at_index_ok || !backwards_find_ok || !unicode_find_range_ok) return 1;
 	if (!identity_ok) return 1;
 	if (!bytes_string_ok) return 1;
 	if (!url_extension_ok) return 1;

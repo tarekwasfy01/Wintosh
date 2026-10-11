@@ -61,6 +61,8 @@ following families with Windows-backed implementations:
   the currently mapped stable messages and unknown values return `nullptr`.
 - BSD/Darwin `fnmatch` is now available with `*`, `?`, bracket classes,
   pathname boundaries, leading-period handling, and escaped-character support.
+- The companion path helpers `basename` and `dirname` now provide bounded
+  POSIX-style slash/root/empty-path decomposition through the host resolver.
 - Legacy BSD IPv4 conversion helpers `inet_addr`, `inet_aton`, and
   `inet_network` are now Windows-backed and host-symbol-resolvable, including
   invalid-input handling and network-byte-order coverage.

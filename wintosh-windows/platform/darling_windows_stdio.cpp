@@ -6077,6 +6077,12 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 	if (std::strcmp(name, "_fnmatch") == 0 || std::strcmp(name, "fnmatch") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_fnmatch);
 	}
+	if (std::strcmp(name, "_basename") == 0 || std::strcmp(name, "basename") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_basename);
+	}
+	if (std::strcmp(name, "_dirname") == 0 || std::strcmp(name, "dirname") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_dirname);
+	}
 	if (std::strcmp(name, "strerrorname_np") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_strerrorname_np);
 	}
@@ -8898,6 +8904,33 @@ extern "C" int darling_windows_fnmatch(const char* pattern, const char* value, i
 {
 	if (pattern == nullptr || value == nullptr) return 1;
 	return DarlingFnmatchImpl(pattern, value, flags, true) ? 0 : 1;
+}
+
+extern "C" char* darling_windows_basename(const char* path)
+{
+	static thread_local std::string result;
+	if (path == nullptr || path[0] == '\0') { result = "."; return result.data(); }
+	result = path;
+	while (result.size() > 1 && result.back() == '/') result.pop_back();
+	const auto separator = result.find_last_of('/');
+	if (separator != std::string::npos) result.erase(0, separator + 1);
+	if (result.empty()) result = "/";
+	return result.data();
+}
+
+extern "C" char* darling_windows_dirname(const char* path)
+{
+	static thread_local std::string result;
+	if (path == nullptr || path[0] == '\0') { result = "."; return result.data(); }
+	result = path;
+	while (result.size() > 1 && result.back() == '/') result.pop_back();
+	const auto separator = result.find_last_of('/');
+	if (separator == std::string::npos) result = ".";
+	else {
+		result.resize(separator == 0 ? 1 : separator);
+		while (result.size() > 1 && result.back() == '/') result.pop_back();
+	}
+	return result.data();
 }
 
 extern "C" const char* darling_windows_strsignal(int signal_number)

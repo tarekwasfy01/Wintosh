@@ -922,6 +922,16 @@ int main()
 		std::cerr << "HOST_API_SMOKE_ERROR=fnmatch\n";
 		return 1;
 	}
+	const bool path_split_ok = std::strcmp(darling_windows_basename("/tmp/darling/app.bin"), "app.bin") == 0 &&
+		std::strcmp(darling_windows_dirname("/tmp/darling/app.bin"), "/tmp/darling") == 0 &&
+		std::strcmp(darling_windows_basename("/"), "/") == 0 &&
+		std::strcmp(darling_windows_dirname("app.bin"), ".") == 0 &&
+		std::strcmp(darling_windows_basename(nullptr), ".") == 0 &&
+		darling_windows_host_symbol("basename") != 0 && darling_windows_host_symbol("dirname") != 0;
+	if (!path_split_ok) {
+		std::cerr << "HOST_API_SMOKE_ERROR=path_split\n";
+		return 1;
+	}
 	IN_ADDR legacy_ipv4{};
 	const bool legacy_inet_ok = darling_windows_inet_addr("127.0.0.1") == htonl(0x7f000001u) &&
 		darling_windows_inet_aton("192.0.2.17", &legacy_ipv4) == 1 &&

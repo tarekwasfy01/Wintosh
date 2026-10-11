@@ -614,5 +614,7 @@ extern "C" int darling_windows_strerror_r(int error_number, char* buffer, std::s
 extern "C" const char* darling_windows_strerrorname_np(int error_number);
 extern "C" const char* darling_windows_strerrordesc_np(int error_number);
 extern "C" int darling_windows_fnmatch(const char* pattern, const char* value, int flags);
+extern "C" char* darling_windows_basename(const char* path);
+extern "C" char* darling_windows_dirname(const char* path);
 extern "C" const char* darling_windows_strsignal(int signal_number);
 extern "C" int darling_windows_host_entry(int argc, char** argv, char** envp);

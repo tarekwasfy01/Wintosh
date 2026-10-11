@@ -103,6 +103,9 @@ foreign allocator ownership.
 identifier for stable CoreServices string conversion.
 `CFStringGetMaximumSizeForEncoding` now provides conservative overflow-safe
 UTF-8/ASCII buffer bounds for CoreFoundation clients.
+`CFStringGetMaximumSizeOfFileSystemRepresentation` and
+`CFStringGetFileSystemRepresentation` now provide bounded NUL-terminated path
+conversion for LaunchServices-style callers.
 `CFStringCreateMutableCopy` now returns an independent mutable string; its
 capacity argument is treated as a non-binding reservation hint on Windows.
 `CFStringCreateMutable` now creates an empty mutable string with the same

@@ -810,6 +810,24 @@ extern "C" darling_windows_CFIndex darling_windows_CFStringGetMaximumSizeForEnco
 	return length > maximum / multiplier ? maximum : length * multiplier;
 }
 
+extern "C" darling_windows_CFIndex darling_windows_CFStringGetMaximumSizeOfFileSystemRepresentation(
+	darling_windows_CFStringRef value)
+{
+	const auto* object = static_cast<const Object*>(value);
+	if (object == nullptr || object->kind != Kind::String) return 0;
+	return static_cast<darling_windows_CFIndex>(object->string.size() + 1);
+}
+
+extern "C" bool darling_windows_CFStringGetFileSystemRepresentation(
+	darling_windows_CFStringRef value, unsigned char* buffer, darling_windows_CFIndex buffer_capacity)
+{
+	const auto* object = static_cast<const Object*>(value);
+	if (object == nullptr || object->kind != Kind::String || buffer == nullptr || buffer_capacity <= 0 ||
+		object->string.size() + 1 > static_cast<std::size_t>(buffer_capacity)) return false;
+	std::memcpy(buffer, object->string.c_str(), object->string.size() + 1);
+	return true;
+}
+
 extern "C" bool darling_windows_CFStringGetCharacters(
 	darling_windows_CFStringRef value, darling_windows_CFRange range, std::uint16_t* output)
 {

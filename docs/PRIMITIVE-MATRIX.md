@@ -649,7 +649,8 @@ Managed task ports also support `mach_port_extract_right` for `COPY_SEND` and
 The smoke test verifies both postconditions independently. Other right types are rejected because a task port is not a receive or
 send-once object in this adapter.
 Task-port send references are now counted: copy extraction increments the
-count, while deallocation/modification consumes one reference at a time.
+count, while deallocation/modification consumes one reference at a time;
+`mod_refs(-1)` is allowed to remove the final reference.
 The public disposition constants now use the Darwin values for
 `MOVE_SEND(17)`, `MOVE_SEND_ONCE(18)`, `MAKE_SEND(20)`, and
 `MAKE_SEND_ONCE(21)` instead of the earlier adapter-local substitutions; this

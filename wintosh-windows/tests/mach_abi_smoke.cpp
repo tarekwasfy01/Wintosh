@@ -262,6 +262,15 @@ int main()
 				darling_windows_task_info(moved, darling_task_basic_info_flavor,
 					&info, &info_count) != 0;
 		}(released_task) &&
+		[task, &child] (darling_mach_port_name_t) {
+			darling_mach_port_name_t modded = 0;
+			if (darling_windows_task_for_pid(darling_windows_mach_host_self(),
+				child.dwProcessId, &modded) != 0 || modded == 0) return false;
+			std::uint32_t type = darling_mach_port_type_none;
+			return darling_windows_mach_port_mod_refs(task, modded,
+				darling_mach_port_type_send, -1) == 0 &&
+				darling_windows_mach_port_type(task, modded, &type) != 0;
+		}(released_task) &&
 		darling_windows_mach_port_deallocate(task, released_task) == 0 &&
 		darling_windows_mach_port_deallocate(task, released_task) == 0;
 	darling_task_basic_info released_info{};

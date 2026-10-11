@@ -1846,8 +1846,13 @@ extern "C" darling_kern_return_t darling_windows_mach_port_mod_refs(
 		auto found = task_port_send_refs.find(name);
 		if (found == task_port_send_refs.end()) return 3;
 		const auto updated = static_cast<std::int64_t>(found->second) + delta;
-		if (updated <= 0 || updated > static_cast<std::int64_t>((std::numeric_limits<std::uint32_t>::max)())) return 4;
-		found->second = static_cast<std::uint32_t>(updated);
+		if (updated < 0 || updated > static_cast<std::int64_t>((std::numeric_limits<std::uint32_t>::max)())) return 4;
+		if (updated == 0) {
+			task_ports.erase(name);
+			task_port_send_refs.erase(found);
+		} else {
+			found->second = static_cast<std::uint32_t>(updated);
+		}
 		return 0;
 	}
 	const auto port = FindPort(name);

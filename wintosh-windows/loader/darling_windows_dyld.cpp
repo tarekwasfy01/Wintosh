@@ -28,6 +28,15 @@ void AddCandidate(std::vector<std::filesystem::path>& candidates,
 	candidates.push_back(candidate.lexically_normal());
 }
 
+void AddFrameworkCandidates(std::vector<std::filesystem::path>& candidates,
+	const std::filesystem::path& root, const std::string& name)
+{
+	AddCandidate(candidates, root / name);
+	if (name.find('/') == std::string::npos &&
+		std::filesystem::path(name).extension().empty())
+		AddCandidate(candidates, root / (name + ".framework") / name);
+}
+
 std::filesystem::path ExpandRPath(const std::filesystem::path& image_directory,
 	const std::filesystem::path& executable_directory,
 	const std::filesystem::path& rpath)
@@ -179,18 +188,28 @@ std::filesystem::path DylibResolver::Resolve(
 		for (const auto& rpath : effective_rpaths) {
 			const auto expanded = ExpandRPath(image_directory,
 				executable_directory, rpath) / suffix;
-			AddCandidate(candidates, expanded);
+			AddFrameworkCandidates(candidates, expanded.parent_path(),
+				expanded.filename().string());
 		}
 	} else if (dependency.rfind(loader_token + "/", 0) == 0) {
-		AddCandidate(candidates, image_directory / dependency.substr(loader_token.size() + 1));
+		AddFrameworkCandidates(candidates, image_directory,
+			dependency.substr(loader_token.size() + 1));
 	} else if (dependency.rfind(executable_token + "/", 0) == 0) {
-		AddCandidate(candidates, executable_directory / dependency.substr(executable_token.size() + 1));
+		AddFrameworkCandidates(candidates, executable_directory,
+			dependency.substr(executable_token.size() + 1));
 	} else if (!dependency.empty() && dependency.front() == '/') {
-		AddCandidate(candidates, prefix / dependency.substr(1));
+		const auto rooted = dependency.substr(1);
+		const auto rooted_path = std::filesystem::path(rooted);
+		if (rooted_path.parent_path().filename() == "Frameworks")
+			AddFrameworkCandidates(candidates, prefix / rooted_path.parent_path(),
+				rooted_path.filename().string());
+		else
+			AddCandidate(candidates, prefix / rooted);
 	} else {
 		AddCandidate(candidates, image_directory / dependency);
 		AddCandidate(candidates, prefix / "usr" / "lib" / dependency);
-		AddCandidate(candidates, prefix / "System" / "Library" / "Frameworks" / dependency);
+		AddFrameworkCandidates(candidates,
+			prefix / "System" / "Library" / "Frameworks", dependency);
 	}
 
 	for (const auto& candidate : candidates) {
@@ -549,6 +568,13 @@ std::uintptr_t DynamicImageSymbol(const DarwinDynamicImage& image, const char* n
 			return address;
 	}
 	return 0;
+}
+
+int DynamicImageExecuteEntry(const DarwinDynamicImage& image,
+	const std::vector<std::string>& arguments,
+	const std::vector<std::string>& environment)
+{
+	return image.image.ExecuteEntry(image.mapping, arguments, environment);
 }
 
 const std::filesystem::path& DynamicImagePath(const DarwinDynamicImage& image) noexcept

@@ -11,12 +11,14 @@
 
 #include <windows.h>
 
+#include <cctype>
 #include <filesystem>
 #include <cwchar>
 #include <iostream>
 #include <limits>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -54,6 +56,39 @@ std::vector<std::string> Environment()
 	}
 	FreeEnvironmentStringsW(block);
 	return result;
+}
+
+void AddDarwinLibraryPaths(const std::vector<std::string>& environment,
+	std::vector<std::filesystem::path>& rpaths)
+{
+	const auto append = [&environment, &rpaths](std::string_view prefix) {
+		for (const auto& entry : environment) {
+			if (entry.rfind(prefix, 0) != 0)
+				continue;
+		std::size_t begin = prefix.size();
+		while (begin <= entry.size()) {
+			const auto semicolon = entry.find(';', begin);
+			std::size_t end = semicolon;
+			if (end == std::string::npos) {
+				end = entry.find(':', begin);
+				if (end == begin + 1 && std::isalpha(
+					static_cast<unsigned char>(entry[begin])) != 0)
+					end = entry.find(':', end + 1);
+			}
+			const auto value = entry.substr(begin,
+				end == std::string::npos ? std::string::npos : end - begin);
+			if (!value.empty())
+				rpaths.emplace_back(value);
+			if (end == std::string::npos)
+				break;
+			begin = end + 1;
+		}
+		}
+	};
+	append("DYLD_LIBRARY_PATH=");
+	append("DYLD_FRAMEWORK_PATH=");
+	append("DYLD_FALLBACK_LIBRARY_PATH=");
+	append("DYLD_FALLBACK_FRAMEWORK_PATH=");
 }
 
 void Usage()
@@ -112,6 +147,7 @@ int wmain(int argc, wchar_t** argv)
 	try {
 		darling::windows_host::DarwinLaunchOptions options;
 		options.environment = Environment();
+		AddDarwinLibraryPaths(options.environment, options.rpaths);
 		std::filesystem::path image;
 		bool inspect = false;
 		bool end_options = false;

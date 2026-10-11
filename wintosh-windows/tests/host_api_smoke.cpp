@@ -194,6 +194,19 @@ namespace {
 
 int main()
 {
+	const bool stack_protector_symbols =
+		darling_windows_host_symbol("__stack_chk_fail") != 0 &&
+		darling_windows_host_symbol("___stack_chk_fail") != 0 &&
+		darling_windows_host_symbol("___stack_chk_fail_local") != 0 &&
+		darling_windows_host_symbol("__stack_chk_guard") != 0 &&
+		darling_windows_host_symbol("___stack_chk_guard") != 0 &&
+		darling_windows_host_symbol("___cxa_guard_acquire") != 0 &&
+		darling_windows_host_symbol("___cxa_guard_release") != 0 &&
+		darling_windows_host_symbol("___cxa_guard_abort") != 0;
+	std::cout << "DARWIN_STACK_PROTECTOR_SYMBOLS=" <<
+		(stack_protector_symbols ? "PASS" : "FAIL") << "\n";
+	if (!stack_protector_symbols)
+		return 1;
 	const bool normalized_libc_symbols =
 		darling_windows_host_symbol("malloc") != 0 &&
 		darling_windows_host_symbol("calloc") != 0 &&

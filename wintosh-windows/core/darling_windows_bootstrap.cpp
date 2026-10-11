@@ -282,6 +282,7 @@ int DarwinBootstrap::Run(const std::filesystem::path& image_path,
 			provider.image.ApplyLazyBindActions(provider.mapping, resolved);
 			provider.image.ApplyChainedFixups(provider.mapping, resolved);
 		}
+		provider.image.ApplyIndirectImportBindings(provider.mapping, resolved);
 		provider.image.ExecuteInitializers(provider.mapping);
 		RegisterObjectiveCSections(provider.image, provider.mapping);
 	}
@@ -308,6 +309,7 @@ int DarwinBootstrap::Run(const std::filesystem::path& image_path,
 		image.ApplyLazyBindActions(mapping, resolved);
 		image.ApplyChainedFixups(mapping, resolved);
 	}
+	image.ApplyIndirectImportBindings(mapping, resolved);
 	image.ExecuteInitializers(mapping);
 	RegisterObjectiveCSections(image, mapping);
 	const auto exit_code = image.ExecuteEntry(mapping, options.arguments, options.environment);

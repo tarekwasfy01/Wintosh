@@ -4409,10 +4409,60 @@ extern "C" int darling_windows_msync(void* address, std::size_t length,
 	return 0;
 }
 
+extern "C" std::uintptr_t darling_windows_stack_chk_guard =
+	static_cast<std::uintptr_t>(0x9e3779b97f4a7c15ULL);
+
+extern "C" int darling_windows_cxa_guard_acquire(std::uint64_t* guard)
+{
+	if (guard == nullptr)
+		return 0;
+	std::atomic_ref<std::uint64_t> state(*guard);
+	if ((state.load(std::memory_order_acquire) & 1u) != 0)
+		return 0;
+	std::uint64_t expected = 0;
+	return state.compare_exchange_strong(expected, 2u,
+		std::memory_order_acquire, std::memory_order_relaxed) ? 1 : 0;
+}
+
+extern "C" void darling_windows_cxa_guard_release(std::uint64_t* guard)
+{
+	if (guard != nullptr)
+		std::atomic_ref<std::uint64_t>(*guard).store(1u, std::memory_order_release);
+}
+
+extern "C" void darling_windows_cxa_guard_abort(std::uint64_t* guard)
+{
+	if (guard != nullptr)
+		std::atomic_ref<std::uint64_t>(*guard).store(0u, std::memory_order_release);
+}
+
+extern "C" __declspec(noreturn) void darling_windows_stack_chk_fail()
+{
+	std::abort();
+}
+
 extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 {
 	if (name == nullptr) {
 		return 0;
+	}
+	if (std::strcmp(name, "__stack_chk_fail") == 0 ||
+		std::strcmp(name, "___stack_chk_fail") == 0 ||
+		std::strcmp(name, "___stack_chk_fail_local") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_stack_chk_fail);
+	}
+	if (std::strcmp(name, "__stack_chk_guard") == 0 ||
+		std::strcmp(name, "___stack_chk_guard") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_stack_chk_guard);
+	}
+	if (std::strcmp(name, "___cxa_guard_acquire") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_cxa_guard_acquire);
+	}
+	if (std::strcmp(name, "___cxa_guard_release") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_cxa_guard_release);
+	}
+	if (std::strcmp(name, "___cxa_guard_abort") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_cxa_guard_abort);
 	}
 	if (std::strcmp(name, "_errno") == 0 ||
 		std::strcmp(name, "___error") == 0) {

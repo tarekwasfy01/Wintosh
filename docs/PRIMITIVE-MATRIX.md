@@ -690,6 +690,67 @@ Usage and provenance boundaries for both scripts are documented in
 The registry also enforces a per-routine maximum reply size, so generated or
 hand-written handlers cannot emit an unbounded response through the broker.
 
+The Win32 Release configuration also compiles successfully and passes all 43
+CTest entries. Its dedicated 32-bit Mach-O indirect-import fixture reports
+`MACHO_INDIRECT_IMPORT_BIND_32=PASS`; only executable-code indirect calls and
+the complete 32-bit dyld startup ABI remain architecture-specific gaps. The
+native i386 executable-memory primitive itself reports
+`INDIRECT_CALL_ABI_32=PASS`.
+
+The dedicated `macho_entry32_smoke` also reports `MACHO_ENTRY_32=PASS` on
+Win32, covering an i386 `LC_UNIXTHREAD` entry and argument/environment vector
+call. Dependency loading, libSystem startup, and framework initialization are
+still outside this fixture.
+
+The `dyld_graph32_smoke` fixture also reports `DYLD_GRAPH_32=PASS`, proving
+that the 32-bit dependency graph resolves an `@loader_path` provider. Symbol
+binding through that provider and dependent-entry execution remain open.
+
+The dedicated `dyld_bind32_smoke` fixture now reports `DYLD_BIND_32=PASS` for
+an undefined `_probe` import resolved from a 32-bit provider Dylib. Executing
+the dependent image through that resolved provider address remains separate.
+The same fixture now reports `DYLD_PROVIDER_ENTRY_32=PASS`, proving that the
+resolved provider address reaches executable mapped i386 code. The dependent
+main-image slot and entry call remain separate gates.
+
+The same fixture now also reports `DYLD_DEPENDENT_SLOT_CALL_32=PASS`, proving
+an i386 dependent call through the patched provider slot. This is the
+bind-to-call ABI proof; full main-image Mach-O section integration remains a
+separate gate.
+The same fixture now also reports `DYLD_LOADER_SLOT_PATCH_32=PASS`: the
+32-bit main image contains a real `__la_symbol_ptr` section, is opened through
+`OpenDynamicImage`, and its mapped indirect slot matches the resolved provider
+address. Executing that loader-prepared main image through its Mach-O entry,
+plus Darwin startup, remains open.
+The same fixture now reports `DYLD_LOADER_MAIN_ENTRY_32=PASS`: after the
+loader resolves dependencies and patches the main-image slot, the i386
+`LC_UNIXTHREAD` entry executes successfully through
+`DynamicImageExecuteEntry`. libSystem initialization and full Darwin process
+startup remain open. The fixture validates both `argc` and the first `envp`
+string byte.
+The production `DarwinBootstrap::Run` path now applies `LC_DYSYMTAB`
+indirect-import bindings for both providers and the main image, so the CLI
+bootstrap uses the same indirect-slot operation as the loader fixture.
+The resolver also expands the conventional `@rpath/Foundation` shorthand to
+`Foundation.framework/Foundation`; `DYLD_FRAMEWORK_SHORTHAND=PASS` is covered
+by the dyld smoke fixture. The same expansion is now applied consistently to
+`@loader_path` and `@executable_path` references.
+Absolute `/System/Library/Frameworks/<Name>` references receive the same
+bundle-executable fallback under the configured Wintosh prefix.
+The dyld fixture reports `DYLD_ABSOLUTE_FRAMEWORK=PASS` for this direct
+absolute-install-name form.
+The CLI now imports semicolon-separated `DYLD_LIBRARY_PATH` entries into the
+resolver search paths in addition to explicit `--rpath` values.
+Colon-separated Darwin lists are accepted as well, while a leading Windows
+drive-letter colon is preserved.
+`DYLD_FALLBACK_LIBRARY_PATH` is also accepted after the primary library path.
+Framework-specific `DYLD_FRAMEWORK_PATH` and
+`DYLD_FALLBACK_FRAMEWORK_PATH` entries are accepted through the same resolver
+path list.
+The dyld smoke now launches the real `wintosh.exe` with only the temporary
+provider directory in `DYLD_LIBRARY_PATH`; `DYLD_CLI_LIBRARY_PATH=PASS`
+confirms the CLI-to-resolver-to-entry path.
+
 The current local Release verification snapshot is `43/43` CTest tests
 passing. The added `wintosh_indirect_call_smoke` reports
 `INDIRECT_CALL_ABI=PASS` for a native Windows x64 executable-memory indirect

@@ -15,6 +15,7 @@
 #include <fstream>
 #include <iostream>
 #include <iterator>
+#include <string>
 #include <vector>
 
 namespace {
@@ -455,6 +456,25 @@ int wmain()
 		}
 		std::cout << "DYLD_EXECUTABLE_PATH=PASS\n";
 		{
+			const auto framework = root / "Frameworks" / "Foundation.framework" / "Foundation";
+			std::filesystem::create_directories(framework.parent_path());
+			WriteMachO(framework, nullptr, true, false);
+			const auto shorthand = darling::windows_host::DylibResolver::Resolve(
+				image, "@rpath/Foundation", {root / "Frameworks"}, root);
+			if (shorthand != framework)
+				throw std::runtime_error("framework shorthand did not resolve bundle executable");
+			const auto system_framework = root / "System" / "Library" / "Frameworks" /
+				"Foundation.framework" / "Foundation";
+			std::filesystem::create_directories(system_framework.parent_path());
+			WriteMachO(system_framework, nullptr, true, false);
+			const auto absolute_framework = darling::windows_host::DylibResolver::Resolve(
+				image, "/System/Library/Frameworks/Foundation", {}, root);
+			if (absolute_framework != system_framework)
+				throw std::runtime_error("absolute framework shorthand did not resolve");
+		}
+		std::cout << "DYLD_FRAMEWORK_SHORTHAND=PASS\n";
+		std::cout << "DYLD_ABSOLUTE_FRAMEWORK=PASS\n";
+		{
 			const auto app_image = darling::windows_host::MachOImage::Open(image.wstring());
 			const auto library_image = darling::windows_host::MachOImage::Open(library.wstring());
 			if (app_image.UndefinedSymbols().size() != 1 ||
@@ -517,6 +537,37 @@ int wmain()
 			}
 			std::cout << "DARWIN_BOOTSTRAP=PASS\n";
 			std::cout << "DARWIN_BOUND_ENTRY=PASS\n";
+			{
+				wchar_t executable[MAX_PATH]{};
+				const auto executable_length = GetModuleFileNameW(nullptr,
+					executable, MAX_PATH);
+				if (executable_length == 0 || executable_length >= MAX_PATH)
+					throw std::runtime_error("cannot locate dyld smoke executable");
+				const auto runner = std::filesystem::path(executable,
+					executable + executable_length).parent_path() / L"wintosh.exe";
+				std::wstring command_line = L"\"" + runner.wstring() + L"\" \"" +
+					image.wstring() + L"\" one two";
+				std::vector<wchar_t> command(command_line.begin(), command_line.end());
+				command.push_back(L'\0');
+				SetEnvironmentVariableW(L"DYLD_LIBRARY_PATH",
+					(root / "usr" / "lib").wstring().c_str());
+				STARTUPINFOW startup{};
+				startup.cb = sizeof(startup);
+				PROCESS_INFORMATION process{};
+				const auto started = CreateProcessW(nullptr, command.data(), nullptr,
+					nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &startup, &process);
+				DWORD status = 1;
+				if (started != FALSE) {
+					CloseHandle(process.hThread);
+					WaitForSingleObject(process.hProcess, 5000);
+					GetExitCodeProcess(process.hProcess, &status);
+					CloseHandle(process.hProcess);
+				}
+				SetEnvironmentVariableW(L"DYLD_LIBRARY_PATH", nullptr);
+				if (started == FALSE || status != 3)
+					throw std::runtime_error("CLI DYLD_LIBRARY_PATH launch failed");
+			}
+			std::cout << "DYLD_CLI_LIBRARY_PATH=PASS\n";
 			const auto imported_entry_image = app / "ImportedEntry";
 			WriteMachO(imported_entry_image,
 				"@loader_path/../../../../usr/lib/libSystem.B.dylib", false, true,

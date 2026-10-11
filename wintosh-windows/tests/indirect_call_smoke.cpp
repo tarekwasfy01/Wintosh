@@ -19,6 +19,24 @@ extern "C" std::int32_t Probe()
 
 int main()
 {
+#if !defined(_WIN64)
+	// mov eax,37; ret — native i386 executable-memory ABI smoke.
+	constexpr std::uint8_t code32[] = {0xb8, 0x25, 0x00, 0x00, 0x00, 0xc3};
+	auto* executable = static_cast<std::uint8_t*>(VirtualAlloc(
+		nullptr, 4096, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+	if (executable == nullptr) return 2;
+	std::memcpy(executable, code32, sizeof(code32));
+	DWORD old_protection = 0;
+	const bool executable_protection = VirtualProtect(
+		executable, 4096, PAGE_EXECUTE_READ, &old_protection) != FALSE;
+	FlushInstructionCache(GetCurrentProcess(), executable, 4096);
+	const auto result = executable_protection ?
+		reinterpret_cast<std::int32_t (*)()>(executable)() : -1;
+	VirtualFree(executable, 0, MEM_RELEASE);
+	const bool ok = executable_protection && result == 37;
+	std::cout << "INDIRECT_CALL_ABI_32=" << (ok ? "PASS" : "FAIL") << "\n";
+	return ok ? 0 : 1;
+#else
 	// sub rsp,28h; mov rax,[rip+1]; call rax; add rsp,28h; ret
 	// followed by the 64-bit slot containing Probe's address.
 	constexpr std::uint8_t code[] = {
@@ -43,4 +61,5 @@ int main()
 	const bool ok = executable_protection && result == 37;
 	std::cout << "INDIRECT_CALL_ABI=" << (ok ? "PASS" : "FAIL") << "\n";
 	return ok ? 0 : 1;
+#endif
 }

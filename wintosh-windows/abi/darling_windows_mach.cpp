@@ -55,7 +55,8 @@ bool ReadableRange(const void* address, std::size_t bytes)
 			protection != PAGE_EXECUTE_READWRITE && protection != PAGE_EXECUTE_WRITECOPY)
 			return false;
 		const auto region_begin = reinterpret_cast<std::uintptr_t>(information.BaseAddress);
-		const auto region_end = region_begin + information.RegionSize;
+		const auto region_end = region_begin +
+			static_cast<std::uintptr_t>(information.RegionSize);
 		if (region_end <= cursor) return false;
 		cursor = (std::min)(region_end, end);
 	}

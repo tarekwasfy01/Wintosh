@@ -4458,3 +4458,62 @@ The same fixture now also covers an unresolved weak indirect import and
 verifies that its slot is nulled while the required import remains bound.
 
 No Git commit, GitHub push, or release was performed in this snapshot.
+
+The Win32 Release configuration now also compiles successfully and its full
+43-test CTest matrix passes. A dedicated 32-bit Mach-O fixture now reports
+`MACHO_INDIRECT_IMPORT_BIND_32=PASS`, covering 32-bit table parsing, slot
+discovery, mapping, and pointer writeback. The executable-code indirect-call
+fixture now has a native i386 counterpart reporting
+`INDIRECT_CALL_ABI_32=PASS`; full 32-bit dyld startup and Mach-O entry-frame
+ABI remain open.
+The separate `macho_entry32_smoke` fixture now reports
+`MACHO_ENTRY_32=PASS`, proving a real i386 `LC_UNIXTHREAD` entry mapping and
+`argc/argv/envp` call on the native Win32 host. Full 32-bit dyld dependency
+startup and framework initialization remain open.
+The new `dyld_graph32_smoke` fixture reports `DYLD_GRAPH_32=PASS` for a
+32-bit executable with an `@loader_path` provider dependency; provider symbol
+binding and dependent-entry execution remain separate gates.
+The new `dyld_bind32_smoke` fixture reports `DYLD_BIND_32=PASS`: a 32-bit
+main image's `_probe` import resolves to the exported `_probe` symbol in its
+32-bit provider Dylib. Executing the dependent image through that resolved
+provider address remains the next integration gate.
+The same fixture now emits `DYLD_PROVIDER_ENTRY_32=PASS`: the resolved
+provider value points into mapped i386 provider code and that code executes
+successfully. Main-image indirect-slot patching and dependent-main entry
+execution remain separate integration steps.
+The fixture now also emits `DYLD_DEPENDENT_SLOT_CALL_32=PASS`: an i386
+dependent stub calls the mapped provider exclusively through a patched import
+slot. This proves the bind-to-call ABI chain; full main-image Mach-O section
+integration and Darwin startup remain open.
+The fixture now also emits `DYLD_LOADER_SLOT_PATCH_32=PASS`: the 32-bit main
+image contains a real `__la_symbol_ptr` section, is opened through
+`OpenDynamicImage`, and its mapped indirect slot matches the resolved provider
+address. Executing that loader-prepared main image through its Mach-O entry,
+plus Darwin startup, remains open.
+The same fixture now emits `DYLD_LOADER_MAIN_ENTRY_32=PASS`: after the loader
+has resolved dependencies and patched the main-image slot, the i386
+`LC_UNIXTHREAD` entry executes successfully through `DynamicImageExecuteEntry`.
+The fixture validates both `argc` and the first `envp` string byte. libSystem
+initialization and full Darwin process startup remain open.
+The production `DarwinBootstrap::Run` path now applies `LC_DYSYMTAB`
+indirect-import bindings for both providers and the main image, so the CLI
+bootstrap no longer stops at parser-only indirect-slot support.
+The resolver also expands the conventional `@rpath/Foundation` shorthand to
+`Foundation.framework/Foundation`; `DYLD_FRAMEWORK_SHORTHAND=PASS` is covered
+by the dyld smoke fixture. The same expansion is now applied consistently to
+`@loader_path` and `@executable_path` references.
+Absolute `/System/Library/Frameworks/<Name>` references receive the same
+bundle-executable fallback under the configured Wintosh prefix.
+The dyld fixture reports `DYLD_ABSOLUTE_FRAMEWORK=PASS` for this direct
+absolute-install-name form.
+The CLI now imports semicolon-separated `DYLD_LIBRARY_PATH` entries into the
+resolver search paths in addition to explicit `--rpath` values.
+Colon-separated Darwin lists are accepted as well, while a leading Windows
+drive-letter colon is preserved.
+`DYLD_FALLBACK_LIBRARY_PATH` is also accepted after the primary library path.
+Framework-specific `DYLD_FRAMEWORK_PATH` and
+`DYLD_FALLBACK_FRAMEWORK_PATH` entries are accepted through the same resolver
+path list.
+The dyld smoke now launches the real `wintosh.exe` with only the temporary
+provider directory in `DYLD_LIBRARY_PATH`; `DYLD_CLI_LIBRARY_PATH=PASS`
+confirms the CLI-to-resolver-to-entry path.

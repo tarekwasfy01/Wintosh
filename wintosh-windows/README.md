@@ -79,7 +79,8 @@ floating-point, length modifiers, and general `printf` compatibility remain
 unsupported. The MSVC build remains fail-closed for real guest entry
 and is used only for explicitly marked synthetic fixtures. Clang CTest also
 generates and executes a temporary Mach-O that imports `_printf` and verifies
-the loader-to-bridge path.
+the loader's lazy-binding-to-bridge path. The legacy `dyld_stub_binder` callback
+is still fail-closed and is not claimed as fully emulated.
 
 The detailed build and evidence rules are in `../docs/BUILD-AND-TEST.md`.
 

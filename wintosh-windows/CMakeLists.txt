@@ -2,6 +2,20 @@ cmake_minimum_required(VERSION 3.20)
 
 project(wintosh-windows LANGUAGES CXX)
 
+if (WIN32 AND CMAKE_SIZEOF_VOID_P EQUAL 8)
+    enable_language(ASM_MASM)
+    set(WINTOSH_STARTUP_ASM
+        "${CMAKE_CURRENT_SOURCE_DIR}/runtime/darling_windows_startup_x64.asm")
+    set(WINTOSH_STARTUP_OBJ
+        "${CMAKE_CURRENT_BINARY_DIR}/darling_windows_startup_x64.obj")
+    add_custom_command(
+        OUTPUT "${WINTOSH_STARTUP_OBJ}"
+        COMMAND "${CMAKE_ASM_MASM_COMPILER}" /c /nologo
+            "/Fo${WINTOSH_STARTUP_OBJ}" "${WINTOSH_STARTUP_ASM}"
+        DEPENDS "${WINTOSH_STARTUP_ASM}"
+        VERBATIM)
+endif()
+
 enable_testing()
 
 set(CMAKE_CXX_STANDARD 20)
@@ -19,6 +33,9 @@ file(GLOB_RECURSE WINTOSH_HOST_SOURCES
     core/*.cpp platform/*.cpp abi/*.cpp loader/*.cpp runtime/*.cpp
     frameworks/*.cpp process/*.cpp
 )
+if (WIN32 AND CMAKE_SIZEOF_VOID_P EQUAL 8)
+    list(APPEND WINTOSH_HOST_SOURCES "${WINTOSH_STARTUP_OBJ}")
+endif()
 list(REMOVE_ITEM WINTOSH_HOST_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/core/darling_windows_broker.cpp"
 )
@@ -48,6 +65,7 @@ if (WIN32)
         add_test(NAME wintosh_${smoke_name}
             COMMAND wintosh_${smoke_name})
     endforeach()
+
 
     # These boundary tests intentionally exercise process-global state
     # (the CoreFoundation run loop and the signal registry). Keep them out of

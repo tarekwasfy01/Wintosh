@@ -156,10 +156,28 @@ int wmain()
 			bundle_queried = GetExitCodeProcess(bundle_process.hProcess, &bundle_status);
 			CloseHandle(bundle_process.hProcess);
 		}
+		const std::wstring bundle_run_command_line = L"\"" + runner.wstring() + L"\" \"" +
+			bundle.wstring() + L"\"";
+		auto bundle_run_command = CommandLine(bundle_run_command_line);
+		PROCESS_INFORMATION bundle_run_process{};
+		DWORD bundle_run_status = 1;
+		BOOL bundle_run_queried = FALSE;
+		if (CreateProcessW(nullptr, bundle_run_command.data(), nullptr, nullptr, FALSE,
+			CREATE_NO_WINDOW, nullptr, nullptr, &startup, &bundle_run_process) != FALSE) {
+			CloseHandle(bundle_run_process.hThread);
+			const DWORD bundle_run_wait = WaitForSingleObject(bundle_run_process.hProcess, 5000);
+			if (bundle_run_wait == WAIT_TIMEOUT) {
+				TerminateProcess(bundle_run_process.hProcess, 8);
+				WaitForSingleObject(bundle_run_process.hProcess, INFINITE);
+			}
+			bundle_run_queried = GetExitCodeProcess(bundle_run_process.hProcess, &bundle_run_status);
+			CloseHandle(bundle_run_process.hProcess);
+		}
 		std::filesystem::remove(image);
 		std::filesystem::remove_all(bundle);
 		return queried != FALSE && status == 3 && inspect_queried != FALSE && inspect_status == 0 &&
-			bundle_queried != FALSE && bundle_status == 0 ? 0 : 4;
+			bundle_queried != FALSE && bundle_status == 0 && bundle_run_queried != FALSE &&
+			bundle_run_status == 1 ? 0 : 4;
 	} catch (...) {
 		return 5;
 	}

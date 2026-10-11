@@ -61,6 +61,12 @@ filesystem, socket, terminal, and Windows host-boundary families.  This is a
 repository-wide regression result for the current Wintosh implementation, not
 a claim of full Darling or macOS compatibility.
 
+The runner smoke now executes a controlled `.app` bundle as well as inspecting
+it: the bundle path resolves to `Contents/MacOS/<bundle-name>`, its Mach-O
+entry receives the expected single argument, and the process returns exit code
+1.  This is a repository-owned bundle fixture; it does not prove arbitrary
+real-world application bundles or their Apple frameworks are runnable.
+
 The Objective-C/CoreFoundation tests verify class and selector registration,
 typed message-send bridges, blocks, Foundation values, run loops, and
 CoreFoundation collections.  They do not provide an Objective-C exception

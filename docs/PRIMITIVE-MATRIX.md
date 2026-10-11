@@ -919,6 +919,12 @@ This does not implement `fork`, copy-on-write, register/address-space cloning,
 or a second Mach namespace. Until those pieces exist, the primitive remains a
 controlled spawn operation and must not be advertised as fork compatibility.
 
+`Process::Suspend` and `Process::Resume` also control an already-running
+Windows child through the native process suspend APIs. The process smoke covers
+launch-suspended resume and running-process suspend/resume on x64 and Win32.
+This is a snapshot preparation primitive only; it does not clone or provide
+copy-on-write semantics for the suspended address space.
+
 The broker also exposes an atomic `CapabilityTransferBatch` operation. The
 client serializes the target session and complete broker-token list; the broker
 validates every current owner before changing any owner and moves associated

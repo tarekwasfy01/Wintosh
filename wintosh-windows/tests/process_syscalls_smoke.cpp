@@ -99,6 +99,14 @@ int wmain()
 			suspended_process.ExitCode() != 19) {
 			throw std::runtime_error("suspended Darwin child bootstrap failed");
 		}
+		auto controllable_process = darling::windows_host::Process::Launch(
+			L"C:\\Windows\\System32\\cmd.exe", L"cmd.exe /d /c exit 21");
+		if (!controllable_process.Valid() || controllable_process.Suspend() == static_cast<DWORD>(-1) ||
+			controllable_process.Resume() == static_cast<DWORD>(-1) ||
+			controllable_process.Wait(10000) != WAIT_OBJECT_0 ||
+			controllable_process.ExitCode() != 21) {
+			throw std::runtime_error("running Darwin child suspend/resume failed");
+		}
 		const char* spawn_arguments[] = {"cmd.exe", "/d", "/c", "exit 11", nullptr};
 		const char* any_child_arguments[] = {"cmd.exe", "/d", "/c", "exit 13", nullptr};
 		const char* any_wait4_arguments[] = {"cmd.exe", "/d", "/c", "exit 17", nullptr};

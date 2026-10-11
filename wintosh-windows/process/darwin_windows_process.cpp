@@ -192,10 +192,27 @@ DWORD Process::ProcessId() const noexcept
 	return m_process == nullptr ? 0 : GetProcessId(m_process);
 }
 
+DWORD Process::Suspend() noexcept
+{
+	if (m_process == nullptr)
+		return static_cast<DWORD>(-1);
+	using SuspendProcessFn = DWORD (WINAPI*)(HANDLE);
+	const auto suspend_process = reinterpret_cast<SuspendProcessFn>(
+		GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "NtSuspendProcess"));
+	if (suspend_process == nullptr)
+		return static_cast<DWORD>(-1);
+	return suspend_process(m_process);
+}
+
 DWORD Process::Resume() noexcept
 {
 	if (m_thread == nullptr) {
-		return static_cast<DWORD>(-1);
+		if (m_process == nullptr)
+			return static_cast<DWORD>(-1);
+		using ResumeProcessFn = DWORD (WINAPI*)(HANDLE);
+		const auto resume_process = reinterpret_cast<ResumeProcessFn>(
+			GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "NtResumeProcess"));
+		return resume_process == nullptr ? static_cast<DWORD>(-1) : resume_process(m_process);
 	}
 	const DWORD result = ResumeThread(m_thread);
 	if (result != static_cast<DWORD>(-1)) {

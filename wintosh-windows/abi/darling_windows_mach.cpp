@@ -1056,20 +1056,29 @@ extern "C" darling_kern_return_t darling_windows_thread_info(
 		}
 		if (flavor == darling_thread_sched_timeshare_info_flavor || flavor == darling_thread_sched_rr_info_flavor ||
 			flavor == darling_thread_sched_fifo_info_flavor) {
+			std::int32_t run_state = 1;
+			{
+				std::lock_guard lock(suspend_counts_mutex);
+				const auto found = suspend_counts.find(thread);
+				run_state = found != suspend_counts.end() && found->second != 0 ? 2 : 1;
+			}
 			const auto priority = GetThreadPriority(handle);
 			if (flavor == darling_thread_sched_timeshare_info_flavor) {
 				auto* result = static_cast<darling_thread_sched_timeshare_info*>(info);
 				result->max_priority = THREAD_PRIORITY_HIGHEST;
 				result->base_priority = priority;
 				result->current_priority = priority;
+				result->depressed = run_state == 2;
 			} else if (flavor == darling_thread_sched_rr_info_flavor) {
 				auto* result = static_cast<darling_thread_sched_rr_info*>(info);
 				result->max_priority = THREAD_PRIORITY_HIGHEST;
 				result->base_priority = priority;
+				result->depressed = run_state == 2;
 			} else {
 				auto* result = static_cast<darling_thread_sched_fifo_info*>(info);
 				result->max_priority = THREAD_PRIORITY_HIGHEST;
 				result->base_priority = priority;
+				result->depressed = run_state == 2;
 			}
 		} else if (flavor == darling_thread_extended_info_flavor) {
 			auto* result = static_cast<darling_thread_extended_info*>(info);
@@ -1081,6 +1090,11 @@ extern "C" darling_kern_return_t darling_windows_thread_info(
 			result->current_priority = GetThreadPriority(handle);
 			result->priority = result->current_priority;
 			result->max_priority = THREAD_PRIORITY_HIGHEST;
+			{
+				std::lock_guard lock(suspend_counts_mutex);
+				const auto found = suspend_counts.find(thread);
+				result->run_state = found != suspend_counts.end() && found->second != 0 ? 2 : 1;
+			}
 			char stored_name[sizeof(result->name)]{};
 			if (darling_windows_pthread_getname_np(thread, stored_name, sizeof(stored_name)) == 0)
 				std::memcpy(result->name, stored_name, sizeof(result->name));

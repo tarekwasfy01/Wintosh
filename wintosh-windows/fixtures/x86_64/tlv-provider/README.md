@@ -29,4 +29,7 @@ Inspect it with:
 ```
 
 This is a loader fixture, not proof that arbitrary Apple `libpthread` or
-Apple TLS code can already run.
+Apple TLS code can already run.  The generated `TLVClient.macho` is an
+executable companion with the same sections and a repository-owned entry
+point; running it through `wintosh.exe` currently returns exit code `0` after
+TLV initialization.

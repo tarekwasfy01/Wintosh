@@ -64,13 +64,14 @@ void WriteInitializerMachO(const std::filesystem::path& path)
 // Repository-owned metadata fixture for the Darwin TLV section family.  The
 // file deliberately contains no Apple object code or SDK data; it only gives
 // the loader real __thread_* section layouts to map and initialize.
-void WriteTLVProviderMachO(const std::filesystem::path& path)
+void WriteTLVProviderMachO(const std::filesystem::path& path, bool executable = false)
 {
 	using namespace darling::windows_host;
 	constexpr std::size_t section_count = 4;
-	const MachHeader64 header{MH_MAGIC_64, CPU_TYPE_X86_64, 3, MH_DYLIB, 1,
+	const MachHeader64 header{MH_MAGIC_64, CPU_TYPE_X86_64, 3,
+		executable ? MH_EXECUTE : MH_DYLIB, executable ? 2u : 1u,
 		static_cast<std::uint32_t>(sizeof(SegmentCommand64) +
-			section_count * sizeof(Section64)), 0, 0};
+			section_count * sizeof(Section64) + (executable ? sizeof(MainCommand) : 0)), 0, 0};
 	SegmentCommand64 segment{};
 	segment.header = {LC_SEGMENT_64, static_cast<std::uint32_t>(
 		sizeof(SegmentCommand64) + section_count * sizeof(Section64))};
@@ -79,8 +80,8 @@ void WriteTLVProviderMachO(const std::filesystem::path& path)
 	segment.vm_size = 0x1000;
 	segment.file_offset = 0;
 	segment.file_size = 0x1000;
-	segment.max_protection = 3;
-	segment.initial_protection = 3;
+	segment.max_protection = executable ? 7 : 3;
+	segment.initial_protection = executable ? 7 : 3;
 	segment.section_count = static_cast<std::uint32_t>(section_count);
 	const auto make_section = [](const char* name, std::uint64_t address,
 		std::uint64_t size, std::uint32_t offset, std::uint32_t type) {
@@ -107,6 +108,18 @@ void WriteTLVProviderMachO(const std::filesystem::path& path)
 	std::memcpy(bytes.data() + sizeof(header), &segment, sizeof(segment));
 	std::memcpy(bytes.data() + sizeof(header) + sizeof(segment), sections,
 		sizeof(sections));
+	if (executable) {
+		MainCommand main{};
+		main.header = {LC_MAIN, static_cast<std::uint32_t>(sizeof(main))};
+		main.entry_offset = 0x300;
+		std::memcpy(bytes.data() + sizeof(header) + sizeof(segment) +
+			section_count * sizeof(Section64), &main, sizeof(main));
+		// xor eax,eax; ret -- the loader still performs full TLV section
+		// initialization before this repository-owned entry is reached.
+		bytes[0x300] = 0x31;
+		bytes[0x301] = 0xc0;
+		bytes[0x302] = 0xc3;
+	}
 	std::ofstream output(path, std::ios::binary | std::ios::trunc);
 	output.write(reinterpret_cast<const char*>(bytes.data()),
 		static_cast<std::streamsize>(bytes.size()));
@@ -379,6 +392,7 @@ int wmain(int argc, wchar_t** argv)
 			const auto root = std::filesystem::path(argv[2]);
 			std::filesystem::create_directories(root);
 			WriteTLVProviderMachO(root / "libwintosh_tlv.dylib");
+			WriteTLVProviderMachO(root / "TLVClient.macho", true);
 			return 0;
 		}
 		if (argc == 3 && std::wcscmp(argv[1], L"--emit-runtime") == 0) {

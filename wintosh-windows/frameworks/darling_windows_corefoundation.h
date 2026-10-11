@@ -99,6 +99,9 @@ extern "C" bool darling_windows_CFStringAppend(darling_windows_CFStringRef value
 	darling_windows_CFStringRef suffix);
 extern "C" bool darling_windows_CFStringReplaceAll(darling_windows_CFStringRef value,
 	darling_windows_CFStringRef target, darling_windows_CFStringRef replacement);
+extern "C" bool darling_windows_CFStringFindAndReplace(darling_windows_CFStringRef value,
+	darling_windows_CFStringRef target, darling_windows_CFStringRef replacement,
+	darling_windows_CFRange range, int flags);
 extern "C" darling_windows_CFArrayRef darling_windows_CFStringCreateArrayBySeparatingStrings(
 	darling_windows_CFStringRef value, darling_windows_CFStringRef separator);
 extern "C" bool darling_windows_CFStringReplaceRange(darling_windows_CFStringRef value,

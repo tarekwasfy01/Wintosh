@@ -106,6 +106,8 @@ UTF-8/ASCII buffer bounds for CoreFoundation clients.
 `CFStringGetMaximumSizeOfFileSystemRepresentation` and
 `CFStringGetFileSystemRepresentation` now provide bounded NUL-terminated path
 conversion for LaunchServices-style callers.
+`CFStringFindAndReplace` now combines range-bounded lookup and replacement for
+the common CoreAudio/DirectoryService normalization path.
 `CFStringCreateMutableCopy` now returns an independent mutable string; its
 capacity argument is treated as a non-binding reservation hint on Windows.
 `CFStringCreateMutable` now creates an empty mutable string with the same

@@ -828,6 +828,23 @@ extern "C" bool darling_windows_CFStringGetFileSystemRepresentation(
 	return true;
 }
 
+extern "C" bool darling_windows_CFStringFindAndReplace(darling_windows_CFStringRef value,
+	darling_windows_CFStringRef target, darling_windows_CFStringRef replacement,
+	darling_windows_CFRange range, int flags)
+{
+	auto* object = As(value);
+	const auto* needle = static_cast<const Object*>(target);
+	const auto* substitute = static_cast<const Object*>(replacement);
+	if (object == nullptr || needle == nullptr || substitute == nullptr || object->kind != Kind::String ||
+		needle->kind != Kind::String || substitute->kind != Kind::String || range.location < 0 || range.length < 0 ||
+		range.location + range.length > UTF16Length(object->string)) return false;
+	const auto found = darling_windows_CFStringFind(value, target, flags);
+	if (found.location < range.location || found.location < 0 ||
+		found.location + found.length > range.location + range.length) return false;
+	return darling_windows_CFStringReplaceRange(value, found.location, found.length,
+		substitute->string.c_str());
+}
+
 extern "C" bool darling_windows_CFStringGetCharacters(
 	darling_windows_CFStringRef value, darling_windows_CFRange range, std::uint16_t* output)
 {

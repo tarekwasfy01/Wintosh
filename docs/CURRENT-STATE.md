@@ -82,6 +82,8 @@ smoke covers both the formatted XML path and a binary-plist bundle path; this
 is intentionally a focused key reader, not a general Foundation plist API.
 Binary dictionaries with an extended object count are accepted as well, while
 the implementation deliberately remains bounded to the executable lookup.
+Malformed binary-plist count metadata is rejected safely and uses the normal
+bundle-name fallback rather than being treated as executable metadata.
 
 The dyld resolver now also checks `Contents/Frameworks` and `Contents/PlugIns`
 as scoped fallbacks for `@rpath/...` dependencies of a bundle executable when

@@ -919,3 +919,10 @@ This does not implement `fork`, copy-on-write, register/address-space cloning,
 or a second Mach namespace. Until those pieces exist, the primitive remains a
 controlled spawn operation and must not be advertised as fork compatibility.
 
+The broker also exposes an atomic `CapabilityTransferBatch` operation. The
+client serializes the target session and complete broker-token list; the broker
+validates every current owner before changing any owner and moves associated
+out-of-line regions together. A failed validation therefore cannot leave a
+partially transferred port set. Notification transfer and process-address-space
+inheritance remain separate open families.
+

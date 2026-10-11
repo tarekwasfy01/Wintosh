@@ -235,6 +235,47 @@ int wmain(int argc, wchar_t** argv)
 					server.Write(AsString(darling::windows_host::EncodeMachIpcEnvelope(response)));
 					continue;
 				}
+				if (envelope.operation == darling::windows_host::MachIpcOperation::CapabilityTransferBatch) {
+					if (envelope.session_token == 0 || envelope.payload.size() < 12 ||
+						envelope.port_token != 0 || envelope.disposition_count != 0 ||
+						envelope.out_of_line_token != 0 || envelope.out_of_line_size != 0)
+						throw std::invalid_argument("invalid Mach IPC capability batch transfer");
+					std::uint64_t target_session = 0;
+					for (unsigned shift = 0; shift < 64; shift += 8)
+						target_session |= static_cast<std::uint64_t>(envelope.payload[shift / 8]) << shift;
+					std::uint32_t count = 0;
+					for (unsigned shift = 0; shift < 32; shift += 8)
+						count |= static_cast<std::uint32_t>(envelope.payload[8 + shift / 8]) << shift;
+					if (target_session == 0 || !active_sessions.contains(target_session) ||
+						envelope.payload.size() != 12 + static_cast<std::size_t>(count) * 8)
+						throw std::invalid_argument("invalid Mach IPC capability batch payload");
+					std::vector<std::uint64_t> tokens;
+					tokens.reserve(count);
+					for (std::uint32_t index = 0; index < count; ++index) {
+						std::uint64_t token = 0;
+						for (unsigned shift = 0; shift < 64; shift += 8)
+							token |= static_cast<std::uint64_t>(envelope.payload[12 + index * 8 + shift / 8]) << shift;
+						if (token == 0) throw std::invalid_argument("invalid Mach IPC capability token");
+						const auto owner = port_session_owners.find(token);
+						if (owner == port_session_owners.end() || owner->second != session_token)
+							throw std::invalid_argument("Mach IPC capability batch is not fully owned");
+						tokens.push_back(token);
+					}
+					for (const auto token : tokens) {
+						port_session_owners[token] = target_session;
+						for (const auto& [ool_token, owning_port] : out_of_line_owners) {
+							if (owning_port == token) {
+								auto ool_owner = out_of_line_session_owners.find(ool_token);
+								if (ool_owner != out_of_line_session_owners.end())
+										ool_owner->second = target_session;
+							}
+						}
+					}
+					darling::windows_host::MachIpcEnvelope response{
+						envelope.operation, envelope.request_id, 0, 0, {}};
+					server.Write(AsString(darling::windows_host::EncodeMachIpcEnvelope(response)));
+					continue;
+				}
 				if (envelope.operation == darling::windows_host::MachIpcOperation::Cancel) {
 					if (envelope.session_token == 0 || envelope.request_id == 0 ||
 						!envelope.payload.empty() || envelope.port_token != 0 ||

@@ -110,7 +110,7 @@ MachIpcEnvelope DecodeMachIpcEnvelope(const std::vector<std::uint8_t>& bytes)
 	if (ReadU16(bytes, offset) != mach_ipc_version)
 		throw std::invalid_argument("unsupported Mach IPC envelope version");
 	const auto operation = ReadU16(bytes, offset);
-	if (operation < 1 || operation > static_cast<std::uint16_t>(MachIpcOperation::Peek))
+	if (operation < 1 || operation > static_cast<std::uint16_t>(MachIpcOperation::CapabilityTransferBatch))
 		throw std::invalid_argument("unknown Mach IPC operation");
 	MachIpcEnvelope result;
 	result.operation = static_cast<MachIpcOperation>(operation);
@@ -891,13 +891,27 @@ bool TransferMachIpcCapabilities(NamedPipeRpcClient& client,
 {
 	if (source_session_token == 0 || target_session_token == 0)
 		return false;
-	for (const auto& [local_name, capability] : capabilities.Snapshot()) {
-		(void)local_name;
-		if (!TransferMachIpcCapability(client, source_session_token,
-			capability.broker_token, target_session_token))
-			return false;
+	const auto snapshot = capabilities.Snapshot();
+	MachIpcEnvelope request;
+	request.operation = MachIpcOperation::CapabilityTransferBatch;
+	request.request_id = 1;
+	request.session_token = source_session_token;
+	request.payload.resize(12 + snapshot.size() * 8);
+	for (unsigned shift = 0; shift < 64; shift += 8)
+		request.payload[shift / 8] = static_cast<std::uint8_t>(target_session_token >> shift);
+	const auto count = static_cast<std::uint32_t>(snapshot.size());
+	for (unsigned shift = 0; shift < 32; shift += 8)
+		request.payload[8 + shift / 8] = static_cast<std::uint8_t>(count >> shift);
+	for (std::size_t index = 0; index < snapshot.size(); ++index)
+		for (unsigned shift = 0; shift < 64; shift += 8)
+			request.payload[12 + index * 8 + shift / 8] =
+				static_cast<std::uint8_t>(snapshot[index].second.broker_token >> shift);
+	try {
+		const auto response = SendMachIpcEnvelope(client, request);
+		return response.operation == MachIpcOperation::CapabilityTransferBatch;
+	} catch (...) {
+		return false;
 	}
-	return true;
 }
 
 void MachIpcCapabilityTable::Bind(std::uint32_t local_name, MachIpcCapability capability)

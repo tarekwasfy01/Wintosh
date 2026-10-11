@@ -40,6 +40,8 @@ The implementation itself is documented at
   prefix layout, framework lookup roots, and explicit implementation limits.
 - [PREFERENCES-SUBSET.md](PREFERENCES-SUBSET.md) — prefix-relative preference
   persistence ABI, storage contract, test gate, and remaining Foundation gaps.
+- [PORTING-ROADMAP.md](PORTING-ROADMAP.md) — ordered family milestones,
+  evidence gates, and explicit remaining boundaries.
 
 ## Reference-project analysis
 

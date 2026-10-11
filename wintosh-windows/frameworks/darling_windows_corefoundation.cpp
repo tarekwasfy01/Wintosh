@@ -865,11 +865,13 @@ extern "C" bool darling_windows_CFStringFindAndReplace(darling_windows_CFStringR
 	if (object == nullptr || needle == nullptr || substitute == nullptr || object->kind != Kind::String ||
 		needle->kind != Kind::String || substitute->kind != Kind::String || range.location < 0 || range.length < 0 ||
 		range.location + range.length > UTF16Length(object->string)) return false;
-	const auto found = darling_windows_CFStringFind(value, target, flags);
-	if (found.location < range.location || found.location < 0 ||
-		found.location + found.length > range.location + range.length) return false;
-	return darling_windows_CFStringReplaceRange(value, found.location, found.length,
-		substitute->string.c_str());
+	const auto scoped = darling_windows_CFStringCreateWithSubstring(value, range);
+	if (scoped == nullptr) return false;
+	const auto found = darling_windows_CFStringFind(scoped, target, flags);
+	darling_windows_CFRelease(scoped);
+	if (found.location < 0) return false;
+	return darling_windows_CFStringReplaceRange(value, range.location + found.location,
+		found.length, substitute->string.c_str());
 }
 
 extern "C" bool darling_windows_CFStringGetCharacters(

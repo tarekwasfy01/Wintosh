@@ -68,6 +68,11 @@ int main()
 		replace_value != nullptr && darling_windows_CFStringFindAndReplace(replace_source,
 			replace_target, replace_value, darling_windows_CFRangeMake(0, 5), 0) &&
 		std::strcmp(darling_windows_CFStringGetCStringPtr(replace_source), "a/b:c") == 0;
+	const auto scoped_replace = darling_windows_CFStringCreateWithCString("x:a:b");
+	const bool scoped_find_replace_ok = scoped_replace != nullptr &&
+		darling_windows_CFStringFindAndReplace(scoped_replace, replace_target, replace_value,
+			darling_windows_CFRangeMake(2, 3), 0) &&
+		std::strcmp(darling_windows_CFStringGetCStringPtr(scoped_replace), "x/a/b") == 0;
 	const auto unicode_mutable = darling_windows_CFStringCreateWithCString("A\xF0\x9F\x98\x80Z");
 	const bool unicode_replace_ok = unicode_mutable != nullptr &&
 		darling_windows_CFStringReplaceRange(unicode_mutable, 1, 2, "Q") &&
@@ -825,7 +830,7 @@ int main()
 	if (!dictionary_hash_ok || !set_hash_ok) return 1;
 	std::cout << "DARWIN_COREF_FOUNDATION=\"" <<
 		(string_ok && formatted_string_ok && substring_ok && string_match_ok && string_find_ok && equal_ok && semantic_lookup_ok && collection_equal_ok && array_search_ok && data_ok && data_slice_ok && array_ok && array_values_ok && number_ok && real_number_ok && number_conversion_ok && dictionary_ok && dictionary_values_ok && set_ok && set_values_ok && date_url_ok && url_xml_ok && scalar_ok && runloop_ok && callback_ok && timer_ok && drain_sources_ok && notification_ok && delivered && plist_ok && array_plist_ok && data_plist_ok && date_plist_ok && real_plist_ok && escaping_ok && plist_parse_ok && plist_dict_parse_ok && plist_data_parse_ok && plist_date_parse_ok && plist_fractional_date_ok && plist_offset_date_ok && binary_plist_ok && binary_dictionary_ok && binary_utf16_ok && binary_extended_ok && binary_data_ok && binary_date_ok && binary_real_ok && binary_uid_ok && mutable_array_ok && mutable_dictionary_ok && mutable_set_ok && mutable_data_ok ? "PASS" : "FAIL") << "\n";
-	if (!string_number_ok || !system_encoding_ok || !maximum_encoding_size_ok || !mutable_creation_ok || !find_replace_ok || !unicode_replace_ok || !unicode_bytes_ok || !utf16_characters_ok || !utf16_character_at_index_ok || !backwards_find_ok || !unicode_find_range_ok || !pascal_rejection_ok || !characters_creation_ok || !filesystem_string_ok || !filesystem_representation_ok || !string_split_ok) return 1;
+	if (!string_number_ok || !system_encoding_ok || !maximum_encoding_size_ok || !mutable_creation_ok || !find_replace_ok || !scoped_find_replace_ok || !unicode_replace_ok || !unicode_bytes_ok || !utf16_characters_ok || !utf16_character_at_index_ok || !backwards_find_ok || !unicode_find_range_ok || !pascal_rejection_ok || !characters_creation_ok || !filesystem_string_ok || !filesystem_representation_ok || !string_split_ok) return 1;
 	if (!identity_ok) return 1;
 	if (!bytes_string_ok) return 1;
 	if (!url_extension_ok) return 1;

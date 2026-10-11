@@ -270,3 +270,20 @@ through the bundle path. This validates bundle entry resolution, not system
 framework compatibility. The legacy `dyld_stub_binder` callback itself remains
 fail-closed; Wintosh currently pre-applies parsed lazy-bind actions before
 entering the image.
+
+## Latest verified native adapter families
+
+The current local branch additionally contains a prefix-relative Preferences
+adapter. Its tested subset includes application and suite plist domains,
+registration and argument values, managed/effective read-only views,
+cross-process named-event wakeups, FIFO key events in a `.events` sidecar,
+orphaned `.tmp` plist recovery, and reentrant observer snapshots including
+observer self-removal and observer addition during delivery. The pthread
+synchronization smoke also verifies priority-ceiling attribute propagation and
+old-value return behavior. These are Wintosh-original Windows adapters with
+their provenance recorded in `PRIMITIVE-MATRIX.csv`; they do not claim the
+complete Foundation, notification-center, scheduler, or Objective-C ABI.
+
+The Release Clang build currently passes 60/60 CTest entries, including the
+Mach-O printf bundle end-to-end test. The latest five local commits are ahead
+of the configured remote and have not been pushed in this work cycle.

@@ -97,6 +97,24 @@ void WriteExitMachO(const std::filesystem::path& path)
 	}
 }
 
+void WriteDarwinStartMachO(const std::filesystem::path& path)
+{
+	WriteExitMachO(path);
+	std::fstream output(path, std::ios::in | std::ios::out | std::ios::binary);
+	if (!output)
+		throw std::runtime_error("cannot reopen Darwin startup fixture");
+	// mov ecx, [rsp]; mov rax, [rip + 0x36]; call rax; ret
+	// The first stack word is Darwin argc; the bound _exit slot is at 0x240.
+	const std::uint8_t entry[] = {
+		0x8b, 0x0c, 0x24,
+		0x48, 0x8b, 0x05, 0x36, 0x00, 0x00, 0x00,
+		0xff, 0xd0, 0xc3};
+	output.seekp(0x200);
+	output.write(reinterpret_cast<const char*>(entry), sizeof(entry));
+	if (!output)
+		throw std::runtime_error("cannot write Darwin startup fixture");
+}
+
 std::vector<wchar_t> CommandLine(const std::wstring& value)
 {
 	std::vector<wchar_t> result(value.begin(), value.end());
@@ -113,6 +131,10 @@ int wmain(int argc, wchar_t** argv)
 		// The fixture is an x86-64 Mach-O execution proof; Win32 is metadata-only.
 		return 0;
 #else
+		if (argc == 3 && std::wcscmp(argv[1], L"--emit-darwin") == 0) {
+			WriteDarwinStartMachO(argv[2]);
+			return 0;
+		}
 		if (argc == 3 && std::wcscmp(argv[1], L"--emit") == 0) {
 			WriteExitMachO(argv[2]);
 			return 0;

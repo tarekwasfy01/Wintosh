@@ -88,7 +88,8 @@ including for searches after non-BMP characters.
 Empty backward searches now resolve to the UTF-16 end position, matching the
 directional search contract.
 `CFStringCreateWithPascalString` now accepts the supported ASCII/UTF-8
-encoding identifiers and performs bounded length decoding.
+encoding identifiers, performs bounded length decoding, and rejects null or
+unsupported-encoding inputs.
 The URL family also includes last-component extraction and parent-path copies,
 covering path operations used by Darling's CoreAudio helpers.
 It now also provides path-extension extraction and extension removal for

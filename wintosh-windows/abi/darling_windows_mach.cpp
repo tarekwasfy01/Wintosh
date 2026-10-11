@@ -420,6 +420,8 @@ extern "C" darling_kern_return_t darling_windows_task_terminate(darling_mach_por
 	{
 		std::lock_guard lock(suspend_counts_mutex);
 		task_suspend_counts.erase(task);
+		for (const auto thread : child_threads)
+			suspend_counts.erase(thread);
 	}
 	{
 		std::lock_guard lock(exception_ports_mutex);
@@ -1081,6 +1083,10 @@ extern "C" darling_kern_return_t darling_windows_thread_info(
 			auto* result = static_cast<darling_thread_basic_info*>(info);
 			result->user_time = FileTimeToDarling(user);
 			result->system_time = FileTimeToDarling(kernel);
+			std::lock_guard lock(suspend_counts_mutex);
+			const auto found = suspend_counts.find(thread);
+			result->suspend_count = found == suspend_counts.end() ? 0 :
+				static_cast<std::int32_t>(found->second);
 		}
 	}
 	*count = required;

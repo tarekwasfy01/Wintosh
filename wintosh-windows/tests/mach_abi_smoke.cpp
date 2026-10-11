@@ -357,7 +357,17 @@ int main()
 	while (!worker_ready.load(std::memory_order_acquire)) std::this_thread::yield();
 	const auto worker_thread = static_cast<darling_mach_port_name_t>(GetThreadId(worker.native_handle()));
 	if (darling_windows_thread_resume(worker_thread) == 0 ||
-		darling_windows_thread_suspend(worker_thread) != 0 ||
+		darling_windows_thread_suspend(worker_thread) != 0)
+	{
+		worker_stop.store(true, std::memory_order_release);
+		worker.join();
+		return 1;
+	}
+	darling_thread_basic_info suspended_worker_info{};
+	std::uint32_t suspended_worker_count = darling_thread_basic_info_count;
+	if (darling_windows_thread_info(worker_thread, darling_thread_basic_info_flavor,
+		&suspended_worker_info, &suspended_worker_count) != 0 ||
+		suspended_worker_info.suspend_count != 1 ||
 		darling_windows_thread_resume(worker_thread) != 0 ||
 		darling_windows_thread_resume(worker_thread) == 0) {
 		worker_stop.store(true, std::memory_order_release);

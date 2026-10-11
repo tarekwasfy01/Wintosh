@@ -61,6 +61,14 @@ int wmain()
 			std::cerr << "MACHO_UUID_ERROR=mismatch\n";
 			return 3;
 		}
+		std::uint32_t signature_offset = 0;
+		std::uint32_t signature_size = 0;
+		if (!image.CodeSignatureRange(signature_offset, signature_size) ||
+			signature_offset != signature.data_offset || signature_size != signature.data_size) {
+			DeleteFileW(path.c_str());
+			std::cerr << "MACHO_CODE_SIGNATURE_ERROR=range mismatch\n";
+			return 6;
+		}
 		DeleteFileW(path.c_str());
 		const auto invalid_path = std::wstring(temp) + L"darling-macho-uuid-invalid.bin";
 		const LinkeditCommand invalid_signature{darling::windows_host::LC_CODE_SIGNATURE, 16,

@@ -90,6 +90,8 @@ The runner smoke now executes that malformed-plist fallback path end-to-end.
 `LC_CODE_SIGNATURE` load command is present.  This is metadata detection only:
 Wintosh still does not validate the embedded Apple CodeDirectory or CMS
 signature and never treats presence as authenticity.
+`CodeSignatureRange()` additionally exposes the validated payload offset and
+size for a future verifier, covered by the Mach-O UUID/signature smoke test.
 
 The dyld resolver now also checks `Contents/Frameworks` and `Contents/PlugIns`
 as scoped fallbacks for `@rpath/...` dependencies of a bundle executable when

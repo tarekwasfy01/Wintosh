@@ -405,6 +405,11 @@ int wmain(int argc, wchar_t** argv)
 				<< L"sections=" << inspected.Sections().size() << L"\n"
 				<< L"dependencies=" << inspected.Dependencies().size() << L"\n"
 				<< L"code_signature=" << (inspected.HasCodeSignature() ? L"present" : L"absent") << L"\n";
+			std::uint32_t signature_offset = 0;
+			std::uint32_t signature_size = 0;
+			if (inspected.CodeSignatureRange(signature_offset, signature_size))
+				std::wcout << L"code_signature_offset=" << signature_offset << L"\n"
+					<< L"code_signature_size=" << signature_size << L"\n";
 			for (const auto& section : inspected.Sections())
 				std::wcout << L"section="
 					<< std::wstring(section.segment_name.begin(), section.segment_name.end())

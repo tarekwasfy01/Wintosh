@@ -1166,8 +1166,11 @@ void MachOImage::ApplyIndirectImportBindings(const Mapping& mapping,
 	}
 }
 
-bool MachOImage::HasCodeSignature() const noexcept
+bool MachOImage::CodeSignatureRange(std::uint32_t& offset,
+	std::uint32_t& size) const noexcept
 {
+	offset = 0;
+	size = 0;
 	if (m_view == nullptr || m_header == nullptr) return false;
 	const auto command_offset = m_image_offset + (m_is_32_bit ?
 		sizeof(MachHeader32) : sizeof(MachHeader64));
@@ -1182,10 +1185,23 @@ bool MachOImage::HasCodeSignature() const noexcept
 		if (command->command_bytes < sizeof(LoadCommand) ||
 			command->command_bytes > static_cast<std::size_t>(end - cursor))
 			return false;
-		if (command->command == LC_CODE_SIGNATURE) return true;
+		if (command->command == LC_CODE_SIGNATURE) {
+			if (command->command_bytes < sizeof(LinkeditDataCommand)) return false;
+			const auto* signature = reinterpret_cast<const LinkeditDataCommand*>(command);
+			offset = signature->data_offset;
+			size = signature->data_size;
+			return true;
+		}
 		cursor += command->command_bytes;
 	}
 	return false;
+}
+
+bool MachOImage::HasCodeSignature() const noexcept
+{
+	std::uint32_t offset = 0;
+	std::uint32_t size = 0;
+	return CodeSignatureRange(offset, size);
 }
 
 bool MachOImage::IsWeakDependency(const std::string& name) const noexcept

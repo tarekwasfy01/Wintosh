@@ -357,8 +357,14 @@ extern "C" darling_kern_return_t darling_windows_task_terminate(darling_mach_por
 	if (terminated) (void)WaitForSingleObject(process, 5000);
 	CloseHandle(process);
 	if (!terminated) return 4;
-	std::lock_guard lock(suspend_counts_mutex);
-	task_suspend_counts.erase(task);
+	{
+		std::lock_guard lock(suspend_counts_mutex);
+		task_suspend_counts.erase(task);
+	}
+	{
+		std::lock_guard lock(exception_ports_mutex);
+		exception_ports.erase(task);
+	}
 	return 0;
 }
 

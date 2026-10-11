@@ -555,6 +555,10 @@ hosting Darwin process; exact Darwin self-task semantics remain open.
 terminal state, and removes its adapter suspend-count entry. Self-termination
 is rejected intentionally; signal- and exception-based Darwin termination
 semantics are not yet represented.
+Successful termination now also removes stale task-level exception registrations,
+so a later lookup cannot observe an owner that no longer exists. Thread-level
+registrations and global port-object cleanup still need a complete lifecycle
+model.
 Task-level `task_set_exception_ports` and `task_get_exception_ports` now reuse
 the existing owner-keyed exception registry, so task and thread registrations
 have identical mask/filter behavior. Delivery is still only wired through the

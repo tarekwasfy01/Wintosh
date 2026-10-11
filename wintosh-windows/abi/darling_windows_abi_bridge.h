@@ -29,6 +29,7 @@ using GuestFn = DARLING_SYSV R (*)(A...);
 using GuestVoidFn = GuestFn<void>;
 
 extern "C" DARLING_SYSV int darling_windows_abi_puts(const char* value);
+extern "C" DARLING_SYSV int darling_windows_abi_printf(const char* format, ...);
 extern "C" DARLING_SYSV [[noreturn]] void darling_windows_abi_exit(int status);
 extern "C" DARLING_SYSV [[noreturn]] void darling_windows_abi_dyld_stub_binder();
 

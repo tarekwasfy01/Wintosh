@@ -245,3 +245,10 @@ CLASSIC_ONE_ARG_EXIT=7
 This proves the current fixed-arity classic binding path for `_puts` and
 `_exit`; it does not yet prove arbitrary lazy-binding protocols or variadic
 function calls.
+
+The host symbol table now exposes a named SysV `printf` bridge entry, but the
+implementation is deliberately fail-closed: clang-cl rejects `va_start` inside
+a Windows-targeted `sysv_abi` function. The bridge therefore reports
+`SysV variadic printf bridge is not implemented` and returns `-1` until a
+dedicated register-save/variadic trampoline is added. The lookup is covered by
+`abi_bridge_smoke`; no variadic guest execution is claimed.

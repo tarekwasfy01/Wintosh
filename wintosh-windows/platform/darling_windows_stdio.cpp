@@ -4739,6 +4739,10 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 	if (std::strcmp(name, "_puts") == 0 || std::strcmp(name, "puts") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling::windows_host::abi::darling_windows_abi_puts);
 	}
+	if (std::strcmp(name, "_printf") == 0 || std::strcmp(name, "printf") == 0) {
+		return reinterpret_cast<std::uintptr_t>(
+			&darling::windows_host::abi::darling_windows_abi_printf);
+	}
 	if (std::strcmp(name, "_exit") == 0 || std::strcmp(name, "exit") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling::windows_host::abi::darling_windows_abi_exit);
 	}

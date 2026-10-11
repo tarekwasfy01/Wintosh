@@ -22,6 +22,15 @@ extern "C" DARLING_SYSV int darling_windows_abi_puts(const char* value)
 	return value == nullptr ? EOF : std::puts(value);
 }
 
+extern "C" DARLING_SYSV int darling_windows_abi_printf(const char* format, ...)
+{
+	(void)format;
+	std::fputs("DARLING_RUNNER_ERROR=SysV variadic printf bridge is not implemented\n",
+		stderr);
+	std::fflush(stderr);
+	return -1;
+}
+
 extern "C" DARLING_SYSV [[noreturn]] void darling_windows_abi_exit(int status)
 {
 	darling_windows_exit(status);

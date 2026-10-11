@@ -94,9 +94,13 @@ int main()
 		darling_windows_CFCompareCaseInsensitive).location == 3;
 	const auto repeated_string = darling_windows_CFStringCreateWithCString("a.b.c");
 	const auto dot_string = darling_windows_CFStringCreateWithCString(".");
+	const auto empty_string = darling_windows_CFStringCreateWithCString("");
 	const bool backwards_find_ok = repeated_string != nullptr && dot_string != nullptr &&
+		empty_string != nullptr &&
 		darling_windows_CFStringFind(repeated_string, dot_string,
-			darling_windows_CFCompareBackwards).location == 3;
+			darling_windows_CFCompareBackwards).location == 3 &&
+		darling_windows_CFStringFind(repeated_string, empty_string,
+			darling_windows_CFCompareBackwards).location == 5;
 	const auto unicode_string = darling_windows_CFStringCreateWithCString("A\xF0\x9F\x98\x80Z");
 	const auto unicode_needle = darling_windows_CFStringCreateWithCString("Z");
 	const bool unicode_find_range_ok = unicode_string != nullptr && unicode_needle != nullptr &&

@@ -71,8 +71,8 @@ int main()
 	const auto scoped_replace = darling_windows_CFStringCreateWithCString("x:a:b");
 	const bool scoped_find_replace_ok = scoped_replace != nullptr &&
 		darling_windows_CFStringFindAndReplace(scoped_replace, replace_target, replace_value,
-			darling_windows_CFRangeMake(2, 3), 0) &&
-		std::strcmp(darling_windows_CFStringGetCStringPtr(scoped_replace), "x/a/b") == 0;
+			darling_windows_CFRangeMake(1, 4), 0) &&
+		std::strcmp(darling_windows_CFStringGetCStringPtr(scoped_replace), "x/a:b") == 0;
 	const auto unicode_mutable = darling_windows_CFStringCreateWithCString("A\xF0\x9F\x98\x80Z");
 	const bool unicode_replace_ok = unicode_mutable != nullptr &&
 		darling_windows_CFStringReplaceRange(unicode_mutable, 1, 2, "Q") &&

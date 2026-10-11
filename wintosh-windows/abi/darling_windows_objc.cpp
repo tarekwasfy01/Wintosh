@@ -112,11 +112,42 @@ struct DarlingObjcAppleBlock final {
 	void* context{};
 };
 
+struct DarlingObjcExceptionCarrier final {
+	id object{};
+};
+
 id AppleBlockInvoke(void* raw_block, id argument)
 {
 	auto* block = static_cast<DarlingObjcAppleBlock*>(raw_block);
 	return block && block->callback ? block->callback(block->context, argument) :
 		nullptr;
+}
+
+#if defined(_MSC_VER)
+#pragma warning(suppress: 4297)
+#endif
+extern "C" [[noreturn]] void darling_objc_exception_throw(id object)
+{
+	throw DarlingObjcExceptionCarrier{object};
+}
+
+extern "C" bool darling_objc_exception_try(
+	DarlingObjcExceptionCallback callback, void* context, id* caught_object)
+{
+	if (caught_object != nullptr)
+		*caught_object = nullptr;
+	if (callback == nullptr)
+		return false;
+	try {
+		callback(context);
+		return false;
+	} catch (const DarlingObjcExceptionCarrier& exception) {
+		if (caught_object != nullptr)
+			*caught_object = exception.object;
+		return true;
+	} catch (...) {
+		return false;
+	}
 }
 
 namespace {

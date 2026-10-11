@@ -222,6 +222,14 @@ DarlingObjcRect darling_objc_msgSend_rect1(id receiver, SEL selector,
 
 using DarlingObjcCallback1 = id (*)(void* context, id argument);
 
+// Wintosh-owned exception boundary for bridge callbacks.  This is deliberately
+// not Apple's Objective-C personality/unwind ABI; it keeps a pending Objective-C
+// object visible across a native callback while the full compiler ABI is absent.
+using DarlingObjcExceptionCallback = void (*)(void* context);
+[[noreturn]] void darling_objc_exception_throw(id object);
+bool darling_objc_exception_try(DarlingObjcExceptionCallback callback,
+	void* context, id* caught_object);
+
 DarlingObjcValue darling_objc_invoke0(id receiver, SEL selector);
 DarlingObjcValue darling_objc_invoke1(id receiver, SEL selector,
 	DarlingObjcValue argument);

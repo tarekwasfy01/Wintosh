@@ -739,6 +739,16 @@ extern "C" darling_windows_CFStringRef darling_windows_CFStringCreateMutableCopy
 	return darling_windows_CFStringCreateCopy(value);
 }
 
+extern "C" darling_windows_CFStringRef darling_windows_CFStringCreateMutable(
+	darling_windows_CFIndex capacity)
+{
+	if (capacity < 0) return nullptr;
+	auto* object = new Object;
+	object->kind = Kind::String;
+	if (capacity > 0) object->string.reserve(static_cast<std::size_t>(capacity));
+	return object;
+}
+
 extern "C" darling_windows_CFStringRef darling_windows_CFStringCreateWithSubstring(
 	darling_windows_CFStringRef value, darling_windows_CFRange range)
 {

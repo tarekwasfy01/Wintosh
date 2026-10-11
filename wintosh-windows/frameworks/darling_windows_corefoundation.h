@@ -59,6 +59,8 @@ extern "C" darling_windows_CFStringRef darling_windows_CFStringCreateCopy(
 	darling_windows_CFStringRef value);
 extern "C" darling_windows_CFStringRef darling_windows_CFStringCreateMutableCopy(
 	darling_windows_CFStringRef value, darling_windows_CFIndex capacity);
+extern "C" darling_windows_CFStringRef darling_windows_CFStringCreateMutable(
+	darling_windows_CFIndex capacity);
 extern "C" darling_windows_CFStringRef darling_windows_CFStringCreateWithSubstring(
 	darling_windows_CFStringRef value, darling_windows_CFRange range);
 extern "C" darling_windows_CFIndex darling_windows_CFStringGetLength(

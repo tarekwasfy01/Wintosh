@@ -103,6 +103,8 @@ foreign allocator ownership.
 identifier for stable CoreServices string conversion.
 `CFStringCreateMutableCopy` now returns an independent mutable string; its
 capacity argument is treated as a non-binding reservation hint on Windows.
+`CFStringCreateMutable` now creates an empty mutable string with the same
+capacity-hint behavior and rejects negative capacities.
 The URL family also includes last-component extraction and parent-path copies,
 covering path operations used by Darling's CoreAudio helpers.
 It now also provides path-extension extraction and extension removal for

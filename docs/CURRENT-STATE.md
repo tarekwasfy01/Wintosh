@@ -44,7 +44,7 @@ own `libSystem.B.dylib`, which itself depends on the repository's own
 `libsystem_platform.dylib`. This proves the native provider graph and call
 path, but these files are test providers rather than Apple's system libraries.
 
-The current native CTest inventory contains 56 tests.  The `tlv_smoke`,
+The current native CTest inventory contains 57 tests.  The `tlv_smoke`,
 `thread_smoke`, `pthread_sync_smoke`, `host_api_smoke`, and
 `darwin_windows_broker_smoke` families cover the Windows-backed TLS,
 pthread-lifecycle, synchronization, and Mach process boundaries.  A

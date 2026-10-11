@@ -110,6 +110,13 @@ builds activate `sysv_abi`.  The targeted Mach-O and runner smokes pass after
 this change.  This is API plumbing only: the Clang bridge target, host export
 table, variadic stub, and real Mach-O fixture run remain outstanding.
 
+The bridge now also provides fixed-arity `_puts` and `_exit` export entry
+points through `darling_windows_host_symbol`.  After reconfiguring CMake to
+pick up the new source file, `wintosh_host_api_smoke` and `wintosh_dyld_smoke`
+both pass.  These exports are ready for Clang/System-V guest calls; the
+default MSVC build still uses the compatibility ABI fallback, so this is not
+yet evidence that a real Mach-O import call has executed.
+
 The dyld resolver now also checks `Contents/Frameworks` and `Contents/PlugIns`
 as scoped fallbacks for `@rpath/...` dependencies of a bundle executable when
 the image has no explicit `LC_RPATH`.  The dyld smoke fixture proves the

@@ -7,6 +7,7 @@
  */
 
 #include "darling_windows_stdio.h"
+#include "darling_windows_abi_bridge.h"
 #include "darling_windows_objc.h"
 #include "darling_windows_syscalls.h"
 #include "darling_windows_errno.h"
@@ -4734,6 +4735,12 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 {
 	if (name == nullptr) {
 		return 0;
+	}
+	if (std::strcmp(name, "_puts") == 0 || std::strcmp(name, "puts") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling::windows_host::abi::darling_windows_abi_puts);
+	}
+	if (std::strcmp(name, "_exit") == 0 || std::strcmp(name, "exit") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling::windows_host::abi::darling_windows_abi_exit);
 	}
 	if (std::strcmp(name, "__stack_chk_fail") == 0 ||
 		std::strcmp(name, "___stack_chk_fail") == 0 ||

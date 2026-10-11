@@ -632,7 +632,8 @@ description, not a Windows kernel handle or a transferable Darwin right.
 Thread lifecycle cleanup now also removes adapter suspend counters for every
 thread discovered during task termination, and `thread_info(BASIC)` reports
 the tracked suspend count instead of always returning zero. The scheduler and
-run-state fields remain an approximation of Windows thread state.
+run-state fields remain an approximation of Windows thread state; explicit
+adapter suspension is now reported as Darwin `TH_STATE_STOPPED`.
 Stored time-constraint policy records for those terminated threads are now
 removed in the same cleanup path, preventing a later Windows thread-ID reuse
 from inheriting stale Darwin policy data.

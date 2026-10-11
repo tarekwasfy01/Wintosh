@@ -1092,6 +1092,9 @@ extern "C" darling_kern_return_t darling_windows_thread_info(
 			const auto found = suspend_counts.find(thread);
 			result->suspend_count = found == suspend_counts.end() ? 0 :
 				static_cast<std::int32_t>(found->second);
+			// Darwin's TH_STATE_STOPPED is 2; expose the adapter's explicit
+			// suspend state instead of claiming that a suspended thread runs.
+			result->run_state = result->suspend_count == 0 ? 1 : 2;
 		}
 	}
 	*count = required;

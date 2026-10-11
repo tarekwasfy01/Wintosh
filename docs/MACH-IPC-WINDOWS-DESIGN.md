@@ -98,6 +98,8 @@ cross-process right accounting and complete Darwin notification/trailer
 behavior remain outside this primitive.
 The dedicated `mach_destroy_smoke` fixture verifies receive-right disposal on
 both x64 and Win32.
+The companion `mach_destroy_ool_smoke` fixture verifies OOL receive ownership
+and rejects a second release on both targets.
 Queue shutdown returns a stable port-dead result. Session-authenticated request
 cancellation is now available through the `Cancel` operation with envelope
 validation and round-trip coverage: a blocked `Receive` registers its nonzero

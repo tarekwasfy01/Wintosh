@@ -71,6 +71,8 @@ Malformed descriptor layouts fail closed. Distributed right accounting,
 notification-port delivery, and complete Darwin trailer semantics remain open.
 The dedicated `mach_destroy_smoke` test verifies receive-right disposal on both
 x64 and Win32.
+The companion `mach_destroy_ool_smoke` test verifies OOL receive ownership and
+rejects a second release on both targets.
 
 `OpenMachIpcSession` now performs the broker session handshake, including the
 current-process validation payload, and the broker smoke uses this helper for

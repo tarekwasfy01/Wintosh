@@ -249,8 +249,8 @@ function calls.
 The host symbol table now exposes a named SysV `printf` bridge entry. Under the
 Clang build, a dedicated x86_64 register-save trampoline translates the SysV
 integer/pointer variadic arguments into a Windows helper call. The direct
-`abi_bridge_smoke` gate now verifies `%d`, `%s`, and newline handling. Floating
-point, `long double`, positional arguments, and the full `printf` format
-language remain unsupported. The MSVC build remains deliberately fail-closed
+`abi_bridge_smoke` gate now verifies `%d`, `%s`, `%u`, `%x`, `%X`, `%c`, `%%`,
+and newline handling. Floating point, length modifiers, positional arguments,
+and the full `printf` format language remain unsupported. The MSVC build remains deliberately fail-closed
 and reports `SysV variadic printf bridge is not implemented`; it does not run
 real SysV guest code.

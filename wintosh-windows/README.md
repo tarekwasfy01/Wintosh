@@ -74,8 +74,9 @@ The verified Clang/SysV execution gate currently covers repository-provided
 x86_64 Chained-Fixups and Classic Mach-O fixtures. Both print `hello from
 guest`, return `0` without an extra argument, and return `7` with one extra
 argument. The Clang build also has a direct variadic bridge smoke for integer
-and string `%d`/`%s` calls; floating-point and general `printf` compatibility
-remain unsupported. The MSVC build remains fail-closed for real guest entry
+and string/integer `%d`, `%s`, `%u`, `%x`, `%X`, `%c`, and `%%` calls;
+floating-point, length modifiers, and general `printf` compatibility remain
+unsupported. The MSVC build remains fail-closed for real guest entry
 and is used only for explicitly marked synthetic fixtures.
 
 The detailed build and evidence rules are in `../docs/BUILD-AND-TEST.md`.

@@ -41,6 +41,10 @@ int main()
 		std::fprintf(stderr, "ABI_BRIDGE_VARIADIC_STRING=FAIL\n");
 		return 4;
 	}
+	if (darling::windows_host::abi::darling_windows_abi_printf("u=%u x=%x c=%c %%\n", 9u, 0x2au, 'Q') != 15) {
+		std::fprintf(stderr, "ABI_BRIDGE_VARIADIC_INTEGER=FAIL\n");
+		return 5;
+	}
 	std::puts("ABI_BRIDGE_VARIADIC_EXECUTION=PASS");
 #else
 	if (darling::windows_host::abi::darling_windows_abi_printf("unused %d", 7) != -1) {

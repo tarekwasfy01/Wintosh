@@ -42,6 +42,9 @@ extern "C" int darling_windows_abi_printf_windows_helper(const char* format, con
 		++p;
 		if (*p == '%') { std::fputc('%', stdout); ++written; continue; }
 		if (*p == 'd' || *p == 'i') { std::int32_t v{}; if (!ReadGp(state, v)) return -1; written += std::fprintf(stdout, "%" PRId32, v); continue; }
+		if (*p == 'u') { std::uint32_t v{}; if (!ReadGp(state, v)) return -1; written += std::fprintf(stdout, "%" PRIu32, v); continue; }
+		if (*p == 'x' || *p == 'X') { std::uint32_t v{}; if (!ReadGp(state, v)) return -1; written += std::fprintf(stdout, *p == 'x' ? "%" PRIx32 : "%" PRIX32, v); continue; }
+		if (*p == 'c') { std::uint32_t v{}; if (!ReadGp(state, v)) return -1; std::fputc(static_cast<int>(v), stdout); ++written; continue; }
 		if (*p == 's') { const char* v{}; if (!ReadGp(state, v)) return -1; const char* s = v ? v : "(null)"; if (std::fputs(s, stdout) < 0) return -1; written += static_cast<int>(std::strlen(s)); continue; }
 		return -1;
 	}

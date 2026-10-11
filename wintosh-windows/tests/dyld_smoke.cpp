@@ -583,6 +583,14 @@ int wmain(int argc, wchar_t** argv)
 				image, "@rpath/Foundation", {root / "Frameworks"}, root);
 			if (shorthand != framework)
 				throw std::runtime_error("framework shorthand did not resolve bundle executable");
+			const auto versioned_framework = root / "Versioned.framework" /
+				"Versions" / "A" / "Versioned";
+			std::filesystem::create_directories(versioned_framework.parent_path());
+			WriteMachO(versioned_framework, nullptr, true, false);
+			const auto versioned = darling::windows_host::DylibResolver::Resolve(
+				image, "@rpath/Versioned", {root}, root);
+			if (versioned != versioned_framework)
+				throw std::runtime_error("versioned framework shorthand did not resolve");
 			const auto system_framework = root / "System" / "Library" / "Frameworks" /
 				"Foundation.framework" / "Foundation";
 			std::filesystem::create_directories(system_framework.parent_path());
@@ -593,6 +601,7 @@ int wmain(int argc, wchar_t** argv)
 				throw std::runtime_error("absolute framework shorthand did not resolve");
 		}
 		std::cout << "DYLD_FRAMEWORK_SHORTHAND=PASS\n";
+		std::cout << "DYLD_VERSIONED_FRAMEWORK=PASS\n";
 		std::cout << "DYLD_ABSOLUTE_FRAMEWORK=PASS\n";
 		{
 			const auto app_image = darling::windows_host::MachOImage::Open(image.wstring());

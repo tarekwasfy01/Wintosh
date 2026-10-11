@@ -81,6 +81,10 @@ the image has no explicit `LC_RPATH`.  The dyld smoke fixture proves the
 `Contents/Frameworks` case; this is path resolution only and does not imply
 that arbitrary Apple frameworks are executable on Windows.
 
+Framework shorthand resolution also covers versioned bundles through
+`Name.framework/Versions/Current/Name` and `Versions/A/Name`; the smoke fixture
+proves the concrete `Versions/A` layout.
+
 The Objective-C/CoreFoundation tests verify class and selector registration,
 typed message-send bridges, blocks, Foundation values, run loops, and
 CoreFoundation collections.  They do not provide an Objective-C exception

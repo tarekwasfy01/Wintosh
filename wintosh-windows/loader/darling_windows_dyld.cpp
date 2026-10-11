@@ -34,7 +34,16 @@ void AddFrameworkCandidates(std::vector<std::filesystem::path>& candidates,
 	AddCandidate(candidates, root / name);
 	if (name.find('/') == std::string::npos &&
 		std::filesystem::path(name).extension().empty())
-		AddCandidate(candidates, root / (name + ".framework") / name);
+	{
+		const auto framework = root / (name + ".framework");
+		AddCandidate(candidates, framework / name);
+		// Versioned framework bundles conventionally expose either a
+		// Versions/Current symlink or a concrete version directory.  Windows
+		// has no symlink requirement here, so both layouts are deterministic
+		// candidate paths and the existing regular-file check selects one.
+		AddCandidate(candidates, framework / "Versions" / "Current" / name);
+		AddCandidate(candidates, framework / "Versions" / "A" / name);
+	}
 }
 
 std::filesystem::path ExpandRPath(const std::filesystem::path& image_directory,

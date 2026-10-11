@@ -56,6 +56,23 @@ int wmain()
 			lpath_stat.st_size != path_stat.st_size) {
 			throw std::runtime_error("lstat ABI mismatch");
 		}
+		char resolved_path[4096]{};
+		if (darling_windows_realpath(native_path.c_str(), resolved_path) == nullptr ||
+			resolved_path[0] == '\0') {
+			throw std::runtime_error("realpath ABI mismatch");
+		}
+		char cwd_buffer[4096]{};
+		if (darling_windows_getcwd(cwd_buffer, sizeof(cwd_buffer)) == nullptr ||
+			cwd_buffer[0] == '\0') {
+			throw std::runtime_error("getcwd ABI mismatch");
+		}
+		const auto created_directory = directory / L"created";
+		const auto native_created_directory = created_directory.string();
+		if (darling_windows_mkdir(native_created_directory.c_str(), 0755) != 0 ||
+			!std::filesystem::is_directory(created_directory) ||
+			darling_windows_rmdir(native_created_directory.c_str()) != 0) {
+			throw std::runtime_error("mkdir/rmdir ABI mismatch");
+		}
 		const darling_timespec requested_times[2]{{1700000000, 123456789},
 			{1700000001, 987654321}};
 		if (darling_windows_utimensat(-2, native_path.c_str(), requested_times, 0) != 0 ||

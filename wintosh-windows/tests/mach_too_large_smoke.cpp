@@ -25,7 +25,7 @@ int main()
 	std::array<std::uint8_t, sizeof(darling_mach_msg_header)> small{};
 	const auto too_large = darling_windows_mach_msg(
 		reinterpret_cast<darling_mach_msg_header*>(small.data()),
-		darling_mach_receive_msg | darling_mach_receive_timeout, 0,
+		darling_mach_receive_msg | darling_mach_receive_timeout | darling_mach_receive_large, 0,
 		static_cast<std::uint32_t>(small.size()), port, 100, 0);
 	Message received{};
 	const auto retry = darling_windows_mach_msg(

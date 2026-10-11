@@ -1620,7 +1620,8 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 {
 	(void)notify;
 	if (message == nullptr) return 4;
-	if ((option & ~(darling_mach_send_msg | darling_mach_receive_msg | darling_mach_send_timeout | darling_mach_receive_timeout)) != 0 ||
+	if ((option & ~(darling_mach_send_msg | darling_mach_receive_msg | darling_mach_send_timeout | darling_mach_receive_timeout |
+		darling_mach_receive_large | darling_mach_receive_large_identity)) != 0 ||
 		option == 0) return 4;
 	if ((option & darling_mach_send_msg) != 0) {
 		if (send_size < sizeof(darling_mach_msg_header) ||

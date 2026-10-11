@@ -789,8 +789,8 @@ dates; clock precision, adjustment, and calendar/time-zone behavior remain
 outside this bridge.
 
 The URL family also covers `CFURLCreateWithString` for non-empty absolute
-string values; relative base-URL resolution, escaping, normalization, and
-full RFC authority parsing remain open.
+string values and simple relative paths against a base URL; escaping,
+normalization, and full RFC authority parsing remain open.
 
 The libc string/allocation family now also covers `reallocarray`,
 `reallocarrayf`, and `strsep`. The array helpers reject multiplication

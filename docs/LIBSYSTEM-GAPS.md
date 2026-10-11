@@ -98,7 +98,8 @@ reference-date value as `CFDateGetAbsoluteTime`, with x64 and Win32 coverage.
 date from the Windows system clock and is covered for future relative dates.
 `CFURLCreateWithString` now creates a URL object from a CoreFoundation string
 for the absolute/simple URL form used by this bridge; base-URL resolution is
-not claimed yet.
+now also handles a simple relative path against a base URL. Full RFC
+normalization and escaping remain unimplemented.
 
 ## Still required for broad compatibility
 

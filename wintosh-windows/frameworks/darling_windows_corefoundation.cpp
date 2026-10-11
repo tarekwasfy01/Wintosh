@@ -1968,7 +1968,17 @@ extern "C" darling_windows_CFURLRef darling_windows_CFURLCreateWithString(
 	(void)base_url;
 	const auto* source = static_cast<const Object*>(string);
 	if (source == nullptr || source->kind != Kind::String || source->string.empty()) return nullptr;
-	return darling_windows_CFURLCreateWithFileSystemPath(source->string.c_str());
+	std::string resolved = source->string;
+	if (resolved.find(':') == std::string::npos && base_url != nullptr) {
+		const auto* base = static_cast<const Object*>(base_url);
+		if (base->kind != Kind::URL || base->string.empty()) return nullptr;
+		const auto query = base->string.find_first_of("?#");
+		const auto base_value = query == std::string::npos ? base->string : base->string.substr(0, query);
+		const auto slash = base_value.find_last_of('/');
+		if (slash == std::string::npos) return nullptr;
+		resolved = base_value.substr(0, slash + 1) + resolved;
+	}
+	return darling_windows_CFURLCreateWithFileSystemPath(resolved.c_str());
 }
 
 extern "C" darling_windows_CFURLRef darling_windows_CFURLCreateFromFileSystemRepresentation(

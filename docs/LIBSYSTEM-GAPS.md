@@ -25,6 +25,8 @@ following families with Windows-backed implementations:
   delimiter fields, are now Windows-backed and host-symbol-resolvable;
 - BSD/Darwin bounded substring search `strnstr` is now Windows-backed and
   host-symbol-resolvable, including limit enforcement and empty-needle behavior;
+- BSD/Darwin reverse byte search `memrchr` is now Windows-backed and
+  host-symbol-resolvable, including bounded reverse scanning;
 - C++ static-initialization guard entry points `___cxa_guard_acquire`,
   `___cxa_guard_release`, and `___cxa_guard_abort`, backed by atomic
   Windows-host state transitions; acquire/release/abort behavior is covered

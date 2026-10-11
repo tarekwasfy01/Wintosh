@@ -557,6 +557,7 @@ extern "C" int darling_windows_asprintf(char** result, const char* format, ...);
 extern "C" std::size_t darling_windows_strlen(const char* value);
 extern "C" std::size_t darling_windows_strnlen(const char* value, std::size_t limit);
 extern "C" const void* darling_windows_memchr(const void* value, int byte, std::size_t bytes);
+extern "C" const void* darling_windows_memrchr(const void* value, int byte, std::size_t bytes);
 extern "C" const void* darling_windows_memmem(const void* haystack, std::size_t haystack_bytes, const void* needle, std::size_t needle_bytes);
 extern "C" int darling_windows_strcmp(const char* left, const char* right);
 extern "C" int darling_windows_strcasecmp(const char* left, const char* right);

@@ -1,6 +1,6 @@
 # Wintosh current status
 
-Status date: 2026-10-11
+Status date: 2026-10-12
 
 ## Evidence summary
 
@@ -42,6 +42,12 @@ passes: **60/60 CTest tests**. The Visual
 Studio aggregate build target can
 still stall during orchestration, so the reproducible fallback is to build
 the generated targets individually; this does not represent a test failure.
+
+The licensing inventory remains conservative: the 150 external-component
+rows are provenance records, not relicensing decisions. Only components with
+an actual component-local license/notice file or separately recorded evidence
+are marked accordingly; text-marker matches in fetched candidates remain
+manual review material.
 
 The Win32 build now fails closed for x64-only Windows `CONTEXT` register
 flavors and the Win32 Mach ABI smoke reports that boundary explicitly; the

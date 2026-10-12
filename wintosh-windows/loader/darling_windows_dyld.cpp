@@ -677,6 +677,28 @@ bool DynamicImageHasModuleInitializers(const DarwinDynamicImage& image) noexcept
 	return false;
 }
 
+std::uint32_t DynamicImageReferenceCount(const DarwinDynamicImage& image) noexcept
+{
+	std::uint32_t count = 0;
+	for (const auto& symbol : image.image.Symbols())
+		if ((symbol.type & 0x0e) == 0)
+			++count;
+	return count;
+}
+
+const char* DynamicImageReferenceName(const DarwinDynamicImage& image,
+	std::uint32_t ordinal) noexcept
+{
+	std::uint32_t current = 0;
+	for (const auto& symbol : image.image.Symbols()) {
+		if ((symbol.type & 0x0e) != 0)
+			continue;
+		if (current++ == ordinal)
+			return symbol.name.c_str();
+	}
+	return nullptr;
+}
+
 int DynamicImageExecuteEntry(const DarwinDynamicImage& image,
 	const std::vector<std::string>& arguments,
 	const std::vector<std::string>& environment,

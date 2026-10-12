@@ -5963,6 +5963,14 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 		std::strcmp(name, "__NSHasModInitObjectFileImage") == 0 ||
 		std::strcmp(name, "_NSHasModInitObjectFileImage") == 0)
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_NSHasModInitObjectFileImage);
+	if (std::strcmp(name, "___NSSymbolReferenceCountInObjectFileImage") == 0 ||
+		std::strcmp(name, "__NSSymbolReferenceCountInObjectFileImage") == 0 ||
+		std::strcmp(name, "_NSSymbolReferenceCountInObjectFileImage") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_NSSymbolReferenceCountInObjectFileImage);
+	if (std::strcmp(name, "___NSSymbolReferenceNameInObjectFileImage") == 0 ||
+		std::strcmp(name, "__NSSymbolReferenceNameInObjectFileImage") == 0 ||
+		std::strcmp(name, "_NSSymbolReferenceNameInObjectFileImage") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_NSSymbolReferenceNameInObjectFileImage);
 	if (std::strcmp(name, "___NSLinkModule") == 0 ||
 		std::strcmp(name, "__NSLinkModule") == 0 ||
 		std::strcmp(name, "_NSLinkModule") == 0)
@@ -7424,6 +7432,29 @@ extern "C" int darling_windows_NSHasModInitObjectFileImage(void* object_file_ima
 	const auto found = dynamic_images.find(token->handle);
 	return found != dynamic_images.end() &&
 		darling::windows_host::DynamicImageHasModuleInitializers(*found->second) ? 1 : 0;
+}
+
+extern "C" std::uint32_t darling_windows_NSSymbolReferenceCountInObjectFileImage(
+	void* object_file_image)
+{
+	auto* token = ObjectFileImageToken(object_file_image);
+	if (token == nullptr) return 0;
+	std::lock_guard lock(dynamic_image_mutex);
+	const auto found = dynamic_images.find(token->handle);
+	return found == dynamic_images.end() ? 0 :
+		darling::windows_host::DynamicImageReferenceCount(*found->second);
+}
+
+extern "C" const char* darling_windows_NSSymbolReferenceNameInObjectFileImage(
+	void* object_file_image, std::uint32_t ordinal, int* tentative_definition)
+{
+	if (tentative_definition != nullptr) *tentative_definition = 0;
+	auto* token = ObjectFileImageToken(object_file_image);
+	if (token == nullptr) return nullptr;
+	std::lock_guard lock(dynamic_image_mutex);
+	const auto found = dynamic_images.find(token->handle);
+	return found == dynamic_images.end() ? nullptr :
+		darling::windows_host::DynamicImageReferenceName(*found->second, ordinal);
 }
 
 extern "C" void* darling_windows_NSLinkModule(void* object_file_image,

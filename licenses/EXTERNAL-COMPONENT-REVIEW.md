@@ -126,13 +126,13 @@ CSV SHA-256: `7535DF8B2B497C97E40ACA5E7C1540CB9F65B6910D5AC9F10B5A9C01DE5879A4`.
 
 ## Candidate batch breakdown (2026-10-12)
 
-The stored upstream candidate set contains 62 fetched license or notice files
+The stored upstream candidate set contains 71 fetched license or notice files
 for the 147 review-required components. The marker grouping below is only a
 search heuristic over candidate text; it is not a legal classification and it
 does not change any component's status in the provenance CSV.
 
-The regenerated machine-readable review contains 62 manual-review records and
-22 files with multiple detected license markers. These counts are triage data,
+The regenerated machine-readable review contains 71 manual-review records and
+24 files with multiple detected license markers. These counts are triage data,
 not conclusions that a component is legally compatible for redistribution.
 
 | Candidate marker group | Files |

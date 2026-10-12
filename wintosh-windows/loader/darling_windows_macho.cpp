@@ -566,6 +566,18 @@ MachOImage MachOImage::Open(const std::wstring& path)
 						16 + 32 * sizeof(std::uint64_t), sizeof(thread_rip));
 				}
 				has_thread = true;
+			} else if (command->command == LC_LOAD_DYLINKER) {
+				Require(command->command_bytes >= sizeof(DylinkerCommand),
+					"Mach-O dylinker command is truncated");
+				const auto* dylinker = reinterpret_cast<const DylinkerCommand*>(command);
+				Require(dylinker->name_offset >= sizeof(DylinkerCommand) &&
+					dylinker->name_offset < command->command_bytes,
+					"Mach-O dylinker name offset is invalid");
+				const auto* name = reinterpret_cast<const char*>(command) + dylinker->name_offset;
+				const auto name_bytes = command->command_bytes - dylinker->name_offset;
+				const auto* terminator = static_cast<const char*>(std::memchr(name, '\0', name_bytes));
+				Require(terminator != nullptr, "Mach-O dylinker name is not terminated");
+				Require(terminator != name, "Mach-O dylinker name is empty");
 			} else if (command->command == LC_ID_DYLIB || command->command == LC_LOAD_DYLIB ||
 				command->command == LC_LOAD_WEAK_DYLIB ||
 				command->command == LC_REEXPORT_DYLIB ||

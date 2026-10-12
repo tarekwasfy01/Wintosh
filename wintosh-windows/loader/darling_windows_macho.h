@@ -50,6 +50,7 @@ constexpr std::uint32_t LC_MAIN = 0x80000028;
 constexpr std::uint32_t LC_UUID = 0x1b;
 constexpr std::uint32_t LC_CODE_SIGNATURE = 0x1d;
 constexpr std::uint32_t LC_ID_DYLIB = 0x0d;
+constexpr std::uint32_t LC_LOAD_DYLINKER = 0x0e;
 constexpr std::uint32_t LC_UNIXTHREAD = 0x5;
 constexpr std::uint32_t LC_LOAD_DYLIB = 0xc;
 constexpr std::uint32_t LC_LOAD_WEAK_DYLIB = 0x80000018;
@@ -150,6 +151,11 @@ struct DylibCommand final {
 	std::uint32_t timestamp;
 	std::uint32_t current_version;
 	std::uint32_t compatibility_version;
+};
+
+struct DylinkerCommand final {
+	LoadCommand header;
+	std::uint32_t name_offset;
 };
 
 struct SymtabCommand final {

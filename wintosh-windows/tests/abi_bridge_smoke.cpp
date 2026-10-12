@@ -67,5 +67,11 @@ int main()
 		return 8;
 	}
 	std::puts("ABI_BRIDGE_LAZY_SESSION_PRIMITIVE=PASS");
+	if (darling_windows_host_symbol("_dyld_stub_binder") != reinterpret_cast<std::uintptr_t>(
+		&darling::windows_host::abi::darling_windows_abi_dyld_stub_binder)) {
+		std::fprintf(stderr, "ABI_BRIDGE_DYLD_BINDER_EXPORT=FAIL\n");
+		return 9;
+	}
+	std::puts("ABI_BRIDGE_DYLD_BINDER_EXPORT=PASS");
 	return 0;
 }

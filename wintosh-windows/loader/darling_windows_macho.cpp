@@ -21,6 +21,18 @@
 
 namespace darling::windows_host {
 
+bool DecodeDarwinX86_64StubFrame(const std::uintptr_t* metadata_stack,
+	DarwinX86_64StubFrame* frame) noexcept
+{
+	if (metadata_stack == nullptr || frame == nullptr)
+		return false;
+	frame->image_cache = metadata_stack[0];
+	frame->lazy_binding_info = metadata_stack[1];
+	frame->return_address = metadata_stack[2];
+	return frame->image_cache != 0 && frame->lazy_binding_info != 0 &&
+		frame->return_address != 0;
+}
+
 namespace {
 thread_local const MachOLazyBindingSession* active_lazy_binding_session = nullptr;
 }

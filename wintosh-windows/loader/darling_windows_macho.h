@@ -294,6 +294,16 @@ struct DyldResolvedBinding final {
 	std::uintptr_t address = 0;
 };
 
+struct DarwinX86_64StubFrame final {
+	std::uintptr_t image_cache = 0;
+	std::uintptr_t lazy_binding_info = 0;
+	std::uintptr_t return_address = 0;
+};
+
+[[nodiscard]] bool DecodeDarwinX86_64StubFrame(
+	const std::uintptr_t* metadata_stack,
+	DarwinX86_64StubFrame* frame) noexcept;
+
 struct DyldRebaseAction final {
 	std::uint32_t segment_index = 0;
 	std::uint64_t segment_offset = 0;

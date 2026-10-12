@@ -24,6 +24,8 @@ namespace {
 
 using darling::windows_host::DyldResolvedBinding;
 using darling::windows_host::MachOLazyBindingSession;
+using darling::windows_host::DarwinX86_64StubFrame;
+using darling::windows_host::DecodeDarwinX86_64StubFrame;
 
 std::atomic<int> initializer_hits = 0;
 
@@ -870,6 +872,15 @@ int wmain(int argc, wchar_t** argv)
 			if (*lazy_address != relocation_apply_target) {
 				throw std::runtime_error("Mach-O lazy bind action was not applied");
 			}
+			const std::uintptr_t stub_metadata[] = {0x9000, 0x1240, 0xA000};
+			DarwinX86_64StubFrame stub_frame{};
+			if (!DecodeDarwinX86_64StubFrame(stub_metadata, &stub_frame) ||
+				stub_frame.image_cache != 0x9000 ||
+				stub_frame.lazy_binding_info != 0x1240 ||
+				stub_frame.return_address != 0xA000 ||
+				DecodeDarwinX86_64StubFrame(nullptr, &stub_frame) ||
+				DecodeDarwinX86_64StubFrame(stub_metadata, nullptr))
+				throw std::runtime_error("Darwin x86_64 stub frame decoding failed");
 			app_image.ApplyRebaseActions(app_mapping);
 			const auto rebase_address = reinterpret_cast<const std::uintptr_t*>(
 				static_cast<std::intptr_t>(0x1238) + app_mapping.Slide());

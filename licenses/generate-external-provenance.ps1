@@ -9,15 +9,17 @@ $rows = foreach ($directory in Get-ChildItem $root -Directory | Sort-Object Name
     $commit = ''
     $gitStatus = 'absent'
     if (Test-Path (Join-Path $directory.FullName '.git')) {
-        $gitStatus = 'present'
         try {
-            $remote = (& git -C $directory.FullName remote get-url origin 2>$null | Out-String).Trim()
-            $commit = (& git -C $directory.FullName rev-parse HEAD 2>$null | Out-String).Trim()
+            $commitCandidate = (& git -C $directory.FullName rev-parse --verify HEAD 2>$null | Out-String).Trim()
+            if ($LASTEXITCODE -eq 0 -and $commitCandidate) {
+                $gitStatus = 'present'
+                $commit = $commitCandidate
+                $remote = (& git -C $directory.FullName remote get-url origin 2>$null | Out-String).Trim()
+            } else {
+                $gitStatus = 'invalid-marker'
+            }
         } catch {
-            # A .git marker can be stale or point at an unavailable worktree.
-            # Preserve the row and record the missing metadata conservatively.
-            $remote = ''
-            $commit = ''
+            $gitStatus = 'invalid-marker'
         }
     }
     $licenseFiles = @(Get-ChildItem $directory.FullName -File -Recurse -ErrorAction SilentlyContinue |

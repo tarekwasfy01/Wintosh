@@ -70,6 +70,8 @@ bool DynamicImageHasModuleInitializers(const DarwinDynamicImage& image) noexcept
 std::uint32_t DynamicImageReferenceCount(const DarwinDynamicImage& image) noexcept;
 const char* DynamicImageReferenceName(const DarwinDynamicImage& image,
 	std::uint32_t ordinal) noexcept;
+bool DynamicImageReferenceIsTentative(const DarwinDynamicImage& image,
+	std::uint32_t ordinal) noexcept;
 int DynamicImageExecuteEntry(const DarwinDynamicImage& image,
 	const std::vector<std::string>& arguments,
 	const std::vector<std::string>& environment = {},

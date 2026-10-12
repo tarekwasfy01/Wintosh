@@ -53,8 +53,8 @@ following families with Windows-backed implementations:
   semantics remain governed by the existing bounded initializer path.
 - `NSSymbolReferenceCountInObjectFileImage` and
   `NSSymbolReferenceNameInObjectFileImage` expose undefined-symbol entries;
-  tentative-definition classification is not inferred from the reduced
-  Wintosh symbol model and is reported as false.
+  tentative-definition classification uses the Mach-O undefined-symbol value
+  when present; unusual toolchain encodings remain outside the reduced model.
 - `NSNameOfModule` and `NSLibraryNameForModule` provide bounded metadata for
   projected Wintosh modules; Apple module-name overrides and legacy module
   lifetime rules remain open.

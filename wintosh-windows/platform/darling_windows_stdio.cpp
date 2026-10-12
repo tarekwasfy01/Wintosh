@@ -7453,8 +7453,11 @@ extern "C" const char* darling_windows_NSSymbolReferenceNameInObjectFileImage(
 	if (token == nullptr) return nullptr;
 	std::lock_guard lock(dynamic_image_mutex);
 	const auto found = dynamic_images.find(token->handle);
-	return found == dynamic_images.end() ? nullptr :
-		darling::windows_host::DynamicImageReferenceName(*found->second, ordinal);
+	if (found == dynamic_images.end()) return nullptr;
+	if (tentative_definition != nullptr)
+		*tentative_definition = darling::windows_host::DynamicImageReferenceIsTentative(
+			*found->second, ordinal) ? 1 : 0;
+	return darling::windows_host::DynamicImageReferenceName(*found->second, ordinal);
 }
 
 extern "C" void* darling_windows_NSLinkModule(void* object_file_image,

@@ -699,6 +699,19 @@ const char* DynamicImageReferenceName(const DarwinDynamicImage& image,
 	return nullptr;
 }
 
+bool DynamicImageReferenceIsTentative(const DarwinDynamicImage& image,
+	std::uint32_t ordinal) noexcept
+{
+	std::uint32_t current = 0;
+	for (const auto& symbol : image.image.Symbols()) {
+		if ((symbol.type & 0x0e) != 0)
+			continue;
+		if (current++ == ordinal)
+			return symbol.value != 0;
+	}
+	return false;
+}
+
 int DynamicImageExecuteEntry(const DarwinDynamicImage& image,
 	const std::vector<std::string>& arguments,
 	const std::vector<std::string>& environment,

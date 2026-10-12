@@ -11,7 +11,9 @@
 .text
 
 .globl darling_windows_darwin_stub_trampoline_probe
+.globl darling_windows_abi_dyld_stub_binder
 .p2align 4
+darling_windows_abi_dyld_stub_binder:
 darling_windows_darwin_stub_trampoline_probe:
     push rbp
     mov rbp, rsp
@@ -39,6 +41,8 @@ darling_windows_darwin_stub_trampoline_probe:
     mov rsi, [rbp+16]
     call darling_windows_darwin_stub_probe_resolver
     mov r11, rax
+    test r11, r11
+    jz darling_windows_abi_dyld_stub_binder_fail_closed
 
     mov rax, [rsp+0x00]
     mov rbx, [rsp+0x08]
@@ -75,3 +79,4 @@ darling_windows_darwin_stub_trampoline_fixture:
 .section .drectve,"dr"
 .ascii " -export:darling_windows_darwin_stub_trampoline_probe"
 .ascii " -export:darling_windows_darwin_stub_trampoline_fixture"
+.ascii " -export:darling_windows_abi_dyld_stub_binder"

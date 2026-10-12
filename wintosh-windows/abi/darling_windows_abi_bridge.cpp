@@ -97,13 +97,20 @@ extern "C" DARLING_SYSV [[noreturn]] void darling_windows_abi_exit(int status)
 	darling_windows_exit(status);
 }
 
-extern "C" DARLING_SYSV [[noreturn]] void darling_windows_abi_dyld_stub_binder()
+extern "C" [[noreturn]] void darling_windows_abi_dyld_stub_binder_fail_closed()
 {
 	std::fputs("DARLING_RUNNER_ERROR=dyld_stub_binder was invoked; lazy binding is not supported\n",
 		stderr);
 	std::fflush(stderr);
 	std::abort();
 }
+
+#if !(defined(__clang__) && defined(_WIN64))
+extern "C" DARLING_SYSV [[noreturn]] void darling_windows_abi_dyld_stub_binder()
+{
+	darling_windows_abi_dyld_stub_binder_fail_closed();
+}
+#endif
 
 extern "C" DARLING_SYSV int darling_windows_darwin_stub_probe_target(
 	std::uint64_t first, std::uint64_t second)

@@ -37,6 +37,7 @@ extern "C" int darling_windows_abi_printf_windows_helper(const char*, const void
 extern "C" DARLING_SYSV int darling_windows_abi_printf(const char* format, ...);
 extern "C" DARLING_SYSV [[noreturn]] void darling_windows_abi_exit(int status);
 extern "C" DARLING_SYSV [[noreturn]] void darling_windows_abi_dyld_stub_binder();
+extern "C" [[noreturn]] void darling_windows_abi_dyld_stub_binder_fail_closed();
 extern "C" DARLING_SYSV int darling_windows_darwin_stub_trampoline_probe(
 	std::uint64_t first, std::uint64_t second);
 extern "C" DARLING_SYSV int darling_windows_darwin_stub_trampoline_fixture(

@@ -1,4 +1,4 @@
-param([switch]$ResolveRemoteRefs, [int]$Limit = 0, [string]$OutputPath = '')
+param([switch]$ResolveRemoteRefs, [int]$Limit = 0, [int]$Skip = 0, [string]$OutputPath = '')
 $ErrorActionPreference = 'Stop'
 $gitExe = 'C:\Program Files\Git\cmd\git.exe'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..\darling-source\src\external')).Path
@@ -26,6 +26,7 @@ $manualEvidence = @{
     'libpthread_workqueue-0.8.2' = 'include/pthread_workqueue.h (header evidence; BSD-style terms)'
 }
 $directories = @(Get-ChildItem $root -Directory | Sort-Object Name)
+if ($Skip -gt 0) { $directories = @($directories | Select-Object -Skip $Skip) }
 if ($Limit -gt 0) { $directories = @($directories | Select-Object -First $Limit) }
 $rows = foreach ($directory in $directories) {
     $remote = ''

@@ -619,6 +619,36 @@ std::uintptr_t DynamicImageSymbol(const DarwinDynamicImage& image, const char* n
 	return 0;
 }
 
+std::uint32_t DynamicImageDefinedSymbolCount(const DarwinDynamicImage& image) noexcept
+{
+	std::uint32_t count = 0;
+	for (const auto& symbol : image.image.Symbols())
+		if ((symbol.type & 0x0e) != 0)
+			++count;
+	return count;
+}
+
+const char* DynamicImageDefinedSymbolName(const DarwinDynamicImage& image,
+	std::uint32_t ordinal) noexcept
+{
+	std::uint32_t current = 0;
+	for (const auto& symbol : image.image.Symbols()) {
+		if ((symbol.type & 0x0e) == 0)
+			continue;
+		if (current++ == ordinal)
+			return symbol.name.c_str();
+	}
+	return nullptr;
+}
+
+bool DynamicImageHasSymbol(const DarwinDynamicImage& image, const char* name) noexcept
+{
+	if (name == nullptr || name[0] == '\0')
+		return false;
+	try { return DynamicImageSymbol(image, name) != 0; }
+	catch (...) { return false; }
+}
+
 int DynamicImageExecuteEntry(const DarwinDynamicImage& image,
 	const std::vector<std::string>& arguments,
 	const std::vector<std::string>& environment,

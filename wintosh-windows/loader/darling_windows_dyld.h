@@ -60,6 +60,10 @@ class DarwinDynamicImage;
 DarwinDynamicImage* OpenDynamicImage(const std::filesystem::path& path);
 std::uintptr_t DynamicImageSymbol(const DarwinDynamicImage& image,
 	const char* name);
+std::uint32_t DynamicImageDefinedSymbolCount(const DarwinDynamicImage& image) noexcept;
+const char* DynamicImageDefinedSymbolName(const DarwinDynamicImage& image,
+	std::uint32_t ordinal) noexcept;
+bool DynamicImageHasSymbol(const DarwinDynamicImage& image, const char* name) noexcept;
 int DynamicImageExecuteEntry(const DarwinDynamicImage& image,
 	const std::vector<std::string>& arguments,
 	const std::vector<std::string>& environment = {},

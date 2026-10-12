@@ -92,8 +92,12 @@ int wmain()
 		const bool object_image_ok =
 			darling_windows_NSCreateObjectFileImageFromFile(utf8_path.c_str(),
 				&object_file_image) == darling_NSObjectFileImageSuccess &&
-			object_file_image != nullptr &&
-			darling_windows_NSDestroyObjectFileImage(object_file_image) == 1;
+			object_file_image != nullptr;
+		const bool object_symbols_ok = object_image_ok &&
+			darling_windows_NSSymbolDefinitionCountInObjectFileImage(object_file_image) >= 1 &&
+			darling_windows_NSIsSymbolDefinedInObjectFileImage(object_file_image,
+				"exported") == 1 &&
+			darling_windows_NSSymbolDefinitionNameInObjectFileImage(object_file_image, 0) != nullptr;
 		void* symbol_address = darling_windows_dlsym(handle, "exported");
 		const void* image_header = nullptr;
 		void* image_symbol = nullptr;
@@ -105,7 +109,9 @@ int wmain()
 				break;
 			}
 		}
-		const bool passed = object_image_ok && handle != nullptr && second_handle == handle &&
+		const bool passed = object_image_ok && object_symbols_ok && handle != nullptr &&
+			darling_windows_NSDestroyObjectFileImage(object_file_image) == 1 &&
+			second_handle == handle &&
 			symbol_address != nullptr &&
 			image_header != nullptr && image_symbol == symbol_address &&
 			darling_windows_NSAddressOfSymbol(image_symbol) == symbol_address &&

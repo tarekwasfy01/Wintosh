@@ -5936,6 +5936,18 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 		std::strcmp(name, "_NSDestroyObjectFileImage") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_NSDestroyObjectFileImage);
 	}
+	if (std::strcmp(name, "___NSSymbolDefinitionCountInObjectFileImage") == 0 ||
+		std::strcmp(name, "__NSSymbolDefinitionCountInObjectFileImage") == 0 ||
+		std::strcmp(name, "_NSSymbolDefinitionCountInObjectFileImage") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_NSSymbolDefinitionCountInObjectFileImage);
+	if (std::strcmp(name, "___NSSymbolDefinitionNameInObjectFileImage") == 0 ||
+		std::strcmp(name, "__NSSymbolDefinitionNameInObjectFileImage") == 0 ||
+		std::strcmp(name, "_NSSymbolDefinitionNameInObjectFileImage") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_NSSymbolDefinitionNameInObjectFileImage);
+	if (std::strcmp(name, "___NSIsSymbolDefinedInObjectFileImage") == 0 ||
+		std::strcmp(name, "__NSIsSymbolDefinedInObjectFileImage") == 0 ||
+		std::strcmp(name, "_NSIsSymbolDefinedInObjectFileImage") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_NSIsSymbolDefinedInObjectFileImage);
 	if (std::strcmp(name, "___NSAddressOfSymbol") == 0 ||
 		std::strcmp(name, "__NSAddressOfSymbol") == 0 ||
 		std::strcmp(name, "_NSAddressOfSymbol") == 0) {
@@ -7268,6 +7280,44 @@ extern "C" int darling_windows_NSDestroyObjectFileImage(void* object_file_image)
 	const int result = darling_windows_dlclose(token->handle) == 0 ? 1 : 0;
 	delete token;
 	return result;
+}
+
+DarlingObjectFileImageToken* ObjectFileImageToken(void* value)
+{
+	return value == nullptr ? nullptr : static_cast<DarlingObjectFileImageToken*>(value);
+}
+
+extern "C" std::uint32_t darling_windows_NSSymbolDefinitionCountInObjectFileImage(
+	void* object_file_image)
+{
+	auto* token = ObjectFileImageToken(object_file_image);
+	if (token == nullptr) return 0;
+	std::lock_guard lock(dynamic_image_mutex);
+	const auto found = dynamic_images.find(token->handle);
+	return found == dynamic_images.end() ? 0 :
+		darling::windows_host::DynamicImageDefinedSymbolCount(*found->second);
+}
+
+extern "C" const char* darling_windows_NSSymbolDefinitionNameInObjectFileImage(
+	void* object_file_image, std::uint32_t ordinal)
+{
+	auto* token = ObjectFileImageToken(object_file_image);
+	if (token == nullptr) return nullptr;
+	std::lock_guard lock(dynamic_image_mutex);
+	const auto found = dynamic_images.find(token->handle);
+	return found == dynamic_images.end() ? nullptr :
+		darling::windows_host::DynamicImageDefinedSymbolName(*found->second, ordinal);
+}
+
+extern "C" int darling_windows_NSIsSymbolDefinedInObjectFileImage(
+	void* object_file_image, const char* symbol_name)
+{
+	auto* token = ObjectFileImageToken(object_file_image);
+	if (token == nullptr || symbol_name == nullptr) return 0;
+	std::lock_guard lock(dynamic_image_mutex);
+	const auto found = dynamic_images.find(token->handle);
+	return found != dynamic_images.end() &&
+		darling::windows_host::DynamicImageHasSymbol(*found->second, symbol_name) ? 1 : 0;
 }
 
 extern "C" void* darling_windows_NSAddressOfSymbol(void* symbol)

@@ -505,6 +505,12 @@ enum darling_NSObjectFileImageReturnCode : int {
 extern "C" int darling_windows_NSCreateObjectFileImageFromFile(const char* path,
 	void** object_file_image);
 extern "C" int darling_windows_NSDestroyObjectFileImage(void* object_file_image);
+extern "C" std::uint32_t darling_windows_NSSymbolDefinitionCountInObjectFileImage(
+	void* object_file_image);
+extern "C" const char* darling_windows_NSSymbolDefinitionNameInObjectFileImage(
+	void* object_file_image, std::uint32_t ordinal);
+extern "C" int darling_windows_NSIsSymbolDefinedInObjectFileImage(
+	void* object_file_image, const char* symbol_name);
 extern "C" void* darling_windows_dlsym(void* handle, const char* symbol);
 extern "C" int darling_windows_dlclose(void* handle);
 extern "C" const char* darling_windows_dlerror();

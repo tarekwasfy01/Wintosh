@@ -1,4 +1,6 @@
+param([switch]$ResolveRemoteRefs, [int]$Limit = 0)
 $ErrorActionPreference = 'Stop'
+$gitExe = 'C:\Program Files\Git\cmd\git.exe'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..\darling-source\src\external')).Path
 $output = Join-Path $PSScriptRoot 'EXTERNAL-COMPONENT-PROVENANCE.csv'
 $previous = @{}
@@ -22,17 +24,19 @@ if (Test-Path $gitmodules) {
 $manualEvidence = @{
     'libpthread_workqueue-0.8.2' = 'include/pthread_workqueue.h (header evidence; BSD-style terms)'
 }
-$rows = foreach ($directory in Get-ChildItem $root -Directory | Sort-Object Name) {
+$directories = @(Get-ChildItem $root -Directory | Sort-Object Name)
+if ($Limit -gt 0) { $directories = @($directories | Select-Object -First $Limit) }
+$rows = foreach ($directory in $directories) {
     $remote = ''
     $commit = ''
     $gitStatus = 'absent'
     if (Test-Path (Join-Path $directory.FullName '.git')) {
         try {
-            $commitCandidate = (& git -C $directory.FullName rev-parse --verify HEAD 2>$null | Out-String).Trim()
+            $commitCandidate = (& $gitExe -C $directory.FullName rev-parse --verify HEAD 2>$null | Out-String).Trim()
             if ($LASTEXITCODE -eq 0 -and $commitCandidate) {
                 $gitStatus = 'present'
                 $commit = $commitCandidate
-                $remote = (& git -C $directory.FullName remote get-url origin 2>$null | Out-String).Trim()
+                $remote = (& $gitExe -C $directory.FullName remote get-url origin 2>$null | Out-String).Trim()
             } else {
                 $gitStatus = 'invalid-marker'
                 if ($previous.ContainsKey($directory.Name)) { $remote = $previous[$directory.Name] }
@@ -42,6 +46,15 @@ $rows = foreach ($directory in Get-ChildItem $root -Directory | Sort-Object Name
             $gitStatus = 'invalid-marker'
             if ($previous.ContainsKey($directory.Name)) { $remote = $previous[$directory.Name] }
             if (!$remote -and $moduleOrigins.ContainsKey($directory.Name)) { $remote = $moduleOrigins[$directory.Name] }
+        }
+        if ($ResolveRemoteRefs -and $remote) {
+            $remoteHead = (& $gitExe ls-remote --symref $remote HEAD 2>$null)
+            if ($LASTEXITCODE -eq 0) {
+                $headLine = @($remoteHead | Where-Object { $_ -match '^([0-9a-f]{40})\s+HEAD$' }) | Select-Object -First 1
+                if ($headLine -and $headLine -match '^([0-9a-f]{40})\s+HEAD$') { $commit = $Matches[1] }
+                $refLine = @($remoteHead | Where-Object { $_ -match '^ref:\s+refs/heads/([^\s]+)\s+HEAD$' }) | Select-Object -First 1
+                if ($refLine -and $refLine -match '^ref:\s+refs/heads/([^\s]+)\s+HEAD$') { $gitStatus = "origin-only:$($Matches[1])" }
+            }
         }
     }
     $licenseFiles = @(Get-ChildItem $directory.FullName -File -Recurse -ErrorAction SilentlyContinue |

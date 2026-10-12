@@ -46,6 +46,12 @@ evidence; they do not prove a commit, tag, or exact source version. There are
 license-bearing component trees, one manually recorded header-evidence case,
 and 147 remaining license review cases.
 
+For an explicitly networked refresh, the generator supports
+`-ResolveRemoteRefs` and records the remote default branch plus its current
+`HEAD` commit as `origin-only:<branch>`. `-Limit N` can be used for a bounded
+batch; the normal invocation remains offline and preserves the conservative
+150-row inventory above.
+
 Manual follow-up for `libpthread_workqueue-0.8.2` found BSD-style
 redistribution terms in `include/pthread_workqueue.h`, `src/api.c`, and
 `src/private.h`, plus Apache-2.0 notices in selected test sources. Because

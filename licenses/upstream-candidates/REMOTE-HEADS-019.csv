@@ -1,0 +1,7 @@
+﻿"component","git_metadata","upstream_origin","head_commit","license_file","license_status"
+"xar","origin-only:main","https://github.com/darlinghq/darling-xar.git","887bd4f42eb4ac9139a7f621b5811065aa86f3e3","","review-required"
+"xcbuild","origin-only:master","https://github.com/darlinghq/xcbuild.git","a903c6952fc5617816113cbb7b551ac701dba2ff","","review-required"
+"xnu","origin-only:main","https://github.com/darlinghq/darling-xnu.git","95a4f77c70aef13acb50e5999bc2815486b27968","","review-required"
+"zip","origin-only:master","https://github.com/darlinghq/darling-zip.git","caf41ebbc3ebab0250e4d13aa42221ef91a9802c","","review-required"
+"zlib","origin-only:master","https://github.com/darlinghq/darling-zlib.git","677de9b1c2bea1e428f56d8fc63300aa471eaf99","","review-required"
+"zsh","origin-only:master","https://github.com/darlinghq/darling-zsh.git","4a7a6ebf6216395c7db698a4993db16e484aa54d","","review-required"

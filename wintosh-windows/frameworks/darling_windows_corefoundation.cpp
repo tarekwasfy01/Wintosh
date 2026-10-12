@@ -1071,6 +1071,37 @@ extern "C" int darling_windows_CFStringCompareWithOptions(
 		rhs->kind != Kind::String) return 0;
 	const auto& a = lhs->string;
 	const auto& b = rhs->string;
+	if ((flags & darling_windows_CFCompareNumerically) != 0 &&
+		(flags & darling_windows_CFCompareBackwards) == 0) {
+		std::size_t ai = 0, bi = 0;
+		while (ai < a.size() && bi < b.size()) {
+			const bool adigit = a[ai] >= '0' && a[ai] <= '9';
+			const bool bdigit = b[bi] >= '0' && b[bi] <= '9';
+			if (adigit && bdigit) {
+				const auto astart = ai, bstart = bi;
+				while (ai < a.size() && a[ai] >= '0' && a[ai] <= '9') ++ai;
+				while (bi < b.size() && b[bi] >= '0' && b[bi] <= '9') ++bi;
+				const auto acontent = a.substr(astart, ai - astart);
+				const auto bcontent = b.substr(bstart, bi - bstart);
+				const auto atrim = acontent.find_first_not_of('0');
+				const auto btrim = bcontent.find_first_not_of('0');
+				const auto anormal = atrim == std::string::npos ? std::string("0") : acontent.substr(atrim);
+				const auto bnormal = btrim == std::string::npos ? std::string("0") : bcontent.substr(btrim);
+				if (anormal.size() != bnormal.size()) return anormal.size() < bnormal.size() ? -1 : 1;
+				if (anormal != bnormal) return anormal < bnormal ? -1 : 1;
+				continue;
+			}
+			const auto ca = static_cast<unsigned char>(a[ai++]);
+			const auto cb = static_cast<unsigned char>(b[bi++]);
+			const auto la = (flags & darling_windows_CFCompareCaseInsensitive) != 0 ?
+				static_cast<unsigned char>(std::tolower(ca)) : ca;
+			const auto lb = (flags & darling_windows_CFCompareCaseInsensitive) != 0 ?
+				static_cast<unsigned char>(std::tolower(cb)) : cb;
+			if (la != lb) return la < lb ? -1 : 1;
+		}
+		if (ai != a.size() || bi != b.size()) return ai == a.size() ? -1 : 1;
+		return 0;
+	}
 	const auto limit = std::min(a.size(), b.size());
 	for (std::size_t i = 0; i < limit; ++i) {
 		const auto offset = (flags & darling_windows_CFCompareBackwards) != 0 ?

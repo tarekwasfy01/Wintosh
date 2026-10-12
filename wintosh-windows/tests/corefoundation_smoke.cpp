@@ -202,6 +202,11 @@ int main()
 		darling_windows_CFStringCompareWithOptions(backwards_left, backwards_right, 0) < 0 &&
 		darling_windows_CFStringCompareWithOptions(backwards_left, backwards_right,
 			darling_windows_CFCompareBackwards) > 0;
+	const auto numeric_left = darling_windows_CFStringCreateWithCString("file2");
+	const auto numeric_right = darling_windows_CFStringCreateWithCString("file10");
+	const bool numeric_compare_ok = numeric_left != nullptr && numeric_right != nullptr &&
+		darling_windows_CFStringCompareWithOptions(numeric_left, numeric_right,
+			darling_windows_CFCompareNumerically) < 0;
 	const bool bounded_find_ok = darling_windows_CFStringFindWithOptions(
 		string, darling_windows_CFRangeMake(3, 4), folded_needle,
 		darling_windows_CFCompareCaseInsensitive).location == 3 &&
@@ -1070,7 +1075,7 @@ int main()
 			<< " plist=" << plist_ok << " binary=" << binary_plist_ok << "\\n";
 	}
 	std::cout << "DARWIN_COREF_FOUNDATION=\"" << (corefoundation_ok ? "PASS" : "FAIL") << "\n";
-	if (!string_number_ok || !system_encoding_ok || !maximum_encoding_size_ok || !mutable_creation_ok || !find_replace_ok || !scoped_find_replace_ok || !unicode_replace_ok || !unicode_bytes_ok || !utf16_characters_ok || !utf16_character_at_index_ok || !backwards_find_ok || !oversized_find_ok || !unicode_find_range_ok || !compare_options_ok || !backwards_compare_ok || !bounded_find_ok || !option_match_ok || !pascal_rejection_ok || !characters_creation_ok || !filesystem_string_ok || !filesystem_representation_ok || !string_split_ok) return 1;
+	if (!string_number_ok || !system_encoding_ok || !maximum_encoding_size_ok || !mutable_creation_ok || !find_replace_ok || !scoped_find_replace_ok || !unicode_replace_ok || !unicode_bytes_ok || !utf16_characters_ok || !utf16_character_at_index_ok || !backwards_find_ok || !oversized_find_ok || !unicode_find_range_ok || !compare_options_ok || !backwards_compare_ok || !numeric_compare_ok || !bounded_find_ok || !option_match_ok || !pascal_rejection_ok || !characters_creation_ok || !filesystem_string_ok || !filesystem_representation_ok || !string_split_ok) return 1;
 	if (!identity_ok) return 1;
 	if (!bytes_string_ok) return 1;
 	if (!url_extension_ok || !url_path_ok || !url_query_ok || !url_scheme_ok || !url_authority_ok || !case_conversion_ok || !capitalization_ok) return 1;

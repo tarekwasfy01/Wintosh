@@ -198,8 +198,10 @@ as proof of that Darwin behavior.
 
 The CoreFoundation string comparison gate now also covers the bounded
 `kCFCompareBackwards` ordering option in addition to the existing
-case-insensitive and backwards-search primitives. This remains byte-oriented
-for the adapter and is not full locale-aware Unicode collation.
+case-insensitive and backwards-search primitives. It also covers the bounded
+ASCII-numeric ordering option for version-like names such as `file2` and
+`file10`. This remains byte-oriented for the adapter and is not full
+locale-aware Unicode collation.
 
 The Wintosh-owned `objc_exception_smoke` additionally verifies a scoped
 callback exception carrier: an Objective-C object can cross the bridge and be

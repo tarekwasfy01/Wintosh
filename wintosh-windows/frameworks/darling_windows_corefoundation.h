@@ -8,7 +8,8 @@ using darling_windows_CFIndex = std::ptrdiff_t;
 struct darling_windows_CFRange { darling_windows_CFIndex location; darling_windows_CFIndex length; };
 enum darling_windows_CFStringCompareFlags {
 	darling_windows_CFCompareCaseInsensitive = 1 << 0,
-	darling_windows_CFCompareBackwards = 1 << 1
+	darling_windows_CFCompareBackwards = 1 << 1,
+	darling_windows_CFCompareNumerically = 1 << 2
 };
 using darling_windows_CFTypeRef = const void*;
 using darling_windows_CFStringRef = const void*;

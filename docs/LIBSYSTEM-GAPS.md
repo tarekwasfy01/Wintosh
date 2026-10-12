@@ -38,8 +38,11 @@ following families with Windows-backed implementations:
 - The first Object-File-Image lifetime bridge is present:
   `NSCreateObjectFileImageFromFile` creates a Wintosh-owned token backed by a
   retained dynamic-image handle, and `NSDestroyObjectFileImage` releases it.
-  In-memory images, bundle-only validation, object-image symbol enumeration,
-  and `NSLinkModule` are not implemented yet.
+  In-memory images and bundle-only validation remain open. Object-image symbol
+  enumeration is implemented, and `NSLinkModule`/`NSUnLinkModule` now expose
+  the already-loaded image as a bounded legacy module view; deferred linking,
+  unload flags, and Apple module initializer/error-handler semantics remain
+  open.
 - Objective-C runtime registration and the Foundation/CoreFoundation/
   CoreGraphics compatibility subsets;
 - Mach virtual memory, IPC broker operations, ports, OOL data, and MIG dispatch.

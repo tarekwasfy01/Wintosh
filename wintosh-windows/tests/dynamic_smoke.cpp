@@ -98,6 +98,10 @@ int wmain()
 			darling_windows_NSIsSymbolDefinedInObjectFileImage(object_file_image,
 				"exported") == 1 &&
 			darling_windows_NSSymbolDefinitionNameInObjectFileImage(object_file_image, 0) != nullptr;
+		void* linked_module = object_image_ok ? darling_windows_NSLinkModule(
+			object_file_image, "wintosh-test-module", 0) : nullptr;
+		const bool module_link_ok = linked_module != nullptr &&
+			darling_windows_NSUnLinkModule(linked_module, 0) == 1;
 		void* symbol_address = darling_windows_dlsym(handle, "exported");
 		const void* image_header = nullptr;
 		void* image_symbol = nullptr;
@@ -109,7 +113,8 @@ int wmain()
 				break;
 			}
 		}
-		const bool passed = object_image_ok && object_symbols_ok && handle != nullptr &&
+		const bool passed = object_image_ok && object_symbols_ok && module_link_ok &&
+			handle != nullptr &&
 			darling_windows_NSDestroyObjectFileImage(object_file_image) == 1 &&
 			second_handle == handle &&
 			symbol_address != nullptr &&

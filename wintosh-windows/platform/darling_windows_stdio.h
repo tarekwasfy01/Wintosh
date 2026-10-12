@@ -511,6 +511,9 @@ extern "C" const char* darling_windows_NSSymbolDefinitionNameInObjectFileImage(
 	void* object_file_image, std::uint32_t ordinal);
 extern "C" int darling_windows_NSIsSymbolDefinedInObjectFileImage(
 	void* object_file_image, const char* symbol_name);
+extern "C" void* darling_windows_NSLinkModule(void* object_file_image,
+	const char* module_name, std::uint32_t options);
+extern "C" int darling_windows_NSUnLinkModule(void* module, std::uint32_t options);
 extern "C" void* darling_windows_dlsym(void* handle, const char* symbol);
 extern "C" int darling_windows_dlclose(void* handle);
 extern "C" const char* darling_windows_dlerror();

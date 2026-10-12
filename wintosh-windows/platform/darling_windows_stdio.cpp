@@ -5948,6 +5948,14 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 		std::strcmp(name, "__NSIsSymbolDefinedInObjectFileImage") == 0 ||
 		std::strcmp(name, "_NSIsSymbolDefinedInObjectFileImage") == 0)
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_NSIsSymbolDefinedInObjectFileImage);
+	if (std::strcmp(name, "___NSLinkModule") == 0 ||
+		std::strcmp(name, "__NSLinkModule") == 0 ||
+		std::strcmp(name, "_NSLinkModule") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_NSLinkModule);
+	if (std::strcmp(name, "___NSUnLinkModule") == 0 ||
+		std::strcmp(name, "__NSUnLinkModule") == 0 ||
+		std::strcmp(name, "_NSUnLinkModule") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_NSUnLinkModule);
 	if (std::strcmp(name, "___NSAddressOfSymbol") == 0 ||
 		std::strcmp(name, "__NSAddressOfSymbol") == 0 ||
 		std::strcmp(name, "_NSAddressOfSymbol") == 0) {
@@ -7318,6 +7326,34 @@ extern "C" int darling_windows_NSIsSymbolDefinedInObjectFileImage(
 	const auto found = dynamic_images.find(token->handle);
 	return found != dynamic_images.end() &&
 		darling::windows_host::DynamicImageHasSymbol(*found->second, symbol_name) ? 1 : 0;
+}
+
+extern "C" void* darling_windows_NSLinkModule(void* object_file_image,
+	const char*, std::uint32_t)
+{
+	auto* token = ObjectFileImageToken(object_file_image);
+	if (token == nullptr) {
+		dynamic_loader_error = "NSLinkModule: invalid object file image";
+		return nullptr;
+	}
+	std::lock_guard lock(dynamic_image_mutex);
+	const auto found = dynamic_images.find(token->handle);
+	if (found == dynamic_images.end()) {
+		dynamic_loader_error = "NSLinkModule: image is no longer loaded";
+		return nullptr;
+	}
+	dynamic_loader_error.clear();
+	return const_cast<void*>(darling::windows_host::DynamicImageHeader(*found->second));
+}
+
+extern "C" int darling_windows_NSUnLinkModule(void* module, std::uint32_t)
+{
+	if (module == nullptr) {
+		dynamic_loader_error = "NSUnLinkModule: invalid module";
+		return 0;
+	}
+	dynamic_loader_error.clear();
+	return 1;
 }
 
 extern "C" void* darling_windows_NSAddressOfSymbol(void* symbol)

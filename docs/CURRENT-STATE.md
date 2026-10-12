@@ -269,9 +269,10 @@ resolves `Contents/Info.plist` and `Contents/MacOS/Printf`, and executes it
 through the bundle path. This validates bundle entry resolution, not system
 framework compatibility. The native Clang build now keeps a validated
 main-image lazy-binding session active across guest entry and exports the
-assembler binder entry; without that session it remains fail-closed. The
-printf fixture still pre-applies its lazy pointer, so a true on-demand lazy
-stub E2E remains outstanding.
+assembler binder entry; without that session it remains fail-closed. The E2E
+fixture additionally generates a Mach-O guest whose lazy bind resolves the
+`_wintosh_lazy` host primitive during entry and verifies the active session by
+exit status.
 
 The follow-up ABI gates now verify the complete controlled boundary: the
 session probe observes activation from the binding layer, and the host symbol

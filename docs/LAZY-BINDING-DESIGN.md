@@ -36,7 +36,10 @@ symbol must remain deterministic errors.
 
 ## Verification gate
 
-To complete the real binder gate, add a fixture with two lazy imports and prove
+The first real guest-entry gate now exists: a repository-owned Mach-O fixture
+imports `_wintosh_lazy`, reaches it through the active binder session, and
+verifies the session through its exit status. To complete the broader binder
+gate, add a fixture with two lazy imports and prove
 that the first call patches only slot A, the second call patches only slot B,
 repeated calls reuse the patched targets, and an invalid action cannot modify
 memory. The existing eager lazy-bind tests must remain green. The old
@@ -90,8 +93,8 @@ hardcoded target whenever a session is active. Its end-to-end smoke passes the
 parsed lazy-info offset through the Darwin metadata stack and verifies the
 resolved target receives the original guest arguments. The production
 `dyld_stub_binder` export is now guarded by that active session and remains
-fail-closed outside it; a real Mach-O guest lazy-stub fixture is still needed
-for the final on-demand proof.
+fail-closed outside it. The current guest fixture proves one on-demand import,
+not arbitrary multi-import, multi-image, or system-framework behavior.
 
 `DecodeDarwinX86_64StubFrame` now validates and names the three metadata words
 (`image_cache`, `lazy_binding_info`, and `return_address`) in the confirmed
@@ -112,11 +115,11 @@ contract and implementation target; it does not redistribute Apple's
 assembler. The source reference is
 https://github.com/opensource-apple/dyld/blob/master/src/dyld_stub_binder.s.
 
-The remaining implementation task is therefore a Wintosh-owned x86_64
-trampoline that preserves the guest register/XMM state, decodes the two
-metadata words, resolves the lazy-info offset to a session action, and jumps
-to the returned target. Until a fixture proves that full round trip, the
-export remains fail-closed.
+The remaining implementation task is therefore broader coverage around the
+Wintosh-owned x86_64 trampoline: multiple lazy imports, multi-image context,
+and invalid-action isolation. The single-import round trip is now covered by
+the guest fixture, while the export remains fail-closed outside a validated
+session.
 
 The repository now contains a Wintosh-owned x86_64 trampoline at
 `wintosh-windows/abi/darling_windows_stub_trampoline_x64.S`. It saves the
@@ -129,10 +132,9 @@ fail-closed diagnostic. No synthetic target is used in that path.
 The dyld smoke now invokes an explicit assembler fixture that lays out the
 three metadata words, enters the probe with `jmp`, and verifies that the
 resolved target sees the original SysV integer arguments after the trampoline
-restores them. This proves the register-preservation/jump mechanics and the
-session-backed lazy-info-to-target handoff. It does not yet keep a session
-active around the full arbitrary guest execution lifetime, so general
-real-world lazy binding in an unmodified `.app` is not claimed yet.
+restores them. Together with the guest fixture, this proves the controlled
+single-import round trip; general real-world lazy binding in an unmodified
+`.app` is not claimed yet.
 
 ## Provenance
 

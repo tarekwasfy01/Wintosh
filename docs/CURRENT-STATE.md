@@ -196,6 +196,11 @@ unwind ABI: no `@throw`/`@catch` personality routine or `objc_exception_*`
 compatibility layer is currently shipped.  C++ exceptions must not be treated
 as proof of that Darwin behavior.
 
+The CoreFoundation string comparison gate now also covers the bounded
+`kCFCompareBackwards` ordering option in addition to the existing
+case-insensitive and backwards-search primitives. This remains byte-oriented
+for the adapter and is not full locale-aware Unicode collation.
+
 The Wintosh-owned `objc_exception_smoke` additionally verifies a scoped
 callback exception carrier: an Objective-C object can cross the bridge and be
 caught by the matching Wintosh adapter, while normal callback return remains

@@ -1069,16 +1069,18 @@ extern "C" int darling_windows_CFStringCompareWithOptions(
 	const auto* rhs = static_cast<const Object*>(right);
 	if (lhs == nullptr || rhs == nullptr || lhs->kind != Kind::String ||
 		rhs->kind != Kind::String) return 0;
-	if ((flags & darling_windows_CFCompareCaseInsensitive) == 0)
-		return darling_windows_CFStringCompare(left, right);
 	const auto& a = lhs->string;
 	const auto& b = rhs->string;
 	const auto limit = std::min(a.size(), b.size());
 	for (std::size_t i = 0; i < limit; ++i) {
-		const auto ca = static_cast<unsigned char>(a[i]);
-		const auto cb = static_cast<unsigned char>(b[i]);
-		const auto la = static_cast<unsigned char>(std::tolower(ca));
-		const auto lb = static_cast<unsigned char>(std::tolower(cb));
+		const auto offset = (flags & darling_windows_CFCompareBackwards) != 0 ?
+			(limit - i - 1) : i;
+		const auto ca = static_cast<unsigned char>(a[offset]);
+		const auto cb = static_cast<unsigned char>(b[offset]);
+		const auto la = (flags & darling_windows_CFCompareCaseInsensitive) != 0 ?
+			static_cast<unsigned char>(std::tolower(ca)) : ca;
+		const auto lb = (flags & darling_windows_CFCompareCaseInsensitive) != 0 ?
+			static_cast<unsigned char>(std::tolower(cb)) : cb;
 		if (la != lb) return la < lb ? -1 : 1;
 	}
 	if (a.size() == b.size()) return 0;

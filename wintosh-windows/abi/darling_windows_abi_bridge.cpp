@@ -37,6 +37,11 @@ extern "C" DARLING_SYSV std::uintptr_t darling_windows_abi_resolve_lazy_binding(
 	return target.value_or(0);
 }
 
+extern "C" DARLING_SYSV int darling_windows_abi_lazy_binding_session_active()
+{
+	return darling::windows_host::MachOLazyBindingSession::Current() != nullptr ? 1 : 0;
+}
+
 #if defined(__clang__) && defined(_WIN64)
 namespace {
 struct SysVVaList final { std::uint32_t gp_offset, fp_offset; const std::uint8_t* overflow; const std::uint8_t* save; };

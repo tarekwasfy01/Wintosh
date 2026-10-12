@@ -61,5 +61,11 @@ int main()
 	}
 	std::puts("ABI_BRIDGE_VARIADIC_FAIL_CLOSED=PASS");
 #endif
+	if (darling::windows_host::abi::darling_windows_abi_lazy_binding_session_active() != 0 ||
+		darling_windows_host_symbol("_wintosh_lazy_binding_session_active") == 0) {
+		std::fprintf(stderr, "ABI_BRIDGE_LAZY_SESSION_PRIMITIVE=FAIL\n");
+		return 8;
+	}
+	std::puts("ABI_BRIDGE_LAZY_SESSION_PRIMITIVE=PASS");
 	return 0;
 }

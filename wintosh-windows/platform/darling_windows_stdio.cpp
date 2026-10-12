@@ -4788,6 +4788,11 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 		return reinterpret_cast<std::uintptr_t>(
 			&darling::windows_host::abi::darling_windows_abi_dyld_stub_binder);
 	}
+	if (std::strcmp(name, "_wintosh_lazy_binding_session_active") == 0 ||
+		std::strcmp(name, "wintosh_lazy_binding_session_active") == 0) {
+		return reinterpret_cast<std::uintptr_t>(
+			&darling::windows_host::abi::darling_windows_abi_lazy_binding_session_active);
+	}
 	if (std::strcmp(name, "__stack_chk_fail") == 0 ||
 		std::strcmp(name, "___stack_chk_fail") == 0 ||
 		std::strcmp(name, "___stack_chk_fail_local") == 0) {

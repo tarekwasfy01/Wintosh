@@ -31,6 +31,7 @@ using GuestVoidFn = GuestFn<void>;
 extern "C" DARLING_SYSV int darling_windows_abi_puts(const char* value);
 extern "C" DARLING_SYSV std::uintptr_t darling_windows_abi_resolve_lazy_binding(
 	std::uintptr_t image_cache, std::uintptr_t lazy_binding_info);
+extern "C" DARLING_SYSV int darling_windows_abi_lazy_binding_session_active();
 #if defined(__clang__) && defined(_WIN64)
 extern "C" int darling_windows_abi_printf_windows_helper(const char*, const void*);
 #endif

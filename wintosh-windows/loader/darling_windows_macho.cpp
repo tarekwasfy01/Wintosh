@@ -580,6 +580,7 @@ MachOImage MachOImage::Open(const std::wstring& path)
 				const auto name_bytes = command->command_bytes - dylib->name_offset;
 				const auto* terminator = static_cast<const char*>(std::memchr(name, '\0', name_bytes));
 				Require(terminator != nullptr, "Mach-O dylib name is not terminated");
+				Require(terminator != name, "Mach-O dylib name is empty");
 				if (command->command == LC_ID_DYLIB)
 					install_name.assign(name, terminator);
 				else

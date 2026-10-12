@@ -334,6 +334,10 @@ keeps malformed search-path commands fail-closed before dependency resolution;
 normal embedded and caller-supplied RPATHs remain covered by the existing dyld
 smokes.
 
+The same fail-closed rule now applies to empty `LC_ID_DYLIB` and
+`LC_LOAD_*_DYLIB` names, preventing malformed dependency commands from
+entering the resolver with an empty key.
+
 ## Latest verified native adapter families
 
 The current local branch additionally contains a prefix-relative Preferences

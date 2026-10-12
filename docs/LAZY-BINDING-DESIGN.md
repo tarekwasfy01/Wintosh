@@ -83,6 +83,13 @@ fail-closed when no session is active or the offset is unknown, and otherwise
 applies the action and returns the resolved target. The dyld smoke exercises
 both the valid active-session path and the invalid-neighbor path.
 
+The assembler fixture now calls this real session resolver rather than a
+hardcoded target whenever a session is active. Its end-to-end smoke passes the
+parsed lazy-info offset through the Darwin metadata stack and verifies the
+resolved target receives the original guest arguments. The production
+`dyld_stub_binder` export remains fail-closed until a real Mach-O lazy stub
+fixture, rather than this controlled session fixture, is wired through.
+
 `DecodeDarwinX86_64StubFrame` now validates and names the three metadata words
 (`image_cache`, `lazy_binding_info`, and `return_address`) in the confirmed
 Darwin order. Its null/zero rejection is covered by the dyld smoke fixture.

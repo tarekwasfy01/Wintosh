@@ -69,7 +69,7 @@ darling_windows_darwin_stub_trampoline_fixture:
     /* Preserve the caller return address at the metadata frame's +16. */
     sub rsp, 16
     mov qword ptr [rsp+0x00], 0x9000
-    mov qword ptr [rsp+0x08], 0x1240
+    mov qword ptr [rsp+0x08], rdx
     jmp darling_windows_darwin_stub_trampoline_probe
 
 .section .drectve,"dr"

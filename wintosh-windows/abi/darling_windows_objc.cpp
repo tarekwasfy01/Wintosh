@@ -146,7 +146,9 @@ extern "C" bool darling_objc_exception_try(
 			*caught_object = exception.object;
 		return true;
 	} catch (...) {
-		return false;
+		// Do not turn an unrelated C++ failure into a successful Objective-C
+		// catch boundary. Foreign exceptions must keep their original owner.
+		throw;
 	}
 }
 

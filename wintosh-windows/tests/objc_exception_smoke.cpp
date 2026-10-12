@@ -3,6 +3,7 @@
 #include "darling_windows_objc.h"
 
 #include <iostream>
+#include <stdexcept>
 
 namespace {
 void ThrowObject(void* context)
@@ -11,6 +12,11 @@ void ThrowObject(void* context)
 }
 
 void ReturnNormally(void*) {}
+
+void ThrowForeign(void*)
+{
+	throw std::runtime_error("foreign exception");
+}
 }
 
 int main()
@@ -29,7 +35,13 @@ int main()
 		caught == object;
 	const bool normal_ok = !darling_objc_exception_try(&ReturnNormally, nullptr, &caught) &&
 		caught == nullptr;
+	bool foreign_propagated = false;
+	try {
+		darling_objc_exception_try(&ThrowForeign, nullptr, &caught);
+	} catch (const std::runtime_error&) {
+		foreign_propagated = true;
+	}
 	std::cout << "OBJC_EXCEPTION_BRIDGE="
-		<< ((caught_ok && normal_ok) ? "PASS" : "FAIL") << "\n";
-	return caught_ok && normal_ok ? 0 : 3;
+		<< ((caught_ok && normal_ok && foreign_propagated) ? "PASS" : "FAIL") << "\n";
+	return caught_ok && normal_ok && foreign_propagated ? 0 : 3;
 }

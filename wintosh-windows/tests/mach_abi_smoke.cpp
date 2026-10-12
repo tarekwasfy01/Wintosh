@@ -369,13 +369,6 @@ int main()
 	if (darling_windows_thread_set_state(thread, darling_x86_thread_state64_flavor,
 		&state, darling_x86_thread_state64_count) == 0)
 		return 1;
-	darling_arm_thread_state64 arm_state{};
-	std::uint32_t arm_count = darling_arm_thread_state64_count;
-	if (darling_windows_thread_get_state(thread, darling_arm_thread_state64_flavor,
-		&arm_state, &arm_count) != darling_kern_not_supported ||
-		darling_windows_thread_set_state(thread, darling_arm_thread_state64_flavor,
-		&arm_state, darling_arm_thread_state64_count) != darling_kern_not_supported)
-		return 1;
 	darling_x86_float_state64 float_state{};
 	std::uint32_t float_count = darling_x86_float_state64_count;
 	if (darling_windows_thread_get_state(thread, darling_x86_float_state64_flavor,

@@ -503,6 +503,7 @@ MachOImage MachOImage::Open(const std::wstring& path)
 				const auto path_bytes = command->command_bytes - rpath->path_offset;
 				const auto* terminator = static_cast<const char*>(std::memchr(path, '\0', path_bytes));
 				Require(terminator != nullptr, "Mach-O rpath is not terminated");
+				Require(terminator != path, "Mach-O rpath is empty");
 				rpaths.emplace_back(path, terminator);
 			} else if (command->command == LC_DYSYMTAB) {
 				Require(command->command_bytes >= sizeof(DYSymtabCommand),

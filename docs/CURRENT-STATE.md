@@ -329,6 +329,11 @@ Invalid and empty paths remain fail-closed. The host symbol table and the
 dynamic-loader smoke both cover this entry point; this is still a bounded
 adapter and not a claim of complete dyld preflight diagnostics.
 
+Mach-O `LC_RPATH` parsing also rejects an explicitly empty path entry. This
+keeps malformed search-path commands fail-closed before dependency resolution;
+normal embedded and caller-supplied RPATHs remain covered by the existing dyld
+smokes.
+
 ## Latest verified native adapter families
 
 The current local branch additionally contains a prefix-relative Preferences

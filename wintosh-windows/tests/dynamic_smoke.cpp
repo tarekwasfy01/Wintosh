@@ -85,6 +85,12 @@ int wmain()
 		win32_output.write(reinterpret_cast<const char*>(win32_data.data()),
 			static_cast<std::streamsize>(win32_data.size()));
 		win32_output.close();
+		void* memory_image = nullptr;
+		const bool memory_image_ok =
+			darling_windows_NSCreateObjectFileImageFromMemory(win32_data.data(),
+				win32_data.size(), &memory_image) == darling_NSObjectFileImageSuccess &&
+			memory_image != nullptr &&
+			darling_windows_NSDestroyObjectFileImage(memory_image) == 1;
 		const auto utf8_path = win32_path.string();
 		void* handle = darling_windows_dlopen(utf8_path.c_str(), 0);
 		void* second_handle = darling_windows_dlopen(utf8_path.c_str(), 0);
@@ -113,7 +119,7 @@ int wmain()
 				break;
 			}
 		}
-		const bool passed = object_image_ok && object_symbols_ok && module_link_ok &&
+		const bool passed = memory_image_ok && object_image_ok && object_symbols_ok && module_link_ok &&
 			handle != nullptr &&
 			darling_windows_NSDestroyObjectFileImage(object_file_image) == 1 &&
 			second_handle == handle &&

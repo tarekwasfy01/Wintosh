@@ -744,7 +744,10 @@ struct DynamicImageLoadState final {
 	bool complete = false;
 	std::thread::id owner;
 };
-struct DarlingObjectFileImageToken final { void* handle = nullptr; };
+struct DarlingObjectFileImageToken final {
+	void* handle = nullptr;
+	std::filesystem::path temporary_path;
+};
 std::unordered_map<std::wstring, std::shared_ptr<DynamicImageLoadState>>
 	dynamic_image_loads;
 
@@ -5931,6 +5934,10 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 		std::strcmp(name, "_NSCreateObjectFileImageFromFile") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_NSCreateObjectFileImageFromFile);
 	}
+	if (std::strcmp(name, "___NSCreateObjectFileImageFromMemory") == 0 ||
+		std::strcmp(name, "__NSCreateObjectFileImageFromMemory") == 0 ||
+		std::strcmp(name, "_NSCreateObjectFileImageFromMemory") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_NSCreateObjectFileImageFromMemory);
 	if (std::strcmp(name, "___NSDestroyObjectFileImage") == 0 ||
 		std::strcmp(name, "__NSDestroyObjectFileImage") == 0 ||
 		std::strcmp(name, "_NSDestroyObjectFileImage") == 0) {
@@ -7279,7 +7286,7 @@ extern "C" int darling_windows_NSCreateObjectFileImageFromFile(const char* path,
 	void* handle = darling_windows_dlopen(path, 0);
 	if (handle == nullptr || handle == DarwinRtldDefaultHandle())
 		return darling_NSObjectFileImageInappropriateFile;
-	auto* token = new (std::nothrow) DarlingObjectFileImageToken{handle};
+	auto* token = new (std::nothrow) DarlingObjectFileImageToken{handle, {}};
 	if (token == nullptr) {
 		darling_windows_dlclose(handle);
 		return darling_NSObjectFileImageFailure;
@@ -7294,8 +7301,47 @@ extern "C" int darling_windows_NSDestroyObjectFileImage(void* object_file_image)
 		return 0;
 	auto* token = static_cast<DarlingObjectFileImageToken*>(object_file_image);
 	const int result = darling_windows_dlclose(token->handle) == 0 ? 1 : 0;
+	if (!token->temporary_path.empty()) {
+		std::error_code error;
+		std::filesystem::remove(token->temporary_path, error);
+	}
 	delete token;
 	return result;
+}
+
+extern "C" int darling_windows_NSCreateObjectFileImageFromMemory(const void* address,
+	std::size_t size, void** object_file_image)
+{
+	if (object_file_image == nullptr)
+		return darling_NSObjectFileImageFailure;
+	*object_file_image = nullptr;
+	if (address == nullptr || size == 0)
+		return darling_NSObjectFileImageAccess;
+	const auto temporary = std::filesystem::temp_directory_path() /
+		("wintosh-object-image-" + std::to_string(GetCurrentProcessId()) + "-" +
+		std::to_string(reinterpret_cast<std::uintptr_t>(address)) + ".macho");
+	{
+		std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
+		if (!output) return darling_NSObjectFileImageAccess;
+		output.write(static_cast<const char*>(address), static_cast<std::streamsize>(size));
+		if (!output) return darling_NSObjectFileImageFailure;
+	}
+	const auto path = temporary.string();
+	void* handle = darling_windows_dlopen(path.c_str(), 0);
+	if (handle == nullptr || handle == DarwinRtldDefaultHandle()) {
+		std::error_code error;
+		std::filesystem::remove(temporary, error);
+		return darling_NSObjectFileImageInappropriateFile;
+	}
+	auto* token = new (std::nothrow) DarlingObjectFileImageToken{handle, temporary};
+	if (token == nullptr) {
+		darling_windows_dlclose(handle);
+		std::error_code error;
+		std::filesystem::remove(temporary, error);
+		return darling_NSObjectFileImageFailure;
+	}
+	*object_file_image = token;
+	return darling_NSObjectFileImageSuccess;
 }
 
 DarlingObjectFileImageToken* ObjectFileImageToken(void* value)

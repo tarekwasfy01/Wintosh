@@ -111,7 +111,7 @@ extern "C" [[noreturn]] void darling_windows_abi_dyld_stub_binder_fail_closed()
 }
 
 #if !(defined(__clang__) && defined(_WIN64))
-extern "C" DARLING_SYSV [[noreturn]] void darling_windows_abi_dyld_stub_binder()
+extern "C" DARLING_SYSV void darling_windows_abi_dyld_stub_binder()
 {
 	darling_windows_abi_dyld_stub_binder_fail_closed();
 }

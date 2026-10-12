@@ -876,6 +876,9 @@ int wmain(int argc, wchar_t** argv)
 				throw std::runtime_error("Mach-O lazy info did not resolve to exactly one action");
 			{
 				auto activation = lazy_session.Activate();
+				if (darling::windows_host::abi::
+					darling_windows_abi_lazy_binding_session_active() != 1)
+					throw std::runtime_error("Darwin lazy session probe did not observe activation");
 				const auto resolved = darling::windows_host::abi::
 					darling_windows_abi_resolve_lazy_binding(0x9000, lazy_info_offset);
 				if (resolved != relocation_apply_target ||

@@ -93,6 +93,9 @@ bringing the verified total to 103 components.
 The fourteenth batch in
 [`REMOTE-HEADS-014.csv`](upstream-candidates/REMOTE-HEADS-014.csv) is 8/8,
 bringing the verified total to 111 components.
+The fifteenth batch in
+[`REMOTE-HEADS-015.csv`](upstream-candidates/REMOTE-HEADS-015.csv) is 8/8,
+bringing the verified total to 119 components.
 
 Manual follow-up for `libpthread_workqueue-0.8.2` found BSD-style
 redistribution terms in `include/pthread_workqueue.h`, `src/api.c`, and

@@ -128,10 +128,17 @@ int wmain()
 			darling_windows_NSLookupSymbolInModule(reinterpret_cast<void*>(0x1), "exported") == nullptr &&
 			std::string(darling_windows_dlerror()) ==
 				"NSLookupSymbolInModule: module not found";
+		const bool global_lookup_ok =
+			darling_windows_NSLookupAndBindSymbol("exported") == symbol_address &&
+			darling_windows_NSLookupAndBindSymbolWithHint("exported",
+				path.filename().string().c_str()) == symbol_address &&
+			darling_windows_NSLookupAndBindSymbol("missing") == nullptr &&
+			std::string(darling_windows_dlerror()) ==
+				"NSLookupAndBindSymbol: symbol not found";
 		std::error_code win32_error;
 		std::filesystem::remove(win32_path, win32_error);
 		if (!passed || !invalid_lookup_rejected || !lookup_options_ok ||
-			!module_lookup_ok || win32_error)
+			!module_lookup_ok || !global_lookup_ok || win32_error)
 			return 3;
 		std::cout << "DARWIN_DLOPEN=PASS\n";
 		std::cout << "DARWIN_DLSYM=PASS\n";

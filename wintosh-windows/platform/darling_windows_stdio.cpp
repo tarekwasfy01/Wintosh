@@ -5889,6 +5889,16 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 		std::strcmp(name, "_NSLookupSymbolInModule") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_NSLookupSymbolInModule);
 	}
+	if (std::strcmp(name, "___NSLookupAndBindSymbol") == 0 ||
+		std::strcmp(name, "__NSLookupAndBindSymbol") == 0 ||
+		std::strcmp(name, "_NSLookupAndBindSymbol") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_NSLookupAndBindSymbol);
+	}
+	if (std::strcmp(name, "___NSLookupAndBindSymbolWithHint") == 0 ||
+		std::strcmp(name, "__NSLookupAndBindSymbolWithHint") == 0 ||
+		std::strcmp(name, "_NSLookupAndBindSymbolWithHint") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_NSLookupAndBindSymbolWithHint);
+	}
 	if (std::strcmp(name, "___NSAddressOfSymbol") == 0 ||
 		std::strcmp(name, "__NSAddressOfSymbol") == 0 ||
 		std::strcmp(name, "_NSAddressOfSymbol") == 0) {
@@ -7108,6 +7118,44 @@ extern "C" void* darling_windows_NSLookupSymbolInModule(void* module,
 	}
 	dynamic_loader_error.clear();
 	return reinterpret_cast<void*>(address);
+}
+
+namespace {
+void* LookupAndBindSymbol(const char* symbol_name, const char* library_name_hint)
+{
+	if (symbol_name == nullptr || symbol_name[0] == '\0') {
+		dynamic_loader_error = "NSLookupAndBindSymbol: invalid symbol name";
+		return nullptr;
+	}
+	std::lock_guard lock(dynamic_image_mutex);
+	for (const auto& entry : dynamic_images) {
+		if (library_name_hint != nullptr && library_name_hint[0] != '\0' &&
+			darling::windows_host::DynamicImagePath(*entry.second).filename().string().find(
+				library_name_hint) == std::string::npos)
+			continue;
+		const auto address = darling::windows_host::DynamicImageSymbol(
+			*entry.second, symbol_name);
+		if (address != 0) {
+			dynamic_loader_error.clear();
+			return reinterpret_cast<void*>(address);
+		}
+	}
+	dynamic_loader_error = library_name_hint == nullptr
+		? "NSLookupAndBindSymbol: symbol not found"
+		: "NSLookupAndBindSymbolWithHint: symbol not found";
+	return nullptr;
+}
+}
+
+extern "C" void* darling_windows_NSLookupAndBindSymbol(const char* symbol_name)
+{
+	return LookupAndBindSymbol(symbol_name, nullptr);
+}
+
+extern "C" void* darling_windows_NSLookupAndBindSymbolWithHint(
+	const char* symbol_name, const char* library_name_hint)
+{
+	return LookupAndBindSymbol(symbol_name, library_name_hint);
 }
 
 extern "C" void* darling_windows_NSAddressOfSymbol(void* symbol)

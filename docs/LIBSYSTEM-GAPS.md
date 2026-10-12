@@ -27,6 +27,9 @@ following families with Windows-backed implementations:
   lifetime semantics remain outside this bridge.
 - `NSLookupSymbolInModule` for live Wintosh `dlopen` handles, with invalid
   handles and missing symbols reported through `dlerror()`.
+- `NSLookupAndBindSymbol` and its library-hint variant across registered
+  Wintosh images; lookup remains limited to the process-local Wintosh image
+  registry and does not reproduce Apple's global dyld namespace.
 - Objective-C runtime registration and the Foundation/CoreFoundation/
   CoreGraphics compatibility subsets;
 - Mach virtual memory, IPC broker operations, ports, OOL data, and MIG dispatch.

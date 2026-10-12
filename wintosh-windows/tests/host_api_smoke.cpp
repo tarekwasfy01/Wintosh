@@ -500,6 +500,8 @@ int main()
 		darling_windows_host_symbol("___NSDestroyObjectFileImage") != 0 &&
 		darling_windows_host_symbol("___NSLinkModule") != 0 &&
 		darling_windows_host_symbol("___NSUnLinkModule") != 0 &&
+		darling_windows_host_symbol("___NSNameOfModule") != 0 &&
+		darling_windows_host_symbol("___NSLibraryNameForModule") != 0 &&
 		darling_windows_host_symbol("___NSAddressOfSymbol") != 0 &&
 		darling_windows_NSAddressOfSymbol(reinterpret_cast<void*>(0x1)) ==
 			reinterpret_cast<void*>(0x1) &&

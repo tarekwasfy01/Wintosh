@@ -5956,6 +5956,14 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 		std::strcmp(name, "__NSUnLinkModule") == 0 ||
 		std::strcmp(name, "_NSUnLinkModule") == 0)
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_NSUnLinkModule);
+	if (std::strcmp(name, "___NSNameOfModule") == 0 ||
+		std::strcmp(name, "__NSNameOfModule") == 0 ||
+		std::strcmp(name, "_NSNameOfModule") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_NSNameOfModule);
+	if (std::strcmp(name, "___NSLibraryNameForModule") == 0 ||
+		std::strcmp(name, "__NSLibraryNameForModule") == 0 ||
+		std::strcmp(name, "_NSLibraryNameForModule") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_NSLibraryNameForModule);
 	if (std::strcmp(name, "___NSAddressOfSymbol") == 0 ||
 		std::strcmp(name, "__NSAddressOfSymbol") == 0 ||
 		std::strcmp(name, "_NSAddressOfSymbol") == 0) {
@@ -7354,6 +7362,53 @@ extern "C" int darling_windows_NSUnLinkModule(void* module, std::uint32_t)
 	}
 	dynamic_loader_error.clear();
 	return 1;
+}
+
+namespace {
+darling::windows_host::DarwinDynamicImage* ModuleImage(void* module)
+{
+	for (const auto& entry : dynamic_images) {
+		if (darling::windows_host::DynamicImageHeader(*entry.second) == module)
+			return entry.second;
+	}
+	return nullptr;
+}
+}
+
+extern "C" const char* darling_windows_NSNameOfModule(void* module)
+{
+	if (module == nullptr) {
+		dynamic_loader_error = "NSNameOfModule: invalid module";
+		return nullptr;
+	}
+	std::lock_guard lock(dynamic_image_mutex);
+	auto* image = ModuleImage(module);
+	if (image == nullptr) {
+		dynamic_loader_error = "NSNameOfModule: module not found";
+		return nullptr;
+	}
+	static thread_local std::string name;
+	name = darling::windows_host::DynamicImagePath(*image).stem().string();
+	dynamic_loader_error.clear();
+	return name.c_str();
+}
+
+extern "C" const char* darling_windows_NSLibraryNameForModule(void* module)
+{
+	if (module == nullptr) {
+		dynamic_loader_error = "NSLibraryNameForModule: invalid module";
+		return nullptr;
+	}
+	std::lock_guard lock(dynamic_image_mutex);
+	auto* image = ModuleImage(module);
+	if (image == nullptr) {
+		dynamic_loader_error = "NSLibraryNameForModule: module not found";
+		return nullptr;
+	}
+	static thread_local std::string path;
+	path = darling::windows_host::DynamicImagePath(*image).string();
+	dynamic_loader_error.clear();
+	return path.c_str();
 }
 
 extern "C" void* darling_windows_NSAddressOfSymbol(void* symbol)

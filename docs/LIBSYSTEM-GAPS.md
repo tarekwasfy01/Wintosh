@@ -43,6 +43,9 @@ following families with Windows-backed implementations:
   the already-loaded image as a bounded legacy module view; deferred linking,
   unload flags, and Apple module initializer/error-handler semantics remain
   open.
+- `NSNameOfModule` and `NSLibraryNameForModule` provide bounded metadata for
+  projected Wintosh modules; Apple module-name overrides and legacy module
+  lifetime rules remain open.
 - Objective-C runtime registration and the Foundation/CoreFoundation/
   CoreGraphics compatibility subsets;
 - Mach virtual memory, IPC broker operations, ports, OOL data, and MIG dispatch.

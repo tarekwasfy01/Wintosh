@@ -890,6 +890,10 @@ int wmain(int argc, wchar_t** argv)
 					throw std::runtime_error("Darwin lazy resolver bridge rejected valid context");
 				if (*lazy_address != slot_before_invalid)
 					throw std::runtime_error("invalid Darwin lazy info modified a slot");
+				if (darling::windows_host::abi::darling_windows_abi_resolve_lazy_binding(
+					0x9000, lazy_info_offset) != relocation_apply_target ||
+					*lazy_address != slot_before_invalid)
+					throw std::runtime_error("repeated Darwin lazy binding was not idempotent");
 			}
 			if (!lazy_session.ApplyForSlot(lazy_slot_address))
 				throw std::runtime_error("Mach-O lazy slot application was rejected");

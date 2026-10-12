@@ -80,6 +80,9 @@ The tenth batch in
 7/8 remote `HEAD` commits; `libpthread_workqueue-0.8.2` has no recorded
 remote and remains unresolved. This brings the verified total to 79
 components, with one explicit lookup failure preserved in the batch CSV.
+The eleventh batch in
+[`REMOTE-HEADS-011.csv`](upstream-candidates/REMOTE-HEADS-011.csv) is 8/8,
+bringing the verified total to 87 components.
 
 Manual follow-up for `libpthread_workqueue-0.8.2` found BSD-style
 redistribution terms in `include/pthread_workqueue.h`, `src/api.c`, and

@@ -603,6 +603,14 @@ int wmain(int argc, wchar_t** argv)
 				image, "@rpath/Versioned", {root}, root);
 			if (versioned != versioned_framework)
 				throw std::runtime_error("versioned framework shorthand did not resolve");
+			const auto numbered_framework = root / "Numbered.framework" /
+				"Versions" / "B" / "Numbered";
+			std::filesystem::create_directories(numbered_framework.parent_path());
+			WriteMachO(numbered_framework, nullptr, true, false);
+			const auto numbered = darling::windows_host::DylibResolver::Resolve(
+				image, "@rpath/Numbered", {root}, root);
+			if (numbered != numbered_framework)
+				throw std::runtime_error("arbitrary versioned framework did not resolve");
 			const auto system_framework = root / "System" / "Library" / "Frameworks" /
 				"Foundation.framework" / "Foundation";
 			std::filesystem::create_directories(system_framework.parent_path());

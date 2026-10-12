@@ -5879,6 +5879,16 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 		std::strcmp(name, "_NSVersionOfLinkTimeLibrary") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_NSVersionOfLinkTimeLibrary);
 	}
+	if (std::strcmp(name, "___NSLookupSymbolInImage") == 0 ||
+		std::strcmp(name, "__NSLookupSymbolInImage") == 0 ||
+		std::strcmp(name, "_NSLookupSymbolInImage") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_NSLookupSymbolInImage);
+	}
+	if (std::strcmp(name, "___NSAddressOfSymbol") == 0 ||
+		std::strcmp(name, "__NSAddressOfSymbol") == 0 ||
+		std::strcmp(name, "_NSAddressOfSymbol") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_NSAddressOfSymbol);
+	}
 	if (std::strcmp(name, "_clock_gettime") == 0 || std::strcmp(name, "clock_gettime") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_clock_gettime);
 	}
@@ -7016,6 +7026,41 @@ extern "C" void* darling_windows_dlsym(void* handle, const char* symbol)
 	}
 	dynamic_loader_error.clear();
 	return reinterpret_cast<void*>(address);
+}
+
+extern "C" void* darling_windows_NSLookupSymbolInImage(const void* image_header,
+	std::uint32_t options, const char* symbol_name)
+{
+	// The Darwin API returns an opaque NSSymbol.  Wintosh represents that
+	// token by the resolved address, which keeps NSAddressOfSymbol ABI-safe for
+	// the native bridge while retaining the existing Mach-O symbol lookup.
+	(void)options;
+	if (image_header == nullptr || symbol_name == nullptr || symbol_name[0] == '\0')
+		return nullptr;
+	std::lock_guard lock(dynamic_image_mutex);
+	for (const auto& entry : dynamic_images) {
+		if (darling::windows_host::DynamicImageHeader(*entry.second) != image_header)
+			continue;
+		const auto address = darling::windows_host::DynamicImageSymbol(
+			*entry.second, symbol_name);
+		if (address != 0) {
+			dynamic_loader_error.clear();
+			return reinterpret_cast<void*>(address);
+		}
+		break;
+	}
+	dynamic_loader_error = "NSLookupSymbolInImage: symbol not found";
+	return nullptr;
+}
+
+extern "C" void* darling_windows_NSAddressOfSymbol(void* symbol)
+{
+	if (symbol == nullptr) {
+		dynamic_loader_error = "NSAddressOfSymbol: invalid symbol";
+		return nullptr;
+	}
+	dynamic_loader_error.clear();
+	return symbol;
 }
 
 extern "C" int darling_windows_dlclose(void* handle)

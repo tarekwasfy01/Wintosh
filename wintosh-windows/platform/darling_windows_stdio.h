@@ -533,6 +533,9 @@ extern "C" int darling_windows_uname(darling_utsname* result);
 extern "C" int darling_windows_NSGetExecutablePath(char* buffer, std::uint32_t* size);
 extern "C" int darling_windows_NSVersionOfRunTimeLibrary(const char* name);
 extern "C" int darling_windows_NSVersionOfLinkTimeLibrary(const char* name);
+extern "C" void* darling_windows_NSLookupSymbolInImage(const void* image_header,
+	std::uint32_t options, const char* symbol_name);
+extern "C" void* darling_windows_NSAddressOfSymbol(void* symbol);
 extern "C" const char* darling_windows_getprogname();
 extern "C" void darling_windows_setprogname(const char* name);
 extern "C" int darling_windows_clock_gettime(int clock_id, darling_timespec* result);

@@ -46,10 +46,10 @@ fail-closed bridge test must remain present until this gate passes.
 
 `MachOLazyBindingSession` now keeps one `MachOImage`, its `Mapping`, and its
 resolved binding table together. The bootstrap path uses this session for
-provider and main-image eager lazy binding, and `ApplyOne` is the intended
-future entry point for on-demand binding. The external stub binder is not
-enabled yet; action-index recovery from the Darwin stub convention remains
-open.
+provider and main-image eager lazy binding, and keeps the main-image session
+active across guest entry so the guarded external stub binder can resolve
+on-demand actions. Full action-index recovery from an unmodified Mach-O guest
+stub remains open.
 
 The dyld smoke now exercises `MachOLazyBindingSession::ApplyOne` for a real
 lazy action and verifies the patched slot, so the session boundary is covered
@@ -70,9 +70,9 @@ binder work is recovering that slot address from the real stub-call register
 convention and passing it into this lookup.
 
 `ApplyForSlot` now combines the validated lookup and one bind application and
-returns false when no lazy action owns the supplied slot. This is the direct
-handoff primitive for a future architecture-specific Darwin stub trampoline;
-it does not decode registers or claim that `dyld_stub_binder` is complete.
+returns false when no lazy action owns the supplied slot. This remains useful
+for architecture-specific trampoline validation; the active x86_64 binder
+uses the corresponding lazy-info lookup.
 
 Each parsed bind action now retains its byte offset in the originating bind
 stream. `FindActionForLazyInfo` uses that provenance to map the Darwin binder's
@@ -89,14 +89,16 @@ The assembler fixture now calls this real session resolver rather than a
 hardcoded target whenever a session is active. Its end-to-end smoke passes the
 parsed lazy-info offset through the Darwin metadata stack and verifies the
 resolved target receives the original guest arguments. The production
-`dyld_stub_binder` export remains fail-closed until a real Mach-O lazy stub
-fixture, rather than this controlled session fixture, is wired through.
+`dyld_stub_binder` export is now guarded by that active session and remains
+fail-closed outside it; a real Mach-O guest lazy-stub fixture is still needed
+for the final on-demand proof.
 
 `DecodeDarwinX86_64StubFrame` now validates and names the three metadata words
 (`image_cache`, `lazy_binding_info`, and `return_address`) in the confirmed
 Darwin order. Its null/zero rejection is covered by the dyld smoke fixture.
-This remains a metadata parser; it does not yet preserve guest registers or
-jump to the resolved target.
+The metadata parser is supplemented by the Clang x86_64 trampoline, which
+preserves guest registers and jumps to the resolved target; the parser itself
+still does not recover context from arbitrary guest memory.
 
 ## Confirmed x86_64 Darwin stub contract
 

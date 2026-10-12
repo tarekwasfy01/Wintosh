@@ -7,6 +7,7 @@
  */
 
 #include "darling_windows_abi_bridge.h"
+#include "darling_windows_macho.h"
 #include "darling_windows_stdio.h"
 
 #include <cstdio>
@@ -23,6 +24,17 @@
 extern "C" DARLING_SYSV int darling_windows_abi_puts(const char* value)
 {
 	return value == nullptr ? EOF : std::puts(value);
+}
+
+extern "C" DARLING_SYSV std::uintptr_t darling_windows_abi_resolve_lazy_binding(
+	std::uintptr_t image_cache, std::uintptr_t lazy_binding_info)
+{
+	(void)image_cache;
+	const auto* session = darling::windows_host::MachOLazyBindingSession::Current();
+	if (session == nullptr)
+		return 0;
+	const auto target = session->ResolveForLazyInfo(lazy_binding_info);
+	return target.value_or(0);
 }
 
 #if defined(__clang__) && defined(_WIN64)

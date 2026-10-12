@@ -871,6 +871,15 @@ int wmain(int argc, wchar_t** argv)
 				*lazy_session.FindActionForLazyInfo(lazy_info_offset) != *lazy_action ||
 				lazy_session.FindActionForLazyInfo(lazy_info_offset + 1).has_value())
 				throw std::runtime_error("Mach-O lazy info did not resolve to exactly one action");
+			{
+				auto activation = lazy_session.Activate();
+				const auto resolved = darling::windows_host::abi::
+					darling_windows_abi_resolve_lazy_binding(0x9000, lazy_info_offset);
+				if (resolved != relocation_apply_target ||
+					darling::windows_host::abi::darling_windows_abi_resolve_lazy_binding(
+						0x9000, lazy_info_offset + 1) != 0)
+					throw std::runtime_error("Darwin lazy resolver bridge rejected valid context");
+			}
 			if (!lazy_session.ApplyForSlot(lazy_slot_address))
 				throw std::runtime_error("Mach-O lazy slot application was rejected");
 			const auto lazy_address = reinterpret_cast<const std::uintptr_t*>(

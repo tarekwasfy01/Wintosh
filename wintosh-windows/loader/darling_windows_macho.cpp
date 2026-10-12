@@ -2508,6 +2508,23 @@ std::optional<std::size_t> MachOLazyBindingSession::FindActionForLazyInfo(
 	return std::nullopt;
 }
 
+std::optional<std::uintptr_t> MachOLazyBindingSession::ResolveForLazyInfo(
+	std::uintptr_t lazy_binding_info) const
+{
+	const auto action_index = FindActionForLazyInfo(lazy_binding_info);
+	if (!action_index.has_value())
+		return std::nullopt;
+	ApplyOne(*action_index);
+	const auto& action = m_image.BindActions()[*action_index];
+	const auto found = std::find_if(m_bindings.begin(), m_bindings.end(),
+		[&action](const DyldResolvedBinding& binding) {
+			return binding.symbol == action.symbol;
+		});
+	if (found == m_bindings.end())
+		return std::nullopt;
+	return found->address;
+}
+
 std::optional<std::size_t> MachOLazyBindingSession::FindActionForSlot(
 	std::uintptr_t slot_address) const noexcept
 {

@@ -78,6 +78,11 @@ lazy-info offset back to exactly one lazy action; the dyld smoke checks the
 matching offset and rejects its neighbor. This is the first real bridge from
 the Darwin binder metadata to Wintosh's action table.
 
+The ABI bridge now exposes `darling_windows_abi_resolve_lazy_binding`. It is
+fail-closed when no session is active or the offset is unknown, and otherwise
+applies the action and returns the resolved target. The dyld smoke exercises
+both the valid active-session path and the invalid-neighbor path.
+
 `DecodeDarwinX86_64StubFrame` now validates and names the three metadata words
 (`image_cache`, `lazy_binding_info`, and `return_address`) in the confirmed
 Darwin order. Its null/zero rejection is covered by the dyld smoke fixture.

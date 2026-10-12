@@ -522,6 +522,8 @@ public:
 	[[nodiscard]] bool ApplyForSlot(std::uintptr_t slot_address) const;
 	[[nodiscard]] std::optional<std::size_t> FindActionForLazyInfo(
 		std::uintptr_t lazy_binding_info) const noexcept;
+	[[nodiscard]] std::optional<std::uintptr_t> ResolveForLazyInfo(
+		std::uintptr_t lazy_binding_info) const;
 	[[nodiscard]] std::optional<std::size_t> FindActionForSlot(
 		std::uintptr_t slot_address) const noexcept;
 	[[nodiscard]] Activation Activate() const noexcept { return Activation(this); }

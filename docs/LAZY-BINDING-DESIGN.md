@@ -54,6 +54,12 @@ active across guest entry so the guarded external stub binder can resolve
 on-demand actions. Full action-index recovery from an unmodified Mach-O guest
 stub remains open.
 
+Provider images now receive their own nested activation while their
+initializers run. This covers lazy imports triggered during provider startup
+without allowing a provider session to leak into the main-image entry scope;
+arbitrary later calls across multiple loaded images still require a shared
+image-aware registry.
+
 The dyld smoke now exercises `MachOLazyBindingSession::ApplyOne` for a real
 lazy action and verifies the patched slot, so the session boundary is covered
 by executable test code.

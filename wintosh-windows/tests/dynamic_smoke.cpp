@@ -114,9 +114,18 @@ int wmain()
 				"exported") == nullptr &&
 			std::string(darling_windows_dlerror()) ==
 				"NSLookupSymbolInImage: image header not found";
+		const bool lookup_options_ok =
+			darling_windows_NSLookupSymbolInImage(image_header,
+				DARLING_NSLOOKUPSYMBOLINIMAGE_OPTION_BIND_NOW, "exported") == symbol_address &&
+			darling_windows_NSLookupSymbolInImage(image_header,
+				DARLING_NSLOOKUPSYMBOLINIMAGE_OPTION_BIND_FULLY |
+				DARLING_NSLOOKUPSYMBOLINIMAGE_OPTION_RETURN_ON_ERROR, "exported") == symbol_address &&
+			darling_windows_NSLookupSymbolInImage(image_header, 0x80, "exported") == nullptr &&
+			std::string(darling_windows_dlerror()) ==
+				"NSLookupSymbolInImage: unsupported options";
 		std::error_code win32_error;
 		std::filesystem::remove(win32_path, win32_error);
-		if (!passed || !invalid_lookup_rejected || win32_error)
+		if (!passed || !invalid_lookup_rejected || !lookup_options_ok || win32_error)
 			return 3;
 		std::cout << "DARWIN_DLOPEN=PASS\n";
 		std::cout << "DARWIN_DLSYM=PASS\n";

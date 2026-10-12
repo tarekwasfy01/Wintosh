@@ -19,7 +19,9 @@ following families with Windows-backed implementations:
   loaded Wintosh Mach-O images; the returned `NSSymbol` is represented by its
   resolved address, while invalid image/name inputs fail closed through
   `dlerror()` and image loading/symbol lifetime remain bounded by the existing
-  dynamic-image registry;
+  dynamic-image registry. The documented `BIND_NOW`/`BIND_FULLY` options are
+  accepted because Wintosh prepares registered-image lazy bindings eagerly;
+  unknown option bits are rejected.
 - Objective-C runtime registration and the Foundation/CoreFoundation/
   CoreGraphics compatibility subsets;
 - Mach virtual memory, IPC broker operations, ports, OOL data, and MIG dispatch.

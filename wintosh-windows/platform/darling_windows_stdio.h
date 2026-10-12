@@ -536,6 +536,14 @@ extern "C" int darling_windows_NSVersionOfLinkTimeLibrary(const char* name);
 extern "C" void* darling_windows_NSLookupSymbolInImage(const void* image_header,
 	std::uint32_t options, const char* symbol_name);
 extern "C" void* darling_windows_NSAddressOfSymbol(void* symbol);
+
+// Darwin dyld compatibility flags from Apple's mach-o/dyld.h. Wintosh loads
+// registered images with their lazy bindings prepared eagerly, so BIND_NOW and
+// BIND_FULLY are accepted as already-satisfied options.
+constexpr std::uint32_t DARLING_NSLOOKUPSYMBOLINIMAGE_OPTION_BIND = 0x0;
+constexpr std::uint32_t DARLING_NSLOOKUPSYMBOLINIMAGE_OPTION_BIND_NOW = 0x1;
+constexpr std::uint32_t DARLING_NSLOOKUPSYMBOLINIMAGE_OPTION_BIND_FULLY = 0x2;
+constexpr std::uint32_t DARLING_NSLOOKUPSYMBOLINIMAGE_OPTION_RETURN_ON_ERROR = 0x4;
 extern "C" const char* darling_windows_getprogname();
 extern "C" void darling_windows_setprogname(const char* name);
 extern "C" int darling_windows_clock_gettime(int clock_id, darling_timespec* result);

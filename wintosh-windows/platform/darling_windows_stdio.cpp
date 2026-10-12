@@ -7034,7 +7034,12 @@ extern "C" void* darling_windows_NSLookupSymbolInImage(const void* image_header,
 	// The Darwin API returns an opaque NSSymbol.  Wintosh represents that
 	// token by the resolved address, which keeps NSAddressOfSymbol ABI-safe for
 	// the native bridge while retaining the existing Mach-O symbol lookup.
-	(void)options;
+	if ((options & ~(DARLING_NSLOOKUPSYMBOLINIMAGE_OPTION_BIND_NOW |
+		DARLING_NSLOOKUPSYMBOLINIMAGE_OPTION_BIND_FULLY |
+		DARLING_NSLOOKUPSYMBOLINIMAGE_OPTION_RETURN_ON_ERROR)) != 0) {
+		dynamic_loader_error = "NSLookupSymbolInImage: unsupported options";
+		return nullptr;
+	}
 	if (image_header == nullptr) {
 		dynamic_loader_error = "NSLookupSymbolInImage: invalid image header";
 		return nullptr;

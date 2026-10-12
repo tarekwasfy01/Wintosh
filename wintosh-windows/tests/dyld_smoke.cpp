@@ -5,6 +5,7 @@
 
 #include "darling_windows_dyld.h"
 #include "darling_windows_bootstrap.h"
+#include "darling_windows_abi_bridge.h"
 #include "darling_windows_macho.h"
 #include "darling_windows_stdio.h"
 #include "darling_windows_tlv.h"
@@ -872,6 +873,9 @@ int wmain(int argc, wchar_t** argv)
 			if (*lazy_address != relocation_apply_target) {
 				throw std::runtime_error("Mach-O lazy bind action was not applied");
 			}
+			if (darling::windows_host::abi::darling_windows_darwin_stub_trampoline_fixture(
+				0x1122334455667788ULL, 0x8877665544332211ULL) != 73)
+				throw std::runtime_error("Darwin x86_64 trampoline fixture failed");
 			const std::uintptr_t stub_metadata[] = {0x9000, 0x1240, 0xA000};
 			DarwinX86_64StubFrame stub_frame{};
 			if (!DecodeDarwinX86_64StubFrame(stub_metadata, &stub_frame) ||

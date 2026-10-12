@@ -63,5 +63,15 @@ darling_windows_darwin_stub_trampoline_probe:
     add rsp, 16
     jmp r11
 
+.globl darling_windows_darwin_stub_trampoline_fixture
+.p2align 4
+darling_windows_darwin_stub_trampoline_fixture:
+    /* Preserve the caller return address at the metadata frame's +16. */
+    sub rsp, 16
+    mov qword ptr [rsp+0x00], 0x9000
+    mov qword ptr [rsp+0x08], 0x1240
+    jmp darling_windows_darwin_stub_trampoline_probe
+
 .section .drectve,"dr"
 .ascii " -export:darling_windows_darwin_stub_trampoline_probe"
+.ascii " -export:darling_windows_darwin_stub_trampoline_fixture"

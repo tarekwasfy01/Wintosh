@@ -104,6 +104,12 @@ Clang build but is not installed as `dyld_stub_binder`; a hand-built fixture
 that supplies the Darwin metadata stack and verifies the post-jump registers
 is still required before activation.
 
+The dyld smoke now invokes an explicit assembler fixture that lays out the
+three metadata words, enters the probe with `jmp`, and verifies that the
+resolved target sees the original SysV integer arguments after the trampoline
+restores them. This proves the register-preservation/jump mechanics only; it
+does not yet resolve a real lazy-binding-info stream to a Mach-O slot.
+
 ## Provenance
 
 The behavioral target is Apple's Darwin `dyld` lazy-binding contract as exposed

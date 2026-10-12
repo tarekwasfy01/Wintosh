@@ -37,6 +37,8 @@ extern "C" DARLING_SYSV [[noreturn]] void darling_windows_abi_exit(int status);
 extern "C" DARLING_SYSV [[noreturn]] void darling_windows_abi_dyld_stub_binder();
 extern "C" DARLING_SYSV int darling_windows_darwin_stub_trampoline_probe(
 	std::uint64_t first, std::uint64_t second);
+extern "C" DARLING_SYSV int darling_windows_darwin_stub_trampoline_fixture(
+	std::uint64_t first, std::uint64_t second);
 
 } // namespace darling::windows_host::abi
 

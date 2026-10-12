@@ -135,10 +135,15 @@ int wmain()
 			darling_windows_NSLookupAndBindSymbol("missing") == nullptr &&
 			std::string(darling_windows_dlerror()) ==
 				"NSLookupAndBindSymbol: symbol not found";
+		const bool symbol_predicates_ok =
+			darling_windows_NSIsSymbolNameDefined("exported") == 1 &&
+			darling_windows_NSIsSymbolNameDefinedWithHint("exported",
+				path.filename().string().c_str()) == 1 &&
+			darling_windows_NSIsSymbolNameDefined("missing") == 0;
 		std::error_code win32_error;
 		std::filesystem::remove(win32_path, win32_error);
 		if (!passed || !invalid_lookup_rejected || !lookup_options_ok ||
-			!module_lookup_ok || !global_lookup_ok || win32_error)
+			!module_lookup_ok || !global_lookup_ok || !symbol_predicates_ok || win32_error)
 			return 3;
 		std::cout << "DARWIN_DLOPEN=PASS\n";
 		std::cout << "DARWIN_DLSYM=PASS\n";

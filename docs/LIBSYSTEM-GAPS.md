@@ -30,6 +30,8 @@ following families with Windows-backed implementations:
 - `NSLookupAndBindSymbol` and its library-hint variant across registered
   Wintosh images; lookup remains limited to the process-local Wintosh image
   registry and does not reproduce Apple's global dyld namespace.
+- `NSIsSymbolNameDefined` and its hint variant use the same bounded registry
+  and return a Darwin-compatible boolean result.
 - Objective-C runtime registration and the Foundation/CoreFoundation/
   CoreGraphics compatibility subsets;
 - Mach virtual memory, IPC broker operations, ports, OOL data, and MIG dispatch.

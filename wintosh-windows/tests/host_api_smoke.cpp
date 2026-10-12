@@ -491,6 +491,8 @@ int main()
 		darling_windows_host_symbol("___NSLookupSymbolInModule") != 0 &&
 		darling_windows_host_symbol("___NSLookupAndBindSymbol") != 0 &&
 		darling_windows_host_symbol("___NSLookupAndBindSymbolWithHint") != 0 &&
+		darling_windows_host_symbol("___NSIsSymbolNameDefined") != 0 &&
+		darling_windows_host_symbol("___NSIsSymbolNameDefinedWithHint") != 0 &&
 		darling_windows_host_symbol("___NSAddressOfSymbol") != 0 &&
 		darling_windows_NSAddressOfSymbol(reinterpret_cast<void*>(0x1)) ==
 			reinterpret_cast<void*>(0x1) &&

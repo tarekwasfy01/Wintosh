@@ -5899,6 +5899,16 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 		std::strcmp(name, "_NSLookupAndBindSymbolWithHint") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_NSLookupAndBindSymbolWithHint);
 	}
+	if (std::strcmp(name, "___NSIsSymbolNameDefined") == 0 ||
+		std::strcmp(name, "__NSIsSymbolNameDefined") == 0 ||
+		std::strcmp(name, "_NSIsSymbolNameDefined") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_NSIsSymbolNameDefined);
+	}
+	if (std::strcmp(name, "___NSIsSymbolNameDefinedWithHint") == 0 ||
+		std::strcmp(name, "__NSIsSymbolNameDefinedWithHint") == 0 ||
+		std::strcmp(name, "_NSIsSymbolNameDefinedWithHint") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_NSIsSymbolNameDefinedWithHint);
+	}
 	if (std::strcmp(name, "___NSAddressOfSymbol") == 0 ||
 		std::strcmp(name, "__NSAddressOfSymbol") == 0 ||
 		std::strcmp(name, "_NSAddressOfSymbol") == 0) {
@@ -7156,6 +7166,17 @@ extern "C" void* darling_windows_NSLookupAndBindSymbolWithHint(
 	const char* symbol_name, const char* library_name_hint)
 {
 	return LookupAndBindSymbol(symbol_name, library_name_hint);
+}
+
+extern "C" int darling_windows_NSIsSymbolNameDefined(const char* symbol_name)
+{
+	return LookupAndBindSymbol(symbol_name, nullptr) != nullptr ? 1 : 0;
+}
+
+extern "C" int darling_windows_NSIsSymbolNameDefinedWithHint(
+	const char* symbol_name, const char* library_name_hint)
+{
+	return LookupAndBindSymbol(symbol_name, library_name_hint) != nullptr ? 1 : 0;
 }
 
 extern "C" void* darling_windows_NSAddressOfSymbol(void* symbol)

@@ -89,8 +89,20 @@ int wmain()
 		void* handle = darling_windows_dlopen(utf8_path.c_str(), 0);
 		void* second_handle = darling_windows_dlopen(utf8_path.c_str(), 0);
 		void* symbol_address = darling_windows_dlsym(handle, "exported");
+		const void* image_header = nullptr;
+		void* image_symbol = nullptr;
+		for (std::uint32_t index = 0; index < darling_windows_dyld_image_count(); ++index) {
+			const char* image_name = darling_windows_dyld_get_image_name(index);
+			if (image_name != nullptr && std::strstr(image_name, path.filename().string().c_str()) != nullptr) {
+				image_header = darling_windows_dyld_get_image_header(index);
+				image_symbol = darling_windows_NSLookupSymbolInImage(image_header, 0, "exported");
+				break;
+			}
+		}
 		const bool passed = handle != nullptr && second_handle == handle &&
 			symbol_address != nullptr &&
+			image_header != nullptr && image_symbol == symbol_address &&
+			darling_windows_NSAddressOfSymbol(image_symbol) == symbol_address &&
 			darling_windows_dlclose(handle) == 0 &&
 			darling_windows_dlclose(second_handle) == 0 &&
 			initializer_calls.load(std::memory_order_relaxed) == 1;

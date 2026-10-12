@@ -32,6 +32,9 @@ following families with Windows-backed implementations:
   registry and does not reproduce Apple's global dyld namespace.
 - `NSIsSymbolNameDefined` and its hint variant use the same bounded registry
   and return a Darwin-compatible boolean result.
+- `NSAddImage`, `NSAddLibrary`, and `NSAddLibraryWithSearching` map to the
+  normalized Wintosh dynamic-image loader; Apple-specific search paths and
+  legacy abort/error-handler behavior remain bounded.
 - Objective-C runtime registration and the Foundation/CoreFoundation/
   CoreGraphics compatibility subsets;
 - Mach virtual memory, IPC broker operations, ports, OOL data, and MIG dispatch.

@@ -5909,6 +5909,21 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 		std::strcmp(name, "_NSIsSymbolNameDefinedWithHint") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_NSIsSymbolNameDefinedWithHint);
 	}
+	if (std::strcmp(name, "___NSAddImage") == 0 ||
+		std::strcmp(name, "__NSAddImage") == 0 ||
+		std::strcmp(name, "_NSAddImage") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_NSAddImage);
+	}
+	if (std::strcmp(name, "___NSAddLibrary") == 0 ||
+		std::strcmp(name, "__NSAddLibrary") == 0 ||
+		std::strcmp(name, "_NSAddLibrary") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_NSAddLibrary);
+	}
+	if (std::strcmp(name, "___NSAddLibraryWithSearching") == 0 ||
+		std::strcmp(name, "__NSAddLibraryWithSearching") == 0 ||
+		std::strcmp(name, "_NSAddLibraryWithSearching") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_NSAddLibraryWithSearching);
+	}
 	if (std::strcmp(name, "___NSAddressOfSymbol") == 0 ||
 		std::strcmp(name, "__NSAddressOfSymbol") == 0 ||
 		std::strcmp(name, "_NSAddressOfSymbol") == 0) {
@@ -7177,6 +7192,40 @@ extern "C" int darling_windows_NSIsSymbolNameDefinedWithHint(
 	const char* symbol_name, const char* library_name_hint)
 {
 	return LookupAndBindSymbol(symbol_name, library_name_hint) != nullptr ? 1 : 0;
+}
+
+extern "C" const void* darling_windows_NSAddImage(const char* path,
+	std::uint32_t options)
+{
+	(void)options;
+	void* handle = darling_windows_dlopen(path, 0);
+	if (handle == nullptr || handle == DarwinRtldDefaultHandle()) {
+		if (handle == DarwinRtldDefaultHandle())
+			dynamic_loader_error = "NSAddImage: default image handle is not an image";
+		return nullptr;
+	}
+	std::lock_guard lock(dynamic_image_mutex);
+	const auto found = dynamic_images.find(handle);
+	if (found == dynamic_images.end()) {
+		dynamic_loader_error = "NSAddImage: image handle not found";
+		return nullptr;
+	}
+	dynamic_loader_error.clear();
+	return darling::windows_host::DynamicImageHeader(*found->second);
+}
+
+extern "C" int darling_windows_NSAddLibrary(const char* path)
+{
+	void* handle = darling_windows_dlopen(path, 0);
+	return handle != nullptr && handle != DarwinRtldDefaultHandle() ? 1 : 0;
+}
+
+extern "C" int darling_windows_NSAddLibraryWithSearching(const char* path)
+{
+	// Wintosh's normalized dlopen path already performs the bounded search
+	// policy used by the dynamic-image registry.
+	void* handle = darling_windows_dlopen(path, 0);
+	return handle != nullptr && handle != DarwinRtldDefaultHandle() ? 1 : 0;
 }
 
 extern "C" void* darling_windows_NSAddressOfSymbol(void* symbol)

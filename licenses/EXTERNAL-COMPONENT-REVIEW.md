@@ -54,7 +54,9 @@ inventory is not overwritten. The first verified batch is
 [`REMOTE-HEADS-001.csv`](upstream-candidates/REMOTE-HEADS-001.csv) with 8/8
 remote `HEAD` commits; the second batch in
 [`REMOTE-HEADS-002.csv`](upstream-candidates/REMOTE-HEADS-002.csv) is also 8/8,
-for 16 verified components total. The normal invocation remains offline and
+for 16 verified components total. The third batch in
+[`REMOTE-HEADS-003.csv`](upstream-candidates/REMOTE-HEADS-003.csv) is also 8/8,
+for 24 verified components total. The normal invocation remains offline and
 preserves the conservative 150-row inventory above.
 
 Manual follow-up for `libpthread_workqueue-0.8.2` found BSD-style

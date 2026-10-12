@@ -87,6 +87,9 @@ The twelfth batch in
 [`REMOTE-HEADS-012.csv`](upstream-candidates/REMOTE-HEADS-012.csv) is 8/8,
 bringing the verified total to 95 components. The unresolved
 `libpthread_workqueue-0.8.2` entry remains outside these batches.
+The thirteenth batch in
+[`REMOTE-HEADS-013.csv`](upstream-candidates/REMOTE-HEADS-013.csv) is 8/8,
+bringing the verified total to 103 components.
 
 Manual follow-up for `libpthread_workqueue-0.8.2` found BSD-style
 redistribution terms in `include/pthread_workqueue.h`, `src/api.c`, and

@@ -137,17 +137,19 @@ not conclusions that a component is legally compatible for redistribution.
 
 | Candidate marker group | Files |
 | --- | ---: |
-| Copyright/notice markers only | 18 |
+| Copyright/notice markers only | 32 |
+| No recognized marker | 20 |
 | GPL, LGPL, and copyright/notice markers | 8 |
 | Apache, GPL, LGPL, MIT, BSD, MPL, and copyright/notice markers | 3 |
 | BSD and copyright/notice markers | 3 |
-| No recognized marker | 2 |
 | Apache and copyright/notice markers | 2 |
+| Apache, MIT, BSD, and copyright/notice markers | 2 |
+| MIT, BSD, and copyright/notice markers | 2 |
 | GPL and copyright/notice markers | 2 |
 | Apache and BSD markers | 1 |
+| BSD marker only | 1 |
 | GPL marker only | 1 |
 | GPL, LGPL, MPL, and copyright/notice markers | 1 |
-| MIT, BSD, and copyright/notice markers | 1 |
 | MIT and copyright/notice markers | 1 |
 
 The first manual pass should prioritize the 22 files with multiple license

@@ -210,8 +210,8 @@ symbol table used by provider binding. A synthetic export is validated with
 Mach-O `LC_RPATH` commands are now parsed and exposed on each image; the
 dependency graph combines embedded rpaths with caller-provided search paths
 when resolving `@rpath` dependencies. The current loader suite remains green
-with `DYLD_RPATH_SMOKE_EXIT=0`; a separate malformed-rpath test is still
-needed.
+with `DYLD_RPATH_SMOKE_EXIT=0`; the Mach-O smoke also opens a malformed image
+with an empty `LC_RPATH` and verifies the explicit fail-closed rejection.
 Embedded `@loader_path` RPATH expansion is now exercised end-to-end: the
 synthetic Mach-O carries `LC_RPATH`, resolution is performed without an
 externally supplied rpath list, and the proof emits

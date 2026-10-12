@@ -39,7 +39,8 @@ file(GLOB_RECURSE WINTOSH_HOST_SOURCES
 )
 if (WIN32 AND CMAKE_SIZEOF_VOID_P EQUAL 8 AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     list(APPEND WINTOSH_HOST_SOURCES
-        "${CMAKE_CURRENT_SOURCE_DIR}/abi/darling_windows_variadic_x64.S")
+        "${CMAKE_CURRENT_SOURCE_DIR}/abi/darling_windows_variadic_x64.S"
+        "${CMAKE_CURRENT_SOURCE_DIR}/abi/darling_windows_stub_trampoline_x64.S")
 endif()
 if (WIN32 AND CMAKE_SIZEOF_VOID_P EQUAL 8)
     list(APPEND WINTOSH_HOST_SOURCES "${WINTOSH_STARTUP_OBJ}")

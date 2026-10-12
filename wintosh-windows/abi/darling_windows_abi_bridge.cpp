@@ -93,4 +93,17 @@ extern "C" DARLING_SYSV [[noreturn]] void darling_windows_abi_dyld_stub_binder()
 	std::abort();
 }
 
+extern "C" DARLING_SYSV int darling_windows_darwin_stub_probe_target(
+	std::uint64_t first, std::uint64_t second)
+{
+	return (first == 0x1122334455667788ULL && second == 0x8877665544332211ULL) ? 73 : 74;
+}
+
+extern "C" DARLING_SYSV std::uintptr_t darling_windows_darwin_stub_probe_resolver(
+	std::uintptr_t image_cache, std::uintptr_t lazy_binding_info)
+{
+	return image_cache != 0 && lazy_binding_info != 0 ?
+		reinterpret_cast<std::uintptr_t>(&darling_windows_darwin_stub_probe_target) : 0;
+}
+
 #undef DARLING_SYSV

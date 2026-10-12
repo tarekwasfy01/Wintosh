@@ -99,6 +99,16 @@ Malformed binary-plist count metadata is rejected safely and uses the normal
 bundle-name fallback rather than being treated as executable metadata.
 The runner smoke now executes that malformed-plist fallback path end-to-end.
 
+Framework bundle resolution now also discovers arbitrary immediate version
+directories below `Versions/` (in addition to the conventional `Current` and
+`A` paths).  The candidates are permission-safe, sorted lexically, and limited
+to the bundle's own directory, so this improves real bundle layout coverage
+without searching the host globally or fabricating Apple frameworks.  The
+layout convention is based on Apple's File System Programming Guide and the
+documented system-framework layout; see
+[MACOS-DIRECTORY-MAP.md](MACOS-DIRECTORY-MAP.md) and
+[ADDITIONAL-REFERENCES-ANALYSIS.md](ADDITIONAL-REFERENCES-ANALYSIS.md).
+
 `MachOImage::HasCodeSignature()` and `wintosh --inspect` now expose whether an
 `LC_CODE_SIGNATURE` load command is present.  This is metadata detection only:
 Wintosh still does not validate the embedded Apple CodeDirectory or CMS

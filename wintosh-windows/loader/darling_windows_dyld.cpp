@@ -44,6 +44,24 @@ void AddFrameworkCandidates(std::vector<std::filesystem::path>& candidates,
 		// candidate paths and the existing regular-file check selects one.
 		AddCandidate(candidates, framework / "Versions" / "Current" / name);
 		AddCandidate(candidates, framework / "Versions" / "A" / name);
+		// Real bundles are allowed to use a version directory other than A.
+		// Enumerate only immediate, directory-backed children so resolution stays
+		// bounded and deterministic; lexical sorting gives stable precedence.
+		std::error_code error;
+		std::vector<std::filesystem::path> versions;
+		const auto versions_root = framework / "Versions";
+		for (const auto& entry : std::filesystem::directory_iterator(
+			versions_root, std::filesystem::directory_options::skip_permission_denied, error)) {
+			if (error) break;
+			std::error_code entry_error;
+			if (entry.is_directory(entry_error) && !entry_error &&
+				entry.path().filename() != "Current") {
+				versions.push_back(entry.path());
+			}
+		}
+		std::sort(versions.begin(), versions.end());
+		for (const auto& version : versions)
+			AddCandidate(candidates, version / name);
 	}
 }
 

@@ -516,6 +516,7 @@ extern "C" int darling_windows_NSIsSymbolDefinedInObjectFileImage(
 extern "C" void* darling_windows_NSGetSectionDataInObjectFileImage(
 	void* object_file_image, const char* segment_name, const char* section_name,
 	std::size_t* size);
+extern "C" int darling_windows_NSHasModInitObjectFileImage(void* object_file_image);
 extern "C" void* darling_windows_NSLinkModule(void* object_file_image,
 	const char* module_name, std::uint32_t options);
 extern "C" int darling_windows_NSUnLinkModule(void* module, std::uint32_t options);

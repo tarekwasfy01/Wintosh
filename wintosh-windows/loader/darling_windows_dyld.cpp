@@ -669,6 +669,14 @@ void* DynamicImageSectionData(const DarwinDynamicImage& image,
 	return nullptr;
 }
 
+bool DynamicImageHasModuleInitializers(const DarwinDynamicImage& image) noexcept
+{
+	for (const auto& section : image.image.Sections())
+		if (section.section_name == "__mod_init_func" && section.size != 0)
+			return true;
+	return false;
+}
+
 int DynamicImageExecuteEntry(const DarwinDynamicImage& image,
 	const std::vector<std::string>& arguments,
 	const std::vector<std::string>& environment,

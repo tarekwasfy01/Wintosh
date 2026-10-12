@@ -66,6 +66,7 @@ const char* DynamicImageDefinedSymbolName(const DarwinDynamicImage& image,
 bool DynamicImageHasSymbol(const DarwinDynamicImage& image, const char* name) noexcept;
 void* DynamicImageSectionData(const DarwinDynamicImage& image,
 	const char* segment_name, const char* section_name, std::size_t& size) noexcept;
+bool DynamicImageHasModuleInitializers(const DarwinDynamicImage& image) noexcept;
 int DynamicImageExecuteEntry(const DarwinDynamicImage& image,
 	const std::vector<std::string>& arguments,
 	const std::vector<std::string>& environment = {},

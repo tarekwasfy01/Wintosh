@@ -48,6 +48,9 @@ following families with Windows-backed implementations:
 - `NSGetSectionDataInObjectFileImage` now returns the mapped address and size
   for sections present in a loaded Wintosh Mach-O; file-only/unmapped section
   behavior and full Apple bundle validation remain outside this adapter.
+- `NSHasModInitObjectFileImage` reports whether the loaded image contains a
+  non-empty `__mod_init_func` section; execution ordering and callback ABI
+  semantics remain governed by the existing bounded initializer path.
 - `NSNameOfModule` and `NSLibraryNameForModule` provide bounded metadata for
   projected Wintosh modules; Apple module-name overrides and legacy module
   lifetime rules remain open.

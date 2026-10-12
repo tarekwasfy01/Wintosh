@@ -96,6 +96,14 @@ metadata words, resolves the lazy-info offset to a session action, and jumps
 to the returned target. Until a fixture proves that full round trip, the
 export remains fail-closed.
 
+The repository now contains an isolated Wintosh-owned probe trampoline at
+`wintosh-windows/abi/darling_windows_stub_trampoline_x64.S`. It saves the
+guest GPR/XMM argument state, calls a SysV resolver probe, restores the state,
+and jumps to the returned target. It is compiled and linked in the native
+Clang build but is not installed as `dyld_stub_binder`; a hand-built fixture
+that supplies the Darwin metadata stack and verifies the post-jump registers
+is still required before activation.
+
 ## Provenance
 
 The behavioral target is Apple's Darwin `dyld` lazy-binding contract as exposed

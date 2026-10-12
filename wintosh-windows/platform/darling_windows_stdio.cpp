@@ -5400,6 +5400,9 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 	if (std::strcmp(name, "_exit") == 0 || std::strcmp(name, "exit") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_exit);
 	}
+	if (std::strcmp(name, "_abort") == 0 || std::strcmp(name, "abort") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_abort);
+	}
 	if (std::strcmp(name, "_getppid") == 0 || std::strcmp(name, "getppid") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_getppid);
 	}
@@ -6187,6 +6190,12 @@ extern "C" [[noreturn]] void darling_windows_exit(int status)
 extern "C" [[noreturn]] void darling_windows__exit(int status)
 {
 	ExitProcess(static_cast<UINT>(status));
+	std::abort();
+}
+
+extern "C" [[noreturn]] void darling_windows_abort()
+{
+	TerminateProcess(GetCurrentProcess(), 128u + 6u);
 	std::abort();
 }
 

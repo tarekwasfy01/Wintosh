@@ -33,6 +33,11 @@ boundaries for i386/ARM64 on this host. A repository-owned synthetic x86_64
 Mach-O fixture is now bundled, so `--inspect` and native execution are proven
 for that controlled fixture; arbitrary macOS binaries remain unclaimed.
 
+The Darwin process-termination export family now includes `_abort`/`abort` in
+addition to `exit` and `_exit`. The Windows adapter terminates the current
+process directly with the conventional SIGABRT status rather than unwinding
+through guest frames; symbol availability is covered by `host_api_smoke`.
+
 The runner also provides `--init-prefix <directory>`, which creates the
 documented Darwin directory layout (`System/Library/Frameworks`, `usr/lib`,
 and the relevant `Library` data roots) without downloading or fabricating

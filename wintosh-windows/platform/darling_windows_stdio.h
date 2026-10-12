@@ -308,6 +308,8 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name);
 extern "C" int* darling_windows_errno();
 extern "C" [[noreturn]] void darling_windows_exit(int status);
 extern "C" [[noreturn]] void darling_windows__exit(int status);
+// Darwin abort terminates the process without unwinding guest frames.
+extern "C" [[noreturn]] void darling_windows_abort();
 extern "C" int darling_windows_atexit(void (*function)());
 extern "C" int darling_windows_cxa_atexit(void (*function)(void*), void* argument,
 	void* dso_handle);

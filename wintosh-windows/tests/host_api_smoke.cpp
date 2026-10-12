@@ -436,6 +436,12 @@ int main()
 		darling_windows_setreuid(uid + 1, uid) == -1;
 	const bool exit_symbol_ok = darling_windows_host_symbol("_exit") != 0 &&
 		darling_windows_host_symbol("exit") != 0;
+	const bool abort_symbol_ok = darling_windows_host_symbol("_abort") != 0 &&
+		darling_windows_host_symbol("abort") != 0;
+	if (!abort_symbol_ok) {
+		std::cerr << "HOST_API_SMOKE_ERROR=abort_symbol\n";
+		return 1;
+	}
 	const bool parent_pid_ok = darling_windows_getppid() > 0;
 	STARTUPINFOW wait_startup{};
 	wait_startup.cb = sizeof(wait_startup);

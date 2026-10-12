@@ -267,9 +267,11 @@ first verified Mach-O-to-variadic-bridge path; it remains a narrow integer-only
 fixture. The same test now places that image in a minimal `Printf.app` bundle,
 resolves `Contents/Info.plist` and `Contents/MacOS/Printf`, and executes it
 through the bundle path. This validates bundle entry resolution, not system
-framework compatibility. The legacy `dyld_stub_binder` callback itself remains
-fail-closed; Wintosh currently pre-applies parsed lazy-bind actions before
-entering the image.
+framework compatibility. The native Clang build now keeps a validated
+main-image lazy-binding session active across guest entry and exports the
+assembler binder entry; without that session it remains fail-closed. The
+printf fixture still pre-applies its lazy pointer, so a true on-demand lazy
+stub E2E remains outstanding.
 
 ## Latest verified native adapter families
 

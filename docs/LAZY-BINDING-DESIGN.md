@@ -1,8 +1,9 @@
 # Lazy Mach-O binding on Windows
 
 This document records the next implementation boundary for Wintosh's
-Darwin-shaped loader. It does not claim that on-demand `dyld_stub_binder`
-execution is implemented.
+Darwin-shaped loader. The native Clang path now has a session-backed
+`dyld_stub_binder` entry, but the complete on-demand Mach-O E2E gate remains
+open.
 
 ## Current state
 
@@ -12,9 +13,10 @@ addresses are already available. The bootstrap and dynamic-image paths use
 `ApplyLazyBindActions` before entering guest code. This is the tested eager
 compatibility path.
 
-The exported `dyld_stub_binder` bridge remains fail-closed. It currently has
-no image, mapping, lazy-action index, or provider-resolution context, so
-silently guessing a target would risk patching the wrong image or address.
+The exported `dyld_stub_binder` bridge is fail-closed unless a validated
+per-image session is active. The bootstrap now keeps the main-image session
+alive across guest entry, while missing context still returns zero and the
+assembly entry aborts deterministically instead of guessing a target.
 
 ## Required context boundary
 
@@ -34,7 +36,7 @@ symbol must remain deterministic errors.
 
 ## Verification gate
 
-Before enabling the real binder, add a fixture with two lazy imports and prove
+To complete the real binder gate, add a fixture with two lazy imports and prove
 that the first call patches only slot A, the second call patches only slot B,
 repeated calls reuse the patched targets, and an invalid action cannot modify
 memory. The existing eager lazy-bind tests must remain green. The old

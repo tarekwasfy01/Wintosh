@@ -44,6 +44,13 @@ version-1 Wintosh bridge for `libSystem`/`libobjc` spellings and return `-1`
 for libraries that are not bundled; they do not claim Apple binary-version
 compatibility.
 
+The classic dyld symbol-query family now also exports
+`NSLookupSymbolInImage` and `NSAddressOfSymbol`.  The dynamic-loader smoke
+loads a repository-owned Mach-O, locates its image header through the dyld
+image list, and verifies that the image lookup returns the same address as
+`dlsym`.  Wintosh represents the opaque `NSSymbol` token by that resolved
+address; complete Apple symbol-option and lifetime semantics remain open.
+
 The runner also provides `--init-prefix <directory>`, which creates the
 documented Darwin directory layout (`System/Library/Frameworks`, `usr/lib`,
 and the relevant `Library` data roots) without downloading or fabricating

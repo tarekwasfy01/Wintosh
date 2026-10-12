@@ -49,8 +49,11 @@ and 147 remaining license review cases.
 For an explicitly networked refresh, the generator supports
 `-ResolveRemoteRefs` and records the remote default branch plus its current
 `HEAD` commit as `origin-only:<branch>`. `-Limit N` can be used for a bounded
-batch; the normal invocation remains offline and preserves the conservative
-150-row inventory above.
+batch; `-OutputPath` writes that batch to a separate CSV so the canonical
+inventory is not overwritten. The first verified batch is
+[`REMOTE-HEADS-001.csv`](upstream-candidates/REMOTE-HEADS-001.csv) with 8/8
+remote `HEAD` commits. The normal invocation remains offline and preserves
+the conservative 150-row inventory above.
 
 Manual follow-up for `libpthread_workqueue-0.8.2` found BSD-style
 redistribution terms in `include/pthread_workqueue.h`, `src/api.c`, and

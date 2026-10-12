@@ -1,8 +1,9 @@
-param([switch]$ResolveRemoteRefs, [int]$Limit = 0)
+param([switch]$ResolveRemoteRefs, [int]$Limit = 0, [string]$OutputPath = '')
 $ErrorActionPreference = 'Stop'
 $gitExe = 'C:\Program Files\Git\cmd\git.exe'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..\darling-source\src\external')).Path
-$output = Join-Path $PSScriptRoot 'EXTERNAL-COMPONENT-PROVENANCE.csv'
+$output = if ($OutputPath) { (Resolve-Path (Join-Path (Get-Location) $OutputPath) -ErrorAction SilentlyContinue).Path } else { Join-Path $PSScriptRoot 'EXTERNAL-COMPONENT-PROVENANCE.csv' }
+if (!$output) { $output = Join-Path (Get-Location) $OutputPath }
 $previous = @{}
 if (Test-Path $output) {
     foreach ($row in (Import-Csv $output)) { $previous[$row.component] = $row.upstream_origin }

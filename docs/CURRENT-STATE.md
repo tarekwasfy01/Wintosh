@@ -273,6 +273,14 @@ assembler binder entry; without that session it remains fail-closed. The
 printf fixture still pre-applies its lazy pointer, so a true on-demand lazy
 stub E2E remains outstanding.
 
+The follow-up ABI gates now verify the complete controlled boundary: the
+session probe observes activation from the binding layer, and the host symbol
+table resolves `_dyld_stub_binder` to the exported Clang x86_64 assembler
+entry. The full native suite remains at 60/60 passing. This is stronger than
+the earlier metadata-only proof, but it still does not claim arbitrary
+third-party Mach-O lazy stubs, multi-image binder context, or Apple framework
+compatibility.
+
 ## Latest verified native adapter families
 
 The current local branch additionally contains a prefix-relative Preferences

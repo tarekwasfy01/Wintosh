@@ -870,6 +870,8 @@ int wmain(int argc, wchar_t** argv)
 				lazy_session.FindActionForSlot(lazy_slot_address + 8).has_value())
 				throw std::runtime_error("Mach-O lazy slot did not resolve to exactly one action");
 			const auto lazy_info_offset = app_image.BindActions()[*lazy_action].stream_offset;
+			const auto lazy_address = reinterpret_cast<const std::uintptr_t*>(
+				static_cast<std::intptr_t>(0x1240) + app_mapping.Slide());
 			if (!lazy_session.FindActionForLazyInfo(lazy_info_offset).has_value() ||
 				*lazy_session.FindActionForLazyInfo(lazy_info_offset) != *lazy_action ||
 				lazy_session.FindActionForLazyInfo(lazy_info_offset + 1).has_value())
@@ -881,15 +883,16 @@ int wmain(int argc, wchar_t** argv)
 					throw std::runtime_error("Darwin lazy session probe did not observe activation");
 				const auto resolved = darling::windows_host::abi::
 					darling_windows_abi_resolve_lazy_binding(0x9000, lazy_info_offset);
+				const auto slot_before_invalid = *lazy_address;
 				if (resolved != relocation_apply_target ||
 					darling::windows_host::abi::darling_windows_abi_resolve_lazy_binding(
 						0x9000, lazy_info_offset + 1) != 0)
 					throw std::runtime_error("Darwin lazy resolver bridge rejected valid context");
+				if (*lazy_address != slot_before_invalid)
+					throw std::runtime_error("invalid Darwin lazy info modified a slot");
 			}
 			if (!lazy_session.ApplyForSlot(lazy_slot_address))
 				throw std::runtime_error("Mach-O lazy slot application was rejected");
-			const auto lazy_address = reinterpret_cast<const std::uintptr_t*>(
-				static_cast<std::intptr_t>(0x1240) + app_mapping.Slide());
 			if (*lazy_address != relocation_apply_target) {
 				throw std::runtime_error("Mach-O lazy bind action was not applied");
 			}

@@ -490,7 +490,9 @@ int main()
 		darling_windows_host_symbol("___NSLookupSymbolInImage") != 0 &&
 		darling_windows_host_symbol("___NSAddressOfSymbol") != 0 &&
 		darling_windows_NSAddressOfSymbol(reinterpret_cast<void*>(0x1)) ==
-			reinterpret_cast<void*>(0x1);
+			reinterpret_cast<void*>(0x1) &&
+		darling_windows_host_symbol("___NSNameOfSymbol") != 0 &&
+		darling_windows_host_symbol("___NSModuleForSymbol") != 0;
 	if (!image_symbol_api_ok) {
 		std::cerr << "HOST_API_SMOKE_ERROR=image_symbol_api\n";
 		return 1;

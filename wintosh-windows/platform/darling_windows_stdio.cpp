@@ -5889,6 +5889,16 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 		std::strcmp(name, "_NSAddressOfSymbol") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_NSAddressOfSymbol);
 	}
+	if (std::strcmp(name, "___NSNameOfSymbol") == 0 ||
+		std::strcmp(name, "__NSNameOfSymbol") == 0 ||
+		std::strcmp(name, "_NSNameOfSymbol") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_NSNameOfSymbol);
+	}
+	if (std::strcmp(name, "___NSModuleForSymbol") == 0 ||
+		std::strcmp(name, "__NSModuleForSymbol") == 0 ||
+		std::strcmp(name, "_NSModuleForSymbol") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_NSModuleForSymbol);
+	}
 	if (std::strcmp(name, "_clock_gettime") == 0 || std::strcmp(name, "clock_gettime") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_clock_gettime);
 	}
@@ -7076,6 +7086,44 @@ extern "C" void* darling_windows_NSAddressOfSymbol(void* symbol)
 	}
 	dynamic_loader_error.clear();
 	return symbol;
+}
+
+extern "C" const char* darling_windows_NSNameOfSymbol(void* symbol)
+{
+	if (symbol == nullptr) {
+		dynamic_loader_error = "NSNameOfSymbol: invalid symbol";
+		return nullptr;
+	}
+	std::lock_guard lock(dynamic_image_mutex);
+	static thread_local std::string symbol_name;
+	for (const auto& entry : dynamic_images) {
+		if (!darling::windows_host::DynamicImageContains(*entry.second, symbol))
+			continue;
+		if (darling::windows_host::DynamicImageSymbolName(*entry.second, symbol,
+			symbol_name)) {
+			dynamic_loader_error.clear();
+			return symbol_name.c_str();
+		}
+	}
+	dynamic_loader_error = "NSNameOfSymbol: symbol not found";
+	return nullptr;
+}
+
+extern "C" const void* darling_windows_NSModuleForSymbol(void* symbol)
+{
+	if (symbol == nullptr) {
+		dynamic_loader_error = "NSModuleForSymbol: invalid symbol";
+		return nullptr;
+	}
+	std::lock_guard lock(dynamic_image_mutex);
+	for (const auto& entry : dynamic_images) {
+		if (darling::windows_host::DynamicImageContains(*entry.second, symbol)) {
+			dynamic_loader_error.clear();
+			return darling::windows_host::DynamicImageHeader(*entry.second);
+		}
+	}
+	dynamic_loader_error = "NSModuleForSymbol: symbol not found";
+	return nullptr;
 }
 
 extern "C" int darling_windows_dlclose(void* handle)

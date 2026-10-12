@@ -71,6 +71,8 @@ bool DynamicImageContains(const DarwinDynamicImage& image, const void* address) 
 void* DynamicImageBase(const DarwinDynamicImage& image) noexcept;
 bool DynamicImageNearestSymbol(const DarwinDynamicImage& image, const void* address,
 	std::string& name, std::uintptr_t& symbol_address) noexcept;
+bool DynamicImageSymbolName(const DarwinDynamicImage& image, const void* address,
+	std::string& name) noexcept;
 void CloseDynamicImage(DarwinDynamicImage* image) noexcept;
 
 } // namespace darling::windows_host

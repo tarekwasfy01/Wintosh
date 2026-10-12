@@ -22,6 +22,9 @@ following families with Windows-backed implementations:
   dynamic-image registry. The documented `BIND_NOW`/`BIND_FULLY` options are
   accepted because Wintosh prepares registered-image lazy bindings eagerly;
   unknown option bits are rejected.
+- `NSNameOfSymbol` and `NSModuleForSymbol` for address-backed symbols in the
+  registered Wintosh image set; host-module symbols and obsolete symbol-token
+  lifetime semantics remain outside this bridge.
 - Objective-C runtime registration and the Foundation/CoreFoundation/
   CoreGraphics compatibility subsets;
 - Mach virtual memory, IPC broker operations, ports, OOL data, and MIG dispatch.

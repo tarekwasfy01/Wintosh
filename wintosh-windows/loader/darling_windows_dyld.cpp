@@ -686,6 +686,13 @@ bool DynamicImageNearestSymbol(const DarwinDynamicImage& image, const void* addr
 	return found;
 }
 
+bool DynamicImageSymbolName(const DarwinDynamicImage& image, const void* address,
+	std::string& name) noexcept
+{
+	std::uintptr_t symbol_address = 0;
+	return DynamicImageNearestSymbol(image, address, name, symbol_address);
+}
+
 void CloseDynamicImage(DarwinDynamicImage* image) noexcept
 {
 	if (image == nullptr)

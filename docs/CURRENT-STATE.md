@@ -135,18 +135,18 @@ signature and never treats presence as authenticity.
 `CodeSignatureRange()` additionally exposes the validated payload offset and
 size for a future verifier, covered by the Mach-O UUID/signature smoke test.
 
-The supplied ABI-bridge PoC was independently re-run on this Windows x64
+The original ABI-bridge PoC was independently re-run on this Windows x64
 host with LLVM 23.1.2: Clang compiled and linked it with the MSVC target, and
 the native executable reported `RESULT: PASS` with exit code 0.  Its measured
 checks cover eight integer arguments, mixed integer/floating-point arguments,
 the hand-written variadic save-area path, host-to-guest callee-saved registers,
 and System-V entry stack alignment.  This validates the toolchain and calling
-convention PoC only; the bridge is not yet connected to Wintosh's Mach-O
-loader or host-export table.
+convention PoC only; the later native Clang runner sections below cover the
+connected loader and host-export path.
 
 The first loader integration is now present: `ExecuteEntryNoArgs`,
 `ExecuteInitializers`, `ExecuteTerminators`, and the compatible `main` entry
-are expressed through the Wintosh-owned `abi::GuestFn` aliases.  The 58-test
+are expressed through the Wintosh-owned `abi::GuestFn` aliases.  The initial 58-test
 Release run was built with MSVC; on that compiler `GuestFn` is deliberately a
 normal function pointer and is never used for a real guest entry.  The real
 `CompatibleMain` path now fails closed with
@@ -159,15 +159,15 @@ The bridge now also provides fixed-arity `_puts` and `_exit` export entry
 points through `darling_windows_host_symbol`.  After reconfiguring CMake to
 pick up the new source file, `wintosh_host_api_smoke` and `wintosh_dyld_smoke`
 both pass.  These exports are ready for Clang/System-V guest calls; the
-default MSVC build still uses the compatibility ABI fallback, so this is not
-yet evidence that a real Mach-O import call has executed.
+default MSVC build still uses the compatibility ABI fallback; the later
+chained and classic Clang E2E gates verify fixed-arity Mach-O import execution.
 The bridge translation unit and complete native runner now compile and link
 with clang-cl/lld-link and LLVM's integrated assembler on Windows. The Clang
 configuration is kept separate from the MSVC build; the latter remains the
 supported synthetic-fixture and broad regression configuration.
 The new `abi_bridge_smoke` additionally calls `_puts` directly and verifies
-that the Mach-O `_puts` lookup returns the same address; this is a fixed-arity
-host-export smoke only, not yet the Clang System-V guest-call gate.
+that the Mach-O `_puts` lookup returns the same address; the later native
+Clang E2E gate covers the guest-call boundary.
 
 The loader now recognizes `dyld_stub_binder` as a guarded host export.  This
 allows a chained-fixups image that carries legacy stub metadata but does not

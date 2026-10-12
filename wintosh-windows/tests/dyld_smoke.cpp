@@ -860,6 +860,9 @@ int wmain(int argc, wchar_t** argv)
 			}
 			if (MachOLazyBindingSession::Current() != nullptr)
 				throw std::runtime_error("Mach-O lazy binding session activation leaked");
+			if (darling::windows_host::abi::darling_windows_abi_resolve_lazy_binding(
+				0x9000, 0x1240) != 0)
+				throw std::runtime_error("Darwin lazy binder was not fail-closed without a session");
 			const auto lazy_slot_address = static_cast<std::uintptr_t>(0x1240) +
 				static_cast<std::intptr_t>(app_mapping.Slide());
 			const auto lazy_action = lazy_session.FindActionForSlot(lazy_slot_address);

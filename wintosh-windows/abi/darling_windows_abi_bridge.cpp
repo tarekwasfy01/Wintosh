@@ -121,10 +121,7 @@ extern "C" DARLING_SYSV int darling_windows_darwin_stub_probe_target(
 extern "C" DARLING_SYSV std::uintptr_t darling_windows_darwin_stub_probe_resolver(
 	std::uintptr_t image_cache, std::uintptr_t lazy_binding_info)
 {
-	if (darling::windows_host::MachOLazyBindingSession::Current() != nullptr)
-		return darling_windows_abi_resolve_lazy_binding(image_cache, lazy_binding_info);
-	return image_cache != 0 && lazy_binding_info != 0 ?
-		reinterpret_cast<std::uintptr_t>(&darling_windows_darwin_stub_probe_target) : 0;
+	return darling_windows_abi_resolve_lazy_binding(image_cache, lazy_binding_info);
 }
 
 #undef DARLING_SYSV

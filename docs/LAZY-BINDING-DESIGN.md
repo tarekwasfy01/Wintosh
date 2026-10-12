@@ -114,19 +114,21 @@ metadata words, resolves the lazy-info offset to a session action, and jumps
 to the returned target. Until a fixture proves that full round trip, the
 export remains fail-closed.
 
-The repository now contains an isolated Wintosh-owned probe trampoline at
+The repository now contains a Wintosh-owned x86_64 trampoline at
 `wintosh-windows/abi/darling_windows_stub_trampoline_x64.S`. It saves the
-guest GPR/XMM argument state, calls a SysV resolver probe, restores the state,
-and jumps to the returned target. It is compiled and linked in the native
-Clang build but is not installed as `dyld_stub_binder`; a hand-built fixture
-that supplies the Darwin metadata stack and verifies the post-jump registers
-is still required before activation.
+guest GPR/XMM argument state, calls the active-session resolver, restores the
+state, and jumps to the returned target. The native Clang build exports this
+entry as `darling_windows_abi_dyld_stub_binder`; when no binding session is
+active, resolution returns zero and the entry aborts through the explicit
+fail-closed diagnostic. No synthetic target is used in that path.
 
 The dyld smoke now invokes an explicit assembler fixture that lays out the
 three metadata words, enters the probe with `jmp`, and verifies that the
 resolved target sees the original SysV integer arguments after the trampoline
-restores them. This proves the register-preservation/jump mechanics only; it
-does not yet resolve a real lazy-binding-info stream to a Mach-O slot.
+restores them. This proves the register-preservation/jump mechanics and the
+session-backed lazy-info-to-target handoff. It does not yet keep a session
+active around the full arbitrary guest execution lifetime, so general
+real-world lazy binding in an unmodified `.app` is not claimed yet.
 
 ## Provenance
 

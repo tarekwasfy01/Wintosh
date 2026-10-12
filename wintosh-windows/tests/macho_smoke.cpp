@@ -46,6 +46,8 @@ int wmain()
 			(L"darling-stage1-arm64-auth-" + std::to_wstring(GetCurrentProcessId()) + L".mach-o");
 		const auto malformed_rpath_path = std::filesystem::path(temp_path) /
 			(L"darling-stage1-malformed-rpath-" + std::to_wstring(GetCurrentProcessId()) + L".mach-o");
+		const auto malformed_dylib_path = std::filesystem::path(temp_path) /
+			(L"darling-stage1-malformed-dylib-" + std::to_wstring(GetCurrentProcessId()) + L".mach-o");
 		const auto mach32_header = MachHeader32{
 			MH_MAGIC, CPU_TYPE_X86, 3, MH_EXECUTE, 4,
 			static_cast<std::uint32_t>(sizeof(SegmentCommand32) + 2 * sizeof(Section32) +
@@ -696,6 +698,29 @@ int wmain()
 		}
 
 		{
+			const MachHeader64 malformed_header{
+				MH_MAGIC_64, CPU_TYPE_X86_64, 3, MH_DYLIB, 1,
+				static_cast<std::uint32_t>(sizeof(DylibCommand) + 1), 0, 0};
+			DylibCommand malformed_dylib{};
+			malformed_dylib.header = {LC_LOAD_DYLIB,
+				static_cast<std::uint32_t>(sizeof(DylibCommand) + 1)};
+			malformed_dylib.name_offset = sizeof(DylibCommand);
+			std::ofstream malformed_output(malformed_dylib_path, std::ios::binary);
+			malformed_output.write(reinterpret_cast<const char*>(&malformed_header), sizeof(malformed_header));
+			malformed_output.write(reinterpret_cast<const char*>(&malformed_dylib), sizeof(malformed_dylib));
+			malformed_output.put('\0');
+			malformed_output.close();
+			try {
+				(void)MachOImage::Open(malformed_dylib_path.wstring());
+				return 23;
+			} catch (const std::exception& error) {
+				if (std::string(error.what()).find("Mach-O dylib name is empty") == std::string::npos)
+					return 24;
+			}
+			std::cout << "MACHO_EMPTY_DYLIB_REJECTED=PASS\n";
+		}
+
+		{
 			const auto image = darling::windows_host::MachOImage::Open(path.wstring());
 			std::cout << "MACHO_MAGIC=PASS\n";
 			std::cout << "MACHO_CPU=" << image.Header().cpu_type << "\n";
@@ -730,6 +755,7 @@ int wmain()
 		std::filesystem::remove(arm64_userland24_path, cleanup_error);
 		std::filesystem::remove(arm64_auth_path, cleanup_error);
 		std::filesystem::remove(malformed_rpath_path, cleanup_error);
+		std::filesystem::remove(malformed_dylib_path, cleanup_error);
 		return cleanup_error ? 4 : 0;
 	} catch (const std::exception& error) {
 		std::cerr << "MACHO_SMOKE_ERROR=" << error.what() << "\n";

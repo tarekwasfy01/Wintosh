@@ -24,7 +24,7 @@ The implementation itself is documented at
 
 - [porting/README.md](porting/README.md) — ordered reading path for
   all porting notes.
-- [../PRIMITIVE-MATRIX.csv](../PRIMITIVE-MATRIX.csv) — canonical machine-readable
+- [../PRIMITIVE-MATRIX.csv](../PRIMITIVE-MATRIX.csv) — tracked primitive matrix (currently requires CSV normalization; validate with `validate_primitive_matrix.ps1`)
   family matrix.
 - [PRIMITIVE-MATRIX.md](PRIMITIVE-MATRIX.md) — matrix policy, interpretation,
   status summary, and test-gate rules.

@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Wintosh primitive matrix row",
+  "type": "object",
+  "required": [
+    "family",
+    "darling_surface",
+    "linux_or_wsl_reference",
+    "windows_backend",
+    "implementation",
+    "status",
+    "license_provenance",
+    "test_gate",
+    "remaining_gap"
+  ],
+  "properties": {
+    "family": { "type": "string", "minLength": 1 },
+    "darling_surface": { "type": "string" },
+    "linux_or_wsl_reference": { "type": "string" },
+    "windows_backend": { "type": "string" },
+    "implementation": { "type": "string" },
+    "status": {
+      "type": "string",
+      "enum": ["implemented", "verified", "partial", "not implemented"]
+    },
+    "license_provenance": { "type": "string" },
+    "test_gate": { "type": "string" },
+    "remaining_gap": { "type": "string" }
+  },
+  "additionalProperties": false
+}

@@ -20,7 +20,7 @@ adapter layer, with the corresponding source and license provenance retained.
 6. Keep Darwin-only or Apple-framework behavior explicitly `missing` instead
    of silently mapping it to an unrelated Windows behavior.
 
-The machine-readable source is [PRIMITIVE-MATRIX.csv](../PRIMITIVE-MATRIX.csv).
+The tracked source is [PRIMITIVE-MATRIX.csv](../PRIMITIVE-MATRIX.csv). It is currently a human-maintained matrix with six rows that still require CSV quoting normalization; run [`validate_primitive_matrix.ps1`](validate_primitive_matrix.ps1) before using it in automated reports.
 The consolidated cross-source extraction is [SOURCE-EXTRACTION-MATRIX.md](SOURCE-EXTRACTION-MATRIX.md).
 
 The Windows host adapter exposes a tested Darwin `rename` primitive through

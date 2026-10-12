@@ -287,6 +287,7 @@ struct DyldBindAction final {
 	bool lazy = false;
 	bool threaded = false;
 	std::size_t threaded_table_size = 0;
+	std::size_t stream_offset = 0;
 };
 
 struct DyldResolvedBinding final {
@@ -519,6 +520,8 @@ public:
 	void ApplyOne(std::size_t action_index) const;
 	void ApplyAll() const;
 	[[nodiscard]] bool ApplyForSlot(std::uintptr_t slot_address) const;
+	[[nodiscard]] std::optional<std::size_t> FindActionForLazyInfo(
+		std::uintptr_t lazy_binding_info) const noexcept;
 	[[nodiscard]] std::optional<std::size_t> FindActionForSlot(
 		std::uintptr_t slot_address) const noexcept;
 	[[nodiscard]] Activation Activate() const noexcept { return Activation(this); }

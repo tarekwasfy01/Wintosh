@@ -161,6 +161,7 @@ void ParseSimpleBindStream(const std::uint8_t* bytes, std::size_t size,
 	bool weak_import = false;
 	while (cursor < size) {
 		const auto opcode = bytes[cursor++];
+		const auto action_offset = cursor - 1;
 		const auto operation = opcode & 0xf0;
 		const auto immediate = opcode & 0x0f;
 		switch (operation) {
@@ -203,17 +204,17 @@ void ParseSimpleBindStream(const std::uint8_t* bytes, std::size_t size,
 			break;
 		case 0x90:
 			actions.push_back({symbol, segment_index, segment_offset, type, addend,
-				ordinal, weak || weak_import, lazy, false});
+				ordinal, weak || weak_import, lazy, false, 0, action_offset});
 			segment_offset += 8;
 			break;
 		case 0xa0:
 			actions.push_back({symbol, segment_index, segment_offset, type, addend,
-				ordinal, weak || weak_import, lazy, false});
+				ordinal, weak || weak_import, lazy, false, 0, action_offset});
 			segment_offset += ReadULEB(bytes, size, cursor) + 8;
 			break;
 		case 0xb0:
 			actions.push_back({symbol, segment_index, segment_offset, type, addend,
-				ordinal, weak || weak_import, lazy, false});
+				ordinal, weak || weak_import, lazy, false, 0, action_offset});
 			segment_offset += static_cast<std::uint64_t>(immediate) * 8 + 8;
 			break;
 		case 0xc0: {
@@ -223,7 +224,7 @@ void ParseSimpleBindStream(const std::uint8_t* bytes, std::size_t size,
 				"Mach-O weak/lazy bind repeat count is unreasonable");
 			for (std::uint64_t index = 0; index < repeat; ++index) {
 				actions.push_back({symbol, segment_index, segment_offset, type, addend,
-					ordinal, weak || weak_import, lazy, false});
+					ordinal, weak || weak_import, lazy, false, 0, action_offset});
 				segment_offset += skip + 8;
 			}
 			break;
@@ -2494,6 +2495,17 @@ bool MachOLazyBindingSession::ApplyForSlot(std::uintptr_t slot_address) const
 		return false;
 	ApplyOne(*action);
 	return true;
+}
+
+std::optional<std::size_t> MachOLazyBindingSession::FindActionForLazyInfo(
+	std::uintptr_t lazy_binding_info) const noexcept
+{
+	for (std::size_t index = 0; index < m_image.BindActions().size(); ++index) {
+		const auto& action = m_image.BindActions()[index];
+		if (action.lazy && action.stream_offset == lazy_binding_info)
+			return index;
+	}
+	return std::nullopt;
 }
 
 std::optional<std::size_t> MachOLazyBindingSession::FindActionForSlot(

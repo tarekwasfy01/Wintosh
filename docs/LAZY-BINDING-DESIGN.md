@@ -72,6 +72,12 @@ returns false when no lazy action owns the supplied slot. This is the direct
 handoff primitive for a future architecture-specific Darwin stub trampoline;
 it does not decode registers or claim that `dyld_stub_binder` is complete.
 
+Each parsed bind action now retains its byte offset in the originating bind
+stream. `FindActionForLazyInfo` uses that provenance to map the Darwin binder's
+lazy-info offset back to exactly one lazy action; the dyld smoke checks the
+matching offset and rejects its neighbor. This is the first real bridge from
+the Darwin binder metadata to Wintosh's action table.
+
 `DecodeDarwinX86_64StubFrame` now validates and names the three metadata words
 (`image_cache`, `lazy_binding_info`, and `return_address`) in the confirmed
 Darwin order. Its null/zero rejection is covered by the dyld smoke fixture.

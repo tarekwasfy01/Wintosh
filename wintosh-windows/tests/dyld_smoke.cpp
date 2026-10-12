@@ -866,6 +866,11 @@ int wmain(int argc, wchar_t** argv)
 			if (!lazy_action.has_value() || *lazy_action != 6 ||
 				lazy_session.FindActionForSlot(lazy_slot_address + 8).has_value())
 				throw std::runtime_error("Mach-O lazy slot did not resolve to exactly one action");
+			const auto lazy_info_offset = app_image.BindActions()[*lazy_action].stream_offset;
+			if (!lazy_session.FindActionForLazyInfo(lazy_info_offset).has_value() ||
+				*lazy_session.FindActionForLazyInfo(lazy_info_offset) != *lazy_action ||
+				lazy_session.FindActionForLazyInfo(lazy_info_offset + 1).has_value())
+				throw std::runtime_error("Mach-O lazy info did not resolve to exactly one action");
 			if (!lazy_session.ApplyForSlot(lazy_slot_address))
 				throw std::runtime_error("Mach-O lazy slot application was rejected");
 			const auto lazy_address = reinterpret_cast<const std::uintptr_t*>(

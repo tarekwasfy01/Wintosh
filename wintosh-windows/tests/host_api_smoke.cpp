@@ -476,6 +476,16 @@ int main()
 	const bool executable_path_ok = darling_windows_host_symbol("___NSGetExecutablePath") != 0 &&
 		darling_windows_NSGetExecutablePath(executable_path, &executable_path_size) == 0 &&
 		executable_path_size > 1 && std::strstr(executable_path, ".exe") != nullptr;
+	const bool library_version_ok =
+		darling_windows_host_symbol("___NSVersionOfRunTimeLibrary") != 0 &&
+		darling_windows_host_symbol("___NSVersionOfLinkTimeLibrary") != 0 &&
+		darling_windows_NSVersionOfRunTimeLibrary("libSystem") == 1 &&
+		darling_windows_NSVersionOfLinkTimeLibrary("libobjc.A.dylib") == 1 &&
+		darling_windows_NSVersionOfRunTimeLibrary("MissingLibrary") == -1;
+	if (!library_version_ok) {
+		std::cerr << "HOST_API_SMOKE_ERROR=library_version\n";
+		return 1;
+	}
 	const std::string original_program_name = darling_windows_getprogname() == nullptr ?
 		std::string{} : darling_windows_getprogname();
 	darling_windows_setprogname("darling-host-api-smoke");

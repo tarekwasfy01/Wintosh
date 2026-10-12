@@ -531,6 +531,8 @@ extern "C" int darling_windows_gethostname(char* buffer, std::size_t size);
 extern "C" int darling_windows_getdomainname(char* buffer, std::size_t size);
 extern "C" int darling_windows_uname(darling_utsname* result);
 extern "C" int darling_windows_NSGetExecutablePath(char* buffer, std::uint32_t* size);
+extern "C" int darling_windows_NSVersionOfRunTimeLibrary(const char* name);
+extern "C" int darling_windows_NSVersionOfLinkTimeLibrary(const char* name);
 extern "C" const char* darling_windows_getprogname();
 extern "C" void darling_windows_setprogname(const char* name);
 extern "C" int darling_windows_clock_gettime(int clock_id, darling_timespec* result);

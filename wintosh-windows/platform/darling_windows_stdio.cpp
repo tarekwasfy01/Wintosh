@@ -5869,6 +5869,16 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 		std::strcmp(name, "_NSGetExecutablePath") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_NSGetExecutablePath);
 	}
+	if (std::strcmp(name, "___NSVersionOfRunTimeLibrary") == 0 ||
+		std::strcmp(name, "__NSVersionOfRunTimeLibrary") == 0 ||
+		std::strcmp(name, "_NSVersionOfRunTimeLibrary") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_NSVersionOfRunTimeLibrary);
+	}
+	if (std::strcmp(name, "___NSVersionOfLinkTimeLibrary") == 0 ||
+		std::strcmp(name, "__NSVersionOfLinkTimeLibrary") == 0 ||
+		std::strcmp(name, "_NSVersionOfLinkTimeLibrary") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_NSVersionOfLinkTimeLibrary);
+	}
 	if (std::strcmp(name, "_clock_gettime") == 0 || std::strcmp(name, "clock_gettime") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_clock_gettime);
 	}
@@ -7851,6 +7861,29 @@ extern "C" int darling_windows_NSGetExecutablePath(char* buffer, std::uint32_t* 
 	std::memcpy(buffer, utf8_path.c_str(), required);
 	*size = required_u32;
 	return 0;
+}
+
+namespace {
+int WintoshLibraryVersion(const char* name)
+{
+	if (name == nullptr) return -1;
+	return std::strcmp(name, "System") == 0 ||
+		std::strcmp(name, "libSystem") == 0 ||
+		std::strcmp(name, "libSystem.B.dylib") == 0 ||
+		std::strcmp(name, "objc") == 0 ||
+		std::strcmp(name, "libobjc") == 0 ||
+		std::strcmp(name, "libobjc.A.dylib") == 0 ? 1 : -1;
+}
+}
+
+extern "C" int darling_windows_NSVersionOfRunTimeLibrary(const char* name)
+{
+	return WintoshLibraryVersion(name);
+}
+
+extern "C" int darling_windows_NSVersionOfLinkTimeLibrary(const char* name)
+{
+	return WintoshLibraryVersion(name);
 }
 
 extern "C" const char* darling_windows_getprogname()

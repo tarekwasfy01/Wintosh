@@ -38,6 +38,12 @@ addition to `exit` and `_exit`. The Windows adapter terminates the current
 process directly with the conventional SIGABRT status rather than unwinding
 through guest frames; symbol availability is covered by `host_api_smoke`.
 
+The startup/runtime query family now exports
+`NSVersionOfRunTimeLibrary` and `NSVersionOfLinkTimeLibrary`. They report the
+version-1 Wintosh bridge for `libSystem`/`libobjc` spellings and return `-1`
+for libraries that are not bundled; they do not claim Apple binary-version
+compatibility.
+
 The runner also provides `--init-prefix <directory>`, which creates the
 documented Darwin directory layout (`System/Library/Frameworks`, `usr/lib`,
 and the relevant `Library` data roots) without downloading or fabricating

@@ -340,8 +340,9 @@ entering the resolver with an empty key.
 
 `LC_LOAD_DYLINKER` is now structurally validated and exposed through
 `MachOImage::DylinkerPath()`, including bounded and non-empty path storage.
-The path remains metadata-only at this stage; actual Darwin `dyld` process
-replacement remains outside the Windows adapter.
+The CLI `wintosh --inspect` now reports `dylinker_path=` as well. The path
+remains metadata-only at this stage; actual Darwin `dyld` process replacement
+remains outside the Windows adapter.
 
 ## Latest verified native adapter families
 

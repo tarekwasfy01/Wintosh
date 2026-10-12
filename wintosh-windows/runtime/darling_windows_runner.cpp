@@ -425,6 +425,8 @@ int wmain(int argc, wchar_t** argv)
 				<< L"segments=" << inspected.Segments().size() << L"\n"
 				<< L"sections=" << inspected.Sections().size() << L"\n"
 				<< L"dependencies=" << inspected.Dependencies().size() << L"\n"
+				<< L"dylinker_path=" << std::wstring(inspected.DylinkerPath().begin(),
+					inspected.DylinkerPath().end()) << L"\n"
 				<< L"code_signature=" << (inspected.HasCodeSignature() ? L"present" : L"absent") << L"\n";
 			std::uint32_t signature_offset = 0;
 			std::uint32_t signature_size = 0;

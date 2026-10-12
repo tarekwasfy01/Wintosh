@@ -324,6 +324,12 @@ int DarwinBootstrap::Run(const std::filesystem::path& image_path,
 	image.ApplyIndirectImportBindings(mapping, resolved);
 	image.ExecuteInitializers(mapping);
 	RegisterObjectiveCSections(image, mapping);
+	// Keep the main image's lazy-binding context active for the complete guest
+	// entry lifetime.  The eager ApplyAll() calls above intentionally use
+	// short-lived sessions; dyld_stub_binder needs a session that still exists
+	// when guest code later enters an unresolved lazy stub.
+	MachOLazyBindingSession entry_binding_session(image, mapping, resolved);
+	auto entry_binding_activation = entry_binding_session.Activate();
 	const auto exit_code = image.ExecuteEntry(mapping, options.arguments,
 		options.environment, options.apple_parameters, options.entry_abi);
 	image.ExecuteTerminators(mapping);

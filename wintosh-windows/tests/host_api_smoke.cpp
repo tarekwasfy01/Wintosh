@@ -496,6 +496,8 @@ int main()
 		darling_windows_host_symbol("___NSAddImage") != 0 &&
 		darling_windows_host_symbol("___NSAddLibrary") != 0 &&
 		darling_windows_host_symbol("___NSAddLibraryWithSearching") != 0 &&
+		darling_windows_host_symbol("___NSCreateObjectFileImageFromFile") != 0 &&
+		darling_windows_host_symbol("___NSDestroyObjectFileImage") != 0 &&
 		darling_windows_host_symbol("___NSAddressOfSymbol") != 0 &&
 		darling_windows_NSAddressOfSymbol(reinterpret_cast<void*>(0x1)) ==
 			reinterpret_cast<void*>(0x1) &&

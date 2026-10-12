@@ -35,6 +35,11 @@ following families with Windows-backed implementations:
 - `NSAddImage`, `NSAddLibrary`, and `NSAddLibraryWithSearching` map to the
   normalized Wintosh dynamic-image loader; Apple-specific search paths and
   legacy abort/error-handler behavior remain bounded.
+- The first Object-File-Image lifetime bridge is present:
+  `NSCreateObjectFileImageFromFile` creates a Wintosh-owned token backed by a
+  retained dynamic-image handle, and `NSDestroyObjectFileImage` releases it.
+  In-memory images, bundle-only validation, object-image symbol enumeration,
+  and `NSLinkModule` are not implemented yet.
 - Objective-C runtime registration and the Foundation/CoreFoundation/
   CoreGraphics compatibility subsets;
 - Mach virtual memory, IPC broker operations, ports, OOL data, and MIG dispatch.

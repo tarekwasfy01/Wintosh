@@ -88,6 +88,12 @@ int wmain()
 		const auto utf8_path = win32_path.string();
 		void* handle = darling_windows_dlopen(utf8_path.c_str(), 0);
 		void* second_handle = darling_windows_dlopen(utf8_path.c_str(), 0);
+		void* object_file_image = nullptr;
+		const bool object_image_ok =
+			darling_windows_NSCreateObjectFileImageFromFile(utf8_path.c_str(),
+				&object_file_image) == darling_NSObjectFileImageSuccess &&
+			object_file_image != nullptr &&
+			darling_windows_NSDestroyObjectFileImage(object_file_image) == 1;
 		void* symbol_address = darling_windows_dlsym(handle, "exported");
 		const void* image_header = nullptr;
 		void* image_symbol = nullptr;
@@ -99,7 +105,7 @@ int wmain()
 				break;
 			}
 		}
-		const bool passed = handle != nullptr && second_handle == handle &&
+		const bool passed = object_image_ok && handle != nullptr && second_handle == handle &&
 			symbol_address != nullptr &&
 			image_header != nullptr && image_symbol == symbol_address &&
 			darling_windows_NSAddressOfSymbol(image_symbol) == symbol_address &&

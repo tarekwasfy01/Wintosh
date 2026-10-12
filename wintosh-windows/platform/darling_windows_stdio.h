@@ -494,6 +494,17 @@ extern "C" const void* darling_windows_NSAddImage(const char* path,
 	std::uint32_t options);
 extern "C" int darling_windows_NSAddLibrary(const char* path);
 extern "C" int darling_windows_NSAddLibraryWithSearching(const char* path);
+enum darling_NSObjectFileImageReturnCode : int {
+	darling_NSObjectFileImageFailure = 0,
+	darling_NSObjectFileImageSuccess = 1,
+	darling_NSObjectFileImageInappropriateFile = 2,
+	darling_NSObjectFileImageArch = 3,
+	darling_NSObjectFileImageFormat = 4,
+	darling_NSObjectFileImageAccess = 5,
+};
+extern "C" int darling_windows_NSCreateObjectFileImageFromFile(const char* path,
+	void** object_file_image);
+extern "C" int darling_windows_NSDestroyObjectFileImage(void* object_file_image);
 extern "C" void* darling_windows_dlsym(void* handle, const char* symbol);
 extern "C" int darling_windows_dlclose(void* handle);
 extern "C" const char* darling_windows_dlerror();

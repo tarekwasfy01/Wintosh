@@ -28,6 +28,7 @@
 #include <psapi.h>
 
 #include <cstdint>
+#include <new>
 #include <atomic>
 #include <array>
 #include <cstring>
@@ -743,6 +744,7 @@ struct DynamicImageLoadState final {
 	bool complete = false;
 	std::thread::id owner;
 };
+struct DarlingObjectFileImageToken final { void* handle = nullptr; };
 std::unordered_map<std::wstring, std::shared_ptr<DynamicImageLoadState>>
 	dynamic_image_loads;
 
@@ -5924,6 +5926,16 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 		std::strcmp(name, "_NSAddLibraryWithSearching") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_NSAddLibraryWithSearching);
 	}
+	if (std::strcmp(name, "___NSCreateObjectFileImageFromFile") == 0 ||
+		std::strcmp(name, "__NSCreateObjectFileImageFromFile") == 0 ||
+		std::strcmp(name, "_NSCreateObjectFileImageFromFile") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_NSCreateObjectFileImageFromFile);
+	}
+	if (std::strcmp(name, "___NSDestroyObjectFileImage") == 0 ||
+		std::strcmp(name, "__NSDestroyObjectFileImage") == 0 ||
+		std::strcmp(name, "_NSDestroyObjectFileImage") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_NSDestroyObjectFileImage);
+	}
 	if (std::strcmp(name, "___NSAddressOfSymbol") == 0 ||
 		std::strcmp(name, "__NSAddressOfSymbol") == 0 ||
 		std::strcmp(name, "_NSAddressOfSymbol") == 0) {
@@ -7226,6 +7238,36 @@ extern "C" int darling_windows_NSAddLibraryWithSearching(const char* path)
 	// policy used by the dynamic-image registry.
 	void* handle = darling_windows_dlopen(path, 0);
 	return handle != nullptr && handle != DarwinRtldDefaultHandle() ? 1 : 0;
+}
+
+extern "C" int darling_windows_NSCreateObjectFileImageFromFile(const char* path,
+	void** object_file_image)
+{
+	if (object_file_image == nullptr)
+		return darling_NSObjectFileImageFailure;
+	*object_file_image = nullptr;
+	if (path == nullptr || path[0] == '\0')
+		return darling_NSObjectFileImageAccess;
+	void* handle = darling_windows_dlopen(path, 0);
+	if (handle == nullptr || handle == DarwinRtldDefaultHandle())
+		return darling_NSObjectFileImageInappropriateFile;
+	auto* token = new (std::nothrow) DarlingObjectFileImageToken{handle};
+	if (token == nullptr) {
+		darling_windows_dlclose(handle);
+		return darling_NSObjectFileImageFailure;
+	}
+	*object_file_image = token;
+	return darling_NSObjectFileImageSuccess;
+}
+
+extern "C" int darling_windows_NSDestroyObjectFileImage(void* object_file_image)
+{
+	if (object_file_image == nullptr)
+		return 0;
+	auto* token = static_cast<DarlingObjectFileImageToken*>(object_file_image);
+	const int result = darling_windows_dlclose(token->handle) == 0 ? 1 : 0;
+	delete token;
+	return result;
 }
 
 extern "C" void* darling_windows_NSAddressOfSymbol(void* symbol)

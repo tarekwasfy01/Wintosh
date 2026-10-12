@@ -5955,6 +5955,10 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 		std::strcmp(name, "__NSIsSymbolDefinedInObjectFileImage") == 0 ||
 		std::strcmp(name, "_NSIsSymbolDefinedInObjectFileImage") == 0)
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_NSIsSymbolDefinedInObjectFileImage);
+	if (std::strcmp(name, "___NSGetSectionDataInObjectFileImage") == 0 ||
+		std::strcmp(name, "__NSGetSectionDataInObjectFileImage") == 0 ||
+		std::strcmp(name, "_NSGetSectionDataInObjectFileImage") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_NSGetSectionDataInObjectFileImage);
 	if (std::strcmp(name, "___NSLinkModule") == 0 ||
 		std::strcmp(name, "__NSLinkModule") == 0 ||
 		std::strcmp(name, "_NSLinkModule") == 0)
@@ -7380,6 +7384,32 @@ extern "C" int darling_windows_NSIsSymbolDefinedInObjectFileImage(
 	const auto found = dynamic_images.find(token->handle);
 	return found != dynamic_images.end() &&
 		darling::windows_host::DynamicImageHasSymbol(*found->second, symbol_name) ? 1 : 0;
+}
+
+extern "C" void* darling_windows_NSGetSectionDataInObjectFileImage(
+	void* object_file_image, const char* segment_name, const char* section_name,
+	std::size_t* size)
+{
+	if (size == nullptr) return nullptr;
+	*size = 0;
+	auto* token = ObjectFileImageToken(object_file_image);
+	if (token == nullptr || segment_name == nullptr || section_name == nullptr) {
+		dynamic_loader_error = "NSGetSectionDataInObjectFileImage: invalid argument";
+		return nullptr;
+	}
+	std::lock_guard lock(dynamic_image_mutex);
+	const auto found = dynamic_images.find(token->handle);
+	if (found == dynamic_images.end()) {
+		dynamic_loader_error = "NSGetSectionDataInObjectFileImage: image not found";
+		return nullptr;
+	}
+	void* data = darling::windows_host::DynamicImageSectionData(*found->second,
+		segment_name, section_name, *size);
+	if (data == nullptr)
+		dynamic_loader_error = "NSGetSectionDataInObjectFileImage: section not found";
+	else
+		dynamic_loader_error.clear();
+	return data;
 }
 
 extern "C" void* darling_windows_NSLinkModule(void* object_file_image,

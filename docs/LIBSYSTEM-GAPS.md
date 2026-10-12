@@ -45,6 +45,9 @@ following families with Windows-backed implementations:
   the already-loaded image as a bounded legacy module view; deferred linking,
   unload flags, and Apple module initializer/error-handler semantics remain
   open.
+- `NSGetSectionDataInObjectFileImage` now returns the mapped address and size
+  for sections present in a loaded Wintosh Mach-O; file-only/unmapped section
+  behavior and full Apple bundle validation remain outside this adapter.
 - `NSNameOfModule` and `NSLibraryNameForModule` provide bounded metadata for
   projected Wintosh modules; Apple module-name overrides and legacy module
   lifetime rules remain open.

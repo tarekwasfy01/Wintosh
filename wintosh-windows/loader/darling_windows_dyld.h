@@ -64,6 +64,8 @@ std::uint32_t DynamicImageDefinedSymbolCount(const DarwinDynamicImage& image) no
 const char* DynamicImageDefinedSymbolName(const DarwinDynamicImage& image,
 	std::uint32_t ordinal) noexcept;
 bool DynamicImageHasSymbol(const DarwinDynamicImage& image, const char* name) noexcept;
+void* DynamicImageSectionData(const DarwinDynamicImage& image,
+	const char* segment_name, const char* section_name, std::size_t& size) noexcept;
 int DynamicImageExecuteEntry(const DarwinDynamicImage& image,
 	const std::vector<std::string>& arguments,
 	const std::vector<std::string>& environment = {},

@@ -649,6 +649,26 @@ bool DynamicImageHasSymbol(const DarwinDynamicImage& image, const char* name) no
 	catch (...) { return false; }
 }
 
+void* DynamicImageSectionData(const DarwinDynamicImage& image,
+	const char* segment_name, const char* section_name, std::size_t& size) noexcept
+{
+	size = 0;
+	if (segment_name == nullptr || section_name == nullptr)
+		return nullptr;
+	try {
+		for (const auto& section : image.image.Sections()) {
+			if (section.segment_name != segment_name || section.section_name != section_name)
+				continue;
+			size = static_cast<std::size_t>(section.size);
+			return reinterpret_cast<void*>(image.image.SectionAddress(image.mapping,
+				section.segment_name, section.section_name));
+		}
+	} catch (...) {
+		size = 0;
+	}
+	return nullptr;
+}
+
 int DynamicImageExecuteEntry(const DarwinDynamicImage& image,
 	const std::vector<std::string>& arguments,
 	const std::vector<std::string>& environment,

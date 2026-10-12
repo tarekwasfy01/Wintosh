@@ -508,6 +508,7 @@ public:
 
 	void ApplyOne(std::size_t action_index) const;
 	void ApplyAll() const;
+	[[nodiscard]] bool ApplyForSlot(std::uintptr_t slot_address) const;
 	[[nodiscard]] std::optional<std::size_t> FindActionForSlot(
 		std::uintptr_t slot_address) const noexcept;
 	[[nodiscard]] Activation Activate() const noexcept { return Activation(this); }

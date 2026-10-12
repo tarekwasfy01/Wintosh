@@ -2475,6 +2475,15 @@ void MachOLazyBindingSession::ApplyAll() const
 	m_image.ApplyLazyBindActions(m_mapping, m_bindings);
 }
 
+bool MachOLazyBindingSession::ApplyForSlot(std::uintptr_t slot_address) const
+{
+	const auto action = FindActionForSlot(slot_address);
+	if (!action.has_value())
+		return false;
+	ApplyOne(*action);
+	return true;
+}
+
 std::optional<std::size_t> MachOLazyBindingSession::FindActionForSlot(
 	std::uintptr_t slot_address) const noexcept
 {

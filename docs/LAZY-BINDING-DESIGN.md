@@ -67,6 +67,11 @@ index and rejects a neighboring non-slot address before applying it. Remaining
 binder work is recovering that slot address from the real stub-call register
 convention and passing it into this lookup.
 
+`ApplyForSlot` now combines the validated lookup and one bind application and
+returns false when no lazy action owns the supplied slot. This is the direct
+handoff primitive for a future architecture-specific Darwin stub trampoline;
+it does not decode registers or claim that `dyld_stub_binder` is complete.
+
 ## Provenance
 
 The behavioral target is Apple's Darwin `dyld` lazy-binding contract as exposed

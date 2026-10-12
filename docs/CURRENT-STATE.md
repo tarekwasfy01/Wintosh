@@ -51,6 +51,18 @@ image list, and verifies that the image lookup returns the same address as
 `dlsym`.  Wintosh represents the opaque `NSSymbol` token by that resolved
 address; complete Apple symbol-option and lifetime semantics remain open.
 
+The legacy dyld family now additionally covers module lookup/binding
+(`NSLookupSymbolInModule`, `NSLookupAndBindSymbol`, and the hint/predicate
+variants), image/library addition, and module metadata.  The deprecated
+Object-File-Image subset has a Wintosh-owned token with file creation,
+definition-count/name queries, symbol-definition checks, and bounded
+`NSLinkModule`/`NSUnLinkModule` projection.  These paths are verified against
+the repository-owned dynamic Mach-O fixture and use the existing registry for
+reference counting.  In-memory object images, deferred bundle linking,
+Apple's unload flags, and legacy initializer/error-handler semantics remain
+unimplemented; these are deliberately documented boundaries rather than
+silent fallbacks.
+
 The runner also provides `--init-prefix <directory>`, which creates the
 documented Darwin directory layout (`System/Library/Frameworks`, `usr/lib`,
 and the relevant `Library` data roots) without downloading or fabricating

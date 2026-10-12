@@ -5,7 +5,9 @@
  *
  * The stack metadata offsets match the documented Darwin dyld binder frame:
  * rbp+8 = image-loader cache, rbp+16 = lazy-binding-info, rbp+24 = return.
- * This probe is not installed as dyld_stub_binder.
+ * The exported binder is installed as the active trampoline for the native
+ * Clang/System-V runner. It remains fail-closed when no active binding
+ * session exists.
  */
 .intel_syntax noprefix
 .text
@@ -74,7 +76,7 @@ darling_windows_darwin_stub_trampoline_fixture:
     sub rsp, 16
     mov qword ptr [rsp+0x00], 0x9000
     mov qword ptr [rsp+0x08], rdx
-    jmp darling_windows_darwin_stub_trampoline_probe
+    jmp darling_windows_abi_dyld_stub_binder
 
 .section .drectve,"dr"
 .ascii " -export:darling_windows_darwin_stub_trampoline_probe"

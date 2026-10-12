@@ -169,16 +169,15 @@ The new `abi_bridge_smoke` additionally calls `_puts` directly and verifies
 that the Mach-O `_puts` lookup returns the same address; the later native
 Clang E2E gate covers the guest-call boundary.
 
-The loader now recognizes `dyld_stub_binder` as a guarded host export.  This
-allows a chained-fixups image that carries legacy stub metadata but does not
-execute lazy binding to continue through binding preparation; if the binder is
-actually invoked, the guarded export terminates with an explicit unsupported
-diagnostic instead of silently calling an incompatible function.  Chained
-images also skip the legacy indirect-symbol slot walk because their pointer
-locations come from the chained starts table.  The supplied chained fixture
-now passes the MSVC fail-closed gate (`real Mach-O execution requires a Clang
-build with System-V ABI support`); forcing it through `synthetic-main` is
-intentionally invalid and terminates before producing guest output.
+The loader now exposes a real x86_64 Clang/System-V `dyld_stub_binder`
+trampoline. It preserves the guest register state, decodes the Darwin binder
+metadata frame, resolves the active lazy action, and jumps to the resolved
+target; without an active matching session it remains fail-closed with an
+explicit diagnostic. The trampoline fixture now enters through the exported
+binder symbol itself, and `abi_bridge_smoke` plus `dyld_smoke` pass this path.
+Chained images still skip the legacy indirect-symbol slot walk because their
+pointer locations come from the chained starts table. The MSVC build remains
+fail-closed for real guest execution.
 
 The dyld resolver now also checks `Contents/Frameworks` and `Contents/PlugIns`
 as scoped fallbacks for `@rpath/...` dependencies of a bundle executable when
@@ -268,9 +267,11 @@ ONE_ARG_EXIT=7
 ```
 
 This is the first end-to-end proof of a real x86_64 SysV Mach-O entry and the
-fixed-arity `_puts`/`_exit` bridge on Windows. It covers the chained fixture
-only; the Classic fixture, lazy binding, Darwin `crt1` startup, variadic
-exports, and arbitrary Apple frameworks remain unimplemented or unverified.
+fixed-arity `_puts`/`_exit` bridge on Windows. It covers the chained fixture;
+the Classic fixture, the controlled binder trampoline, and narrow variadic
+exports are covered separately. Darwin `crt1` compatibility, full lazy-binding
+protocol parity, and arbitrary Apple frameworks remain unimplemented or
+unverified.
 
 The Classic Mach-O fixture now also executes through the Clang build. Its
 `__stubs` section is accounted for when walking the indirect-symbol table;

@@ -222,7 +222,8 @@ void WriteMachO(const std::filesystem::path& path, const char* dependency,
 		0, 0x51, 0x70, 0xa8, 0x04, 0x90, 0x00};
 	std::uint8_t lazy_bind_stream[] = {
 		0x11, 0x40, '_', 'l', 'i', 'b', 'S', 'y', 's', 't', 'e', 'm',
-		'I', 'n', 'i', 't', 0, 0x51, 0x70, 0xc0, 0x04, 0xc0, 0x01, 0x00, 0x00};
+		'I', 'n', 'i', 't', 0, 0x51, 0x70, 0xc0, 0x04, 0xc0, 0x01, 0x00,
+		0x70, 0xc8, 0x04, 0x90, 0x00};
 	if (std::strcmp(imported_symbol, "_libSystemInit") != 0) {
 		const auto replace = [imported_symbol](std::uint8_t* stream,
 			std::size_t size) {
@@ -630,7 +631,7 @@ int wmain(int argc, wchar_t** argv)
 				library_image.UndefinedSymbols().size() != 0) {
 				throw std::runtime_error("unexpected Mach-O undefined-symbol metadata");
 			}
-			if (app_image.BindActions().size() != 7 ||
+			if (app_image.BindActions().size() != 8 ||
 				app_image.BindActions().front().symbol != "_libSystemInit" ||
 				app_image.BindActions().front().segment_offset != 0x40 ||
 				app_image.BindActions()[1].segment_offset != 0x48 ||
@@ -639,7 +640,8 @@ int wmain(int argc, wchar_t** argv)
 				!app_image.BindActions()[4].threaded ||
 				app_image.BindActions()[4].threaded_table_size != 1 ||
 				!app_image.BindActions()[5].weak || app_image.BindActions()[5].lazy ||
-				!app_image.BindActions()[6].lazy) {
+				!app_image.BindActions()[6].lazy ||
+				!app_image.BindActions()[7].lazy) {
 				throw std::runtime_error("unexpected Mach-O dyld bind metadata");
 			}
 			if (app_image.RebaseActions().size() != 1 ||
@@ -866,10 +868,16 @@ int wmain(int argc, wchar_t** argv)
 			const auto lazy_slot_address = static_cast<std::uintptr_t>(0x1240) +
 				static_cast<std::intptr_t>(app_mapping.Slide());
 			const auto lazy_action = lazy_session.FindActionForSlot(lazy_slot_address);
-			if (!lazy_action.has_value() || *lazy_action != 6 ||
-				lazy_session.FindActionForSlot(lazy_slot_address + 8).has_value())
-				throw std::runtime_error("Mach-O lazy slot did not resolve to exactly one action");
+			const auto lazy_action2_slot = lazy_session.FindActionForSlot(lazy_slot_address + 8);
+			if (!lazy_action.has_value() || !app_image.BindActions()[*lazy_action].lazy ||
+				!lazy_action2_slot.has_value() || *lazy_action2_slot == *lazy_action ||
+				!app_image.BindActions()[*lazy_action2_slot].lazy)
+				throw std::runtime_error("Mach-O lazy slots did not resolve to two actions");
 			const auto lazy_info_offset = app_image.BindActions()[*lazy_action].stream_offset;
+			const auto lazy_action2 = lazy_session.FindActionForLazyInfo(
+				app_image.BindActions()[7].stream_offset);
+			if (!lazy_action2.has_value() || *lazy_action2 != 7)
+				throw std::runtime_error("second Mach-O lazy action was not indexed");
 			const auto lazy_address = reinterpret_cast<const std::uintptr_t*>(
 				static_cast<std::intptr_t>(0x1240) + app_mapping.Slide());
 			if (!lazy_session.FindActionForLazyInfo(lazy_info_offset).has_value() ||
@@ -892,6 +900,8 @@ int wmain(int argc, wchar_t** argv)
 					throw std::runtime_error("invalid Darwin lazy info modified a slot");
 				if (darling::windows_host::abi::darling_windows_abi_resolve_lazy_binding(
 					0x9000, lazy_info_offset) != relocation_apply_target ||
+					darling::windows_host::abi::darling_windows_abi_resolve_lazy_binding(
+						0x9000, app_image.BindActions()[7].stream_offset) != relocation_apply_target ||
 					*lazy_address != slot_before_invalid)
 					throw std::runtime_error("repeated Darwin lazy binding was not idempotent");
 			}

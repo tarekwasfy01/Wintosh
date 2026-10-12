@@ -57,7 +57,9 @@ remote `HEAD` commits; the second batch in
 for 16 verified components total. The third batch in
 [`REMOTE-HEADS-003.csv`](upstream-candidates/REMOTE-HEADS-003.csv) is also 8/8,
 for 24 verified components total. The normal invocation remains offline and
-preserves the conservative 150-row inventory above.
+preserves the conservative 150-row inventory above. The fourth batch in
+[`REMOTE-HEADS-004.csv`](upstream-candidates/REMOTE-HEADS-004.csv) is also 8/8,
+for 32 verified components total.
 
 Manual follow-up for `libpthread_workqueue-0.8.2` found BSD-style
 redistribution terms in `include/pthread_workqueue.h`, `src/api.c`, and

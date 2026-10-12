@@ -423,6 +423,7 @@ MachOImage MachOImage::Open(const std::wstring& path)
 		std::vector<MachOReexport> reexports;
 		std::array<std::uint8_t, 16> uuid{};
 		std::string install_name;
+		std::string dylinker_path;
 		std::vector<MachORelocation> relocations;
 		const SymtabCommand* symtab = nullptr;
 		const DYSymtabCommand* dysymtab = nullptr;
@@ -578,6 +579,7 @@ MachOImage MachOImage::Open(const std::wstring& path)
 				const auto* terminator = static_cast<const char*>(std::memchr(name, '\0', name_bytes));
 				Require(terminator != nullptr, "Mach-O dylinker name is not terminated");
 				Require(terminator != name, "Mach-O dylinker name is empty");
+				dylinker_path.assign(name, terminator);
 			} else if (command->command == LC_ID_DYLIB || command->command == LC_LOAD_DYLIB ||
 				command->command == LC_LOAD_WEAK_DYLIB ||
 				command->command == LC_REEXPORT_DYLIB ||
@@ -1142,7 +1144,8 @@ MachOImage MachOImage::Open(const std::wstring& path)
 			std::move(threaded_bind_targets),
 		std::move(rebase_actions),
 			std::move(chained_fixups), std::move(chained_imports),
-			std::move(reexports), entry_offset, uuid, std::move(install_name));
+			std::move(reexports), entry_offset, uuid, std::move(install_name),
+			std::move(dylinker_path));
 	} catch (...) {
 		UnmapViewOfFile(mapped_view);
 		CloseHandle(mapping);
@@ -2338,7 +2341,7 @@ MachOImage::MachOImage(HANDLE file, HANDLE mapping, const std::uint8_t* view,
 	std::vector<DyldChainedFixup> chained_fixups, std::vector<DyldChainedImport> chained_imports,
 	std::vector<MachOReexport> reexports,
 	std::uint64_t entry_offset, std::array<std::uint8_t, 16> uuid,
-	std::string install_name) noexcept :
+	std::string install_name, std::string dylinker_path) noexcept :
 	m_file(file), m_mapping(mapping), m_view(view), m_file_bytes(file_bytes),
 	m_image_offset(image_offset),
 	m_header_storage(header), m_header(&m_header_storage), m_is_32_bit(is_32_bit),
@@ -2357,6 +2360,7 @@ MachOImage::MachOImage(HANDLE file, HANDLE mapping, const std::uint8_t* view,
 	m_reexports(std::move(reexports)),
 	m_uuid(uuid),
 	m_install_name(std::move(install_name)),
+	m_dylinker_path(std::move(dylinker_path)),
 	m_entry_offset(entry_offset)
 {
 }
@@ -2382,6 +2386,7 @@ MachOImage::MachOImage(MachOImage&& other) noexcept :
 	m_reexports(std::move(other.m_reexports)),
 	m_uuid(other.m_uuid),
 	m_install_name(std::move(other.m_install_name)),
+	m_dylinker_path(std::move(other.m_dylinker_path)),
 	m_entry_offset(other.m_entry_offset)
 {
 	other.m_file = INVALID_HANDLE_VALUE;
@@ -2420,6 +2425,7 @@ MachOImage& MachOImage::operator=(MachOImage&& other) noexcept
 		m_reexports = std::move(other.m_reexports);
 		m_uuid = other.m_uuid;
 		m_install_name = std::move(other.m_install_name);
+		m_dylinker_path = std::move(other.m_dylinker_path);
 		m_entry_offset = other.m_entry_offset;
 		other.m_file = INVALID_HANDLE_VALUE;
 		other.m_mapping = nullptr;

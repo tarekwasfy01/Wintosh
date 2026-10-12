@@ -363,6 +363,7 @@ public:
 	[[nodiscard]] std::size_t FileBytes() const noexcept { return m_file_bytes; }
 	[[nodiscard]] const std::vector<std::string>& Dependencies() const noexcept { return m_dependencies; }
 	[[nodiscard]] const std::string& InstallName() const noexcept { return m_install_name; }
+	[[nodiscard]] const std::string& DylinkerPath() const noexcept { return m_dylinker_path; }
 	[[nodiscard]] bool HasCodeSignature() const noexcept;
 	[[nodiscard]] bool HasValidCodeSignatureSuperBlob() const noexcept;
 	[[nodiscard]] bool CodeSignatureRange(std::uint32_t& offset,
@@ -444,7 +445,7 @@ private:
 		std::vector<DyldChainedImport> chained_imports,
 		std::vector<MachOReexport> reexports,
 		std::uint64_t entry_offset, std::array<std::uint8_t, 16> uuid,
-		std::string install_name) noexcept;
+		std::string install_name, std::string dylinker_path) noexcept;
 	void Reset() noexcept;
 
 	HANDLE m_file = INVALID_HANDLE_VALUE;
@@ -471,6 +472,7 @@ private:
 	std::vector<MachOReexport> m_reexports;
 	std::array<std::uint8_t, 16> m_uuid{};
 	std::string m_install_name;
+	std::string m_dylinker_path;
 	std::uint64_t m_entry_offset = 0;
 };
 

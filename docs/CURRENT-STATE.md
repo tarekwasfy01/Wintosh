@@ -338,9 +338,10 @@ The same fail-closed rule now applies to empty `LC_ID_DYLIB` and
 `LC_LOAD_*_DYLIB` names, preventing malformed dependency commands from
 entering the resolver with an empty key.
 
-`LC_LOAD_DYLINKER` is now structurally validated as well, including bounded
-and non-empty path storage. The path is metadata-only at this stage; actual
-Darwin `dyld` process replacement remains outside the Windows adapter.
+`LC_LOAD_DYLINKER` is now structurally validated and exposed through
+`MachOImage::DylinkerPath()`, including bounded and non-empty path storage.
+The path remains metadata-only at this stage; actual Darwin `dyld` process
+replacement remains outside the Windows adapter.
 
 ## Latest verified native adapter families
 

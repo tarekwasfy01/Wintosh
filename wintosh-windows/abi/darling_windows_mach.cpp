@@ -628,6 +628,10 @@ extern "C" darling_kern_return_t darling_windows_thread_get_state(
 	(void)count;
 	return darling_kern_not_supported;
 #else
+	// An x86_64 Windows host cannot fabricate an ARM64 CONTEXT. Keep this
+	// architecture boundary explicit instead of returning a zeroed state.
+	if (flavor == darling_arm_thread_state64_flavor)
+		return darling_kern_not_supported;
 	if (thread == 0 || state == nullptr || count == nullptr ||
 		(flavor != darling_x86_thread_state64_flavor && flavor != darling_x86_float_state64_flavor && flavor != darling_x86_avx_state64_flavor && flavor != darling_x86_avx512_state64_flavor && flavor != darling_x86_exception_state64_flavor && flavor != darling_x86_debug_state64_flavor) ||
 		*count < (flavor == darling_x86_thread_state64_flavor ? darling_x86_thread_state64_count : flavor == darling_x86_float_state64_flavor ? darling_x86_float_state64_count : flavor == darling_x86_avx_state64_flavor ? darling_x86_avx_state64_count : flavor == darling_x86_avx512_state64_flavor ? darling_x86_avx512_state64_count : flavor == darling_x86_exception_state64_flavor ? darling_x86_exception_state64_count : darling_x86_debug_state64_count))
@@ -772,6 +776,8 @@ extern "C" darling_kern_return_t darling_windows_thread_set_state(
 	(void)count;
 	return darling_kern_not_supported;
 #else
+	if (flavor == darling_arm_thread_state64_flavor)
+		return darling_kern_not_supported;
 	if (thread == 0 ||
 		(flavor != darling_x86_thread_state64_flavor && flavor != darling_x86_float_state64_flavor &&
 		 flavor != darling_x86_avx_state64_flavor && flavor != darling_x86_avx512_state64_flavor &&

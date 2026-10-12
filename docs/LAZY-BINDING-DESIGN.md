@@ -72,6 +72,24 @@ returns false when no lazy action owns the supplied slot. This is the direct
 handoff primitive for a future architecture-specific Darwin stub trampoline;
 it does not decode registers or claim that `dyld_stub_binder` is complete.
 
+## Confirmed x86_64 Darwin stub contract
+
+The historical Apple dyld `dyld_stub_binder.s` source documents the x86_64
+entry stack as follows: at the entry stack pointer, the stub's return address
+is at `sp+16` after the binder prologue, the lazy-binding-info offset is at
+`sp+8`, and the image-loader-cache pointer is at `sp+0`. The binder preserves
+the general-purpose and XMM registers before calling the resolver and restores
+them before jumping to the resolved target. Wintosh records this as an ABI
+contract and implementation target; it does not redistribute Apple's
+assembler. The source reference is
+https://github.com/opensource-apple/dyld/blob/master/src/dyld_stub_binder.s.
+
+The remaining implementation task is therefore a Wintosh-owned x86_64
+trampoline that preserves the guest register/XMM state, decodes the two
+metadata words, resolves the lazy-info offset to a session action, and jumps
+to the returned target. Until a fixture proves that full round trip, the
+export remains fail-closed.
+
 ## Provenance
 
 The behavioral target is Apple's Darwin `dyld` lazy-binding contract as exposed

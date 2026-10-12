@@ -11,7 +11,8 @@ the named runtime gate and the semantic boundary must both be recorded.
    lazy-binding, and startup-stack fixtures. Gate: `wintosh_macho_printf_e2e`
    plus the isolated license-clear startup trampoline and the explicit ARM64
    fail-closed gate. Remaining: native ARM64 execution, true on-demand
-   `dyld_stub_binder`, full dyld protocol parity, arbitrary Apple frameworks.
+   full dyld protocol parity, arbitrary Apple frameworks. The controlled
+   x86_64 binder trampoline is now verified separately.
 2. **Foundation/CoreFoundation** — grow the existing C ABI in cohesive value,
    collection, plist, run-loop, and notification families. Gate each family in
    `corefoundation_smoke` and keep Apple/Cocotron provenance separate from

@@ -295,6 +295,9 @@ int DarwinBootstrap::Run(const std::filesystem::path& image_path,
 			provider.image.ApplyChainedFixups(provider.mapping, resolved);
 		}
 		provider.image.ApplyIndirectImportBindings(provider.mapping, resolved);
+		MachOLazyBindingSession provider_binding_session(provider.image, provider.mapping,
+			resolved);
+		auto provider_binding_activation = provider_binding_session.Activate();
 		provider.image.ExecuteInitializers(provider.mapping);
 		RegisterObjectiveCSections(provider.image, provider.mapping);
 	}

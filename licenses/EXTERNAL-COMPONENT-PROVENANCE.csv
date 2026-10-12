@@ -78,7 +78,7 @@
 "libnotify","invalid-marker","https://github.com/darlinghq/darling-Libnotify.git","","","review-required"
 "libplatform","invalid-marker","https://github.com/darlinghq/darling-libplatform.git","","","review-required"
 "libpthread","invalid-marker","https://github.com/darlinghq/darling-libpthread.git","","","review-required"
-"libpthread_workqueue-0.8.2","absent","","","include/pthread_workqueue.h (header evidence; BSD-style terms)","header-evidence"
+"libpthread_workqueue-0.8.2","absent","https://sourceforge.net/projects/libpwq/files/","","include/pthread_workqueue.h (header evidence; BSD-style terms; SourceForge release archive identified)","header-evidence"
 "libresolv","invalid-marker","https://github.com/darlinghq/darling-libresolv.git","","","review-required"
 "libressl-2.2.9","invalid-marker","https://github.com/darlinghq/darling-libressl.git","","","review-required"
 "libressl-2.5.5","invalid-marker","https://github.com/darlinghq/darling-libressl.git","","","review-required"

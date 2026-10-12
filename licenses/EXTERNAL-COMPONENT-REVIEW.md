@@ -108,8 +108,9 @@ bringing the verified total to 143 components.
 The nineteenth and final batch in
 [`REMOTE-HEADS-019.csv`](upstream-candidates/REMOTE-HEADS-019.csv) contains the
 last six entries and is 6/6. This brings the verified total to 149 of 150
-components; `libpthread_workqueue-0.8.2` remains the sole entry without a
-recoverable upstream remote reference.
+components. `libpthread_workqueue-0.8.2` now has its SourceForge release
+archive recorded as the upstream origin, but it still has no Git commit and
+therefore remains outside the 149 verified Git HEADs.
 
 Manual follow-up for `libpthread_workqueue-0.8.2` found BSD-style
 redistribution terms in `include/pthread_workqueue.h`, `src/api.c`, and

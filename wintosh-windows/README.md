@@ -59,8 +59,11 @@ is forwarded (clamped to the Windows process range when necessary).
 
 The release CLI is currently a native loader/bootstrap entry point, not yet a
 complete macOS application runtime. It requires a supported Mach-O format and
-architecture, and does not yet provide full Darling framework coverage,
-automatic `.app` discovery, or universal execution of arbitrary macOS apps.
+architecture. A directory ending in `.app` is accepted and resolved through
+`Contents/Info.plist` (`CFBundleExecutable`, including the bounded binary-plist
+reader) with a bundle-name fallback; this is bundle discovery only and does not
+provide universal execution of arbitrary macOS apps or full Darling framework
+coverage.
 
 The current loader baseline includes dyld image enumeration, dynamic Mach-O
 `dladdr` symbol lookup, initializer/terminator ordering, and token-scoped

@@ -52,4 +52,17 @@ if ($bundleExitCode -ne 0 -or $bundleText -notmatch 'mach-o printf 7') {
 }
 Remove-Item -LiteralPath $bundle -Recurse -Force
 
+$sessionFixture = Join-Path ([System.IO.Path]::GetDirectoryName($Fixture)) 'lazy-session.macho'
+if (Test-Path -LiteralPath $sessionFixture) { Remove-Item -LiteralPath $sessionFixture -Force }
+& $Generator --emit-session $sessionFixture
+if ($LASTEXITCODE -ne 0) { throw "Mach-O lazy-session fixture generation failed: $LASTEXITCODE" }
+$sessionOutput = & $Runner --startup-abi main $sessionFixture 2>&1
+$sessionExitCode = $LASTEXITCODE
+$sessionText = ($sessionOutput -join "`n")
+Write-Output $sessionText
+if ($sessionExitCode -ne 1) {
+    throw "Mach-O lazy-session guest did not observe the active session: $sessionExitCode"
+}
+Remove-Item -LiteralPath $sessionFixture -Force
+
 Write-Output 'MACHO_PRINTF_E2E=PASS'

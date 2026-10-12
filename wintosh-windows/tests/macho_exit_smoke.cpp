@@ -204,6 +204,48 @@ void WritePrintfMachO(const std::filesystem::path& path)
 	}
 }
 
+void WriteLazySessionMachO(const std::filesystem::path& path)
+{
+	WritePrintfMachO(path);
+	using namespace darling::windows_host;
+	std::ifstream input(path, std::ios::binary);
+	std::vector<std::uint8_t> data((std::istreambuf_iterator<char>(input)), {});
+	if (data.empty())
+		throw std::runtime_error("cannot reopen Mach-O session fixture");
+	const std::string symbol = "_wintosh_lazy";
+	std::memset(data.data() + 0x260, 0, 32);
+	std::memcpy(data.data() + 0x260, symbol.c_str(), symbol.size());
+	SymtabCommand symtab{};
+	const auto symtab_offset = sizeof(MachHeader64) + sizeof(SegmentCommand64) +
+		sizeof(MainCommand);
+	std::memcpy(&symtab, data.data() + symtab_offset, sizeof(symtab));
+	symtab.string_bytes = static_cast<std::uint32_t>(symbol.size() + 1);
+	std::memcpy(data.data() + symtab_offset, &symtab, sizeof(symtab));
+	const auto dyld_info_offset = symtab_offset + sizeof(SymtabCommand) + sizeof(DYSymtabCommand);
+	DyldInfoCommand dyld_info{};
+	std::memcpy(&dyld_info, data.data() + dyld_info_offset, sizeof(dyld_info));
+	std::vector<std::uint8_t> bind{0x11, 0x40};
+	bind.insert(bind.end(), symbol.begin(), symbol.end());
+	bind.insert(bind.end(), {0, 0x51, 0x70, 0x40, 0x90, 0});
+	dyld_info.lazy_binding_size = static_cast<std::uint32_t>(bind.size());
+	std::memcpy(data.data() + dyld_info_offset, &dyld_info, sizeof(dyld_info));
+	std::memset(data.data() + dyld_info.lazy_binding_offset, 0, 64);
+	std::memcpy(data.data() + dyld_info.lazy_binding_offset, bind.data(), bind.size());
+	for (std::size_t i = 0x200; i + 2 < data.size(); ++i) {
+		if (data[i] == 0x31 && data[i + 1] == 0xc0 && data[i + 2] == 0xc3) {
+			data[i] = 0xc3;
+			data[i + 1] = 0x90;
+			data[i + 2] = 0x90;
+			break;
+		}
+	}
+	std::ofstream output(path, std::ios::binary | std::ios::trunc);
+	output.write(reinterpret_cast<const char*>(data.data()),
+		static_cast<std::streamsize>(data.size()));
+	if (!output)
+		throw std::runtime_error("cannot write Mach-O session fixture");
+}
+
 std::vector<wchar_t> CommandLine(const std::wstring& value)
 {
 	std::vector<wchar_t> result(value.begin(), value.end());
@@ -230,6 +272,10 @@ int wmain(int argc, wchar_t** argv)
 		}
 		if (argc == 3 && std::wcscmp(argv[1], L"--emit-printf") == 0) {
 			WritePrintfMachO(argv[2]);
+			return 0;
+		}
+		if (argc == 3 && std::wcscmp(argv[1], L"--emit-session") == 0) {
+			WriteLazySessionMachO(argv[2]);
 			return 0;
 		}
 		if (argc > 2 && std::wcscmp(argv[1], L"--child") == 0) {

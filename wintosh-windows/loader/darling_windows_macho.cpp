@@ -1880,8 +1880,15 @@ void MachOImage::ApplyLazyBindAction(std::size_t action_index, const Mapping& ma
 	if (action.type < 1 || action.type > 3 || action.segment_index >= m_segments.size()) {
 		throw std::runtime_error("unsupported Mach-O lazy bind action");
 	}
+	const auto same_binding_symbol = [](const std::string& left,
+		const std::string& right) {
+		return left == right || (left.size() > 1 && left.front() == '_' &&
+			left.substr(1) == right);
+	};
 	const auto match = std::find_if(bindings.begin(), bindings.end(),
-		[&action](const auto& binding) { return binding.symbol == action.symbol; });
+		[&action, &same_binding_symbol](const auto& binding) {
+			return same_binding_symbol(action.symbol, binding.symbol);
+		});
 	if (match == bindings.end()) {
 		if (!action.weak) {
 			throw std::runtime_error("unresolved Mach-O lazy bind action: " + action.symbol);
@@ -2516,9 +2523,14 @@ std::optional<std::uintptr_t> MachOLazyBindingSession::ResolveForLazyInfo(
 		return std::nullopt;
 	ApplyOne(*action_index);
 	const auto& action = m_image.BindActions()[*action_index];
+	const auto same_binding_symbol = [](const std::string& left,
+		const std::string& right) {
+		return left == right || (left.size() > 1 && left.front() == '_' &&
+			left.substr(1) == right);
+	};
 	const auto found = std::find_if(m_bindings.begin(), m_bindings.end(),
-		[&action](const DyldResolvedBinding& binding) {
-			return binding.symbol == action.symbol;
+		[&action, &same_binding_symbol](const DyldResolvedBinding& binding) {
+			return same_binding_symbol(action.symbol, binding.symbol);
 		});
 	if (found == m_bindings.end())
 		return std::nullopt;

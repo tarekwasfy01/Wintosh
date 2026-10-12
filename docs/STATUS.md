@@ -29,7 +29,7 @@ not validate CodeDirectory hashes, CMS signatures, or authenticity.
 | x64 Foundation type encoding | verified | `darling_windows_foundation_smoke.exe` reports `FOUNDATION_TYPE_ENCODING_ABI=PASS` |
 | Win32 Foundation type encoding | verified | same smoke gate on Win32 |
 | Low-level primitive families | verified in selected batches | tracked in `PRIMITIVE-MATRIX.csv`; not equivalent to full Darwin semantics |
-| Full generated `ALL_BUILD` | not currently confirmed | aggregate orchestration can stall without active compiler output; the current configured Clang CTest suite is independently verified at 59/59 |
+| Full generated `ALL_BUILD` | not currently confirmed | aggregate orchestration can stall without active compiler output; the current configured Clang CTest suite is independently verified at 60/60 |
 | WSL runtime backend | unavailable in the current host evidence | probe reported `Wsl/E_ACCESSDENIED` |
 | Real Darling server / arbitrary Mach-O app | not proven | no local end-to-end application run |
 | Darling component licenses | incomplete review | 150 external components; 147 remain review-required |

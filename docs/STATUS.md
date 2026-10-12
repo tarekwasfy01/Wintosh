@@ -38,7 +38,7 @@ not validate CodeDirectory hashes, CMS signatures, or authenticity.
 ## Current local integration evidence
 
 The complete configured Release smoke suite now builds target-by-target and
-passes: **59/59 CTest tests**. The Visual
+passes: **60/60 CTest tests**. The Visual
 Studio aggregate build target can
 still stall during orchestration, so the reproducible fallback is to build
 the generated targets individually; this does not represent a test failure.

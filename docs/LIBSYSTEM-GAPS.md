@@ -17,8 +17,9 @@ following families with Windows-backed implementations:
 - dynamic loading and the Darwin dyld image-query subset;
 - the classic `NSLookupSymbolInImage`/`NSAddressOfSymbol` pair for already
   loaded Wintosh Mach-O images; the returned `NSSymbol` is represented by its
-  resolved address, while image loading and symbol lifetime remain bounded by
-  the existing dynamic-image registry;
+  resolved address, while invalid image/name inputs fail closed through
+  `dlerror()` and image loading/symbol lifetime remain bounded by the existing
+  dynamic-image registry;
 - Objective-C runtime registration and the Foundation/CoreFoundation/
   CoreGraphics compatibility subsets;
 - Mach virtual memory, IPC broker operations, ports, OOL data, and MIG dispatch.

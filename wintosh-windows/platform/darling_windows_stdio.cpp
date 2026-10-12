@@ -7035,12 +7035,20 @@ extern "C" void* darling_windows_NSLookupSymbolInImage(const void* image_header,
 	// token by the resolved address, which keeps NSAddressOfSymbol ABI-safe for
 	// the native bridge while retaining the existing Mach-O symbol lookup.
 	(void)options;
-	if (image_header == nullptr || symbol_name == nullptr || symbol_name[0] == '\0')
+	if (image_header == nullptr) {
+		dynamic_loader_error = "NSLookupSymbolInImage: invalid image header";
 		return nullptr;
+	}
+	if (symbol_name == nullptr || symbol_name[0] == '\0') {
+		dynamic_loader_error = "NSLookupSymbolInImage: invalid symbol name";
+		return nullptr;
+	}
 	std::lock_guard lock(dynamic_image_mutex);
+	bool image_found = false;
 	for (const auto& entry : dynamic_images) {
 		if (darling::windows_host::DynamicImageHeader(*entry.second) != image_header)
 			continue;
+		image_found = true;
 		const auto address = darling::windows_host::DynamicImageSymbol(
 			*entry.second, symbol_name);
 		if (address != 0) {
@@ -7049,7 +7057,9 @@ extern "C" void* darling_windows_NSLookupSymbolInImage(const void* image_header,
 		}
 		break;
 	}
-	dynamic_loader_error = "NSLookupSymbolInImage: symbol not found";
+	dynamic_loader_error = image_found
+		? "NSLookupSymbolInImage: symbol not found"
+		: "NSLookupSymbolInImage: image header not found";
 	return nullptr;
 }
 

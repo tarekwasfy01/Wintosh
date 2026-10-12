@@ -106,9 +106,17 @@ int wmain()
 			darling_windows_dlclose(handle) == 0 &&
 			darling_windows_dlclose(second_handle) == 0 &&
 			initializer_calls.load(std::memory_order_relaxed) == 1;
+		const bool invalid_lookup_rejected =
+			darling_windows_NSLookupSymbolInImage(image_header, 0, nullptr) == nullptr &&
+			std::string(darling_windows_dlerror()) ==
+				"NSLookupSymbolInImage: invalid symbol name" &&
+			darling_windows_NSLookupSymbolInImage(reinterpret_cast<const void*>(0x1), 0,
+				"exported") == nullptr &&
+			std::string(darling_windows_dlerror()) ==
+				"NSLookupSymbolInImage: image header not found";
 		std::error_code win32_error;
 		std::filesystem::remove(win32_path, win32_error);
-		if (!passed || win32_error)
+		if (!passed || !invalid_lookup_rejected || win32_error)
 			return 3;
 		std::cout << "DARWIN_DLOPEN=PASS\n";
 		std::cout << "DARWIN_DLSYM=PASS\n";

@@ -490,6 +490,7 @@ extern "C" int darling_windows_getpriority(int which, std::uint32_t who);
 extern "C" int darling_windows_setpriority(int which, std::uint32_t who, int priority);
 extern "C" std::int64_t darling_windows_times(darling_tms* result);
 extern "C" void* darling_windows_dlopen(const char* path, int mode);
+extern "C" int darling_windows_dlopen_preflight(const char* path, int mode);
 extern "C" const void* darling_windows_NSAddImage(const char* path,
 	std::uint32_t options);
 extern "C" int darling_windows_NSAddLibrary(const char* path);

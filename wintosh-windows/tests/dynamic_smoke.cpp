@@ -92,6 +92,7 @@ int wmain()
 			memory_image != nullptr &&
 			darling_windows_NSDestroyObjectFileImage(memory_image) == 1;
 		const auto utf8_path = win32_path.string();
+		const bool preflight_ok = darling_windows_dlopen_preflight(utf8_path.c_str(), 0) == 1;
 		void* handle = darling_windows_dlopen(utf8_path.c_str(), 0);
 		void* second_handle = darling_windows_dlopen(utf8_path.c_str(), 0);
 		void* object_file_image = nullptr;
@@ -119,7 +120,7 @@ int wmain()
 				break;
 			}
 		}
-		const bool passed = memory_image_ok && object_image_ok && object_symbols_ok && module_link_ok &&
+		const bool passed = preflight_ok && memory_image_ok && object_image_ok && object_symbols_ok && module_link_ok &&
 			handle != nullptr &&
 			darling_windows_NSDestroyObjectFileImage(object_file_image) == 1 &&
 			second_handle == handle &&

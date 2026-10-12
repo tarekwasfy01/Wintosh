@@ -322,6 +322,13 @@ the earlier metadata-only proof, but it still does not claim arbitrary
 third-party Mach-O lazy stubs, multi-image binder context, or Apple framework
 compatibility.
 
+The dynamic-loader family now also exposes `dlopen_preflight`. It validates a
+Darwin library through the same bounded Mach-O/dependency/initializer path as
+`dlopen`, then releases the temporary validation reference before returning.
+Invalid and empty paths remain fail-closed. The host symbol table and the
+dynamic-loader smoke both cover this entry point; this is still a bounded
+adapter and not a claim of complete dyld preflight diagnostics.
+
 ## Latest verified native adapter families
 
 The current local branch additionally contains a prefix-relative Preferences

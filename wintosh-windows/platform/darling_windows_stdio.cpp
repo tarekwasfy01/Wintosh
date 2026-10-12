@@ -43,6 +43,7 @@
 #include <cctype>
 #include <cwchar>
 #include <filesystem>
+#include <fstream>
 #include <string>
 #include <condition_variable>
 #include <shared_mutex>
@@ -5501,6 +5502,10 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 	if (std::strcmp(name, "_dlopen") == 0 || std::strcmp(name, "dlopen") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_dlopen);
 	}
+	if (std::strcmp(name, "_dlopen_preflight") == 0 ||
+		std::strcmp(name, "dlopen_preflight") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_dlopen_preflight);
+	}
 	if (std::strcmp(name, "_dlsym") == 0 || std::strcmp(name, "dlsym") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_dlsym);
 	}
@@ -7087,6 +7092,26 @@ extern "C" void* darling_windows_dlopen(const char* path, int)
 	}
 	dynamic_loader_error.clear();
 	return module;
+}
+
+extern "C" int darling_windows_dlopen_preflight(const char* path, int mode)
+{
+	if (path == nullptr || path[0] == '\0') {
+		dynamic_loader_error = "dlopen_preflight: unsupported or empty Darwin library path";
+		return 0;
+	}
+	void* handle = darling_windows_dlopen(path, mode);
+	if (handle == nullptr || handle == DarwinRtldDefaultHandle())
+		return 0;
+	// Preflight must not retain a new reference.  The load itself validates the
+	// Mach-O, dependency graph, bindings, and initializers before returning.
+	const int close_result = darling_windows_dlclose(handle);
+	if (close_result != 0) {
+		dynamic_loader_error = "dlopen_preflight: failed to release validation handle";
+		return 0;
+	}
+	dynamic_loader_error.clear();
+	return 1;
 }
 
 extern "C" void* darling_windows_dlsym(void* handle, const char* symbol)

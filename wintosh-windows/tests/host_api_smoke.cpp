@@ -559,6 +559,7 @@ int main()
 		darling_windows_dyld_get_image_header(0) != nullptr &&
 		darling_windows_dyld_get_image_vmaddr_slide(0) == 0;
 	const bool dynamic_loader_ok = darling_windows_host_symbol("_dlopen") != 0 &&
+		darling_windows_host_symbol("_dlopen_preflight") != 0 &&
 		darling_windows_host_symbol("_dlsym") != 0 &&
 		darling_windows_host_symbol("_dlclose") != 0 &&
 		darling_windows_host_symbol("_dlerror") != 0 && dynamic_module != nullptr &&

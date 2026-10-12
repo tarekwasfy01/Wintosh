@@ -199,7 +199,8 @@ as proof of that Darwin behavior.
 The Wintosh-owned `objc_exception_smoke` additionally verifies a scoped
 callback exception carrier: an Objective-C object can cross the bridge and be
 caught by the matching Wintosh adapter, while normal callback return remains
-distinct.  This is a project-local transition API, not an Apple-compatible
+distinct; unrelated C++ exceptions are deliberately rethrown instead of being
+silently consumed. This is a project-local transition API, not an Apple-compatible
 compiler personality or DWARF/SEH Objective-C unwind implementation.
 
 The focused TLS/pthread regression set was rerun on the current Release build:

@@ -535,6 +535,8 @@ extern "C" int darling_windows_NSVersionOfRunTimeLibrary(const char* name);
 extern "C" int darling_windows_NSVersionOfLinkTimeLibrary(const char* name);
 extern "C" void* darling_windows_NSLookupSymbolInImage(const void* image_header,
 	std::uint32_t options, const char* symbol_name);
+extern "C" void* darling_windows_NSLookupSymbolInModule(void* module,
+	const char* symbol_name);
 extern "C" void* darling_windows_NSAddressOfSymbol(void* symbol);
 extern "C" const char* darling_windows_NSNameOfSymbol(void* symbol);
 extern "C" const void* darling_windows_NSModuleForSymbol(void* symbol);

@@ -488,6 +488,7 @@ int main()
 	}
 	const bool image_symbol_api_ok =
 		darling_windows_host_symbol("___NSLookupSymbolInImage") != 0 &&
+		darling_windows_host_symbol("___NSLookupSymbolInModule") != 0 &&
 		darling_windows_host_symbol("___NSAddressOfSymbol") != 0 &&
 		darling_windows_NSAddressOfSymbol(reinterpret_cast<void*>(0x1)) ==
 			reinterpret_cast<void*>(0x1) &&

@@ -123,9 +123,15 @@ int wmain()
 			darling_windows_NSLookupSymbolInImage(image_header, 0x80, "exported") == nullptr &&
 			std::string(darling_windows_dlerror()) ==
 				"NSLookupSymbolInImage: unsupported options";
+		const bool module_lookup_ok =
+			darling_windows_NSLookupSymbolInModule(handle, "exported") == symbol_address &&
+			darling_windows_NSLookupSymbolInModule(reinterpret_cast<void*>(0x1), "exported") == nullptr &&
+			std::string(darling_windows_dlerror()) ==
+				"NSLookupSymbolInModule: module not found";
 		std::error_code win32_error;
 		std::filesystem::remove(win32_path, win32_error);
-		if (!passed || !invalid_lookup_rejected || !lookup_options_ok || win32_error)
+		if (!passed || !invalid_lookup_rejected || !lookup_options_ok ||
+			!module_lookup_ok || win32_error)
 			return 3;
 		std::cout << "DARWIN_DLOPEN=PASS\n";
 		std::cout << "DARWIN_DLSYM=PASS\n";

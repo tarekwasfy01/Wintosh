@@ -5884,6 +5884,11 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 		std::strcmp(name, "_NSLookupSymbolInImage") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_NSLookupSymbolInImage);
 	}
+	if (std::strcmp(name, "___NSLookupSymbolInModule") == 0 ||
+		std::strcmp(name, "__NSLookupSymbolInModule") == 0 ||
+		std::strcmp(name, "_NSLookupSymbolInModule") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_NSLookupSymbolInModule);
+	}
 	if (std::strcmp(name, "___NSAddressOfSymbol") == 0 ||
 		std::strcmp(name, "__NSAddressOfSymbol") == 0 ||
 		std::strcmp(name, "_NSAddressOfSymbol") == 0) {
@@ -7076,6 +7081,33 @@ extern "C" void* darling_windows_NSLookupSymbolInImage(const void* image_header,
 		? "NSLookupSymbolInImage: symbol not found"
 		: "NSLookupSymbolInImage: image header not found";
 	return nullptr;
+}
+
+extern "C" void* darling_windows_NSLookupSymbolInModule(void* module,
+	const char* symbol_name)
+{
+	if (module == nullptr) {
+		dynamic_loader_error = "NSLookupSymbolInModule: invalid module";
+		return nullptr;
+	}
+	if (symbol_name == nullptr || symbol_name[0] == '\0') {
+		dynamic_loader_error = "NSLookupSymbolInModule: invalid symbol name";
+		return nullptr;
+	}
+	std::lock_guard lock(dynamic_image_mutex);
+	const auto found = dynamic_images.find(module);
+	if (found == dynamic_images.end()) {
+		dynamic_loader_error = "NSLookupSymbolInModule: module not found";
+		return nullptr;
+	}
+	const auto address = darling::windows_host::DynamicImageSymbol(
+		*found->second, symbol_name);
+	if (address == 0) {
+		dynamic_loader_error = "NSLookupSymbolInModule: symbol not found";
+		return nullptr;
+	}
+	dynamic_loader_error.clear();
+	return reinterpret_cast<void*>(address);
 }
 
 extern "C" void* darling_windows_NSAddressOfSymbol(void* symbol)

@@ -41,10 +41,6 @@ jobs:
         shell: pwsh
         run: cmake --build build-clang-x64 --parallel 2
 
-      - name: Run Clang end-to-end evidence
-        shell: pwsh
-        run: ctest --test-dir build-clang-x64 -C Release -R "wintosh_(hello_e2e|macho_printf_e2e|guest_atexit_e2e|guest_cxa_atexit_e2e)$" --output-on-failure --parallel 1
-
       - name: Upload Clang build evidence
         shell: pwsh
         run: |

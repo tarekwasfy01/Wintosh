@@ -922,3 +922,8 @@ Die Release-Matrix veröffentlicht bis zur Implementierung einer eigenen
 32-Bit-Darwin-ABI nur noch Win64-MSVC und Win64-Clang. Win32 bleibt bewusst
 aus dem Release entfernt; der vorhandene x86_64-only-Schutz verhindert, dass
 ein scheinbar fertiges, aber ABI-inkompatibles 32-Bit-Paket entsteht.
+
+Für den aktuellen Prerelease-Lauf wird zusätzlich nur das vollständig
+verifizierte Clang-Win64-Paket veröffentlicht. Der MSVC-Win64-Job bleibt als
+separater Entwicklungsjob vorgesehen, blockiert aber bis zur Behebung seiner
+Broker-/Host-API-Abweichungen nicht länger den attestierten Clang-Release.

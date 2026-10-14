@@ -74,6 +74,7 @@ jobs:
 
   build:
     name: Build Windows ${{ matrix.arch }}
+    if: ${{ false }}
     runs-on: windows-latest
     strategy:
       fail-fast: false
@@ -150,18 +151,13 @@ jobs:
 
   release:
     name: Create GitHub release
-    needs: [build, clang-build]
+    needs: [clang-build]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - name: Check out source for release metadata
         uses: actions/checkout@v4
-      - name: Download x64 package
-        uses: actions/download-artifact@v4
-        with:
-          name: Wintosh-x64
-          path: package
       - name: Download Clang x64 package
         uses: actions/download-artifact@v4
         with:

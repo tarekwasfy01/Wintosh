@@ -8474,7 +8474,15 @@ extern "C" int darling_windows_raise(int signal_number)
 		darling::windows_host::DarwinErrno::Set(22);
 		return -1;
 	}
-	return darling::windows_host::DarwinSignals::Raise(signal_number) ? 0 : -1;
+	if (darling::windows_host::DarwinSignals::Raise(signal_number))
+		return 0;
+	// The compatibility API is also exercised by native host clients that
+	// install SIGINT through the C runtime. Keep this one conventional signal
+	// interoperable without forwarding arbitrary Darwin defaults to Windows.
+	if (signal_number == SIGINT && std::raise(signal_number) == 0)
+		return 0;
+	darling::windows_host::DarwinErrno::Set(1);
+	return -1;
 }
 
 extern "C" int darling_windows_gethostname(char* buffer, std::size_t size)

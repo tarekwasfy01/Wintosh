@@ -99,7 +99,10 @@ jobs:
 
       - name: Configure CMake
         shell: pwsh
-        run: cmake -S wintosh-windows -B build-${{ matrix.arch }} -G Ninja -DCMAKE_BUILD_TYPE=Release
+        run: >-
+          cmake -S wintosh-windows -B build-${{ matrix.arch }} -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_C_FLAGS=/FS -DCMAKE_CXX_FLAGS=/FS
 
       - name: Build all Wintosh targets
         shell: pwsh

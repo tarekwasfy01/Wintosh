@@ -906,3 +906,12 @@ erneut erfolgreich: **71/71 Tests bestanden**, Gesamtdauer 67,09 Sekunden.
 Damit bleibt die Reihenfolgeprüfung regressionsfrei; sie belegt weiterhin
 einen Wintosh-eigenen Initializer-/Environment-Vertrag und nicht die
 vollständige Apple-`libSystem`-Implementierung.
+
+### Darwin-Startup errno contract (2026-10-14)
+
+Der Startup-Vertrag wurde um einen überprüfbaren errno-Schritt erweitert: Der
+Test setzt den Darwin-errno vor `DarwinBootstrap::Run` bewusst auf 99, und der
+gebundene Entry beobachtet anschließend 0. Der fokussierte
+`wintosh_dyld_smoke` lief erfolgreich durch. Damit ist das Zurücksetzen des
+thread-lokalen errno vor dem Entry abgesichert; vollständige libSystem-TLS-
+und Prozessinitialisierung bleibt offen.

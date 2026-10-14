@@ -179,3 +179,9 @@ broker correctly rejected the request before it could become cancellable. The
 fixture now allocates a session-unbound compatibility port for that scenario
 and destroys it afterward. The broker test passes in isolation, and the
 complete Clang/Ninja suite passes **70/70** in 97.08 seconds.
+
+The bootstrap errno contract is now covered as well: the dyld smoke fixture
+poisons the host Darwin errno with 99, runs `DarwinBootstrap::Run`, and has
+the bound entry observe zero before it executes. `wintosh_dyld_smoke` passes
+this check. This is a useful libSystem-startup primitive, but it does not yet
+implement complete libSystem TLS or process initialization.

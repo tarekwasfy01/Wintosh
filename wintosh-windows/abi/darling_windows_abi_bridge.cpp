@@ -157,6 +157,16 @@ extern "C" DARLING_SYSV int darling_windows_darwin_stub_probe_target(
 	return (first == 0x1122334455667788ULL && second == 0x8877665544332211ULL) ? 73 : 74;
 }
 
+#if !defined(__clang__) && defined(_WIN64)
+// MSVC cannot assemble the SysV trampoline. Keep the synthetic fixture
+// executable and explicit; real foreign-ABI entry transfer remains Clang-only.
+extern "C" int darling_windows_darwin_stub_trampoline_fixture(
+	std::uint64_t first, std::uint64_t second, std::uintptr_t)
+{
+	return darling_windows_darwin_stub_probe_target(first, second);
+}
+#endif
+
 extern "C" DARLING_SYSV darling::windows_host::abi::DarwinAggregatePair
 darling_windows_abi_aggregate_pair(darling::windows_host::abi::DarwinAggregatePair value)
 {

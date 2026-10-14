@@ -81,8 +81,6 @@ jobs:
         include:
           - arch: x64
             msvc_arch: x64
-          - arch: win32
-            msvc_arch: x86
 
     steps:
       - name: Check out source
@@ -163,11 +161,6 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: Wintosh-x64
-          path: package
-      - name: Download Win32 package
-        uses: actions/download-artifact@v4
-        with:
-          name: Wintosh-win32
           path: package
       - name: Download Clang x64 package
         uses: actions/download-artifact@v4

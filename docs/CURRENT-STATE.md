@@ -915,3 +915,10 @@ gebundene Entry beobachtet anschließend 0. Der fokussierte
 `wintosh_dyld_smoke` lief erfolgreich durch. Damit ist das Zurücksetzen des
 thread-lokalen errno vor dem Entry abgesichert; vollständige libSystem-TLS-
 und Prozessinitialisierung bleibt offen.
+
+### Release architecture scope (2026-10-14)
+
+Die Release-Matrix veröffentlicht bis zur Implementierung einer eigenen
+32-Bit-Darwin-ABI nur noch Win64-MSVC und Win64-Clang. Win32 bleibt bewusst
+aus dem Release entfernt; der vorhandene x86_64-only-Schutz verhindert, dass
+ein scheinbar fertiges, aber ABI-inkompatibles 32-Bit-Paket entsteht.

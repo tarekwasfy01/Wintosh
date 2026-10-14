@@ -7,11 +7,14 @@
  */
 
 #include "darling_windows_macho.h"
+#include "darling_windows_stdio.h"
 #include "darling_windows_abi_bridge.h"
 #include "darling_windows_tlv.h"
 
 #include <algorithm>
+#include <array>
 #include <cstring>
+#include <cstdio>
 #include <functional>
 #include <limits>
 #include <set>
@@ -1875,6 +1878,11 @@ void MachOImage::ApplyBindActions(const Mapping& mapping,
 			segment.vm_size - action.segment_offset < sizeof(std::uintptr_t)) {
 			throw std::out_of_range("Mach-O dyld bind offset is outside its segment");
 		}
+		if (action.segment_offset > segment.file_size ||
+			segment.file_size - action.segment_offset < sizeof(std::uintptr_t)) {
+			throw std::out_of_range(
+				"Mach-O dyld bind offset is outside its file-backed segment");
+		}
 		const auto target = match == bindings.end() ? 0 : static_cast<std::uintptr_t>(
 			static_cast<std::intptr_t>(match->address) + action.addend);
 		const auto vm_address = segment.vm_address + action.segment_offset;
@@ -1915,6 +1923,11 @@ void MachOImage::ApplyLazyBindAction(std::size_t action_index, const Mapping& ma
 	if (action.segment_offset > segment.vm_size ||
 		segment.vm_size - action.segment_offset < sizeof(std::uintptr_t)) {
 		throw std::out_of_range("Mach-O lazy bind offset is outside its segment");
+	}
+	if (action.segment_offset > segment.file_size ||
+		segment.file_size - action.segment_offset < sizeof(std::uintptr_t)) {
+		throw std::out_of_range(
+			"Mach-O lazy bind offset is outside its file-backed segment");
 	}
 	const auto target = match == bindings.end() ? 0 : static_cast<std::uintptr_t>(
 		static_cast<std::intptr_t>(match->address) + action.addend);
@@ -2280,6 +2293,14 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 		envp.push_back(environment_storage.back().data());
 	}
 	envp.push_back(nullptr);
+	if (argv.empty() || argv.back() != nullptr ||
+		envp.empty() || envp.back() != nullptr) {
+		throw std::logic_error("Darwin startup vectors must be null terminated");
+	}
+	// Darwin exposes the same launch-owned vector through `environ` and
+	// NSGetEnviron. Bind it before any guest startup code can observe it.
+	darling_windows_set_environ_vector(
+		const_cast<const char* const*>(envp.data()));
 	// Materialize Apple parameters with the same lifetime as argv/envp.  The
 	// compatible entry ABI does not consume them yet; a future dyld trampoline
 	// can use this owned vector without changing the launch contract.
@@ -2293,23 +2314,61 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 		apple.push_back(apple_storage.back().data());
 	}
 	apple.push_back(nullptr);
+	if (apple.empty() || apple.back() != nullptr) {
+		throw std::logic_error("Darwin Apple parameter vector must be null terminated");
+	}
 	if (entry_abi == DarwinEntryAbi::DarwinStart) {
 #if defined(_WIN64)
+	#if !defined(__clang__)
+		throw std::runtime_error(
+			"real Mach-O execution requires a Clang build with System-V ABI support");
+	#else
 		// Darwin's crt1 entry receives argc at RSP, followed by argv, envp and
 		// the Apple parameter vector. Keep all pointed-to storage alive until
 		// the non-returning entry transfer.
-		std::vector<std::uintptr_t> startup_stack;
-		startup_stack.reserve(1 + argv.size() + envp.size() + apple.size());
-		startup_stack.push_back(static_cast<std::uintptr_t>(arguments.size()));
+		// Leave committed scratch space below the initial Darwin stack.  The
+		// guest entry may issue a normal call, which pushes its return address
+		// below RSP even though the Darwin ABI starts with argc at [RSP].
+		// Keep substantial native stack below the Darwin initial words.  A guest
+		// call into a SysV host bridge still needs return-address space and a
+		// bounded prologue below RSP; the first 32-word guard was enough for the
+		// argc-only fixture but not for extended startup calls.
+		constexpr std::size_t startup_stack_guard_words = 512;
+		constexpr std::size_t startup_stack_capacity = 2048;
+		std::array<std::uintptr_t, startup_stack_capacity> startup_stack{};
+		const auto startup_words = startup_stack_guard_words + 1 + argv.size() +
+			envp.size() + apple.size();
+		if (startup_words > startup_stack.size()) {
+			throw std::runtime_error("Darwin startup stack exceeds native stack fixture capacity");
+		}
+		std::size_t startup_index = startup_stack_guard_words;
+		startup_stack[startup_index++] = static_cast<std::uintptr_t>(arguments.size());
 		for (const auto value : argv)
-			startup_stack.push_back(reinterpret_cast<std::uintptr_t>(value));
+			startup_stack[startup_index++] = reinterpret_cast<std::uintptr_t>(value);
 		for (const auto value : envp)
-			startup_stack.push_back(reinterpret_cast<std::uintptr_t>(value));
+			startup_stack[startup_index++] = reinterpret_cast<std::uintptr_t>(value);
 		for (const auto value : apple)
-			startup_stack.push_back(reinterpret_cast<std::uintptr_t>(value));
+			startup_stack[startup_index++] = reinterpret_cast<std::uintptr_t>(value);
+		if (std::getenv("WINTOSH_TRACE_DARWIN_START") != nullptr) {
+			std::fprintf(stderr,
+				"WINTOSH_DARWIN_START_STACK=0x%llx argc=%zu argv=0x%llx envp=0x%llx apple=0x%llx words=%llx,%llx,%llx,%llx,%llx,%llx\n",
+				static_cast<unsigned long long>(reinterpret_cast<std::uintptr_t>(startup_stack.data() + startup_stack_guard_words)),
+				arguments.size(),
+				static_cast<unsigned long long>(reinterpret_cast<std::uintptr_t>(startup_stack.data() + startup_stack_guard_words + 1)),
+				static_cast<unsigned long long>(reinterpret_cast<std::uintptr_t>(startup_stack.data() + startup_stack_guard_words + 1 + argv.size())),
+				static_cast<unsigned long long>(reinterpret_cast<std::uintptr_t>(startup_stack.data() + startup_stack_guard_words + 1 + argv.size() + envp.size())),
+				static_cast<unsigned long long>(startup_stack[startup_stack_guard_words]),
+				static_cast<unsigned long long>(startup_stack[startup_stack_guard_words + 1]),
+				static_cast<unsigned long long>(startup_stack[startup_stack_guard_words + 2]),
+				static_cast<unsigned long long>(startup_stack[startup_stack_guard_words + 3]),
+				static_cast<unsigned long long>(startup_stack[startup_stack_guard_words + 4]),
+				static_cast<unsigned long long>(startup_stack[startup_stack_guard_words + 5]));
+		}
 		darling_windows_enter_darwin_start(
-			reinterpret_cast<void*>(mapping.EntryAddress()), startup_stack.data());
+			reinterpret_cast<void*>(mapping.EntryAddress()),
+			startup_stack.data() + startup_stack_guard_words);
 		throw std::runtime_error("Darwin startup entry returned unexpectedly");
+	#endif
 #else
 		throw std::runtime_error("Darwin startup ABI requires a 64-bit Windows host");
 #endif

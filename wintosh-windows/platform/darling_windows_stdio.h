@@ -179,8 +179,8 @@ struct darling_darwin_statfs final {
 };
 
 extern "C" int darling_windows_write_stdout(const void* data, std::size_t bytes);
-extern "C" int darling_windows_read(int descriptor, void* data, std::size_t bytes);
-extern "C" int darling_windows_write(int descriptor, const void* data, std::size_t bytes);
+extern "C" DARLING_HOST_GUEST_ABI int darling_windows_read(int descriptor, void* data, std::size_t bytes);
+extern "C" DARLING_HOST_GUEST_ABI int darling_windows_write(int descriptor, const void* data, std::size_t bytes);
 extern "C" std::int64_t darling_windows_pread(int descriptor, void* data,
 	std::size_t bytes, std::int64_t offset);
 extern "C" std::int64_t darling_windows_pwrite(int descriptor, const void* data,
@@ -194,7 +194,7 @@ extern "C" int darling_windows_fsync(int descriptor);
 extern "C" int darling_windows_fdatasync(int descriptor);
 extern "C" std::int64_t darling_windows_readv(int descriptor, const darling_iovec* vectors, int count);
 extern "C" std::int64_t darling_windows_writev(int descriptor, const darling_iovec* vectors, int count);
-extern "C" int darling_windows_close(int descriptor);
+extern "C" DARLING_HOST_GUEST_ABI int darling_windows_close(int descriptor);
 extern "C" int darling_windows_fcntl(int descriptor, int command, ...);
 extern "C" int darling_windows_dup(int descriptor);
 extern "C" int darling_windows_dup2(int descriptor, int target);
@@ -257,7 +257,7 @@ extern "C" std::int64_t darling_windows_sendmsg(int descriptor, const darling_ms
 extern "C" std::int64_t darling_windows_recvmsg(int descriptor, darling_msghdr* message,
 	int flags);
 extern "C" int darling_windows_shutdown(int descriptor, int how);
-extern "C" int darling_windows_open(const char* path, int flags, int mode);
+extern "C" DARLING_HOST_GUEST_ABI int darling_windows_open(const char* path, int flags, int mode);
 extern "C" int darling_windows_mkstemp(char* path_template);
 extern "C" int darling_windows_mkstemps(char* path_template, int suffix_length);
 extern "C" char* darling_windows_mkdtemp(char* path_template);
@@ -311,8 +311,11 @@ extern "C" [[noreturn]] void darling_windows__exit(int status);
 // Darwin abort terminates the process without unwinding guest frames.
 extern "C" [[noreturn]] void darling_windows_abort();
 extern "C" int darling_windows_atexit(void (*function)());
+extern "C" int darling_windows_atexit_guest(void (*function)());
 extern "C" int darling_windows_cxa_atexit(void (*function)(void*), void* argument,
 	void* dso_handle);
+extern "C" int darling_windows_cxa_atexit_guest(void (*function)(void*),
+	void* argument, void* dso_handle);
 extern "C" void darling_windows_cxa_finalize(void* dso_handle);
 extern "C" int darling_windows_getpid();
 extern "C" std::uint64_t darling_windows_pthread_self();
@@ -603,8 +606,15 @@ extern "C" int darling_windows_nanosleep(const darling_timespec* request, darlin
 extern "C" int darling_windows_gettimeofday(darling_timeval* result, void* timezone);
 extern "C" int darling_windows_usleep(unsigned int microseconds);
 extern "C" const char* darling_windows_getenv(const char* name);
+// Rebind Darwin's exported environ vector to the launch-owned envp before a
+// guest entry is transferred. The vector is copied and remains valid until
+// the next rebind or process teardown.
+extern "C" void darling_windows_set_environ_vector(const char* const environment[]);
 extern "C" char** darling_windows_environ;
 extern "C" char*** darling_windows_NSGetEnviron();
+extern "C" void* darling_windows_stdoutp;
+extern "C" void* darling_windows_stdinp;
+extern "C" void* darling_windows_stderrp;
 extern "C" int darling_windows_setenv(const char* name, const char* value, int overwrite);
 extern "C" int darling_windows_unsetenv(const char* name);
 extern "C" int darling_windows_putenv(char* assignment);
@@ -621,13 +631,15 @@ extern "C" int darling_windows_ioctl(int descriptor, unsigned long request,
 extern "C" char* darling_windows_ctermid(char* buffer);
 extern "C" int darling_windows_ttyname_r(int descriptor, char* buffer, std::size_t size);
 extern "C" char* darling_windows_ttyname(int descriptor);
-extern "C" void* darling_windows_malloc(std::size_t bytes);
-extern "C" void* darling_windows_calloc(std::size_t count, std::size_t bytes);
-extern "C" void* darling_windows_realloc(void* address, std::size_t bytes);
+extern "C" DARLING_HOST_GUEST_ABI void* darling_windows_malloc(std::size_t bytes);
+extern "C" DARLING_HOST_GUEST_ABI void* darling_windows_calloc(std::size_t count, std::size_t bytes);
+extern "C" DARLING_HOST_GUEST_ABI void* darling_windows_realloc(void* address, std::size_t bytes);
 extern "C" void* darling_windows_reallocarray(void* address, std::size_t count, std::size_t bytes);
 extern "C" void* darling_windows_reallocarrayf(void* address, std::size_t count, std::size_t bytes);
-extern "C" void darling_windows_free(void* address);
-extern "C" void* darling_windows_memcpy(void* destination, const void* source, std::size_t bytes);
+extern "C" DARLING_HOST_GUEST_ABI void darling_windows_free(void* address);
+extern "C" DARLING_HOST_GUEST_ABI void* darling_windows_memcpy(void* destination, const void* source, std::size_t bytes);
+extern "C" DARLING_HOST_GUEST_ABI void darling_windows_qsort(void* base, std::size_t count, std::size_t width,
+	int (DARLING_HOST_GUEST_ABI *compare)(const void*, const void*));
 extern "C" void* darling_windows_memset(void* destination, int value, std::size_t bytes);
 extern "C" void* darling_windows_memmove(void* destination, const void* source, std::size_t bytes);
 extern "C" int darling_windows_memcmp(const void* left, const void* right, std::size_t bytes);

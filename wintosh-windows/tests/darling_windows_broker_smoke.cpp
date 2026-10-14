@@ -630,6 +630,24 @@ int wmain()
 			return 5;
 		}
 		const auto token = allocate_response.port_token;
+		// Use an explicitly session-unbound compatibility port for the
+		// cross-client cancellation test. A session-owned port must reject a
+		// Receive from the other session before it can become pending.
+		darling::windows_host::MachIpcEnvelope cancel_allocate{
+			darling::windows_host::MachIpcOperation::Allocate, 117, 0, 0, {}};
+		const auto cancel_allocate_bytes =
+			darling::windows_host::EncodeMachIpcEnvelope(cancel_allocate);
+		client.Write(std::string(cancel_allocate_bytes.begin(), cancel_allocate_bytes.end()));
+		const auto cancel_allocate_wire = client.Read();
+		const auto cancel_allocate_response =
+			darling::windows_host::DecodeMachIpcEnvelope(
+				std::vector<std::uint8_t>(cancel_allocate_wire.begin(),
+					cancel_allocate_wire.end()));
+		const auto cancel_token = cancel_allocate_response.port_token;
+		if (cancel_token == 0) {
+			std::cerr << "BROKER_MACH_CROSS_CLIENT_CANCEL=FAIL\n";
+			return 5;
+		}
 		{
 			auto second_client = darling::windows_host::NamedPipeRpcClient::Connect(pipe_name);
 			second_client.Write("PING");
@@ -708,7 +726,7 @@ int wmain()
 			const auto blocked_session = darling::windows_host::DecodeMachIpcEnvelope(
 				std::vector<std::uint8_t>(blocked_session_wire.begin(), blocked_session_wire.end()));
 			const darling::windows_host::MachIpcEnvelope blocked_request{
-				darling::windows_host::MachIpcOperation::Receive, 118, token, 0,
+				darling::windows_host::MachIpcOperation::Receive, 118, cancel_token, 0,
 				{232, 3, 0, 0}};
 			auto authenticated_blocked_request = blocked_request;
 			authenticated_blocked_request.session_token = blocked_session.session_token;
@@ -728,6 +746,16 @@ int wmain()
 		}
 		blocked_receiver.join();
 		if (blocked_cancel_result != "MACH_REQUEST_CANCELLED") {
+			std::cerr << "BROKER_MACH_CROSS_CLIENT_CANCEL=FAIL\n";
+			return 5;
+		}
+		darling::windows_host::MachIpcEnvelope cancel_destroy{
+			darling::windows_host::MachIpcOperation::Destroy, 119,
+			cancel_token, 0, {}};
+		const auto cancel_destroy_bytes =
+			darling::windows_host::EncodeMachIpcEnvelope(cancel_destroy);
+		client.Write(std::string(cancel_destroy_bytes.begin(), cancel_destroy_bytes.end()));
+		if (client.Read().empty()) {
 			std::cerr << "BROKER_MACH_CROSS_CLIENT_CANCEL=FAIL\n";
 			return 5;
 		}

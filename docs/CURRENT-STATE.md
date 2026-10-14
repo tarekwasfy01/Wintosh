@@ -76,7 +76,7 @@ own `libSystem.B.dylib`, which itself depends on the repository's own
 `libsystem_platform.dylib`. This proves the native provider graph and call
 path, but these files are test providers rather than Apple's system libraries.
 
-The current native CTest inventory contains 60 tests.  The `tlv_smoke`,
+The current native CTest inventory contains 70 tests.  The `tlv_smoke`,
 `thread_smoke`, `pthread_sync_smoke`, `host_api_smoke`, and
 `darwin_windows_broker_smoke` families cover the Windows-backed TLS,
 pthread-lifecycle, synchronization, and Mach process boundaries.  A
@@ -87,7 +87,51 @@ the `--emit-tlv` smoke utility and exercises section mapping and
 initialization; it remains synthetic and is not a redistributable Apple
 `libpthread` binary.
 
-The complete current Clang CTest run passes 60/60 tests.  This includes the
+The latest segmented Clang CTest verification passed the two previously
+missing E2E tests (`guest_atexit_e2e` and `guest_cxa_atexit_e2e`) and the
+signal test.  In the same verification, `socket_smoke` and the socketpair
+portion of `syscalls_smoke` fail with Windows `WSAEACCES` (errno 13) while
+connecting the loopback fixture.  An independent native .NET loopback probe
+on the same host also binds successfully but receives the identical access
+denial on connect, so this is an execution-host socket policy limitation, not
+currently evidence of a Wintosh-only socket regression.  `sync_smoke` passes
+when run directly but has a timing-sensitive CTest failure in that run.
+
+After moving the Darwin initial stack onto the native thread stack, the
+filtered Clang regression passed 66/66 again, including
+`wintosh_darwin_start_e2e`. The signal fixture has deterministic waiter
+startup, and the CoreFoundation run-loop fixture is lifetime-safe: it waits for
+the worker loop to start, records its stopped state before joining, and does
+not dereference the thread-local loop after join.  The verified aggregate run
+passed all Mach-O, dyld, ABI, framework, Mach IPC, fixture-ladder, and E2E
+tests in the preceding stable run.  The four excluded tests remain explicitly excluded:
+host-boundary API aggregation, Windows loopback socket policy, the socketpair
+host-policy aggregate, and timing-sensitive synchronization.
+The same 66-test command was rerun after adding the explicit per-process
+Darwin `errno` reset in `DarwinBootstrap::Run`; it again passed 66/66 in
+87.26 seconds. This confirms that the initialization change did not regress
+the existing Mach-O or ABI paths.
+After an experimental pointer-stability change in the Darwin startup buffers
+was rejected because it regressed `wintosh_darwin_start_e2e`, that change was
+removed. The restored vector-backed implementation then passed the complete
+filtered Clang suite again: 66/66 in 110.54 seconds, including DarwinStart,
+hello, atexit, TLV, Mach, dyld, Objective-C, and fixture-ladder tests.
+The `AF_UNIX` `SOCK_STREAM` socketpair implementation now has a local
+Windows-native fallback based on two crossed anonymous pipes, including
+descriptor peer tracking, pending-byte readiness tracking, and stream
+`read`/`write`, `send`/`recv`, and message-buffer paths.  The `AF_INET`
+loopback implementation remains available for callers that explicitly request
+it.  Stream descriptors now also support handle-preserving `dup`/`dup2`
+semantics, including the paired write handle and peer association.  The
+in-memory stream queue now preserves `MSG_PEEK`, validates unsupported message
+	flags, and models write-side `shutdown` as peer-readable hangup.  The host
+library and focused syscall smoke now build and run cleanly.  The verified run
+reports `DARWIN_SYSCALL_FILE_IO=PASS` and `DARWIN_SYSCALL_PIPE_NONBLOCK=PASS`
+and covers stream message flags, `MSG_PEEK`, `MSG_WAITALL`, resolver
+validation, and shutdown readiness.  RFC-6761 `.invalid` names are handled as
+deterministic `EAI_NONAME` cases instead of triggering a slow Windows DNS
+retry.  Earlier isolated timing failures in `corefoundation_smoke`
+and `runner_smoke` are documented history, not current pass claims.  The suite includes the
 Mach-O/dyld, Objective-C/CoreFoundation, errno/signal, Mach IPC, process,
 filesystem, socket, terminal, and Windows host-boundary families.  This is a
 repository-wide regression result for the current Wintosh implementation, not
@@ -477,3 +521,388 @@ but `ExecuteEntryNoArgs` rejects ARM64 with a deterministic fail-closed error.
 This is an execution-boundary test, not ARM64 runtime support; native ARM64
 execution still requires an ARM64 Windows backend and a valid executable
 fixture.
+
+The primitive-matrix validator now provides a fail-closed documentation gate.
+The current raw CSV contains 29 data rows, but six rows (5, 16, 17, 18, 20,
+and 25) still contain unquoted commas and therefore do not satisfy the
+nine-column schema. These rows require manual field quoting/normalization
+before the matrix can be treated as machine-readable; no status or provenance
+claim is derived from an invalid parse.
+
+The current Clang recovery artifacts also pass the focused native checks
+`wintosh_corefoundation_smoke.exe`, `wintosh_dyld_smoke.exe`, and
+`wintosh_macho_exit_smoke.exe` with exit code 0. The last of these confirms the
+controlled Darwin startup/exit fixture; it does not prove complete `libSystem`
+initialization or arbitrary Apple process compatibility.
+
+The adjacent host-runtime family was rechecked independently: the host API,
+errno, atexit, and pthread synchronization smokes all exit successfully. This
+confirms the individual Windows adapters and symbol surface, but not their
+automatic ordering and state hand-off during a real Darwin `libSystem`
+startup.
+
+The Objective-C registry/runtime, CoreGraphics geometry/color, Mach ABI, and
+combined runtime/Mach-IPC smoke executables also exit successfully in the
+current recovery build. The runtime smoke prints one expected diagnostic when
+an invalid task-port probe reaches `OpenProcess`; its test result remains
+successful because the invalid-handle path is intentionally covered. These
+results establish adapter-family coverage, not complete Objective-C ABI,
+native Mach kernel semantics, or macOS framework compatibility.
+
+The loader boundary was also rechecked: the Mach-O smoke passes metadata,
+relocation, chained-fixup, ARM64 parsing, and deterministic ARM64 execution
+rejection. The 32-bit graph fixture passes, while the native i386 entry and
+dependent-bind execution fixtures explicitly report `SKIP_X64` on this x64
+build; they are not counted as 32-bit execution evidence.
+
+The CoreFoundation, Foundation type-encoding, preferences-domain, and
+filesystem-prefix smokes also exit successfully. The filesystem fixture
+reports expected `SKIP` results for unsupported reparse/symlink operations and
+an access-denied hard-link probe; these are recorded as capability boundaries,
+not silently treated as full POSIX filesystem parity.
+
+The native `wintosh.exe` runner also responds to `--help` with the documented
+Mach-O options and rejects a missing image with a deterministic nonzero error.
+This confirms the CLI boundary and fail-closed diagnostics; it is not an
+end-to-end proof for an arbitrary third-party macOS executable.
+
+`wintosh.exe --diagnose-host` reports the current boundary directly:
+x86_64 Mach-O execution is enabled, ARM64 is unavailable, i386 is
+fail-closed on this build, the runtime scope is loader/bootstrap plus selected
+host primitives, system frameworks are not bundled, and full macOS
+compatibility is not claimed.
+
+The public `--inspect` path was exercised against the checked-in
+`wintosh-windows/fixtures/x86_64/darwin-start/darwin-start.macho` fixture and
+reported its architecture, load segments, dependencies, and initializer
+metadata with exit code 0. This validates inspection/discovery separately from
+native guest execution.
+
+A grouped regression run across twelve current host/runtime/Objective-C,
+Foundation, CoreGraphics, Mach, dyld, and Darwin-startup executables completed
+with zero failures. This is regression evidence for the implemented adapter
+families; it does not change the documented compatibility boundaries above.
+
+The bootstrap now invokes the existing process-wide `atexit`/`__cxa_atexit`
+finalizer after a normal guest-entry return and before Mach-O terminators.
+Immediate guest `_exit` remains outside this path. The Clang recovery build
+was rebuilt successfully, and the atexit, dyld, and Darwin-exit smoke targets
+all returned exit code 0 after this integration.
+
+On 2026-10-12 those three focused targets were rebuilt and rerun from the
+Windows Clang recovery build. `wintosh_atexit_smoke.exe`,
+`wintosh_dyld_smoke.exe`, and `wintosh_macho_exit_smoke.exe` each returned
+zero; the dyld output also recorded passing framework, bundle, rpath,
+weak-bind, re-export, chained-fixup, lazy-bind, and dependent-entry checks.
+The remaining Gate-1 proof is deliberately narrower and still missing: a
+guest Mach-O entry must itself bind and call `_atexit` or `__cxa_atexit`, with
+an observable callback during normal-return finalization. The current green
+atexit test remains host-registry evidence, not that guest-side proof.
+
+The Clang hello milestone was then rebuilt locally from a fresh Ninja
+configuration with `clang-cl` and the Windows SDK tools. The generated
+`hello.macho` passed `wintosh-windows/tests/hello_e2e.ps1`: it printed
+`hello from guest` and returned 0 with no extra argument, then returned 7 with
+one extra argument. The same result passed the registered
+`wintosh_hello_e2e` CTest. This is the first local end-to-end proof of a
+guest Mach-O entry using the Darwin-style `argc` register and bound `_puts` /
+`_exit` exports; it is still x86_64-only and does not prove complete
+`libSystem` initialization or arbitrary Apple-binary compatibility.
+
+After building all test targets in the same fresh Clang/Ninja tree, the full
+CTest suite completed with 63/63 tests passed in 30.85 seconds after adding
+the C++ callback fixture. The suite includes
+the ABI, dyld, Mach, Objective-C, Foundation/CoreGraphics, thread/TLV, printf
+and hello end-to-end families. The result is a regression baseline for the
+current implementation; it does not promote any of the eight porting gates to
+complete status. The guest-side `atexit` registration/finalization fixture is
+now covered by `wintosh_guest_atexit_e2e`; broader startup evidence remains.
+
+The `_atexit` host export now resolves through a dedicated Clang `sysv_abi`
+bridge instead of exposing the Windows-ABI implementation directly. The host
+API smoke reports `DARWIN_ATEXIT_ABI_BRIDGE=PASS`; this validates the argument
+transition and alias table alongside the guest callback/finalizer fixture.
+
+The same separation now exists for `__cxa_atexit`: Darwin aliases resolve to
+a SysV bridge, while the finalizer invokes registered C++ callbacks with the
+guest callback convention. The focused regression set (`atexit`, host API,
+hello E2E, guest-atexit E2E, and guest-cxa-atexit E2E) is now 5/5 passing.
+
+The existing `wintosh_runner_env_smoke` also exercises a guest Mach-O call to
+bound `_getenv` and passed in the 63-test suite. Its current launch mode is
+the compatible synthetic-main ABI, so it proves the environment export and
+guest return path, not yet `getenv` reached through the real Darwin initial
+stack or complete `libSystem` startup.
+
+The Windows Clang release workflow now runs all four focused Mach-O E2E
+families: `hello`, `printf`, guest `atexit`, and guest `__cxa_atexit`. This
+keeps the public CI gate aligned with the local 63-test evidence.
+
+The `_getenv` export now also uses a dedicated SysV bridge, and the existing
+guest environment smoke was updated to pass its argument in `rdi` with SysV
+stack alignment. `wintosh_host_api_smoke` and `wintosh_runner_env_smoke` both
+pass after this change. The host export smoke explicitly asserts that
+`_getenv` and `getenv` resolve to the same non-null bridge and reports
+`DARWIN_GETENV_ABI_BRIDGE=PASS`. A DarwinStart-specific `getenv` fixture still needs
+to be added separately; this change fixes the ABI prerequisite without
+claiming that full startup proof.
+
+The first post-change full-suite run reported two unrelated existing smoke
+failures (`corefoundation_smoke` and `signals_smoke`) while all new ABI and
+Mach-O E2E tests passed. Both passed on immediate isolated rerun, and the
+next complete run finished cleanly with 63/63 tests passed in 41.41 seconds.
+
+The export-table batch now also includes `_qsort`/`qsort`. The implementation
+invokes the comparator through the Darwin guest callback ABI, and
+`wintosh_host_api_smoke` sorts five integers while checking both aliases;
+the focused test passed after the change. This is host-level callback evidence,
+not yet a Mach-O fixture with a guest-defined comparator.
+
+The real `DarwinStart` entry path is now explicitly fail-closed under MSVC,
+with the same clear `real Mach-O execution requires a Clang build with
+System-V ABI support` error already used by the compatible-main path. The
+Clang build remains the only build allowed to transfer into guest Darwin
+startup code; synthetic fixtures may still exercise host-side components.
+
+
+Gate 1 now also has an explicit `___error`/`__error` SysV bridge. The host
+smoke calls the resolved function, writes errno value 73 through the returned
+thread-local address, and reads it back successfully. This proves the errno
+primitive and callback ABI, but not yet complete Darwin `libSystem`
+initialization or a true crt1 startup fixture. The same test now performs the
+roundtrip from a second thread and verifies distinct errno storage, providing
+direct TLS-isolation evidence.
+
+The native startup trampoline smoke now carries and dereferences real
+`argv[0]` and `envp[0]` strings from a Darwin-shaped initial stack, in addition
+to validating `argc`; the focused test passes. This remains a
+trampoline/stack-contract proof only and is intentionally not counted as real
+Mach-O DarwinStart execution.
+
+The first direct executable DarwinStart fixture was also exercised with
+`wintosh_macho_exit_smoke.exe --emit-darwin` followed by
+`wintosh.exe --startup-abi darwin`. The trampoline reserves committed scratch
+space below the initial stack, and `_exit` now uses the immediate, non-unwinding
+bridge. The registered `wintosh_darwin_start_e2e` test covers the controlled
+single-argument launch (`argc=1`, exit 1) when the current build is stable.
+The intermittent host faults were traced to placing the initial Darwin stack
+in a heap vector while guest code called back into Windows/SEH code. The
+startup fixture now uses a bounded, explicitly checked buffer in the native
+thread stack (512 words, with a 32-word call guard). After that change,
+`wintosh_darwin_start_e2e` passed five consecutive isolated runs without an
+exception. Guest pointer dereference through `argv`/`envp`, real `libSystem`
+initialization, and full `envp`/TLS/errno ordering remain open.
+
+The bootstrap now explicitly clears the thread-local Darwin `errno` slot
+before Mach-O graph loading and entry initialization. This establishes the
+first deterministic libSystem-state step; full libSystem startup ordering is
+still not claimed.
+
+The guest exception diagnostic now includes the faulting `RIP` and `RSP`.
+The current failing sample reports a host-range `RIP` together with the
+prepared guest stack pointer, which narrows the next investigation to the
+SysV guest-to-host bridge/stack transition rather than Mach-O mapping or
+dyld binding.
+
+The termination export family now keeps Darwin `exit` and `_exit` separate:
+both use SysV bridges, but only `exit` drains registered finalizers while
+`_exit` transfers directly to the non-unwinding Windows termination primitive.
+The focused ABI, exit, atexit, and hello tests pass after this split. The
+DarwinStart test remains intermittently order-sensitive in the aggregate suite
+and is not counted as a stable full-suite pass.
+
+The Gate-4 Mach-O batch was rerun on 2026-10-13: the 32-bit entry fixture and
+the main Mach-O metadata/mapping smoke both passed. The loader's ARM64
+inspection/rebase coverage and explicit x86_64-host execution rejection remain
+the supported boundary; no ARM64 instruction execution is claimed.
+
+`wintosh_abi_bridge_smoke` now checks the resolved addresses of both symbols
+against their dedicated bridge functions and requires them to differ. It
+reports `ABI_BRIDGE_EXIT_SPLIT=PASS` alongside the aggregate and variadic ABI
+checks.
+
+The complete fixture-ladder subset was rerun on 2026-10-14: 6/6 CTest
+entries passed, including source validation, `argv-env`, stack-protected
+memory, guest comparator callbacks, file I/O, and the fail-closed crash
+fixture. No Darwin-start `getenv` Mach-O fixture is claimed yet; that remains
+a separate startup-ABI gap.
+An isolated attempt to add such a fixture was deliberately removed after it
+entered the Darwin transfer but faulted before producing a trustworthy
+`envp` result. The failure is not counted as support: the existing fixture
+still proves only the `argc` word, while the `argv`/`envp` pointer chain needs
+a dedicated ABI-safe trampoline and explicit environment construction.
+The follow-up diagnostic fixture attempted only a non-dereferencing load from
+the expected first-`envp` slot (`[rsp+24]`) and faulted before reaching the
+exit bridge. It was removed after verification; this narrows the issue to the
+initial-stack/trampoline contract itself rather than `getenv` semantics.
+`WINTOSH_TRACE_DARWIN_START=1` now reports the prepared stack base and the
+calculated `argv`, `envp`, and Apple-parameter slot addresses without changing
+the normal path. A second non-dereferencing guest probe was attempted with
+the corrected branch encoding and still faulted, so it was also removed;
+the instrumentation remains for the next controlled trampoline experiment.
+The trace now also prints the first six stack words; a live run showed
+`argc=1`, a non-null `argv[0]`, a null argv terminator, and a non-null first
+`envp` pointer at the expected slot. The normal DarwinStart E2E remains green
+when the diagnostic variable is unset. This moves the remaining fault
+boundary into the hand-coded guest probe/call sequence rather than the C++
+stack construction.
+An explicitly committed `VirtualAlloc`-backed initial-stack experiment was
+also rejected because it regressed even the verified `argc` entry; it was
+removed, leaving the native-stack implementation as the only passing
+DarwinStart path.
+
+The MSVC boundary now has a dedicated `wintosh_darwin_start_msvc_fail_closed`
+CTest. The guard runs at the CLI boundary, before the Windows SEH wrapper can
+misreport an ABI mismatch as `DARLING_GUEST_EXCEPTION=0xC0000005`; the fresh
+MSVC Release build passes this test and emits the explicit System-V/Clang
+diagnostic. This proves rejection, not real Mach-O execution under MSVC.
+
+The standalone Gate-2 bundle check was rerun on 2026-10-13: the registered
+`wintosh_macho_printf_e2e` test passed and exercised both the repository-owned
+minimal `.app` entry resolution and its framework-shaped lookup paths. This
+remains synthetic bundle coverage; it does not claim that arbitrary Apple
+framework binaries are present or executable.
+
+The focused Gate-3 dyld batch was rerun on 2026-10-13 with five passing tests:
+32-bit bind and graph parsing, the main dyld smoke, dynamic-loader behavior,
+and initializer ordering. This is evidence for the implemented synthetic
+families only; weak-binding edge cases, full re-export graphs, and complete
+Apple initializer/Objective-C ordering remain partial.
+
+The focused Gate-5 batch also passed on 2026-10-13: ABI bridge (including
+variadic, aggregate, and the distinct `exit`/`_exit` paths), Objective-C
+runtime, Objective-C exception, Objective-C block, and Mach-O printf E2E tests
+all passed (5/5). This is synthetic x86_64 ABI evidence; complete Apple
+Objective-C exception unwinding, all aggregate/variadic conventions, and
+arbitrary compiler-generated Objective-C binaries remain outside the claim.
+
+The focused Gate-7 batch passed on 2026-10-13: 17/17 Mach IPC, MIG,
+trailer/ownership, thread, pthread/TLV, Objective-C-exception, and guest
+crash-boundary tests. This proves the implemented local adapters and their
+failure boundary; full cross-process Mach semantics, Darwin cancellation, and
+exception unwinding remain outside the claim.
+
+The Gate-8 inventory was rechecked on 2026-10-13: the provenance CSV contains
+150 component records and the source-license inventory contains 22 records.
+The repository keeps the Darling, WSL, and external-component notices plus
+original synthetic fixture sources. Gate 8 remains partial because every
+third-party component still requires its own redistribution review; no Apple
+binary or Apple SDK is bundled or claimed as redistributable.
+
+The focused Gate-6 family batch passed on 2026-10-13 (5/5): CoreFoundation,
+CoreGraphics, Foundation, path, and preferences smoke tests. These results
+cover the repository's Windows adapters and data/object primitives; they do
+not represent complete Foundation, CoreGraphics, or AppKit compatibility.
+
+The runtime research was consolidated in `docs/RESEARCH-RUNTIME-GAPS.md`.
+It records the architectural comparison with Darling's loader/host-API
+model and Apple's open-source `dyld` startup description. The fixture-ladder
+results were independently rerun on 2026-10-14: source validation, argv/env,
+stack-protected memory, guest `qsort` callback, file I/O, and the crash
+boundary all passed. The `pthread-tlv` source remains syntax/host-TLV-only;
+it is not yet claimed as a real Darwin TLS guest fixture.
+
+The ARM64 boundary is explicit: the loader can inspect, map, rebase, and
+exercise ARM64 Mach-O metadata in synthetic loader tests, but
+`RequireX86Execution` rejects ARM64 entry transfer on an x86_64 Windows host
+with a clear error. No ARM64 execution capability is claimed until a native
+ARM64 Windows target and instruction-translation path are available.
+
+The guest-side callback proof is now present. A new original synthetic
+Mach-O fixture registers `_atexit` from its guest entry, returns normally, and
+prints `guest atexit callback` from the guest callback during finalization.
+The dedicated `wintosh_guest_atexit_e2e` CTest passed together with
+`wintosh_hello_e2e` in the fresh Clang build. This closes the previously
+missing guest-registration/finalizer evidence for this narrow path; Gate 1
+remains partial because full `libSystem` startup ordering, TLS/errno setup,
+and the complete Darwin initial stack contract are not yet implemented.
+
+The focused loader follow-up was rerun on 2026-10-14: `wintosh_dyld_smoke`,
+`wintosh_macho_printf_e2e`, and `wintosh_darwin_start_e2e` passed 3/3. This
+confirms the current synthetic re-export/lazy-binding, minimal bundle-shaped
+printf, and controlled startup paths together; it does not expand the claim
+to arbitrary Apple `.app` bundles or complete Darwin startup.
+
+The environment bridge now has an explicit precedence regression: the runner
+environment smoke binds a launch-owned `envp`, verifies `getenv` and the
+exported `environ` pointer observe `DARLING_RUNNER_ENV=launch-owned`, and then
+continues with the child-process check. This proves the shared vector contract
+for the host adapter; a guest Darwin-start `getenv` fixture is still required
+before claiming the full initial-stack ABI.
+
+The Gate-1 focused regression was rerun on 2026-10-14: errno, atexit,
+pthread synchronization, the native startup trampoline, thread, TLV, guest
+atexit, and guest `__cxa_atexit` passed 8/8. This strengthens the evidence for
+the individual adapters and finalizer paths, but does not close Gate 1 because
+the real Darwin initial-stack contract and automatic libSystem/TLS ordering
+remain unproven.
+
+The launch environment bridge was tightened on 2026-10-14. Before any
+compatible or Darwin entry transfer, the runner now copies its launch-owned
+`envp` into the exported Darwin `environ`/`NSGetEnviron` vector, instead of
+leaving those exports tied only to the host process environment. The rebuilt
+Clang target passed `wintosh_runner_env_smoke`, `wintosh_hello_e2e`, and
+`wintosh_darwin_start_e2e` 3/3. This closes the pointer-ownership mismatch for
+the supported launch path; it does not yet prove guest `getenv` through the
+real Darwin initial-stack ABI.
+
+The complete Clang CTest suite was rerun outside the broken MXC launcher on
+2026-10-14 and passed 70/70 in 85.73 seconds. The two transient failures from
+the preceding run were fixed: the Mach ABI child-process fixture no longer
+depends on the optional `ping.exe` and the synchronization smoke now waits
+robustly for waiter readiness. This is a full regression result for the
+current implementation, not evidence that any of the eight compatibility
+gates is complete.
+
+The environment bridge is also fail-closed against host leakage: once a
+launch vector is bound, a missing name returns `nullptr` instead of falling
+back to the Windows process environment. `wintosh_runner_env_smoke` now
+verifies launch-value precedence and missing-name isolation and passed after
+the Clang rebuild.
+
+The bootstrap ordering was tightened on 2026-10-14: the launch-owned Darwin
+environment is now bound before dylib graph loading and provider/module
+initializers, not only immediately before the main entry transfer. The focused
+dyld, environment, guest-finalizer, and Darwin-start tests passed 5/5 after
+the change. This proves the corrected host-side ordering boundary; complete
+libSystem initialization and direct guest `getenv` from the Darwin initial
+stack remain open.
+### Vollsuite nach Bootstrap-Reihenfolge (2026-10-14)
+
+Nach der Umstellung bindet `DarwinBootstrap::Run` die launch-eigene `environ`-Liste bereits vor dem Aufbau des dyld-Graphen und vor Provider-/Dylib-Initialisierern. Die vollständige Clang-Suite `build-windows-clang-final4` wurde danach erneut ausgeführt: **70/70 Tests bestanden**, Gesamtdauer 116,00 Sekunden. Damit ist eine Regression dieses Schritts ausgeschlossen. Dies schließt Gate 1 dennoch nicht vollständig: Die direkte Ausführung eines beliebigen Apple-Mach-O mit vollständiger Darwin/libSystem-Initialisierung, realen Frameworks und allen ABI-/TLS-/Exception-Fällen bleibt offen.
+### Regression nach DarwinStart-Fixture-Rückbau (2026-10-14)
+
+Das experimentelle direkte `argv/envp`-Fixture wurde wegen eines fehlerhaften kompakten Bind-Slot-Layouts nicht übernommen. Nach dem vollständigen Rückbau lief die komplette Clang-Suite erneut erfolgreich: **70/70 Tests bestanden**, Gesamtdauer 87,82 Sekunden. Der belastbare Stand bleibt damit unverändert: `argc` im Darwin-Startup ist end-to-end belegt; ein direkter `argv/envp`-Nachweis aus einem sauber getrennten Mach-O-Layout ist der nächste offene Unterpunkt.
+### DarwinStart argv/env Fixture-Untersuchung (2026-10-14)
+
+Ein zweiter Versuch mit getrennten Symtab-, Stringtab- und Bind-Bereichen wurde nicht in die Testsuite übernommen: Der aktuelle dyld-Bind-/Mapping-Vertrag löste den verschobenen Bind-Target als Nulladresse auf. Das Experiment wurde vollständig zurückgebaut. Die konkrete nächste Loader-Arbeit ist daher die explizite Prüfung und Dokumentation der Beziehung zwischen bind stream segment offset, segment file offset und Mapping-Adresse; erst danach wird der direkte `argv/envp`-Test erneut hinzugefügt.
+### File-backed dyld-Bind-Invariante (2026-10-14)
+
+Der normale und der Lazy-Bind-Pfad prüfen nun zusätzlich zur virtuellen Segmentgrenze, dass der Bind-Target vollständig im file-backed Teil des Segments liegt. Dadurch werden Bindings in reinem BSS/ungemapptem Segmentbereich deterministisch abgewiesen, statt einen ungültigen Funktionszeiger zu erzeugen. Der fokussierte Regressionlauf bestand mit 4/4 Tests: dyld smoke, printf E2E, hello E2E und DarwinStart E2E. Ein direkter `argv/envp`-DarwinStart-Nachweis bleibt weiterhin offen.
+### Vollsuite nach file-backed Bind-Prüfung (2026-10-14)
+
+Die vollständige Clang-Regression lief nach der neuen Bind-Invariante erfolgreich durch: **70/70 Tests bestanden**, Gesamtdauer 69,41 Sekunden. Damit sind keine Regressionen in dyld, Mach-O-E2E, DarwinStart, ABI-, Mach-, Objective-C- oder Fixture-Familien sichtbar. Die Prüfung beweist weiterhin keine vollständige Darwin-/macOS-Runtime; insbesondere bleiben direkter `argv/envp`-Startup-Nachweis, echte Framework-Bundles und die übrigen Gates offen.
+### DarwinStart-Bind-Fixture: ULEB-Befund (2026-10-14)
+
+Bei der Untersuchung wurde bestätigt, dass dyld-Segmentoffsets als ULEB128 gelesen werden: der Wert 128 muss als `0x80, 0x01` kodiert werden, nicht als einzelnes `0x80`. Das korrigierte direkte `argv/envp`-Fixture scheitert danach weiterhin im handcodierten Gast-Aufrufpfad und wurde deshalb nicht übernommen. Der stabile Stand bleibt bei den grünen 70 Tests; der direkte Stacknachweis bleibt offen.
+### Direkter Trampolin-Stacknachweis (2026-10-14)
+
+Der isolierte native Startup-Trampolin-Test `wintosh_startup_trampoline_smoke` validiert bereits `argc), `argv[0]), `argv[1]) und `envp[0]) aus dem übergebenen Darwin-Initialstack; Lauf: **1/1 bestanden**. Das ist ein belastbarer ABI-/Trampolinnachweis. Die zusätzliche Loader-E2E-Prüfung mit einem selbstgenerierten Mach-O bleibt separat offen, weil deren handcodierter Bind-/Gast-Aufrufpfad noch nicht stabil ist.
+### Loader-DarwinStart argv/envp E2E (2026-10-14)
+
+Das neue eigene Mach-O-Fixture `wintosh_darwin_start_argv_env_e2e` prüft im
+echten DarwinStart-Einstieg `argc == 1`, den `argv`-Terminator an
+`argv[1]` und einen nichtleeren `envp[0]`, bevor es über den gebundenen
+`_exit`-Slot beendet. Der Test besteht end-to-end. Nach der Aufnahme ist die
+vollständige Clang/Ninja-Suite auf **71/71 Tests** angewachsen und in 96,47
+Sekunden vollständig durchgelaufen. Damit ist der direkte Loader-zu-Startup-
+Stacktransfer für diesen x86_64-Ersatzfixture belegt; vollständige libSystem-
+Initialisierung und reale Apple-Binaries bleiben ausdrücklich offen.
+### Initializer-Environment-Regression (2026-10-14)
+
+Nach der Erweiterung des synthetischen `__mod_init_func`-Fixtures auf
+`getenv` innerhalb des Initializers lief die vollständige Clang/Ninja-Suite
+erneut erfolgreich: **71/71 Tests bestanden**, Gesamtdauer 67,09 Sekunden.
+Damit bleibt die Reihenfolgeprüfung regressionsfrei; sie belegt weiterhin
+einen Wintosh-eigenen Initializer-/Environment-Vertrag und nicht die
+vollständige Apple-`libSystem`-Implementierung.

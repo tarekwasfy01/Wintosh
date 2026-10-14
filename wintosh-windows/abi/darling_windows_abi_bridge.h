@@ -28,7 +28,12 @@ using GuestFn = DARLING_SYSV R (*)(A...);
 
 using GuestVoidFn = GuestFn<void>;
 
+struct DarwinAggregatePair final { std::uint64_t integer; double real; };
+struct DarwinAggregateTriple final { std::uint64_t first; std::uint64_t second; std::uint64_t third; };
+
 extern "C" DARLING_SYSV int darling_windows_abi_puts(const char* value);
+extern "C" DARLING_SYSV const char* darling_windows_abi_getenv(const char* name);
+extern "C" DARLING_SYSV int* darling_windows_abi_error();
 extern "C" DARLING_SYSV std::uintptr_t darling_windows_abi_resolve_lazy_binding(
 	std::uintptr_t image_cache, std::uintptr_t lazy_binding_info);
 extern "C" DARLING_SYSV int darling_windows_abi_lazy_binding_session_active();
@@ -37,6 +42,10 @@ extern "C" int darling_windows_abi_printf_windows_helper(const char*, const void
 #endif
 extern "C" DARLING_SYSV int darling_windows_abi_printf(const char* format, ...);
 extern "C" DARLING_SYSV [[noreturn]] void darling_windows_abi_exit(int status);
+extern "C" DARLING_SYSV [[noreturn]] void darling_windows_abi_normal_exit(int status);
+extern "C" DARLING_SYSV int darling_windows_abi_atexit(void (*function)());
+extern "C" DARLING_SYSV int darling_windows_abi_cxa_atexit(void (*function)(void*),
+	void* argument, void* dso_handle);
 // The native trampoline tail-jumps to the resolved guest target; that target
 // returns through the original stub, so the binder itself is not noreturn.
 extern "C" DARLING_SYSV void darling_windows_abi_dyld_stub_binder();
@@ -47,6 +56,10 @@ extern "C" DARLING_SYSV int darling_windows_darwin_stub_trampoline_fixture(
 	std::uint64_t first, std::uint64_t second, std::uintptr_t lazy_binding_info);
 extern "C" DARLING_SYSV int darling_windows_darwin_stub_probe_target(
 	std::uint64_t first, std::uint64_t second);
+extern "C" DARLING_SYSV DarwinAggregatePair darling_windows_abi_aggregate_pair(
+	DarwinAggregatePair value);
+extern "C" DARLING_SYSV DarwinAggregateTriple darling_windows_abi_aggregate_triple(
+	DarwinAggregateTriple value);
 
 } // namespace darling::windows_host::abi
 

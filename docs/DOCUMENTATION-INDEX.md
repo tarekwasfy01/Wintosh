@@ -42,6 +42,8 @@ The implementation itself is documented at
   persistence ABI, storage contract, test gate, and remaining Foundation gaps.
 - [PORTING-ROADMAP.md](PORTING-ROADMAP.md) — ordered family milestones,
   evidence gates, and explicit remaining boundaries.
+- [HOST-EXPORT-TABLE.md](HOST-EXPORT-TABLE.md) — current native host-export
+  inventory grouped by ABI family, including data-export boundaries.
 
 ## Reference-project analysis
 

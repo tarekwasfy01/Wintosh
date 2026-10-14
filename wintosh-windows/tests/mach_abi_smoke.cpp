@@ -59,7 +59,8 @@ int main()
 	STARTUPINFOW startup{};
 	startup.cb = sizeof(startup);
 	PROCESS_INFORMATION child{};
-	wchar_t command_line[] = L"cmd.exe /d /c ping 127.0.0.1 -n 6 > nul";
+	// Keep the child alive without depending on optional command-line utilities.
+	wchar_t command_line[] = L"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -Command \"Start-Sleep -Seconds 6\"";
 	if (!CreateProcessW(nullptr, command_line, nullptr, nullptr, FALSE, CREATE_SUSPENDED,
 		nullptr, nullptr, &startup, &child))
 		return 1;
@@ -284,7 +285,7 @@ int main()
 	}
 	cleanup_child();
 	PROCESS_INFORMATION terminated_child{};
-	wchar_t terminate_command[] = L"cmd.exe /d /c ping 127.0.0.1 -n 30 > nul";
+	wchar_t terminate_command[] = L"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -Command \"Start-Sleep -Seconds 30\"";
 	if (!CreateProcessW(nullptr, terminate_command, nullptr, nullptr, FALSE, 0,
 		nullptr, nullptr, &startup, &terminated_child))
 		return 1;

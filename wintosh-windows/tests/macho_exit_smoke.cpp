@@ -108,22 +108,244 @@ void WriteDarwinStartMachO(const std::filesystem::path& path)
 	std::fstream output(path, std::ios::in | std::ios::out | std::ios::binary);
 	if (!output)
 		throw std::runtime_error("cannot reopen Darwin startup fixture");
-	// mov ecx, [rsp]; mov rax, [rip + 0x36]; call rax; ret
-	// The first stack word is Darwin argc; the bound _exit slot is at 0x240.
+	// Load Darwin argc from the initial stack and call _exit(argc).
+	// The bound _exit slot is at 0x240.
 	const std::uint8_t entry[] = {
-		0x8b,
-#if defined(__clang__) && defined(_WIN64)
-		0x3c,
-#else
-		0x0c,
-#endif
-		0x24,
+		0x8b, 0x3c, 0x24,
 		0x48, 0x8b, 0x05, 0x36, 0x00, 0x00, 0x00,
 		0xff, 0xd0, 0xc3};
 	output.seekp(0x200);
 	output.write(reinterpret_cast<const char*>(entry), sizeof(entry));
 	if (!output)
 		throw std::runtime_error("cannot write Darwin startup fixture");
+}
+
+void WriteDarwinStartEnvMachO(const std::filesystem::path& path)
+{
+	WriteExitMachO(path);
+	std::fstream output(path, std::ios::in | std::ios::out | std::ios::binary);
+	if (!output)
+		throw std::runtime_error("cannot reopen Darwin env startup fixture");
+	// DarwinStart stack layout with argc=1 places argv[1] at [rsp+16] and
+	// envp[0] at [rsp+24].
+	// The existing _exit bind slot remains at file offset 0x240.
+	const std::uint8_t entry[] = {
+		0x83, 0x3c, 0x24, 0x01, 0x75, 0x1e,
+		0x48, 0x83, 0x7c, 0x24, 0x10, 0x00, 0x75, 0x16,
+		0x48, 0x83, 0x7c, 0x24, 0x18, 0x00, 0x74, 0x0e,
+		0x31, 0xff, 0x48, 0x8b, 0x05, 0x21, 0x00, 0x00,
+		0x00, 0xff, 0xd0, 0xc3, 0xbf, 0x5b, 0x00, 0x00,
+		0x00, 0x48, 0x8b, 0x05, 0x10, 0x00, 0x00, 0x00,
+		0xff, 0xd0, 0xc3};
+	output.seekp(0x200);
+	output.write(reinterpret_cast<const char*>(entry), sizeof(entry));
+	if (!output)
+		throw std::runtime_error("cannot write Darwin env startup fixture");
+}
+
+void WriteHelloMachO(const std::filesystem::path& path)
+{
+	using namespace darling::windows_host;
+	WriteExitMachO(path);
+	std::ifstream input(path, std::ios::binary);
+	std::vector<std::uint8_t> data((std::istreambuf_iterator<char>(input)), {});
+	if (data.empty())
+		throw std::runtime_error("cannot reopen Mach-O hello fixture");
+
+	const auto symtab_offset = sizeof(MachHeader64) + sizeof(SegmentCommand64) +
+		sizeof(MainCommand);
+	SymtabCommand symtab{};
+	std::memcpy(&symtab, data.data() + symtab_offset, sizeof(symtab));
+	// The longer hello entry reaches past the compact exit fixture's tables.
+	// Keep the symbol/string/bind records outside the generated text bytes.
+	symtab.symbol_offset = 0x2c0;
+	symtab.string_offset = 0x300;
+	symtab.symbol_count = 2;
+	// The string table contains the leading NUL, both symbol names, and
+	// the terminating NUL after _exit: "\0_puts\0_exit\0".
+	symtab.string_bytes = 13;
+	std::memcpy(data.data() + symtab_offset, &symtab, sizeof(symtab));
+	DYSymtabCommand dysymtab{};
+	std::memcpy(&dysymtab, data.data() + symtab_offset + sizeof(SymtabCommand),
+		sizeof(dysymtab));
+	dysymtab.undefined_symbol_count = 2;
+	std::memcpy(data.data() + symtab_offset + sizeof(SymtabCommand), &dysymtab,
+		sizeof(dysymtab));
+
+	NList64 puts_symbol{};
+	puts_symbol.name_offset = 1;
+	puts_symbol.type = 0x01;
+	NList64 exit_symbol{};
+	exit_symbol.name_offset = 7;
+	exit_symbol.type = 0x01;
+	std::memcpy(data.data() + symtab.symbol_offset, &puts_symbol, sizeof(puts_symbol));
+	std::memcpy(data.data() + symtab.symbol_offset + sizeof(NList64), &exit_symbol,
+		sizeof(exit_symbol));
+	std::memset(data.data() + symtab.string_offset, 0, 32);
+	std::memcpy(data.data() + symtab.string_offset + 1, "_puts", 5);
+	std::memcpy(data.data() + symtab.string_offset + 7, "_exit", 5);
+
+	const auto dyld_info_offset = symtab_offset + sizeof(SymtabCommand) +
+		sizeof(DYSymtabCommand);
+	DyldInfoCommand dyld_info{};
+	std::memcpy(&dyld_info, data.data() + dyld_info_offset, sizeof(dyld_info));
+	dyld_info.binding_offset = 0x340;
+	const std::uint8_t bind_stream[] = {
+		0x11, 0x40, '_', 'p', 'u', 't', 's', 0, 0x51, 0x70, 0x40, 0x90,
+		0x11, 0x40, '_', 'e', 'x', 'i', 't', 0, 0x51, 0x70, 0x48, 0x90, 0x00};
+	dyld_info.binding_size = sizeof(bind_stream);
+	std::memcpy(data.data() + dyld_info_offset, &dyld_info, sizeof(dyld_info));
+	std::memset(data.data() + dyld_info.binding_offset, 0, 64);
+	std::memcpy(data.data() + dyld_info.binding_offset, bind_stream, sizeof(bind_stream));
+
+	// argc is in edi under the real x86_64 Darwin main ABI. With one argument
+	// (the program name), call puts; otherwise call _exit(7).
+	const std::uint8_t entry[] = {
+		0x83, 0xff, 0x01, 0x75, 0x29,
+		0x48, 0x8d, 0x3d, 0x74, 0x00, 0x00, 0x00,
+		0x48, 0x83, 0xec, 0x08,
+		0x48, 0x8b, 0x05, 0x29, 0x00, 0x00, 0x00,
+		0xff, 0xd0, 0x48, 0x83, 0xc4, 0x08, 0x31, 0xc0, 0xc3,
+		0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90,
+		0x90, 0x90, 0x90, 0x90,
+		0xbf, 0x07, 0x00, 0x00, 0x00,
+		0x48, 0x83, 0xec, 0x08,
+		0x48, 0x8b, 0x05, 0x0a, 0x00, 0x00, 0x00, 0xff, 0xd0, 0xc3};
+	std::memcpy(data.data() + 0x200, entry, sizeof(entry));
+	const char text[] = "hello from guest\n";
+	std::memcpy(data.data() + 0x280, text, sizeof(text));
+	std::ofstream output(path, std::ios::binary | std::ios::trunc);
+	output.write(reinterpret_cast<const char*>(data.data()),
+		static_cast<std::streamsize>(data.size()));
+	if (!output)
+		throw std::runtime_error("cannot write Mach-O hello fixture");
+}
+
+void WriteAtexitMachO(const std::filesystem::path& path)
+{
+	using namespace darling::windows_host;
+	WriteHelloMachO(path);
+	std::fstream output(path, std::ios::in | std::ios::out | std::ios::binary);
+	if (!output)
+		throw std::runtime_error("cannot reopen Mach-O atexit fixture");
+	std::vector<std::uint8_t> data((std::istreambuf_iterator<char>(output)), {});
+	if (data.empty())
+		throw std::runtime_error("cannot read Mach-O atexit fixture");
+
+	const auto symtab_offset = sizeof(MachHeader64) + sizeof(SegmentCommand64) +
+		 sizeof(MainCommand);
+	SymtabCommand symtab{};
+	std::memcpy(&symtab, data.data() + symtab_offset, sizeof(symtab));
+	symtab.string_bytes = 16; // "\0_atexit\0_puts\0"
+	std::memcpy(data.data() + symtab_offset, &symtab, sizeof(symtab));
+	NList64 atexit_symbol{};
+	atexit_symbol.name_offset = 1;
+	atexit_symbol.type = 0x01;
+	NList64 puts_symbol{};
+	puts_symbol.name_offset = 10;
+	puts_symbol.type = 0x01;
+	std::memcpy(data.data() + symtab.symbol_offset, &atexit_symbol,
+		sizeof(atexit_symbol));
+	std::memcpy(data.data() + symtab.symbol_offset + sizeof(NList64), &puts_symbol,
+		sizeof(puts_symbol));
+	std::memset(data.data() + symtab.string_offset, 0, 32);
+	std::memcpy(data.data() + symtab.string_offset + 1, "_atexit", 7);
+	std::memcpy(data.data() + symtab.string_offset + 10, "_puts", 5);
+
+	const auto dyld_info_offset = symtab_offset + sizeof(SymtabCommand) +
+		 sizeof(DYSymtabCommand);
+	DyldInfoCommand dyld_info{};
+	std::memcpy(&dyld_info, data.data() + dyld_info_offset, sizeof(dyld_info));
+	const std::uint8_t bind_stream[] = {
+		0x11, 0x40, '_', 'a', 't', 'e', 'x', 'i', 't', 0, 0x51, 0x70, 0x40,
+		0x90, 0x11, 0x40, '_', 'p', 'u', 't', 's', 0, 0x51, 0x70, 0x48,
+		0x90, 0x00};
+	dyld_info.binding_size = sizeof(bind_stream);
+	std::memcpy(data.data() + dyld_info_offset, &dyld_info, sizeof(dyld_info));
+	std::memset(data.data() + dyld_info.binding_offset, 0, 64);
+	std::memcpy(data.data() + dyld_info.binding_offset, bind_stream,
+		sizeof(bind_stream));
+
+	// Entry: register callback at 0x250, return 0. Callback at 0x250 calls
+	// _puts("guest atexit callback\n") and returns to the host finalizer.
+	const std::uint8_t entry[] = {
+		0x48, 0x83, 0xec, 0x08,
+		0x48, 0x8d, 0x3d, 0x45, 0x00, 0x00, 0x00,
+		0x48, 0x8b, 0x05, 0x2e, 0x00, 0x00, 0x00, 0xff, 0xd0,
+		0x48, 0x83, 0xc4, 0x08, 0x31, 0xc0, 0xc3};
+	std::memcpy(data.data() + 0x200, entry, sizeof(entry));
+	const std::uint8_t callback[] = {
+		0x48, 0x83, 0xec, 0x08,
+		0x48, 0x8d, 0x3d, 0x25, 0x00, 0x00, 0x00,
+		0x48, 0x8b, 0x05, 0xe6, 0xff, 0xff, 0xff, 0xff, 0xd0,
+		0x48, 0x83, 0xc4, 0x08, 0xc3};
+	std::memcpy(data.data() + 0x250, callback, sizeof(callback));
+	const char text[] = "guest atexit callback\n";
+	std::memcpy(data.data() + 0x280, text, sizeof(text));
+
+	output.seekp(0);
+	output.write(reinterpret_cast<const char*>(data.data()),
+		static_cast<std::streamsize>(data.size()));
+	if (!output)
+		throw std::runtime_error("cannot write Mach-O atexit fixture");
+}
+
+void WriteCxaAtexitMachO(const std::filesystem::path& path)
+{
+	using namespace darling::windows_host;
+	WriteAtexitMachO(path);
+	std::fstream output(path, std::ios::in | std::ios::out | std::ios::binary);
+	if (!output)
+		throw std::runtime_error("cannot reopen Mach-O cxa_atexit fixture");
+	std::vector<std::uint8_t> data((std::istreambuf_iterator<char>(output)), {});
+	if (data.empty())
+		throw std::runtime_error("cannot read Mach-O cxa_atexit fixture");
+	const auto symtab_offset = sizeof(MachHeader64) + sizeof(SegmentCommand64) +
+		 sizeof(MainCommand);
+	SymtabCommand symtab{};
+	std::memcpy(&symtab, data.data() + symtab_offset, sizeof(symtab));
+	symtab.string_bytes = 21; // "\0___cxa_atexit\0_puts\0"
+	std::memcpy(data.data() + symtab_offset, &symtab, sizeof(symtab));
+	NList64 cxa_symbol{};
+	cxa_symbol.name_offset = 1;
+	cxa_symbol.type = 0x01;
+	NList64 puts_symbol{};
+	puts_symbol.name_offset = 15;
+	puts_symbol.type = 0x01;
+	std::memcpy(data.data() + symtab.symbol_offset, &cxa_symbol, sizeof(cxa_symbol));
+	std::memcpy(data.data() + symtab.symbol_offset + sizeof(NList64), &puts_symbol,
+		sizeof(puts_symbol));
+	std::memset(data.data() + symtab.string_offset, 0, 32);
+	std::memcpy(data.data() + symtab.string_offset + 1, "___cxa_atexit", 13);
+	std::memcpy(data.data() + symtab.string_offset + 15, "_puts", 5);
+
+	const auto dyld_info_offset = symtab_offset + sizeof(SymtabCommand) +
+		 sizeof(DYSymtabCommand);
+	DyldInfoCommand dyld_info{};
+	std::memcpy(&dyld_info, data.data() + dyld_info_offset, sizeof(dyld_info));
+	const std::uint8_t bind_stream[] = {
+		0x11, 0x40, '_', '_', '_', 'c', 'x', 'a', '_', 'a', 't', 'e', 'x', 'i', 't', 0,
+		0x51, 0x70, 0x40, 0x90,
+		0x11, 0x40, '_', 'p', 'u', 't', 's', 0, 0x51, 0x70, 0x48, 0x90, 0x00};
+	dyld_info.binding_size = sizeof(bind_stream);
+	std::memcpy(data.data() + dyld_info_offset, &dyld_info, sizeof(dyld_info));
+	std::memset(data.data() + dyld_info.binding_offset, 0, 64);
+	std::memcpy(data.data() + dyld_info.binding_offset, bind_stream,
+		sizeof(bind_stream));
+
+	// Pass callback, null argument and null DSO handle using the Darwin ABI.
+	const std::uint8_t entry[] = {
+		0x48, 0x83, 0xec, 0x08,
+		0x48, 0x8d, 0x3d, 0x45, 0x00, 0x00, 0x00,
+		0x31, 0xf6, 0x31, 0xd2,
+		0x48, 0x8b, 0x05, 0x2a, 0x00, 0x00, 0x00, 0xff, 0xd0,
+		0x48, 0x83, 0xc4, 0x08, 0x31, 0xc0, 0xc3};
+	std::memcpy(data.data() + 0x200, entry, sizeof(entry));
+	output.seekp(0);
+	output.write(reinterpret_cast<const char*>(data.data()),
+		static_cast<std::streamsize>(data.size()));
+	if (!output)
+		throw std::runtime_error("cannot write Mach-O cxa_atexit fixture");
 }
 
 void WritePrintfMachO(const std::filesystem::path& path)
@@ -266,8 +488,24 @@ int wmain(int argc, wchar_t** argv)
 			WriteDarwinStartMachO(argv[2]);
 			return 0;
 		}
+		if (argc == 3 && std::wcscmp(argv[1], L"--emit-darwin-env") == 0) {
+			WriteDarwinStartEnvMachO(argv[2]);
+			return 0;
+		}
 		if (argc == 3 && std::wcscmp(argv[1], L"--emit") == 0) {
 			WriteExitMachO(argv[2]);
+			return 0;
+		}
+		if (argc == 3 && std::wcscmp(argv[1], L"--emit-hello") == 0) {
+			WriteHelloMachO(argv[2]);
+			return 0;
+		}
+		if (argc == 3 && std::wcscmp(argv[1], L"--emit-atexit") == 0) {
+			WriteAtexitMachO(argv[2]);
+			return 0;
+		}
+		if (argc == 3 && std::wcscmp(argv[1], L"--emit-cxa-atexit") == 0) {
+			WriteCxaAtexitMachO(argv[2]);
 			return 0;
 		}
 		if (argc == 3 && std::wcscmp(argv[1], L"--emit-printf") == 0) {

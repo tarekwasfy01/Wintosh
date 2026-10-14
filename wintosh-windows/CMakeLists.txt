@@ -94,6 +94,8 @@ if (WIN32)
     target_link_libraries(wintosh PRIVATE wintosh_windows_host)
 
     if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        get_filename_component(WINTOSH_LLVM_BIN "${CMAKE_CXX_COMPILER}" DIRECTORY)
+        set(WINTOSH_LD64_LLD "${WINTOSH_LLVM_BIN}/ld64.lld.exe")
         add_test(NAME wintosh_macho_printf_e2e
             COMMAND powershell.exe -NoProfile -ExecutionPolicy Bypass -File
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/macho_printf_e2e.ps1"
@@ -101,6 +103,88 @@ if (WIN32)
                 "$<TARGET_FILE:wintosh>"
                 "${CMAKE_CURRENT_BINARY_DIR}/macho-printf-e2e.macho")
         set_tests_properties(wintosh_macho_printf_e2e PROPERTIES RUN_SERIAL TRUE)
+        add_test(NAME wintosh_hello_e2e
+            COMMAND powershell.exe -NoProfile -ExecutionPolicy Bypass -File
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/hello_e2e.ps1"
+                "$<TARGET_FILE:wintosh_macho_exit_smoke>"
+                "$<TARGET_FILE:wintosh>"
+                "${CMAKE_CXX_COMPILER}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/hello/hello.c"
+                "${CMAKE_CURRENT_BINARY_DIR}/hello.macho")
+        set_tests_properties(wintosh_hello_e2e PROPERTIES RUN_SERIAL TRUE)
+        add_test(NAME wintosh_guest_atexit_e2e
+            COMMAND powershell.exe -NoProfile -ExecutionPolicy Bypass -File
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/macho_atexit_e2e.ps1"
+                -Generator "$<TARGET_FILE:wintosh_macho_exit_smoke>"
+                -Runner "$<TARGET_FILE:wintosh>"
+                -Fixture "${CMAKE_CURRENT_BINARY_DIR}/guest-atexit.macho")
+        set_tests_properties(wintosh_guest_atexit_e2e PROPERTIES RUN_SERIAL TRUE)
+        add_test(NAME wintosh_guest_cxa_atexit_e2e
+            COMMAND powershell.exe -NoProfile -ExecutionPolicy Bypass -File
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/macho_cxa_atexit_e2e.ps1"
+                -Generator "$<TARGET_FILE:wintosh_macho_exit_smoke>"
+                -Runner "$<TARGET_FILE:wintosh>"
+                -Fixture "${CMAKE_CURRENT_BINARY_DIR}/guest-cxa-atexit.macho")
+        set_tests_properties(wintosh_guest_cxa_atexit_e2e PROPERTIES RUN_SERIAL TRUE)
+        add_test(NAME wintosh_darwin_start_e2e
+            COMMAND powershell.exe -NoProfile -ExecutionPolicy Bypass -File
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/macho_darwin_start_e2e.ps1"
+                -Generator "$<TARGET_FILE:wintosh_macho_exit_smoke>"
+                -Runner "$<TARGET_FILE:wintosh>"
+                -Fixture "${CMAKE_CURRENT_BINARY_DIR}/darwin-start-e2e.macho")
+        set_tests_properties(wintosh_darwin_start_e2e PROPERTIES RUN_SERIAL TRUE)
+        add_test(NAME wintosh_darwin_start_argv_env_e2e
+            COMMAND powershell.exe -NoProfile -ExecutionPolicy Bypass -File
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/macho_darwin_start_env_e2e.ps1"
+                -Generator "$<TARGET_FILE:wintosh_macho_exit_smoke>"
+                -Runner "$<TARGET_FILE:wintosh>"
+                -Fixture "${CMAKE_CURRENT_BINARY_DIR}/darwin-start-env-e2e.macho")
+        set_tests_properties(wintosh_darwin_start_argv_env_e2e PROPERTIES RUN_SERIAL TRUE)
+        add_test(NAME wintosh_fixture_source_ladder
+            COMMAND powershell.exe -NoProfile -ExecutionPolicy Bypass -File
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/fixture-ladder/build-fixtures.ps1"
+                -Clang "${CMAKE_CXX_COMPILER}"
+                -OutputDirectory "${CMAKE_CURRENT_BINARY_DIR}/fixture-ladder-objects"
+                -Linker "${WINTOSH_LD64_LLD}")
+        set_tests_properties(wintosh_fixture_source_ladder PROPERTIES RUN_SERIAL TRUE)
+        add_test(NAME wintosh_argv_env_fixture_e2e
+            COMMAND powershell.exe -NoProfile -ExecutionPolicy Bypass -File
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/fixture-ladder/argv-env-e2e.ps1"
+                -Clang "${CMAKE_CXX_COMPILER}"
+                -Linker "${WINTOSH_LD64_LLD}"
+                -Runner "$<TARGET_FILE:wintosh>"
+                -OutputDirectory "${CMAKE_CURRENT_BINARY_DIR}/fixture-ladder-e2e")
+        set_tests_properties(wintosh_argv_env_fixture_e2e PROPERTIES RUN_SERIAL TRUE)
+        foreach(fixture_name IN ITEMS memory qsort-callback file-io)
+            add_test(NAME wintosh_${fixture_name}_fixture_e2e
+                COMMAND powershell.exe -NoProfile -ExecutionPolicy Bypass -File
+                    "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/fixture-ladder/fixture-e2e.ps1"
+                    -Clang "${CMAKE_CXX_COMPILER}"
+                    -Linker "${WINTOSH_LD64_LLD}"
+                    -Runner "$<TARGET_FILE:wintosh>"
+                    -FixtureName "${fixture_name}"
+                    -OutputDirectory "${CMAKE_CURRENT_BINARY_DIR}/fixture-ladder-e2e-${fixture_name}")
+            set_tests_properties(wintosh_${fixture_name}_fixture_e2e PROPERTIES RUN_SERIAL TRUE)
+        endforeach()
+        add_test(NAME wintosh_crash_fixture_e2e
+            COMMAND powershell.exe -NoProfile -ExecutionPolicy Bypass -File
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/fixture-ladder/fixture-e2e.ps1"
+                -Clang "${CMAKE_CXX_COMPILER}"
+                -Linker "${WINTOSH_LD64_LLD}"
+                -Runner "$<TARGET_FILE:wintosh>"
+                -FixtureName crash
+                -OutputDirectory "${CMAKE_CURRENT_BINARY_DIR}/fixture-ladder-e2e-crash"
+                -ExpectedExit 139)
+        set_tests_properties(wintosh_crash_fixture_e2e PROPERTIES RUN_SERIAL TRUE)
+    endif()
+    if (NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND CMAKE_SIZEOF_VOID_P EQUAL 8)
+        add_test(NAME wintosh_darwin_start_msvc_fail_closed
+            COMMAND powershell.exe -NoProfile -ExecutionPolicy Bypass -File
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/macho_darwin_start_msvc_fail_closed.ps1"
+                "$<TARGET_FILE:wintosh_macho_exit_smoke>"
+                "$<TARGET_FILE:wintosh>"
+                "${CMAKE_CURRENT_BINARY_DIR}/darwin-start-msvc.macho")
+        set_tests_properties(wintosh_darwin_start_msvc_fail_closed PROPERTIES RUN_SERIAL TRUE)
     endif()
 
     install(TARGETS wintosh wintosh_broker

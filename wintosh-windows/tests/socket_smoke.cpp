@@ -40,6 +40,9 @@ int main()
 	}
 	int client = darling_windows_socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 	if (client < 0 || darling_windows_connect(client, &address, sizeof(address)) != 0) {
+		std::cerr << "SOCKET_SMOKE_CONNECT_ERROR errno=" << *darling_windows_errno()
+			<< " listener=" << listener << " client=" << client
+			<< " port=" << ntohs(address.sin_port) << "\n";
 		if (client >= 0) darling_windows_close(client);
 		darling_windows_close(listener);
 		return 4;

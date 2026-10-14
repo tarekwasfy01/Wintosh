@@ -6,6 +6,7 @@
 #include "darling_windows_dyld.h"
 #include "darling_windows_bootstrap.h"
 #include "darling_windows_abi_bridge.h"
+#include "darling_windows_errno.h"
 #include "darling_windows_macho.h"
 #include "darling_windows_stdio.h"
 #include "darling_windows_tlv.h"
@@ -29,10 +30,23 @@ using darling::windows_host::DarwinX86_64StubFrame;
 using darling::windows_host::DecodeDarwinX86_64StubFrame;
 
 std::atomic<int> initializer_hits = 0;
+std::atomic<int> initializer_environment_hits = 0;
+std::atomic<int> bootstrap_errno_seen = -1;
+
+extern "C" DARLING_HOST_GUEST_ABI int BootstrapErrnoProbe(
+	int argc, char**, char**)
+{
+	bootstrap_errno_seen.store(darling::windows_host::DarwinErrno::Get(),
+		std::memory_order_relaxed);
+	return argc;
+}
 
 void InitializerProbe()
 {
 	initializer_hits.fetch_add(1, std::memory_order_relaxed);
+	const auto* value = darling_windows_getenv("WINTOSH_INIT_ENV");
+	if (value != nullptr && std::strcmp(value, "ready") == 0)
+		initializer_environment_hits.fetch_add(1, std::memory_order_relaxed);
 }
 
 void WriteInitializerMachO(const std::filesystem::path& path)
@@ -508,12 +522,18 @@ int wmain(int argc, wchar_t** argv)
 		const auto initializer_image = root / "usr" / "lib" / "libInitializer.dylib";
 		WriteInitializerMachO(initializer_image);
 		initializer_hits.store(0, std::memory_order_relaxed);
+		initializer_environment_hits.store(0, std::memory_order_relaxed);
+		const char initializer_environment[] = "WINTOSH_INIT_ENV=ready";
+		const char* initializer_environment_vector[] = {
+			initializer_environment, nullptr};
+		darling_windows_set_environ_vector(initializer_environment_vector);
 		{
 			const auto initializer_metadata = darling::windows_host::MachOImage::Open(initializer_image.wstring());
 			const auto initializer_mapping = initializer_metadata.MapSegments();
 			initializer_metadata.ExecuteInitializers(initializer_mapping);
 		}
-		if (initializer_hits.load(std::memory_order_relaxed) != 1)
+		if (initializer_hits.load(std::memory_order_relaxed) != 1 ||
+			initializer_environment_hits.load(std::memory_order_relaxed) != 1)
 			throw std::runtime_error("Mach-O __mod_init_func initializer did not execute");
 		std::cout << "DYLD_MOD_INIT=PASS\n";
 		const auto bundle = root / "PlugIns" / "Demo.bundle";
@@ -691,12 +711,17 @@ int wmain(int argc, wchar_t** argv)
 			launch_options.prefix = root;
 		launch_options.arguments = {"Demo", "one", "two"};
 		launch_options.environment = {"PATH=/usr/bin"};
+		darling::windows_host::DarwinErrno::Set(99);
+		bootstrap_errno_seen.store(-1, std::memory_order_relaxed);
 		launch_options.host_bindings = {{"_libSystemInit",
-			reinterpret_cast<std::uintptr_t>(&darling_windows_host_entry)}};
+			reinterpret_cast<std::uintptr_t>(&BootstrapErrnoProbe)}};
 			if (darling::windows_host::DarwinBootstrap::Run(image, launch_options) != 3) {
 				throw std::runtime_error("Darwin bootstrap did not return the entry result");
 			}
+		if (bootstrap_errno_seen.load(std::memory_order_relaxed) != 0)
+			throw std::runtime_error("Darwin bootstrap did not clear errno before entry");
 			std::cout << "DARWIN_BOOTSTRAP=PASS\n";
+		std::cout << "DARWIN_BOOTSTRAP_ERRNO=PASS\n";
 			std::cout << "DARWIN_BOUND_ENTRY=PASS\n";
 			{
 				wchar_t executable[MAX_PATH]{};

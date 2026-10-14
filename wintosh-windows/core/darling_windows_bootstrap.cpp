@@ -9,6 +9,7 @@
 #include "darling_windows_bootstrap.h"
 
 #include "darling_windows_dyld.h"
+#include "darling_windows_errno.h"
 #include "darling_windows_macho.h"
 #include "darling_windows_objc.h"
 #include "darling_windows_stdio.h"
@@ -189,6 +190,19 @@ void InitializeTLVSections(const MachOImage& image,
 int DarwinBootstrap::Run(const std::filesystem::path& image_path,
 	const DarwinLaunchOptions& options)
 {
+	// Darwin libSystem starts each process with a fresh thread-local errno
+	// slot before dyld/entry initialization begins.
+	DarwinErrno::Clear();
+	// Bind the launch-owned environment before loading providers.  Their module
+	// initializers are allowed to observe `environ`; binding only in
+	// MachOImage::ExecuteEntry would expose the host environment during dyld
+	// initialization and change Darwin's startup ordering.
+	std::vector<const char*> launch_environment;
+	launch_environment.reserve(options.environment.size() + 1);
+	for (const auto& value : options.environment)
+		launch_environment.push_back(value.c_str());
+	launch_environment.push_back(nullptr);
+	darling_windows_set_environ_vector(launch_environment.data());
 	// Open through MachOImage first so fat binaries are sliced to the best
 	// supported architecture before the bootstrap validates the header.
 	const auto image = MachOImage::Open(image_path.wstring());
@@ -335,6 +349,10 @@ int DarwinBootstrap::Run(const std::filesystem::path& image_path,
 	auto entry_binding_activation = entry_binding_session.Activate();
 	const auto exit_code = image.ExecuteEntry(mapping, options.arguments,
 		options.environment, options.apple_parameters, options.entry_abi);
+	// A normal return from the Darwin entry is the process-level exit path.
+	// Run the existing atexit/__cxa_atexit registry before image terminators;
+	// guest _exit remains an immediate ExitProcess and never reaches here.
+	darling_windows_cxa_finalize(nullptr);
 	image.ExecuteTerminators(mapping);
 	for (auto provider = providers.rbegin(); provider != providers.rend(); ++provider)
 		provider->image.ExecuteTerminators(provider->mapping);

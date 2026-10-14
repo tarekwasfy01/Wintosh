@@ -122,6 +122,7 @@ std::vector<DarlingExitHandler> darling_exit_handlers;
 std::mutex darwin_environment_mutex;
 std::vector<std::string> darwin_environment_entries;
 std::vector<char*> darwin_environment_pointers;
+bool darwin_environment_vector_bound = false;
 std::mutex program_name_mutex;
 std::string darling_program_name;
 std::mutex resource_limit_mutex;
@@ -1193,7 +1194,7 @@ bool CurrentDarwinIdentityId(int& result)
 
 } // namespace
 
-extern "C" int darling_windows_read(int descriptor, void* data, std::size_t bytes)
+extern "C" DARLING_HOST_GUEST_ABI int darling_windows_read(int descriptor, void* data, std::size_t bytes)
 {
 	try {
 		if (descriptor == 0) {
@@ -1213,7 +1214,7 @@ extern "C" int darling_windows_read(int descriptor, void* data, std::size_t byte
 	}
 }
 
-extern "C" int darling_windows_write(int descriptor, const void* data, std::size_t bytes)
+extern "C" DARLING_HOST_GUEST_ABI int darling_windows_write(int descriptor, const void* data, std::size_t bytes)
 {
 	try {
 		if (descriptor == 1 || descriptor == 2) {
@@ -1349,7 +1350,7 @@ extern "C" std::int64_t darling_windows_writev(int descriptor,
 	return total;
 }
 
-extern "C" int darling_windows_close(int descriptor)
+extern "C" DARLING_HOST_GUEST_ABI int darling_windows_close(int descriptor)
 {
 	try {
 		if (descriptor >= 0 && descriptor <= 2) {
@@ -1575,6 +1576,14 @@ extern "C" int darling_windows_getaddrinfo(const char* node, const char* service
 		return -1;
 	}
 	*result = nullptr;
+	// RFC 6761 reserves .invalid for names that must never resolve.  Avoid
+	// delegating this deterministic failure to the Windows DNS provider, which
+	// may perform a slow network retry before returning the same result.
+	if (node != nullptr) {
+		const std::string host(node);
+		if (host.size() >= 8 && host.compare(host.size() - 8, 8, ".invalid") == 0)
+			return -2;
+	}
 	static std::once_flag winsock_once;
 	try {
 		std::call_once(winsock_once, [] {
@@ -2132,7 +2141,9 @@ extern "C" int darling_windows_recvfrom(int descriptor, void* buffer, std::size_
 extern "C" std::int64_t darling_windows_sendmsg(int descriptor,
 	const darling_msghdr* message, int flags)
 {
-	if (message == nullptr || message->msg_iov == nullptr || message->msg_iovlen < 0) {
+	constexpr int supported_message_flags = 0x0001 | 0x0002 | 0x0004 | 0x0040 | 0x0080;
+	if (message == nullptr || message->msg_iov == nullptr || message->msg_iovlen < 0 ||
+		(flags & ~supported_message_flags) != 0) {
 		darling::windows_host::DarwinErrno::Set(22);
 		return -1;
 	}
@@ -2174,7 +2185,9 @@ extern "C" std::int64_t darling_windows_sendmsg(int descriptor,
 extern "C" std::int64_t darling_windows_recvmsg(int descriptor, darling_msghdr* message,
 	int flags)
 {
-	if (message == nullptr || message->msg_iov == nullptr || message->msg_iovlen < 0) {
+	constexpr int supported_message_flags = 0x0001 | 0x0002 | 0x0010 | 0x0040 | 0x0080;
+	if (message == nullptr || message->msg_iov == nullptr || message->msg_iovlen < 0 ||
+		(flags & ~supported_message_flags) != 0) {
 		darling::windows_host::DarwinErrno::Set(22);
 		return -1;
 	}
@@ -2269,7 +2282,7 @@ extern "C" int darling_windows_shutdown(int descriptor, int how)
 	}
 }
 
-extern "C" int darling_windows_open(const char* path, int flags, int mode)
+extern "C" DARLING_HOST_GUEST_ABI int darling_windows_open(const char* path, int flags, int mode)
 {
 	try {
 		const auto wide_path = Utf8Path(path);
@@ -2751,7 +2764,7 @@ DarlingPthreadAttributes* PthreadAttributesFromStorage(const void* storage)
 }
 
 struct DarlingPthreadStart final {
-	void* (*function)(void*) = nullptr;
+void* (*function)(void*) = nullptr;
 	void* argument = nullptr;
 	void* result = nullptr;
 	std::atomic_bool detached = false;
@@ -4735,6 +4748,12 @@ extern "C" int darling_windows_msync(void* address, std::size_t length,
 extern "C" std::uintptr_t darling_windows_stack_chk_guard =
 	static_cast<std::uintptr_t>(0x9e3779b97f4a7c15ULL);
 
+// Darwin's ___stdoutp is a data export: guests receive the address of the
+// stream pointer, not the address of a callable wrapper.
+extern "C" void* darling_windows_stdoutp = static_cast<void*>(stdout);
+extern "C" void* darling_windows_stdinp = static_cast<void*>(stdin);
+extern "C" void* darling_windows_stderrp = static_cast<void*>(stderr);
+
 extern "C" int darling_windows_cxa_guard_acquire(std::uint64_t* guard)
 {
 	if (guard == nullptr)
@@ -4779,30 +4798,132 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 	if (name == nullptr) {
 		return 0;
 	}
-	if (std::strcmp(name, "_puts") == 0 || std::strcmp(name, "puts") == 0) {
-		return reinterpret_cast<std::uintptr_t>(&darling::windows_host::abi::darling_windows_abi_puts);
+	struct HostExportAlias final {
+		const char* name;
+		std::uintptr_t address;
+	};
+	// Keep this first table deliberately small: these aliases have identical
+	// function-pointer treatment and are covered by the existing ABI-sensitive
+	// host and dyld smoke tests. Other families remain in their typed branches
+	// below until their data/function ABI contracts are split out.
+	const HostExportAlias libc_and_dyld_exports[] = {
+		{"_puts", reinterpret_cast<std::uintptr_t>(
+			&darling::windows_host::abi::darling_windows_abi_puts)},
+		{"puts", reinterpret_cast<std::uintptr_t>(
+			&darling::windows_host::abi::darling_windows_abi_puts)},
+		{"_getenv", reinterpret_cast<std::uintptr_t>(
+			&darling::windows_host::abi::darling_windows_abi_getenv)},
+		{"getenv", reinterpret_cast<std::uintptr_t>(
+			&darling::windows_host::abi::darling_windows_abi_getenv)},
+		{"_printf", reinterpret_cast<std::uintptr_t>(
+			&darling::windows_host::abi::darling_windows_abi_printf)},
+		{"printf", reinterpret_cast<std::uintptr_t>(
+			&darling::windows_host::abi::darling_windows_abi_printf)},
+		{"_exit", reinterpret_cast<std::uintptr_t>(
+			&darling::windows_host::abi::darling_windows_abi_exit)},
+		{"exit", reinterpret_cast<std::uintptr_t>(
+			&darling::windows_host::abi::darling_windows_abi_normal_exit)},
+		{"_atexit", reinterpret_cast<std::uintptr_t>(
+			&darling::windows_host::abi::darling_windows_abi_atexit)},
+		{"atexit", reinterpret_cast<std::uintptr_t>(
+			&darling::windows_host::abi::darling_windows_abi_atexit)},
+		{"dyld_stub_binder", reinterpret_cast<std::uintptr_t>(
+			&darling::windows_host::abi::darling_windows_abi_dyld_stub_binder)},
+		{"_dyld_stub_binder", reinterpret_cast<std::uintptr_t>(
+			&darling::windows_host::abi::darling_windows_abi_dyld_stub_binder)},
+		{"_wintosh_lazy_binding_session_active", reinterpret_cast<std::uintptr_t>(
+			&darling::windows_host::abi::darling_windows_abi_lazy_binding_session_active)},
+		{"wintosh_lazy_binding_session_active", reinterpret_cast<std::uintptr_t>(
+			&darling::windows_host::abi::darling_windows_abi_lazy_binding_session_active)},
+		{"_wintosh_lazy", reinterpret_cast<std::uintptr_t>(
+			&darling::windows_host::abi::darling_windows_abi_lazy_binding_session_active)},
+		{"wintosh_lazy", reinterpret_cast<std::uintptr_t>(
+			&darling::windows_host::abi::darling_windows_abi_lazy_binding_session_active)},
+	};
+	for (const auto& export_entry : libc_and_dyld_exports) {
+		if (std::strcmp(name, export_entry.name) == 0)
+			return export_entry.address;
 	}
-	if (std::strcmp(name, "_printf") == 0 || std::strcmp(name, "printf") == 0) {
-		return reinterpret_cast<std::uintptr_t>(
-			&darling::windows_host::abi::darling_windows_abi_printf);
+	const HostExportAlias runtime_exports[] = {
+		{"___error", reinterpret_cast<std::uintptr_t>(&darling::windows_host::abi::darling_windows_abi_error)},
+		{"__error", reinterpret_cast<std::uintptr_t>(&darling::windows_host::abi::darling_windows_abi_error)},
+		{"__stack_chk_fail", reinterpret_cast<std::uintptr_t>(&darling_windows_stack_chk_fail)},
+		{"___stack_chk_fail", reinterpret_cast<std::uintptr_t>(&darling_windows_stack_chk_fail)},
+		{"___stack_chk_fail_local", reinterpret_cast<std::uintptr_t>(&darling_windows_stack_chk_fail)},
+		{"___cxa_pure_virtual", reinterpret_cast<std::uintptr_t>(&darling_windows_cxa_pure_virtual)},
+		{"__cxa_pure_virtual", reinterpret_cast<std::uintptr_t>(&darling_windows_cxa_pure_virtual)},
+		{"___cxa_deleted_virtual", reinterpret_cast<std::uintptr_t>(&darling_windows_cxa_deleted_virtual)},
+		{"__cxa_deleted_virtual", reinterpret_cast<std::uintptr_t>(&darling_windows_cxa_deleted_virtual)},
+		{"___cxa_guard_acquire", reinterpret_cast<std::uintptr_t>(&darling_windows_cxa_guard_acquire)},
+		{"___cxa_guard_release", reinterpret_cast<std::uintptr_t>(&darling_windows_cxa_guard_release)},
+		{"___cxa_guard_abort", reinterpret_cast<std::uintptr_t>(&darling_windows_cxa_guard_abort)},
+		{"_errno", reinterpret_cast<std::uintptr_t>(&darling_windows_errno)},
+		{"___error", reinterpret_cast<std::uintptr_t>(&darling_windows_errno)},
+		{"_tlv_atexit", reinterpret_cast<std::uintptr_t>(
+			&darling::windows_host::darling_windows_tlv_atexit)},
+		{"___tlv_atexit", reinterpret_cast<std::uintptr_t>(
+			&darling::windows_host::darling_windows_tlv_atexit)},
+		{"___cxa_thread_atexit", reinterpret_cast<std::uintptr_t>(
+			&darling::windows_host::darling_windows_cxa_thread_atexit)},
+		{"___cxa_thread_atexit_impl", reinterpret_cast<std::uintptr_t>(
+			&darling::windows_host::darling_windows_cxa_thread_atexit)},
+		{"_cxa_thread_atexit_impl", reinterpret_cast<std::uintptr_t>(
+			&darling::windows_host::darling_windows_cxa_thread_atexit)},
+		{"___cxa_atexit", reinterpret_cast<std::uintptr_t>(
+			&darling::windows_host::abi::darling_windows_abi_cxa_atexit)},
+		{"_cxa_atexit", reinterpret_cast<std::uintptr_t>(
+			&darling::windows_host::abi::darling_windows_abi_cxa_atexit)},
+		{"___cxa_finalize", reinterpret_cast<std::uintptr_t>(&darling_windows_cxa_finalize)},
+		{"_cxa_finalize", reinterpret_cast<std::uintptr_t>(&darling_windows_cxa_finalize)},
+	};
+	for (const auto& export_entry : runtime_exports) {
+		if (std::strcmp(name, export_entry.name) == 0)
+			return export_entry.address;
 	}
-	if (std::strcmp(name, "_exit") == 0 || std::strcmp(name, "exit") == 0) {
-		return reinterpret_cast<std::uintptr_t>(&darling::windows_host::abi::darling_windows_abi_exit);
+	const HostExportAlias memory_exports[] = {
+		{"_malloc", reinterpret_cast<std::uintptr_t>(&darling_windows_malloc)},
+		{"malloc", reinterpret_cast<std::uintptr_t>(&darling_windows_malloc)},
+		{"_calloc", reinterpret_cast<std::uintptr_t>(&darling_windows_calloc)},
+		{"calloc", reinterpret_cast<std::uintptr_t>(&darling_windows_calloc)},
+		{"_realloc", reinterpret_cast<std::uintptr_t>(&darling_windows_realloc)},
+		{"_reallocarray", reinterpret_cast<std::uintptr_t>(&darling_windows_reallocarray)},
+		{"reallocarray", reinterpret_cast<std::uintptr_t>(&darling_windows_reallocarray)},
+		{"_reallocarrayf", reinterpret_cast<std::uintptr_t>(&darling_windows_reallocarrayf)},
+		{"reallocarrayf", reinterpret_cast<std::uintptr_t>(&darling_windows_reallocarrayf)},
+		{"_free", reinterpret_cast<std::uintptr_t>(&darling_windows_free)},
+		{"free", reinterpret_cast<std::uintptr_t>(&darling_windows_free)},
+		{"_memcpy", reinterpret_cast<std::uintptr_t>(&darling_windows_memcpy)},
+		{"memcpy", reinterpret_cast<std::uintptr_t>(&darling_windows_memcpy)},
+		{"_qsort", reinterpret_cast<std::uintptr_t>(&darling_windows_qsort)},
+		{"qsort", reinterpret_cast<std::uintptr_t>(&darling_windows_qsort)},
+		{"_memset", reinterpret_cast<std::uintptr_t>(&darling_windows_memset)},
+		{"memset", reinterpret_cast<std::uintptr_t>(&darling_windows_memset)},
+	};
+	for (const auto& export_entry : memory_exports) {
+		if (std::strcmp(name, export_entry.name) == 0)
+			return export_entry.address;
 	}
-	if (std::strcmp(name, "dyld_stub_binder") == 0 ||
-		std::strcmp(name, "_dyld_stub_binder") == 0) {
-		return reinterpret_cast<std::uintptr_t>(
-			&darling::windows_host::abi::darling_windows_abi_dyld_stub_binder);
-	}
-	if (std::strcmp(name, "_wintosh_lazy_binding_session_active") == 0 ||
-		std::strcmp(name, "wintosh_lazy_binding_session_active") == 0) {
-		return reinterpret_cast<std::uintptr_t>(
-			&darling::windows_host::abi::darling_windows_abi_lazy_binding_session_active);
-	}
-	if (std::strcmp(name, "_wintosh_lazy") == 0 ||
-		std::strcmp(name, "wintosh_lazy") == 0) {
-		return reinterpret_cast<std::uintptr_t>(
-			&darling::windows_host::abi::darling_windows_abi_lazy_binding_session_active);
+	const HostExportAlias file_io_exports[] = {
+		{"_read", reinterpret_cast<std::uintptr_t>(&darling_windows_read)},
+		{"read", reinterpret_cast<std::uintptr_t>(&darling_windows_read)},
+		{"_read_nocancel", reinterpret_cast<std::uintptr_t>(&darling_windows_read)},
+		{"read_nocancel", reinterpret_cast<std::uintptr_t>(&darling_windows_read)},
+		{"_write", reinterpret_cast<std::uintptr_t>(&darling_windows_write)},
+		{"write", reinterpret_cast<std::uintptr_t>(&darling_windows_write)},
+		{"_write_nocancel", reinterpret_cast<std::uintptr_t>(&darling_windows_write)},
+		{"write_nocancel", reinterpret_cast<std::uintptr_t>(&darling_windows_write)},
+		{"_close", reinterpret_cast<std::uintptr_t>(&darling_windows_close)},
+		{"close", reinterpret_cast<std::uintptr_t>(&darling_windows_close)},
+		{"_close_nocancel", reinterpret_cast<std::uintptr_t>(&darling_windows_close)},
+		{"close_nocancel", reinterpret_cast<std::uintptr_t>(&darling_windows_close)},
+		{"_open", reinterpret_cast<std::uintptr_t>(&darling_windows_open)},
+		{"open", reinterpret_cast<std::uintptr_t>(&darling_windows_open)},
+		{"_open_nocancel", reinterpret_cast<std::uintptr_t>(&darling_windows_open)},
+		{"open_nocancel", reinterpret_cast<std::uintptr_t>(&darling_windows_open)},
+	};
+	for (const auto& export_entry : file_io_exports) {
+		if (std::strcmp(name, export_entry.name) == 0)
+			return export_entry.address;
 	}
 	if (std::strcmp(name, "__stack_chk_fail") == 0 ||
 		std::strcmp(name, "___stack_chk_fail") == 0 ||
@@ -4813,45 +4934,17 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 		std::strcmp(name, "___stack_chk_guard") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_stack_chk_guard);
 	}
-	if (std::strcmp(name, "___cxa_pure_virtual") == 0 ||
-		std::strcmp(name, "__cxa_pure_virtual") == 0) {
-		return reinterpret_cast<std::uintptr_t>(&darling_windows_cxa_pure_virtual);
+	if (std::strcmp(name, "___stdoutp") == 0 ||
+		std::strcmp(name, "__stdoutp") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_stdoutp);
 	}
-	if (std::strcmp(name, "___cxa_deleted_virtual") == 0 ||
-		std::strcmp(name, "__cxa_deleted_virtual") == 0) {
-		return reinterpret_cast<std::uintptr_t>(&darling_windows_cxa_deleted_virtual);
+	if (std::strcmp(name, "___stdinp") == 0 ||
+		std::strcmp(name, "__stdinp") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_stdinp);
 	}
-	if (std::strcmp(name, "___cxa_guard_acquire") == 0) {
-		return reinterpret_cast<std::uintptr_t>(&darling_windows_cxa_guard_acquire);
-	}
-	if (std::strcmp(name, "___cxa_guard_release") == 0) {
-		return reinterpret_cast<std::uintptr_t>(&darling_windows_cxa_guard_release);
-	}
-	if (std::strcmp(name, "___cxa_guard_abort") == 0) {
-		return reinterpret_cast<std::uintptr_t>(&darling_windows_cxa_guard_abort);
-	}
-	if (std::strcmp(name, "_errno") == 0 ||
-		std::strcmp(name, "___error") == 0) {
-		return reinterpret_cast<std::uintptr_t>(&darling_windows_errno);
-	}
-	if (std::strcmp(name, "_tlv_atexit") == 0 ||
-		std::strcmp(name, "___tlv_atexit") == 0) {
-		return reinterpret_cast<std::uintptr_t>(
-			&darling::windows_host::darling_windows_tlv_atexit);
-	}
-	if (std::strcmp(name, "___cxa_thread_atexit") == 0 ||
-		std::strcmp(name, "___cxa_thread_atexit_impl") == 0 ||
-		std::strcmp(name, "_cxa_thread_atexit_impl") == 0) {
-		return reinterpret_cast<std::uintptr_t>(
-			&darling::windows_host::darling_windows_cxa_thread_atexit);
-	}
-	if (std::strcmp(name, "___cxa_atexit") == 0 ||
-		std::strcmp(name, "_cxa_atexit") == 0) {
-		return reinterpret_cast<std::uintptr_t>(&darling_windows_cxa_atexit);
-	}
-	if (std::strcmp(name, "___cxa_finalize") == 0 ||
-		std::strcmp(name, "_cxa_finalize") == 0) {
-		return reinterpret_cast<std::uintptr_t>(&darling_windows_cxa_finalize);
+	if (std::strcmp(name, "___stderrp") == 0 ||
+		std::strcmp(name, "__stderrp") == 0) {
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_stderrp);
 	}
 	if (std::strcmp(name, "_sel_registerName") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&sel_registerName);
@@ -5403,8 +5496,13 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 	if (std::strcmp(name, "__exit") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows__exit);
 	}
-	if (std::strcmp(name, "_exit") == 0 || std::strcmp(name, "exit") == 0) {
-		return reinterpret_cast<std::uintptr_t>(&darling_windows_exit);
+	if (std::strcmp(name, "_exit") == 0) {
+		return reinterpret_cast<std::uintptr_t>(
+			&darling::windows_host::abi::darling_windows_abi_exit);
+	}
+	if (std::strcmp(name, "exit") == 0) {
+		return reinterpret_cast<std::uintptr_t>(
+			&darling::windows_host::abi::darling_windows_abi_normal_exit);
 	}
 	if (std::strcmp(name, "_abort") == 0 || std::strcmp(name, "abort") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_abort);
@@ -6112,30 +6210,6 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 	if (std::strcmp(name, "_ttyname") == 0 || std::strcmp(name, "ttyname") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_ttyname);
 	}
-	if (std::strcmp(name, "_malloc") == 0 || std::strcmp(name, "malloc") == 0) {
-		return reinterpret_cast<std::uintptr_t>(&darling_windows_malloc);
-	}
-	if (std::strcmp(name, "_calloc") == 0 || std::strcmp(name, "calloc") == 0) {
-		return reinterpret_cast<std::uintptr_t>(&darling_windows_calloc);
-	}
-	if (std::strcmp(name, "_realloc") == 0) {
-		return reinterpret_cast<std::uintptr_t>(&darling_windows_realloc);
-	}
-	if (std::strcmp(name, "_reallocarray") == 0 || std::strcmp(name, "reallocarray") == 0) {
-		return reinterpret_cast<std::uintptr_t>(&darling_windows_reallocarray);
-	}
-	if (std::strcmp(name, "_reallocarrayf") == 0 || std::strcmp(name, "reallocarrayf") == 0) {
-		return reinterpret_cast<std::uintptr_t>(&darling_windows_reallocarrayf);
-	}
-	if (std::strcmp(name, "_free") == 0 || std::strcmp(name, "free") == 0) {
-		return reinterpret_cast<std::uintptr_t>(&darling_windows_free);
-	}
-	if (std::strcmp(name, "_memcpy") == 0 || std::strcmp(name, "memcpy") == 0) {
-		return reinterpret_cast<std::uintptr_t>(&darling_windows_memcpy);
-	}
-	if (std::strcmp(name, "_memset") == 0 || std::strcmp(name, "memset") == 0) {
-		return reinterpret_cast<std::uintptr_t>(&darling_windows_memset);
-	}
 	if (std::strcmp(name, "_memmove") == 0 || std::strcmp(name, "memmove") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_memmove);
 	}
@@ -6352,6 +6426,30 @@ extern "C" int darling_windows_atexit(void (*function)())
 	}
 }
 
+extern "C" int darling_windows_atexit_guest(void (*function)())
+{
+	if (function == nullptr) {
+		darling::windows_host::DarwinErrno::Set(22);
+		return -1;
+	}
+	try {
+		std::lock_guard lock(exit_handler_mutex);
+		darling_exit_handlers.push_back({[function]() {
+#if defined(__clang__) && defined(_WIN64)
+			using GuestCallback = void(__attribute__((sysv_abi))*)();
+			reinterpret_cast<GuestCallback>(function)();
+#else
+			// MSVC cannot execute real SysV guest code; this path is only a
+			// source-compatible registration fallback for synthetic fixtures.
+			function();
+#endif
+		}, nullptr});
+		return 0;
+	} catch (...) {
+		return -1;
+	}
+}
+
 extern "C" int darling_windows_cxa_atexit(void (*function)(void*), void* argument,
 	void* dso_handle)
 {
@@ -6364,6 +6462,29 @@ extern "C" int darling_windows_cxa_atexit(void (*function)(void*), void* argumen
 		std::lock_guard lock(exit_handler_mutex);
 		darling_exit_handlers.push_back({[function, argument]() {
 			function(argument);
+		}, dso_handle});
+		return 0;
+	} catch (...) {
+		return -1;
+	}
+}
+
+extern "C" int darling_windows_cxa_atexit_guest(void (*function)(void*),
+	void* argument, void* dso_handle)
+{
+	if (function == nullptr) {
+		darling::windows_host::DarwinErrno::Set(22);
+		return -1;
+	}
+	try {
+		std::lock_guard lock(exit_handler_mutex);
+		darling_exit_handlers.push_back({[function, argument]() {
+#if defined(__clang__) && defined(_WIN64)
+			using GuestCallback = void(__attribute__((sysv_abi))*)(void*);
+			reinterpret_cast<GuestCallback>(function)(argument);
+#else
+			function(argument);
+#endif
 		}, dso_handle});
 		return 0;
 	} catch (...) {
@@ -8634,6 +8755,20 @@ extern "C" const char* darling_windows_getenv(const char* name)
 	if (name == nullptr || *name == '\0') {
 		return nullptr;
 	}
+	// Read the Darwin launch vector first.  During a Mach-O launch it may be
+	// intentionally different from the mutable Windows process environment.
+	{
+		std::lock_guard lock(darwin_environment_mutex);
+		const std::string prefix = std::string(name) + '=';
+		for (const auto& entry : darwin_environment_entries) {
+			if (entry.rfind(prefix, 0) == 0) {
+				value.assign(entry, prefix.size(), std::string::npos);
+				return value.c_str();
+			}
+		}
+		if (darwin_environment_vector_bound)
+			return nullptr;
+	}
 	const DWORD required = GetEnvironmentVariableA(name, nullptr, 0);
 	if (required == 0) {
 		return nullptr;
@@ -8645,6 +8780,27 @@ extern "C" const char* darling_windows_getenv(const char* name)
 	}
 	value.resize(written);
 	return value.c_str();
+}
+
+extern "C" void darling_windows_set_environ_vector(const char* const environment[])
+{
+	std::vector<std::string> entries;
+	if (environment != nullptr) {
+		for (std::size_t index = 0; environment[index] != nullptr; ++index) {
+			const char* value = environment[index];
+			if (value != nullptr)
+				entries.emplace_back(value);
+		}
+	}
+	std::lock_guard lock(darwin_environment_mutex);
+	darwin_environment_entries = std::move(entries);
+	darwin_environment_pointers.clear();
+	darwin_environment_pointers.reserve(darwin_environment_entries.size() + 1);
+	for (std::string& entry : darwin_environment_entries)
+		darwin_environment_pointers.push_back(entry.data());
+	darwin_environment_pointers.push_back(nullptr);
+	darling_windows_environ = darwin_environment_pointers.data();
+	darwin_environment_vector_bound = true;
 }
 
 extern "C" char*** darling_windows_NSGetEnviron()
@@ -8851,7 +9007,7 @@ extern "C" char* darling_windows_ttyname(int descriptor)
 	return darling_windows_ttyname_r(descriptor, name, sizeof(name)) == 0 ? name : nullptr;
 }
 
-extern "C" void* darling_windows_malloc(std::size_t bytes)
+extern "C" DARLING_HOST_GUEST_ABI void* darling_windows_malloc(std::size_t bytes)
 {
 	if (bytes == 0) {
 		bytes = 1;
@@ -8903,18 +9059,35 @@ extern "C" void* darling_windows_reallocarrayf(void* address, std::size_t count,
 	return darling_windows_reallocarray(address, count, bytes);
 }
 
-extern "C" void darling_windows_free(void* address)
+extern "C" DARLING_HOST_GUEST_ABI void darling_windows_free(void* address)
 {
 	if (address != nullptr) {
 		HeapFree(GetProcessHeap(), 0, address);
 	}
 }
 
-extern "C" void* darling_windows_memcpy(void* destination, const void* source,
+extern "C" DARLING_HOST_GUEST_ABI void* darling_windows_memcpy(void* destination, const void* source,
 	std::size_t bytes)
 {
 	if (bytes == 0) return destination;
 	return destination != nullptr && source != nullptr ? std::memcpy(destination, source, bytes) : nullptr;
+}
+
+extern "C" DARLING_HOST_GUEST_ABI void darling_windows_qsort(void* base, std::size_t count,
+	std::size_t width, int (DARLING_HOST_GUEST_ABI *compare)(const void*, const void*))
+{
+	if (base == nullptr || count < 2 || width == 0 || compare == nullptr) return;
+	auto* bytes = static_cast<unsigned char*>(base);
+	std::vector<unsigned char> temporary(width);
+	for (std::size_t i = 1; i < count; ++i) {
+		std::memcpy(temporary.data(), bytes + i * width, width);
+		std::size_t j = i;
+		while (j != 0 && compare(temporary.data(), bytes + (j - 1) * width) < 0) {
+			std::memmove(bytes + j * width, bytes + (j - 1) * width, width);
+			--j;
+		}
+		std::memcpy(bytes + j * width, temporary.data(), width);
+	}
 }
 
 extern "C" void* darling_windows_memset(void* destination, int value,

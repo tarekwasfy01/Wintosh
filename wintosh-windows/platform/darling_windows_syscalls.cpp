@@ -248,6 +248,23 @@ std::size_t DarwinSyscalls::Read(int descriptor, void* buffer, std::size_t bytes
 			return static_cast<std::size_t>(result);
 		}
 	}
+	{
+		std::scoped_lock lock(m_mutex);
+		const auto stream = m_stream_writes.find(descriptor);
+		if (stream != m_stream_writes.end()) {
+			auto& queue = m_stream_buffers[descriptor];
+			if (queue.empty()) {
+				DarwinErrno::Set(35);
+				throw std::invalid_argument("empty nonblocking Darwin socketpair stream");
+			}
+			const std::size_t transferred = (std::min)(bytes, queue.size());
+			auto* destination = static_cast<unsigned char*>(buffer);
+			std::copy_n(queue.begin(), static_cast<std::ptrdiff_t>(transferred), destination);
+			queue.erase(queue.begin(), queue.begin() + static_cast<std::ptrdiff_t>(transferred));
+			m_stream_pending[descriptor] = queue.size();
+			return transferred;
+		}
+	}
 	const HANDLE handle = GetHandle(descriptor);
 	bool nonblocking = false;
 	{
@@ -289,6 +306,27 @@ std::size_t DarwinSyscalls::Write(int descriptor, const void* buffer, std::size_
 				throw std::system_error(error, std::system_category(), "send");
 			}
 			return static_cast<std::size_t>(result);
+		}
+	}
+	{
+		std::scoped_lock lock(m_mutex);
+		const auto stream = m_stream_writes.find(descriptor);
+		if (stream != m_stream_writes.end()) {
+			if (m_stream_shutdown_write.contains(descriptor)) {
+				DarwinErrno::Set(32);
+				throw std::invalid_argument("Darwin socketpair write side is shut down");
+			}
+			const auto peer = m_socket_peers.find(descriptor);
+			if (peer == m_socket_peers.end()) {
+				DarwinErrno::Set(32);
+				throw std::invalid_argument("closed Darwin socketpair peer");
+			}
+			auto& queue = m_stream_buffers[peer->second];
+			const auto* source_bytes = static_cast<const unsigned char*>(buffer);
+			queue.insert(queue.end(), source_bytes, source_bytes + bytes);
+			const std::size_t transferred = bytes;
+			m_stream_pending[peer->second] = queue.size();
+			return transferred;
 		}
 	}
 	bool append = false;
@@ -591,6 +629,48 @@ int DarwinSyscalls::Duplicate(int descriptor, int target)
 		DarwinErrno::Set(9);
 		throw std::invalid_argument("invalid Darwin file descriptor");
 	}
+	const auto stream = m_stream_writes.find(descriptor);
+	if (stream != m_stream_writes.end()) {
+		HANDLE read_duplicate = nullptr;
+		HANDLE write_duplicate = nullptr;
+		if (!DuplicateHandle(GetCurrentProcess(), source, GetCurrentProcess(), &read_duplicate,
+			0, TRUE, DUPLICATE_SAME_ACCESS) ||
+			!DuplicateHandle(GetCurrentProcess(), stream->second, GetCurrentProcess(), &write_duplicate,
+			0, TRUE, DUPLICATE_SAME_ACCESS)) {
+			if (read_duplicate) CloseHandle(read_duplicate);
+			if (write_duplicate) CloseHandle(write_duplicate);
+			ThrowLastError("DuplicateHandle(stream)");
+		}
+		int result = target;
+		if (result < 0) {
+			for (result = 3; result < static_cast<int>(m_handles.size()); ++result)
+				if (m_handles[result] == nullptr) break;
+			if (result == static_cast<int>(m_handles.size())) m_handles.push_back(nullptr);
+		} else {
+			if (result < 3) {
+				CloseHandle(read_duplicate); CloseHandle(write_duplicate);
+				DarwinErrno::Set(9);
+				throw std::invalid_argument("standard descriptor replacement is unsupported");
+			}
+			if (static_cast<std::size_t>(result) >= m_handles.size())
+				m_handles.resize(static_cast<std::size_t>(result) + 1, nullptr);
+			if (result != descriptor && m_handles[result] != nullptr) CloseUnlocked(result);
+		}
+		if (result == descriptor) {
+			CloseHandle(read_duplicate); CloseHandle(write_duplicate);
+			return result;
+		}
+		m_handles[result] = read_duplicate;
+		m_stream_writes[result] = write_duplicate;
+		m_stream_pending[result] = m_stream_pending[descriptor];
+		const auto peer = m_socket_peers.find(descriptor);
+		if (peer != m_socket_peers.end()) m_socket_peers[result] = peer->second;
+		if (m_nonblocking_descriptors.contains(descriptor)) m_nonblocking_descriptors.insert(result);
+		else m_nonblocking_descriptors.erase(result);
+		if (m_cloexec_descriptors.contains(descriptor)) m_cloexec_descriptors.insert(result);
+		else m_cloexec_descriptors.erase(result);
+		return result;
+	}
 	int result = target;
 	if (result < 0) {
 		for (result = 3; result < static_cast<int>(m_handles.size()); ++result) {
@@ -835,6 +915,22 @@ int DarwinSyscalls::Poll(darling_pollfd* descriptors, std::size_t count, int tim
 						++ready;
 					continue;
 				}
+				const auto stream = m_stream_writes.find(descriptor.fd);
+				if (stream != m_stream_writes.end()) {
+					const HANDLE read_handle = m_handles[descriptor.fd];
+					DWORD available = 0;
+					if ((descriptor.events & poll_in) != 0 &&
+						((m_stream_pending[descriptor.fd] != 0) ||
+						 (PeekNamedPipe(read_handle, nullptr, 0, nullptr, &available, nullptr) && available != 0)))
+						descriptor.revents |= poll_in;
+					if ((descriptor.events & poll_out) != 0)
+						descriptor.revents |= poll_out;
+					const auto peer = m_socket_peers.find(descriptor.fd);
+					if (peer != m_socket_peers.end() && m_stream_shutdown_write.contains(peer->second))
+						descriptor.revents |= poll_hup;
+					if (descriptor.revents != 0) ++ready;
+					continue;
+				}
 			}
 			HANDLE handle = nullptr;
 			try {
@@ -946,6 +1042,36 @@ void DarwinSyscalls::SocketPair(int domain, int type, int protocol, int descript
 	}
 	descriptors[0] = -1;
 	descriptors[1] = -1;
+	if (domain == AF_UNIX) {
+		HANDLE a_read = nullptr, a_write = nullptr, b_read = nullptr, b_write = nullptr;
+		if (!::CreatePipe(&a_read, &a_write, nullptr, 0) || !::CreatePipe(&b_read, &b_write, nullptr, 0)) {
+			if (a_read) CloseHandle(a_read); if (a_write) CloseHandle(a_write);
+			if (b_read) CloseHandle(b_read); if (b_write) CloseHandle(b_write);
+			ThrowLastError("CreatePipe(socketpair)");
+		}
+		try {
+			std::scoped_lock lock(m_mutex);
+			auto allocate = [&]() {
+				for (int fd = 3; fd < static_cast<int>(m_handles.size()); ++fd)
+					if (m_handles[fd] == nullptr) return fd;
+				m_handles.push_back(nullptr);
+				return static_cast<int>(m_handles.size() - 1);
+			};
+			descriptors[0] = allocate(); descriptors[1] = allocate();
+			m_handles[descriptors[0]] = a_read; m_stream_writes[descriptors[0]] = b_write;
+			m_handles[descriptors[1]] = b_read; m_stream_writes[descriptors[1]] = a_write;
+			m_stream_pending[descriptors[0]] = 0; m_stream_pending[descriptors[1]] = 0;
+			m_stream_buffers[descriptors[0]] = {}; m_stream_buffers[descriptors[1]] = {};
+			m_socket_peers[descriptors[0]] = descriptors[1]; m_socket_peers[descriptors[1]] = descriptors[0];
+		} catch (...) {
+			if (a_read) CloseHandle(a_read); if (a_write) CloseHandle(a_write);
+			if (b_read) CloseHandle(b_read); if (b_write) CloseHandle(b_write);
+			throw;
+		}
+		if (nonblocking) { SetDescriptorFlags(descriptors[0], 0x0004); SetDescriptorFlags(descriptors[1], 0x0004); }
+		if (close_on_exec) { SetDescriptorFdFlags(descriptors[0], 1); SetDescriptorFdFlags(descriptors[1], 1); }
+		return;
+	}
 	int listener = -1;
 	try {
 		listener = Socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
@@ -1097,6 +1223,24 @@ void DarwinSyscalls::GetSocketOption(int descriptor, int level, int option, void
 		*value_length = sizeof(int);
 		return;
 	}
+	if (m_stream_writes.contains(descriptor) && level == SOL_SOCKET && option == SO_SNDBUF) {
+		if (value == nullptr || value_length == nullptr || *value_length < static_cast<int>(sizeof(int))) {
+			DarwinErrno::Set(22);
+			throw std::invalid_argument("invalid stream SO_SNDBUF result buffer");
+		}
+		*static_cast<int*>(value) = 65536;
+		*value_length = sizeof(int);
+		return;
+	}
+	if (m_stream_writes.contains(descriptor) && level == SOL_SOCKET && option == SO_SNDBUF) {
+		if (value == nullptr || value_length == nullptr || *value_length < static_cast<int>(sizeof(int))) {
+			DarwinErrno::Set(22);
+			throw std::invalid_argument("invalid stream SO_SNDBUF result buffer");
+		}
+		*static_cast<int*>(value) = 65536;
+		*value_length = sizeof(int);
+		return;
+	}
 	const SOCKET socket = GetSocket(descriptor);
 	if (getsockopt(socket, level, option, static_cast<char*>(value), value_length) == SOCKET_ERROR) {
 		const int error = WSAGetLastError();
@@ -1128,6 +1272,12 @@ void DarwinSyscalls::SetSocketOption(int descriptor, int level, int option, cons
 			throw std::invalid_argument("invalid SO_REUSEPORT value");
 		}
 		const int enabled = *static_cast<const int*>(value);
+		if (m_stream_writes.contains(descriptor)) {
+			std::scoped_lock lock(m_mutex);
+			if (enabled != 0) m_reuseport_descriptors.insert(descriptor);
+			else m_reuseport_descriptors.erase(descriptor);
+			return;
+		}
 		const SOCKET socket = GetSocket(descriptor);
 		if (setsockopt(socket, SOL_SOCKET, SO_REUSEADDR,
 			static_cast<const char*>(value), sizeof(int)) == SOCKET_ERROR) {
@@ -1142,6 +1292,13 @@ void DarwinSyscalls::SetSocketOption(int descriptor, int level, int option, cons
 			m_reuseport_descriptors.erase(descriptor);
 		return;
 	}
+	if (m_stream_writes.contains(descriptor) && level == SOL_SOCKET && option == SO_SNDBUF) {
+		if (value == nullptr || value_length < static_cast<int>(sizeof(int))) {
+			DarwinErrno::Set(22);
+			throw std::invalid_argument("invalid stream SO_SNDBUF value");
+		}
+		return;
+	}
 	const SOCKET socket = GetSocket(descriptor);
 	if (setsockopt(socket, level, option, static_cast<const char*>(value), value_length) == SOCKET_ERROR) {
 		const int error = WSAGetLastError();
@@ -1153,6 +1310,7 @@ void DarwinSyscalls::SetSocketOption(int descriptor, int level, int option, cons
 std::size_t DarwinSyscalls::SendToSocket(int descriptor, const void* buffer, std::size_t bytes,
 	int flags, const sockaddr* address, int address_length)
 {
+	if (m_stream_writes.contains(descriptor)) return Write(descriptor, buffer, bytes);
 	const SOCKET socket = GetSocket(descriptor);
 	TemporarySocketNonblocking temporary_nonblocking(socket, (flags & 0x0080) != 0,
 		IsNonblocking(descriptor));
@@ -1171,6 +1329,10 @@ std::size_t DarwinSyscalls::SendToSocket(int descriptor, const void* buffer, std
 std::size_t DarwinSyscalls::ReceiveFromSocket(int descriptor, void* buffer, std::size_t bytes,
 	int flags, sockaddr* address, int* address_length)
 {
+	if (m_stream_writes.contains(descriptor)) {
+		if (address_length) *address_length = 0;
+		return Read(descriptor, buffer, bytes);
+	}
 	const SOCKET socket = GetSocket(descriptor);
 	TemporarySocketNonblocking temporary_nonblocking(socket, (flags & 0x0080) != 0,
 		IsNonblocking(descriptor));
@@ -1189,6 +1351,11 @@ std::size_t DarwinSyscalls::ReceiveFromSocket(int descriptor, void* buffer, std:
 std::size_t DarwinSyscalls::SendMessage(int descriptor, const WSABUF* buffers, DWORD count,
 	int flags, const sockaddr* address, int address_length)
 {
+	if (m_stream_writes.contains(descriptor)) {
+		std::size_t total = 0;
+		for (DWORD i = 0; i < count; ++i) total += Write(descriptor, buffers[i].buf, buffers[i].len);
+		return total;
+	}
 	const SOCKET socket = GetSocket(descriptor);
 	TemporarySocketNonblocking temporary_nonblocking(socket, (flags & 0x0080) != 0,
 		IsNonblocking(descriptor));
@@ -1208,6 +1375,30 @@ std::size_t DarwinSyscalls::SendMessage(int descriptor, const WSABUF* buffers, D
 std::size_t DarwinSyscalls::ReceiveMessage(int descriptor, WSABUF* buffers, DWORD count,
 	int* flags, sockaddr* address, int* address_length)
 {
+	if (m_stream_writes.contains(descriptor)) {
+		std::size_t total = 0;
+		const bool peek = flags != nullptr && ((*flags & 0x0002) != 0);
+		auto& queue = m_stream_buffers[descriptor];
+		if (queue.empty()) {
+			DarwinErrno::Set(35);
+			throw std::invalid_argument("empty nonblocking Darwin socketpair stream");
+		}
+		std::size_t offset = 0;
+		for (DWORD i = 0; i < count; ++i) {
+			const std::size_t got = (std::min)(static_cast<std::size_t>(buffers[i].len), queue.size() - offset);
+			std::copy_n(queue.begin() + static_cast<std::ptrdiff_t>(offset),
+				static_cast<std::ptrdiff_t>(got), reinterpret_cast<unsigned char*>(buffers[i].buf));
+			total += got;
+			offset += got;
+			if (got < buffers[i].len) break;
+		}
+		if (!peek) {
+			queue.erase(queue.begin(), queue.begin() + static_cast<std::ptrdiff_t>(offset));
+			m_stream_pending[descriptor] = queue.size();
+		}
+		if (address_length) *address_length = 0;
+		return total;
+	}
 	const SOCKET socket = GetSocket(descriptor);
 	TemporarySocketNonblocking temporary_nonblocking(socket, flags != nullptr &&
 		((*flags & 0x0080) != 0), IsNonblocking(descriptor));
@@ -1259,6 +1450,16 @@ std::size_t DarwinSyscalls::ReceiveMessage(int descriptor, WSABUF* buffers, DWOR
 
 void DarwinSyscalls::ShutdownSocket(int descriptor, int how)
 {
+	if (m_stream_writes.contains(descriptor)) {
+		if (how != 0 && how != 1 && how != 2) {
+			DarwinErrno::Set(22);
+			throw std::invalid_argument("invalid Darwin socket shutdown mode");
+		}
+		std::scoped_lock lock(m_mutex);
+		if (how == 0 || how == 2) m_stream_shutdown_read.insert(descriptor);
+		if (how == 1 || how == 2) m_stream_shutdown_write.insert(descriptor);
+		return;
+	}
 	const SOCKET socket = GetSocket(descriptor);
 	if (shutdown(socket, how) == SOCKET_ERROR) {
 		const int error = WSAGetLastError();
@@ -1295,11 +1496,7 @@ void DarwinSyscalls::CloseUnlocked(int descriptor) noexcept
 	if (socket != m_sockets.end()) {
 		closesocket(socket->second);
 		m_sockets.erase(socket);
-		const auto peer = m_socket_peers.find(descriptor);
-		if (peer != m_socket_peers.end()) {
-			m_socket_peers.erase(peer->second);
-			m_socket_peers.erase(peer);
-		}
+		m_socket_peers.erase(descriptor);
 		if (descriptor >= 0 && static_cast<std::size_t>(descriptor) < m_handles.size())
 			m_handles[descriptor] = nullptr;
 		m_paths.erase(descriptor);
@@ -1312,8 +1509,18 @@ void DarwinSyscalls::CloseUnlocked(int descriptor) noexcept
 	}
 	if (descriptor >= 0 && static_cast<std::size_t>(descriptor) < m_handles.size() &&
 		m_handles[descriptor] != nullptr) {
+		const auto stream = m_stream_writes.find(descriptor);
+		if (stream != m_stream_writes.end()) {
+			CloseHandle(stream->second);
+			m_stream_writes.erase(stream);
+		}
+		m_stream_pending.erase(descriptor);
+		m_stream_buffers.erase(descriptor);
+		m_stream_shutdown_read.erase(descriptor);
+		m_stream_shutdown_write.erase(descriptor);
 		CloseHandle(m_handles[descriptor]);
 		m_handles[descriptor] = nullptr;
+		m_socket_peers.erase(descriptor);
 		m_paths.erase(descriptor);
 		m_append_descriptors.erase(descriptor);
 		m_nonblocking_descriptors.erase(descriptor);

@@ -7,12 +7,14 @@
  */
 
 #include "darling_windows_macho.h"
+#include "darling_windows_stdio.h"
 
 #include <windows.h>
 
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -78,11 +80,11 @@ void WriteEnvironmentMachO(const std::filesystem::path& path)
 
 	// getenv("DARLING_RUNNER_ENV"); return result != NULL.
 	const std::uint8_t entry[] = {
-		0x48, 0x8d, 0x0d, 0x49, 0x00, 0x00, 0x00,
-		0x48, 0x83, 0xec, 0x28,
+		0x48, 0x8d, 0x3d, 0x49, 0x00, 0x00, 0x00,
+		0x48, 0x83, 0xec, 0x08,
 		0x48, 0x8b, 0x05, 0x2e, 0x00, 0x00, 0x00,
 		0xff, 0xd0,
-		0x48, 0x83, 0xc4, 0x28,
+		0x48, 0x83, 0xc4, 0x08,
 		0x48, 0x85, 0xc0, 0x0f, 0x95, 0xc0, 0x0f, 0xb6, 0xc0, 0xc3};
 	std::memcpy(data.data() + 0x200, entry, sizeof(entry));
 #else
@@ -166,6 +168,26 @@ int wmain()
 {
 	try {
 		SetEnvironmentVariableW(L"DARLING_RUNNER_ENV", L"present");
+		SetEnvironmentVariableW(L"DARLING_RUNNER_ENV_HOST_FALLBACK", L"must-not-leak");
+		const char* launch_environment[] = {"DARLING_RUNNER_ENV=launch-owned", nullptr};
+		darling_windows_set_environ_vector(launch_environment);
+		const auto* launch_value = darling_windows_getenv("DARLING_RUNNER_ENV");
+		if (launch_value == nullptr || std::strcmp(launch_value, "launch-owned") != 0 ||
+			darling_windows_environ == nullptr ||
+			std::strcmp(darling_windows_environ[0], "DARLING_RUNNER_ENV=launch-owned") != 0) {
+			std::cerr << "RUNNER_ENV_LAUNCH_VECTOR=FAIL\n";
+			SetEnvironmentVariableW(L"DARLING_RUNNER_ENV", nullptr);
+			SetEnvironmentVariableW(L"DARLING_RUNNER_ENV_HOST_FALLBACK", nullptr);
+			return 6;
+		}
+		if (darling_windows_getenv("DARLING_RUNNER_ENV_HOST_FALLBACK") != nullptr) {
+			std::cerr << "RUNNER_ENV_NO_HOST_FALLBACK=FAIL\n";
+			SetEnvironmentVariableW(L"DARLING_RUNNER_ENV", nullptr);
+			SetEnvironmentVariableW(L"DARLING_RUNNER_ENV_HOST_FALLBACK", nullptr);
+			return 7;
+		}
+		std::cout << "RUNNER_ENV_LAUNCH_VECTOR=PASS\n";
+		std::cout << "RUNNER_ENV_NO_HOST_FALLBACK=PASS\n";
 		wchar_t temp_path[MAX_PATH]{};
 		const DWORD temp_length = GetTempPathW(MAX_PATH, temp_path);
 		if (temp_length == 0 || temp_length >= MAX_PATH) {
@@ -203,9 +225,15 @@ int wmain()
 		CloseHandle(process.hProcess);
 		std::filesystem::remove(image);
 		SetEnvironmentVariableW(L"DARLING_RUNNER_ENV", nullptr);
+		SetEnvironmentVariableW(L"DARLING_RUNNER_ENV_HOST_FALLBACK", nullptr);
+		if (queried == FALSE || status != 1) {
+			std::cerr << "RUNNER_ENV_CHILD_STATUS=" << status
+				<< " WAIT_RESULT=" << wait_result << "\n";
+		}
 		return queried != FALSE && status == 1 ? 0 : 4;
 	} catch (...) {
 		SetEnvironmentVariableW(L"DARLING_RUNNER_ENV", nullptr);
+		SetEnvironmentVariableW(L"DARLING_RUNNER_ENV_HOST_FALLBACK", nullptr);
 		return 5;
 	}
 }

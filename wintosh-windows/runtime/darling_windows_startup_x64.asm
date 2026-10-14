@@ -23,6 +23,16 @@ darling_windows_startup_probe PROC
     mov eax, dword ptr [rsp]
     cmp eax, 2
     jne startup_probe_fail
+    mov rax, qword ptr [rsp+8]
+    test rax, rax
+    jz startup_probe_fail
+    cmp byte ptr [rax], 102
+    jne startup_probe_fail
+    mov rax, qword ptr [rsp+32]
+    test rax, rax
+    jz startup_probe_fail
+    cmp byte ptr [rax], 102
+    jne startup_probe_fail
     xor ecx, ecx
     sub rsp, 28h
     jmp ExitProcess

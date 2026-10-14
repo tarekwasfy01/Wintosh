@@ -194,6 +194,13 @@ namespace {
 	}
 }
 
+static int DARLING_HOST_GUEST_ABI compare_integers(const void* left, const void* right)
+{
+	const int lhs = *static_cast<const int*>(left);
+	const int rhs = *static_cast<const int*>(right);
+	return lhs < rhs ? -1 : lhs > rhs ? 1 : 0;
+}
+
 int main()
 {
 	const bool stack_protector_symbols =
@@ -201,10 +208,130 @@ int main()
 		darling_windows_host_symbol("___stack_chk_fail") != 0 &&
 		darling_windows_host_symbol("___stack_chk_fail_local") != 0 &&
 		darling_windows_host_symbol("__stack_chk_guard") != 0 &&
-		darling_windows_host_symbol("___stack_chk_guard") != 0;
+		darling_windows_host_symbol("___stack_chk_guard") != 0 &&
+		darling_windows_host_symbol("__stack_chk_guard") ==
+		darling_windows_host_symbol("___stack_chk_guard");
 	std::cout << "DARWIN_STACK_PROTECTOR_SYMBOLS=" <<
 		(stack_protector_symbols ? "PASS" : "FAIL") << "\n";
 	if (!stack_protector_symbols)
+		return 1;
+	const bool stdout_data_symbol =
+		darling_windows_host_symbol("___stdoutp") != 0 &&
+		darling_windows_host_symbol("___stdoutp") ==
+			 darling_windows_host_symbol("__stdoutp");
+	const bool stdio_data_symbols = stdout_data_symbol &&
+		darling_windows_host_symbol("___stdinp") != 0 &&
+		darling_windows_host_symbol("___stdinp") ==
+			darling_windows_host_symbol("__stdinp") &&
+		darling_windows_host_symbol("___stderrp") != 0 &&
+		darling_windows_host_symbol("___stderrp") ==
+			darling_windows_host_symbol("__stderrp") &&
+		*reinterpret_cast<void**>(darling_windows_host_symbol("___stdinp")) ==
+			static_cast<void*>(stdin) &&
+		*reinterpret_cast<void**>(darling_windows_host_symbol("___stdoutp")) ==
+			static_cast<void*>(stdout) &&
+		*reinterpret_cast<void**>(darling_windows_host_symbol("___stderrp")) ==
+			static_cast<void*>(stderr);
+	std::cout << "DARWIN_STDIO_DATA_EXPORTS=" <<
+		(stdio_data_symbols ? "PASS" : "FAIL") << "\n";
+	if (!stdio_data_symbols)
+		return 1;
+	const bool table_alias_symbols =
+		darling_windows_host_symbol("_puts") == darling_windows_host_symbol("puts") &&
+		darling_windows_host_symbol("_printf") == darling_windows_host_symbol("printf") &&
+		darling_windows_host_symbol("_exit") != 0 &&
+		darling_windows_host_symbol("exit") != 0 &&
+		darling_windows_host_symbol("_exit") != darling_windows_host_symbol("exit") &&
+		darling_windows_host_symbol("dyld_stub_binder") ==
+			darling_windows_host_symbol("_dyld_stub_binder") &&
+		darling_windows_host_symbol("___cxa_atexit") ==
+			darling_windows_host_symbol("_cxa_atexit") &&
+		darling_windows_host_symbol("___cxa_finalize") ==
+			darling_windows_host_symbol("_cxa_finalize") &&
+		darling_windows_host_symbol("_getenv") ==
+			darling_windows_host_symbol("getenv");
+	std::cout << "DARWIN_EXPORT_TABLE_ALIASES=" <<
+		(table_alias_symbols ? "PASS" : "FAIL") << "\n";
+	if (!table_alias_symbols)
+		return 1;
+	const bool getenv_bridge =
+		darling_windows_host_symbol("_getenv") != 0 &&
+		darling_windows_host_symbol("_getenv") ==
+			darling_windows_host_symbol("getenv");
+	std::cout << "DARWIN_GETENV_ABI_BRIDGE=" <<
+		(getenv_bridge ? "PASS" : "FAIL") << "\n";
+	if (!getenv_bridge)
+		return 1;
+	const auto error_address = darling_windows_host_symbol("___error");
+	bool errno_bridge = error_address != 0 &&
+		error_address == darling_windows_host_symbol("__error") &&
+		reinterpret_cast<int* (DARLING_HOST_GUEST_ABI*)()>(error_address)() != nullptr;
+	if (errno_bridge) {
+		auto error_function = reinterpret_cast<int* (DARLING_HOST_GUEST_ABI*)()>(error_address);
+		*error_function() = 73;
+		errno_bridge = *error_function() == 73;
+		int* worker_error = nullptr;
+		std::thread errno_worker([&]() {
+			worker_error = error_function();
+			*worker_error = 91;
+		});
+		errno_worker.join();
+		errno_bridge = errno_bridge && worker_error != nullptr &&
+			worker_error != error_function() && *error_function() == 73 &&
+			*worker_error == 91;
+	}
+	std::cout << "DARWIN_ERRNO_ABI_BRIDGE=" <<
+		(errno_bridge ? "PASS" : "FAIL") << "\n";
+	if (!errno_bridge)
+		return 1;
+	int qsort_values[] = {9, 1, 7, 3, 5};
+	const int qsort_expected[] = {1, 3, 5, 7, 9};
+	darling_windows_qsort(qsort_values, 5, sizeof(qsort_values[0]), compare_integers);
+	const bool qsort_bridge =
+		darling_windows_host_symbol("_qsort") ==
+		darling_windows_host_symbol("qsort") &&
+		std::equal(std::begin(qsort_values), std::end(qsort_values),
+			std::begin(qsort_expected));
+	std::cout << "DARWIN_QSORT_GUEST_CALLBACK=" <<
+		(qsort_bridge ? "PASS" : "FAIL") << "\n";
+	if (!qsort_bridge)
+		return 1;
+	const bool atexit_bridge =
+		darling_windows_host_symbol("_atexit") != 0 &&
+		darling_windows_host_symbol("_atexit") ==
+			darling_windows_host_symbol("atexit");
+	std::cout << "DARWIN_ATEXIT_ABI_BRIDGE=" <<
+		(atexit_bridge ? "PASS" : "FAIL") << "\n";
+	if (!atexit_bridge)
+		return 1;
+	const bool memory_table_aliases =
+		darling_windows_host_symbol("_malloc") == darling_windows_host_symbol("malloc") &&
+		darling_windows_host_symbol("_calloc") == darling_windows_host_symbol("calloc") &&
+		darling_windows_host_symbol("_free") == darling_windows_host_symbol("free") &&
+		darling_windows_host_symbol("_memcpy") == darling_windows_host_symbol("memcpy") &&
+		darling_windows_host_symbol("_memset") == darling_windows_host_symbol("memset") &&
+		darling_windows_host_symbol("_reallocarray") ==
+		darling_windows_host_symbol("reallocarray");
+	std::cout << "DARWIN_MEMORY_EXPORT_TABLE=" <<
+		(memory_table_aliases ? "PASS" : "FAIL") << "\n";
+	if (!memory_table_aliases)
+		return 1;
+	const bool file_io_table_aliases =
+		darling_windows_host_symbol("_open") == darling_windows_host_symbol("open") &&
+		darling_windows_host_symbol("_open_nocancel") ==
+		darling_windows_host_symbol("open_nocancel") &&
+		darling_windows_host_symbol("_read") == darling_windows_host_symbol("read") &&
+		darling_windows_host_symbol("_read_nocancel") ==
+		darling_windows_host_symbol("read_nocancel") &&
+		darling_windows_host_symbol("_write") == darling_windows_host_symbol("write") &&
+		darling_windows_host_symbol("_write_nocancel") ==
+		darling_windows_host_symbol("write_nocancel") &&
+		darling_windows_host_symbol("_close") == darling_windows_host_symbol("close") &&
+		darling_windows_host_symbol("_close_nocancel") ==
+		darling_windows_host_symbol("close_nocancel");
+	std::cout << "DARWIN_FILE_IO_EXPORT_TABLE=" <<
+		(file_io_table_aliases ? "PASS" : "FAIL") << "\n";
+	if (!file_io_table_aliases)
 		return 1;
 	const bool mach_peek_symbols =
 		darling_windows_host_symbol("mach_port_peek") != 0 &&

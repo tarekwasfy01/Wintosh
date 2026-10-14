@@ -26,13 +26,21 @@ int wmain()
 		mutex.Unlock();
 		std::cout << "WINDOWS_CONDITION_TIMEOUT=PASS\n";
 		std::atomic<bool> signalled{false};
+		std::atomic<bool> waiter_ready{false};
 		std::thread condition_waiter([&] {
 			mutex.Lock();
+			waiter_ready.store(true, std::memory_order_release);
 			const bool woke = condition.Wait(mutex, 2000);
 			signalled.store(woke, std::memory_order_release);
 			mutex.Unlock();
 		});
-		std::this_thread::sleep_for(std::chrono::milliseconds(20));
+		for (int attempt = 0; attempt != 2000 &&
+			!waiter_ready.load(std::memory_order_acquire); ++attempt)
+			std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		if (!waiter_ready.load(std::memory_order_acquire)) {
+			condition_waiter.join();
+			return 3;
+		}
 		condition.NotifyOne();
 		condition_waiter.join();
 		if (!signalled.load(std::memory_order_acquire))

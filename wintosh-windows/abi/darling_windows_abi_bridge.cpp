@@ -9,11 +9,13 @@
 #include "darling_windows_abi_bridge.h"
 #include "darling_windows_macho.h"
 #include "darling_windows_stdio.h"
+#include "darling_windows_errno.h"
 
 #include <cstdio>
 #include <cstdint>
 #include <cstring>
 #include <cinttypes>
+
 
 #if defined(__clang__) && defined(_WIN64)
 #define DARLING_SYSV __attribute__((sysv_abi))
@@ -24,6 +26,16 @@
 extern "C" DARLING_SYSV int darling_windows_abi_puts(const char* value)
 {
 	return value == nullptr ? EOF : std::puts(value);
+}
+
+extern "C" DARLING_SYSV const char* darling_windows_abi_getenv(const char* name)
+{
+	return darling_windows_getenv(name);
+}
+
+extern "C" DARLING_SYSV int* darling_windows_abi_error()
+{
+	return darling::windows_host::DarwinErrno::Address();
 }
 
 extern "C" DARLING_SYSV std::uintptr_t darling_windows_abi_resolve_lazy_binding(
@@ -99,7 +111,29 @@ extern "C" int darling_windows_abi_printf(const char* format, ...)
 
 extern "C" DARLING_SYSV [[noreturn]] void darling_windows_abi_exit(int status)
 {
+	// Darwin _exit is the non-unwinding termination primitive.  It must not
+	// run atexit handlers or attempt to unwind through a guest stack.
+	darling_windows__exit(status);
+}
+
+extern "C" DARLING_SYSV [[noreturn]] void darling_windows_abi_normal_exit(int status)
+{
 	darling_windows_exit(status);
+}
+
+extern "C" DARLING_SYSV int darling_windows_abi_atexit(void (*function)())
+{
+	// The guest supplies the callback in the SysV first argument register;
+	// this wrapper performs the ABI transition before entering the host
+	// atexit registry. The callback remains guest-owned and is invoked only
+	// after a normal guest return through the existing finalizer path.
+	return darling_windows_atexit_guest(function);
+}
+
+extern "C" DARLING_SYSV int darling_windows_abi_cxa_atexit(
+	void (*function)(void*), void* argument, void* dso_handle)
+{
+	return darling_windows_cxa_atexit_guest(function, argument, dso_handle);
 }
 
 extern "C" [[noreturn]] void darling_windows_abi_dyld_stub_binder_fail_closed()
@@ -121,6 +155,18 @@ extern "C" DARLING_SYSV int darling_windows_darwin_stub_probe_target(
 	std::uint64_t first, std::uint64_t second)
 {
 	return (first == 0x1122334455667788ULL && second == 0x8877665544332211ULL) ? 73 : 74;
+}
+
+extern "C" DARLING_SYSV darling::windows_host::abi::DarwinAggregatePair
+darling_windows_abi_aggregate_pair(darling::windows_host::abi::DarwinAggregatePair value)
+{
+	return {value.integer ^ 0xfeedfacecafebeefULL, value.real + 0.5};
+}
+
+extern "C" DARLING_SYSV darling::windows_host::abi::DarwinAggregateTriple
+darling_windows_abi_aggregate_triple(darling::windows_host::abi::DarwinAggregateTriple value)
+{
+	return {value.first + 1, value.second + 2, value.third + 3};
 }
 
 extern "C" DARLING_SYSV std::uintptr_t darling_windows_darwin_stub_probe_resolver(

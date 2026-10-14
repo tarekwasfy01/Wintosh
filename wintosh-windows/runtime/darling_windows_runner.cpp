@@ -13,6 +13,7 @@
 #include <windows.h>
 
 #include <cctype>
+#include <cstdio>
 #include <filesystem>
 #include <cwchar>
 #include <fstream>
@@ -304,6 +305,62 @@ std::filesystem::path DefaultPrefix(const std::filesystem::path& image)
 
 } // namespace
 
+namespace {
+volatile LONG guest_exception_boundary_active = 0;
+
+LONG WINAPI GuestExceptionBoundary(PEXCEPTION_POINTERS pointers)
+{
+	if (InterlockedCompareExchange(&guest_exception_boundary_active, 0, 0) == 0)
+		return EXCEPTION_CONTINUE_SEARCH;
+	char message[192]{};
+	const auto code = pointers != nullptr && pointers->ExceptionRecord != nullptr ?
+		pointers->ExceptionRecord->ExceptionCode : 0u;
+	const auto rip = pointers != nullptr && pointers->ContextRecord != nullptr ?
+		static_cast<unsigned long long>(pointers->ContextRecord->Rip) : 0ull;
+	const auto rsp = pointers != nullptr && pointers->ContextRecord != nullptr ?
+		static_cast<unsigned long long>(pointers->ContextRecord->Rsp) : 0ull;
+	const auto length = std::snprintf(message, sizeof(message),
+		"DARLING_GUEST_EXCEPTION=0x%08lX RIP=0x%llX RSP=0x%llX\r\n",
+		static_cast<unsigned long>(code), rip, rsp);
+	DWORD written = 0;
+	if (length > 0)
+		WriteFile(GetStdHandle(STD_ERROR_HANDLE), message,
+			static_cast<DWORD>(length), &written, nullptr);
+	ExitProcess(139);
+	return EXCEPTION_CONTINUE_SEARCH;
+}
+}
+
+int RunGuestWithWindowsExceptionBoundary(
+	const std::filesystem::path& image,
+	const darling::windows_host::DarwinLaunchOptions& options)
+{
+	if (options.entry_abi == darling::windows_host::DarwinEntryAbi::SyntheticCompatibleMain)
+		return darling::windows_host::DarwinBootstrap::Run(image, options);
+#if defined(_WIN32)
+	PVOID handler = nullptr;
+	const bool boundary_enabled = true;
+	handler = AddVectoredExceptionHandler(1, GuestExceptionBoundary);
+	InterlockedExchange(&guest_exception_boundary_active, 1);
+	__try {
+		const int result = darling::windows_host::DarwinBootstrap::Run(image, options);
+		if (boundary_enabled) InterlockedExchange(&guest_exception_boundary_active, 0);
+		if (handler != nullptr) RemoveVectoredExceptionHandler(handler);
+		return result;
+	}
+	__except (EXCEPTION_EXECUTE_HANDLER) {
+		if (boundary_enabled) InterlockedExchange(&guest_exception_boundary_active, 0);
+		if (handler != nullptr) RemoveVectoredExceptionHandler(handler);
+		const auto code = GetExceptionCode();
+		std::cerr << "DARLING_GUEST_EXCEPTION=0x" << std::hex << code << std::dec << "\n";
+		// 139 is the conventional Unix-compatible SIGSEGV exit status.
+		return 139;
+	}
+#else
+	return darling::windows_host::DarwinBootstrap::Run(image, options);
+#endif
+}
+
 int wmain(int argc, wchar_t** argv)
 {
 	if (argc == 3 && std::wstring(argv[1]) == L"--init-prefix") {
@@ -442,20 +499,28 @@ int wmain(int argc, wchar_t** argv)
 					<< L" file_offset=0x" << section.file_offset << std::dec << L"\n";
 			for (const auto& dependency : inspected.Dependencies())
 				std::wcout << L"dependency=" << std::wstring(dependency.begin(), dependency.end()) << L"\n";
-			const auto graph = darling::windows_host::DylibGraph::Load(
-				image, options.rpaths, options.prefix);
-			for (const auto& node : graph) {
-				std::wcout << L"image=" << node.path.wstring() << L"\n";
-				for (const auto& dependency : node.dependencies)
-					std::wcout << L"resolved=" << dependency.wstring() << L"\n";
+			if (!inspected.Dependencies().empty()) {
+				const auto graph = darling::windows_host::DylibGraph::Load(
+					image, options.rpaths, options.prefix);
+				for (const auto& node : graph) {
+					std::wcout << L"image=" << node.path.wstring() << L"\n";
+					for (const auto& dependency : node.dependencies)
+						std::wcout << L"resolved=" << dependency.wstring() << L"\n";
+				}
+				const auto order = darling::windows_host::DylibGraph::InitializationOrder(
+					image, options.rpaths, options.prefix);
+				for (const auto& path : order)
+					std::wcout << L"init=" << path.wstring() << L"\n";
 			}
-			const auto order = darling::windows_host::DylibGraph::InitializationOrder(
-				image, options.rpaths, options.prefix);
-			for (const auto& path : order)
-				std::wcout << L"init=" << path.wstring() << L"\n";
 			return 0;
 		}
-		const int result = darling::windows_host::DarwinBootstrap::Run(image, options);
+		#if !defined(__clang__)
+		if (options.entry_abi != darling::windows_host::DarwinEntryAbi::SyntheticCompatibleMain) {
+			std::cerr << "DARLING_RUNNER_ERROR=real Mach-O execution requires a Clang build with System-V ABI support\n";
+			return 1;
+		}
+		#endif
+		const int result = RunGuestWithWindowsExceptionBoundary(image, options);
 		if (result < 0) {
 			return 1;
 		}

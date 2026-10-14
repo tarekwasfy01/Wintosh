@@ -10,6 +10,7 @@
 
 #include <winsock2.h>
 #include <windows.h>
+#include <deque>
 
 #include <cstddef>
 #include <cstdint>
@@ -90,6 +91,11 @@ private:
 	mutable std::mutex m_mutex;
 	std::vector<HANDLE> m_handles;
 	std::unordered_map<int, SOCKET> m_sockets;
+	std::unordered_map<int, HANDLE> m_stream_writes;
+	std::unordered_map<int, std::size_t> m_stream_pending;
+	std::unordered_map<int, std::deque<unsigned char>> m_stream_buffers;
+	std::unordered_set<int> m_stream_shutdown_read;
+	std::unordered_set<int> m_stream_shutdown_write;
 	std::unordered_map<int, int> m_socket_peers;
 	std::unordered_map<int, std::filesystem::path> m_paths;
 	std::unordered_set<int> m_append_descriptors;

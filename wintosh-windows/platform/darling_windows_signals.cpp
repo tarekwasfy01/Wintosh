@@ -100,13 +100,17 @@ void DeliverUnblocked() noexcept
 			if ((action.flags & 0x0010) == 0) // SA_NODEFER
 				blocked_signals |= bit;
 			handler(signal_number);
-			if ((action.flags & 0x0004) != 0) // SA_RESETHAND
+			if ((action.flags & 0x0004) != 0) { // SA_RESETHAND
 				std::lock_guard lock(action_mutex);
 				installed_actions[static_cast<std::size_t>(signal_number)].handler = SIG_DFL;
+			}
 			blocked_signals = previous_mask;
 			DeliverUnblocked();
 		} else {
-			(void)std::raise(signal_number);
+			// Never hand an emulated Darwin signal to the native CRT here.  The
+			// native disposition may terminate the Windows host (notably for
+			// SIGTERM), which violates the guest boundary.  A default guest
+			// disposition is represented by an unhandled delivery instead.
 		}
 	}
 }
@@ -157,17 +161,20 @@ bool DarwinSignals::Raise(int signal_number) noexcept
 		action = installed_actions[static_cast<std::size_t>(signal_number)];
 		handler = installed_handlers[static_cast<std::size_t>(signal_number)];
 	}
-	if ((action.flags & 0x0040) != 0 && action.sigaction_handler != nullptr) {
+	// Once a Darwin sigaction callback is installed, never fall through to
+	// the CRT's native signal machinery. The CRT may terminate the Windows
+	// process for SIGTERM even though the guest disposition is handled here.
+	if (action.sigaction_handler != nullptr && (action.flags & 0x0040) != 0) {
 		const auto previous_mask = blocked_signals;
 		blocked_signals |= SetToBits(action.mask);
 		if ((action.flags & 0x0010) == 0) // SA_NODEFER
 			blocked_signals |= bit;
-		if ((action.flags & 0x0004) != 0) // SA_RESETHAND
+		if ((action.flags & 0x0004) != 0) { // SA_RESETHAND
 				std::lock_guard lock(action_mutex);
 				installed_actions[static_cast<std::size_t>(signal_number)].sigaction_handler = nullptr;
+		}
 		action.sigaction_handler(signal_number, nullptr, nullptr);
 		blocked_signals = previous_mask;
-		DeliverUnblocked();
 		return true;
 	}
 	if (handler != nullptr && handler != SIG_DFL && handler != SIG_IGN) {
@@ -175,15 +182,17 @@ bool DarwinSignals::Raise(int signal_number) noexcept
 		blocked_signals |= SetToBits(action.mask);
 		if ((action.flags & 0x0010) == 0) // SA_NODEFER
 			blocked_signals |= bit;
-		if ((action.flags & 0x0004) != 0) // SA_RESETHAND
+		if ((action.flags & 0x0004) != 0) { // SA_RESETHAND
 			std::lock_guard lock(action_mutex);
 			installed_actions[static_cast<std::size_t>(signal_number)].handler = SIG_DFL;
+		}
 		handler(signal_number);
 		blocked_signals = previous_mask;
-		DeliverUnblocked();
 		return true;
 	}
-	return std::raise(signal_number) == 0;
+	// Fail closed: native CRT signal delivery is not a Darwin ABI bridge and
+	// can terminate the host with a platform-specific exit status.
+	return false;
 }
 
 DarwinSignals::Handler DarwinSignals::Reset(int signal_number) noexcept
@@ -261,9 +270,9 @@ extern "C" int darling_windows_sigaction(int signal_number,
 			std::lock_guard lock(action_mutex);
 			installed_actions[static_cast<std::size_t>(signal_number)] = *action;
 		}
-		if ((action->flags & 0x0040) != 0) {
-			(void)std::signal(signal_number, SIG_IGN);
-		} else {
+		// SA_SIGINFO is dispatched entirely by the Darwin bridge. Registering it
+		// with the CRT would let a native raise race the emulated disposition.
+		if ((action->flags & 0x0040) == 0) {
 			(void)DarwinSignals::Install(signal_number, action->handler);
 		}
 	}

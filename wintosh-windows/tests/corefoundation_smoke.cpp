@@ -5,6 +5,8 @@
 #include <chrono>
 #include <iostream>
 #include <limits>
+#include <condition_variable>
+#include <mutex>
 #include <thread>
 #include <vector>
 
@@ -627,17 +629,39 @@ int main()
 		darling_windows_CFRunLoopRunInMode(std::numeric_limits<double>::quiet_NaN(), false) == -1 &&
 		darling_windows_CFRunLoopRunInMode(std::numeric_limits<double>::infinity(), false) == -1;
 	bool loop_started = false;
+	bool worker_stopped = false;
 	darling_windows_CFRunLoopRef worker_loop = nullptr;
+	std::mutex loop_mutex;
+	std::condition_variable loop_ready;
 	std::thread loop_thread([&] {
-		worker_loop = darling_windows_CFRunLoopGetCurrent();
+		{
+			std::lock_guard<std::mutex> lock(loop_mutex);
+			worker_loop = darling_windows_CFRunLoopGetCurrent();
+		}
+		loop_ready.notify_one();
 		darling_windows_CFRunLoopRunInMode(5.0, false);
 	});
-	std::this_thread::sleep_for(std::chrono::milliseconds(20));
-	loop_started = worker_loop != nullptr && worker_loop != loop &&
-		darling_windows_CFRunLoopIsRunning(worker_loop);
-	darling_windows_CFRunLoopStop(worker_loop);
+	{
+		std::unique_lock<std::mutex> lock(loop_mutex);
+		loop_ready.wait_for(lock, std::chrono::seconds(5), [&] {
+			return worker_loop != nullptr;
+		});
+		loop_started = worker_loop != nullptr && worker_loop != loop;
+	}
+	if (loop_started) {
+		for (int attempt = 0; attempt != 100 &&
+			!darling_windows_CFRunLoopIsRunning(worker_loop); ++attempt)
+			std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		loop_started = darling_windows_CFRunLoopIsRunning(worker_loop);
+		darling_windows_CFRunLoopStop(worker_loop);
+		for (int attempt = 0; attempt != 100 &&
+			darling_windows_CFRunLoopIsRunning(worker_loop); ++attempt)
+			std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		worker_stopped = !darling_windows_CFRunLoopIsRunning(worker_loop);
+	}
 	loop_thread.join();
-	const bool runloop_ok = runloop_main_ok && runloop_time_boundary_ok && loop_started && !darling_windows_CFRunLoopIsRunning(worker_loop) &&
+	const bool runloop_ok = runloop_main_ok && runloop_time_boundary_ok && loop_started && worker_loop != nullptr &&
+		worker_stopped &&
 		!darling_windows_CFRunLoopIsRunning(loop);
 	int callback_value = 7;
 	runloop_callback_value = 0;
@@ -1068,6 +1092,9 @@ int main()
 	const bool corefoundation_ok = string_ok && formatted_string_ok && substring_ok && string_match_ok && string_find_ok && equal_ok && semantic_lookup_ok && collection_equal_ok && array_search_ok && data_ok && data_slice_ok && array_ok && array_values_ok && number_ok && real_number_ok && number_conversion_ok && number_boundary_ok && dictionary_ok && dictionary_values_ok && set_ok && set_values_ok && collection_mutation_safe && date_url_ok && url_xml_ok && scalar_ok && runloop_ok && callback_ok && timer_ok && drain_sources_ok && notification_ok && delivered && plist_ok && array_plist_ok && data_plist_ok && date_plist_ok && real_plist_ok && escaping_ok && plist_parse_ok && plist_dict_parse_ok && plist_data_parse_ok && plist_date_parse_ok && plist_fractional_date_ok && plist_offset_date_ok && binary_plist_ok && binary_dictionary_ok && binary_utf16_ok && binary_extended_ok && binary_data_ok && binary_date_ok && binary_real_ok && binary_uid_ok && mutable_array_ok && mutable_dictionary_ok && mutable_set_ok && mutable_data_ok;
 	if (!corefoundation_ok) {
 		std::cerr << "COREFOUNDATION_FLAGS runloop=" << runloop_ok
+			<< " main=" << runloop_main_ok << " boundary=" << runloop_time_boundary_ok
+			<< " started=" << loop_started << " worker_stopped=" << worker_stopped
+			<< " main_running=" << darling_windows_CFRunLoopIsRunning(loop)
 			<< " callback=" << callback_ok << " queued=" << queued_sources
 			<< " one=" << one_source_ok << " second=" << source_queue_ok
 			<< " drain=" << drain_sources_ok << " timer=" << timer_ok

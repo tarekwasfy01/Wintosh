@@ -17,6 +17,61 @@ permissions:
   attestations: write
 
 jobs:
+  clang-build:
+    name: Build and verify Windows Clang x64
+    runs-on: windows-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Run license and provenance preflight
+        shell: pwsh
+        run: .\tools\Check-LicensePreflight.ps1
+
+      - name: Activate Windows SDK and linker environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Configure ClangCL build
+        shell: pwsh
+        run: cmake -S wintosh-windows -B build-clang-x64 -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=clang-cl -DCMAKE_C_COMPILER=clang-cl -DCMAKE_ASM_COMPILER=clang-cl
+
+      - name: Build Clang targets
+        shell: pwsh
+        run: cmake --build build-clang-x64 --parallel 2
+
+      - name: Run Clang end-to-end evidence
+        shell: pwsh
+        run: ctest --test-dir build-clang-x64 -C Release -R "wintosh_(hello_e2e|macho_printf_e2e|guest_atexit_e2e|guest_cxa_atexit_e2e)$" --output-on-failure --parallel 1
+
+      - name: Upload Clang build evidence
+        shell: pwsh
+        run: |
+          $stage = "package\Wintosh-clang-x64"
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item -Recurse -Force wintosh-windows (Join-Path $stage 'wintosh-windows')
+          Copy-Item -Recurse -Force docs (Join-Path $stage 'docs')
+          Copy-Item -Recurse -Force licenses (Join-Path $stage 'licenses')
+          Copy-Item -Force LICENSE-WINTOSH-ORIGINAL-MIT.txt (Join-Path $stage 'LICENSE-WINTOSH-ORIGINAL-MIT.txt')
+          $bin = Join-Path $stage 'bin'
+          New-Item -ItemType Directory -Force -Path $bin | Out-Null
+          Copy-Item -Force build-clang-x64\wintosh.exe (Join-Path $bin 'wintosh.exe')
+          Copy-Item -Force build-clang-x64\wintosh_macho_exit_smoke.exe (Join-Path $bin 'wintosh_macho_exit_smoke.exe')
+          Compress-Archive -Path "$stage\*" -DestinationPath package\Wintosh-clang-x64.zip -Force
+
+      - name: Attest Clang release archive
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: package/Wintosh-clang-x64.zip
+
+      - name: Upload Clang release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Wintosh-clang-x64
+          path: package/Wintosh-clang-x64.zip
+          if-no-files-found: error
+
   build:
     name: Build Windows ${{ matrix.arch }}
     runs-on: windows-latest
@@ -94,7 +149,7 @@ jobs:
 
   release:
     name: Create GitHub release
-    needs: build
+    needs: [build, clang-build]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -110,6 +165,11 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: Wintosh-win32
+          path: package
+      - name: Download Clang x64 package
+        uses: actions/download-artifact@v4
+        with:
+          name: Wintosh-clang-x64
           path: package
       - name: Create or update GitHub release
         env:

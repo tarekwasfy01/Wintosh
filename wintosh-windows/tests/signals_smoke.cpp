@@ -43,6 +43,12 @@ void SiginfoHandler(int signal_number, void* info, void* context)
 
 int main()
 {
+	auto wait_for_count = [](const std::atomic<int>& value, int expected) {
+		for (int attempt = 0; attempt != 1000 &&
+			value.load(std::memory_order_relaxed) != expected; ++attempt)
+			std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		return value.load(std::memory_order_relaxed) == expected;
+	};
 	darling_darwin_sigset constructed{};
 	darling_darwin_sigset filled{};
 	const bool sigset_primitives =
@@ -68,7 +74,9 @@ int main()
 	const auto previous = darling::windows_host::DarwinSignals::Install(SIGINT, Handler);
 	if (previous == SIG_ERR || !darling::windows_host::DarwinSignals::Raise(SIGINT) ||
 		signal_count.load(std::memory_order_relaxed) != 1) {
-		std::cerr << "SIGNAL_SMOKE_ERROR=handler dispatch failed\n";
+		std::cerr << "SIGNAL_SMOKE_ERROR=handler dispatch failed previous="
+			<< (previous == SIG_ERR ? -1 : 0) << " count="
+			<< signal_count.load() << "\n";
 		return 1;
 	}
 	const std::uint64_t sigint_bit = std::uint64_t{1} << SIGINT;
@@ -78,7 +86,10 @@ int main()
 		(darling::windows_host::DarwinSignals::Pending() & sigint_bit) == 0 ||
 		darling::windows_host::DarwinSignals::Unblock(sigint_bit) != sigint_bit ||
 		signal_count.load(std::memory_order_relaxed) != 2) {
-		std::cerr << "SIGNAL_SMOKE_ERROR=mask/pending dispatch failed\n";
+		std::cerr << "SIGNAL_SMOKE_ERROR=mask/pending dispatch failed count="
+			<< signal_count.load() << " pending="
+			<< darling::windows_host::DarwinSignals::Pending() << " unblock="
+			<< darling::windows_host::DarwinSignals::Unblock(sigint_bit) << "\n";
 		return 2;
 	}
 	const auto reset_handler = darling::windows_host::DarwinSignals::Reset(SIGINT);
@@ -119,7 +130,8 @@ int main()
 		<< " sigprocmask=" << sigprocmask_result
 		<< " sigpending=" << sigpending_result
 		<< " legacy_symbols=" << (signal_symbols ? 1 : 0)
-		<< " normalized_symbols=" << (normalized_signal_symbols ? 1 : 0) << "\n";
+		<< " normalized_symbols=" << (normalized_signal_symbols ? 1 : 0)
+		<< " setup_ok=" << (setup_ok ? 1 : 0) << "\n";
 	if (!setup_ok) {
 		std::cerr << "SIGNAL_SMOKE_ERROR=setup sigaction=" << sigaction_result
 			<< " sigprocmask=" << sigprocmask_result
@@ -133,10 +145,15 @@ int main()
 	siginfo_action.mask.bits[0] = 1u << (SIGINT - 1);
 	if (darling_windows_sigaction(SIGTERM, &siginfo_action, nullptr) != 0 ||
 		!darling::windows_host::DarwinSignals::Raise(SIGTERM) ||
-		siginfo_count.load(std::memory_order_relaxed) != 1 ||
+		!wait_for_count(siginfo_count, 1) ||
 		siginfo_mask_seen.load(std::memory_order_relaxed) != 1 ||
 		darling::windows_host::DarwinSignals::Blocked(SIGINT))
+	{
+		std::cerr << "SIGNAL_SMOKE_ERROR=siginfo count=" << siginfo_count.load()
+			<< " mask=" << siginfo_mask_seen.load() << " blocked="
+			<< darling::windows_host::DarwinSignals::Blocked(SIGINT) << "\n";
 		return 4;
+	}
 	darling_darwin_sigaction_record deferred_action{};
 	deferred_action.handler = &Handler;
 	deferred_action.flags = 0x0004; // SA_RESETHAND
@@ -149,9 +166,13 @@ int main()
 		!darling::windows_host::DarwinSignals::Raise(SIGTERM) ||
 		deferred_count.load(std::memory_order_relaxed) != 0 ||
 		darling_windows_sigprocmask(2, &blocked_term, nullptr) != 0 ||
-		deferred_count.load(std::memory_order_relaxed) != 1 ||
+		!wait_for_count(deferred_count, 1) ||
 		deferred_mask_seen.load(std::memory_order_relaxed) != 1)
+	{
+		std::cerr << "SIGNAL_SMOKE_ERROR=deferred count=" << deferred_count.load()
+			<< " mask=" << deferred_mask_seen.load() << "\n";
 		return 8;
+	}
 	darling_darwin_sigaction_record reset_action{};
 	if (darling_windows_sigaction(SIGTERM, nullptr, &reset_action) != 0 ||
 		reset_action.handler != SIG_DFL)
@@ -166,7 +187,7 @@ int main()
 			std::memory_order_relaxed);
 		waited_signal.store(selected, std::memory_order_relaxed);
 	});
-	std::this_thread::sleep_for(std::chrono::milliseconds(20));
+	std::this_thread::sleep_for(std::chrono::milliseconds(100));
 	if (!darling::windows_host::DarwinSignals::Raise(SIGINT)) {
 		waiter.detach();
 		return 5;
@@ -194,7 +215,7 @@ int main()
 		waitinfo_result.store(darling_windows_sigwaitinfo(&wait_set, &waitinfo),
 			std::memory_order_relaxed);
 	});
-	std::this_thread::sleep_for(std::chrono::milliseconds(20));
+	std::this_thread::sleep_for(std::chrono::milliseconds(100));
 	if (darling_windows_sigqueue(darling_windows_getpid(), SIGINT, &queued_value) != 0) {
 		info_waiter.detach();
 		return 8;

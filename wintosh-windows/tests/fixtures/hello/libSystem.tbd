@@ -1,0 +1,11 @@
+---
+archs:           [ x86_64 ]
+platform:        macos
+install-name:    /usr/lib/libSystem.B.dylib
+current-version: 1.0.0
+exports:
+  - symbols: [ _puts, _exit ]
+...
+
+# This is a minimal, original test manifest. It is not copied from Apple's
+# SDK and does not grant or imply redistribution rights to Apple frameworks.

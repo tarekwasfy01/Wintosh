@@ -13,6 +13,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -184,7 +185,7 @@ int wmain()
 		BOOL inspect_queried = FALSE;
 		if (inspect_started != FALSE) {
 			CloseHandle(inspect_process.hThread);
-			const DWORD inspect_wait = WaitForSingleObject(inspect_process.hProcess, 5000);
+			const DWORD inspect_wait = WaitForSingleObject(inspect_process.hProcess, 15000);
 			if (inspect_wait == WAIT_TIMEOUT) {
 				TerminateProcess(inspect_process.hProcess, 8);
 				WaitForSingleObject(inspect_process.hProcess, INFINITE);
@@ -200,7 +201,11 @@ int wmain()
 		if (CreateProcessW(nullptr, bundle_command.data(), nullptr, nullptr, FALSE,
 			CREATE_NO_WINDOW, nullptr, nullptr, &startup, &bundle_process) != FALSE) {
 			CloseHandle(bundle_process.hThread);
-			WaitForSingleObject(bundle_process.hProcess, 5000);
+			const DWORD bundle_wait = WaitForSingleObject(bundle_process.hProcess, 15000);
+			if (bundle_wait == WAIT_TIMEOUT) {
+				TerminateProcess(bundle_process.hProcess, 8);
+				WaitForSingleObject(bundle_process.hProcess, INFINITE);
+			}
 			bundle_queried = GetExitCodeProcess(bundle_process.hProcess, &bundle_status);
 			CloseHandle(bundle_process.hProcess);
 		}
@@ -249,7 +254,11 @@ int wmain()
 		return queried != FALSE && status == 3 && inspect_queried != FALSE && inspect_status == 0 &&
 			bundle_queried != FALSE && bundle_status == 0 && bundle_run_queried != FALSE &&
 			bundle_run_status == 1 && fallback_queried != FALSE && fallback_status == 1 ? 0 : 4;
+	} catch (const std::exception& error) {
+		std::cerr << "RUNNER_SMOKE_EXCEPTION=" << error.what() << "\n";
+		return 5;
 	} catch (...) {
+		std::cerr << "RUNNER_SMOKE_EXCEPTION=unknown\n";
 		return 5;
 	}
 }

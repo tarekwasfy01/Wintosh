@@ -24,6 +24,28 @@ int main()
 		return 1;
 	}
 	std::puts("ABI_BRIDGE_SYMBOL_LOOKUP=PASS");
+	const auto immediate_exit = darling_windows_host_symbol("_exit");
+	const auto normal_exit = darling_windows_host_symbol("exit");
+	const auto immediate_expected = reinterpret_cast<std::uintptr_t>(
+		&darling::windows_host::abi::darling_windows_abi_exit);
+	const auto normal_expected = reinterpret_cast<std::uintptr_t>(
+		&darling::windows_host::abi::darling_windows_abi_normal_exit);
+	if (immediate_exit != immediate_expected || normal_exit != normal_expected ||
+		immediate_exit == normal_exit) {
+		std::fprintf(stderr, "ABI_BRIDGE_EXIT_SPLIT=FAIL\n");
+		return 1;
+	}
+	std::puts("ABI_BRIDGE_EXIT_SPLIT=PASS");
+	const auto pair = darling::windows_host::abi::darling_windows_abi_aggregate_pair(
+		{0x0123456789abcdefULL, 1.25});
+	const auto triple = darling::windows_host::abi::darling_windows_abi_aggregate_triple(
+		{10, 20, 30});
+	if (pair.integer != (0x0123456789abcdefULL ^ 0xfeedfacecafebeefULL) ||
+		pair.real != 1.75 || triple.first != 11 || triple.second != 22 || triple.third != 33) {
+		std::fprintf(stderr, "ABI_BRIDGE_AGGREGATE=FAIL\n");
+		return 1;
+	}
+	std::puts("ABI_BRIDGE_AGGREGATE=PASS");
 	const auto printf_address = darling_windows_host_symbol("_printf");
 	const auto printf_expected = reinterpret_cast<std::uintptr_t>(
 		&darling::windows_host::abi::darling_windows_abi_printf);

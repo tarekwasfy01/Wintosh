@@ -85,6 +85,13 @@ if (WIN32)
         wintosh_signals_smoke
         PROPERTIES RUN_SERIAL TRUE)
 
+    # The broker test contains intentional blocked IPC cases. Keep a hung
+    # runner from holding the release job forever while preserving a generous
+    # window for slow GitHub-hosted Windows workers.
+    set_tests_properties(
+        wintosh_darling_windows_broker_smoke
+        PROPERTIES TIMEOUT 120)
+
     add_executable(wintosh_broker core/darling_windows_broker.cpp)
     target_link_libraries(wintosh_broker PRIVATE wintosh_windows_host)
 

@@ -1,3 +1,8 @@
+/*
+ * Stage 2 Darwin preferences boundary proof.
+ * GPL-3.0-only; see the bundled license and source manifests.
+ */
+
 #include "darling_windows_preferences.h"
 #include <filesystem>
 #include <fstream>

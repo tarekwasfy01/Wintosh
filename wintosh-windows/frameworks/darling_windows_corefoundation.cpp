@@ -3284,6 +3284,61 @@ extern "C" DARLING_CF_GUEST_ABI void CFRunLoopAddCommonMode(
 		darling_windows_CFRunLoopAddCommonMode(loop, mode_name);
 }
 
+// CFString stores UTF-8 internally. Accept the runtime's reported system
+// encoding and Darwin's explicit UTF-8 encoding; other conversions are not
+// silently treated as UTF-8.
+namespace {
+constexpr std::uint32_t kDarlingCfUtf8Encoding = 0x08000100;
+bool DarlingCfSupportsStringEncoding(std::uint32_t encoding)
+{
+	return encoding == static_cast<std::uint32_t>(darling_windows_CFStringGetSystemEncoding()) ||
+		encoding == kDarlingCfUtf8Encoding;
+}
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeID CFStringGetTypeID()
+{
+	return darling_windows_CFStringGetTypeID();
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFStringCreateWithCString(
+	const void*, const char* bytes, std::uint32_t encoding)
+{
+	return DarlingCfSupportsStringEncoding(encoding) ?
+		darling_windows_CFStringCreateWithCString(bytes) : nullptr;
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFIndex CFStringGetLength(
+	darling_windows_CFStringRef value)
+{
+	return darling_windows_CFStringGetLength(value);
+}
+
+extern "C" DARLING_CF_GUEST_ABI std::uint8_t CFStringGetCString(
+	darling_windows_CFStringRef value, char* buffer, darling_windows_CFIndex capacity,
+	std::uint32_t encoding)
+{
+	return DarlingCfSupportsStringEncoding(encoding) &&
+		darling_windows_CFStringGetCString(value, buffer, capacity) ? 1 : 0;
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeID CFArrayGetTypeID()
+{
+	return darling_windows_CFArrayGetTypeID();
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFIndex CFArrayGetCount(
+	darling_windows_CFArrayRef value)
+{
+	return darling_windows_CFArrayGetCount(value);
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeRef CFArrayGetValueAtIndex(
+	darling_windows_CFArrayRef value, darling_windows_CFIndex index)
+{
+	return darling_windows_CFArrayGetValueAtIndex(value, index);
+}
+
 extern "C" std::uintptr_t darling_windows_corefoundation_symbol(const char* name)
 {
 	if (name == nullptr) return 0;
@@ -3300,6 +3355,20 @@ extern "C" std::uintptr_t darling_windows_corefoundation_symbol(const char* name
 		return reinterpret_cast<std::uintptr_t>(&CFRunLoopWakeUp);
 	if (std::strcmp(name, "CFRunLoopAddCommonMode") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFRunLoopAddCommonMode);
+	if (std::strcmp(name, "CFStringGetTypeID") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFStringGetTypeID);
+	if (std::strcmp(name, "CFStringCreateWithCString") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFStringCreateWithCString);
+	if (std::strcmp(name, "CFStringGetLength") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFStringGetLength);
+	if (std::strcmp(name, "CFStringGetCString") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFStringGetCString);
+	if (std::strcmp(name, "CFArrayGetTypeID") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFArrayGetTypeID);
+	if (std::strcmp(name, "CFArrayGetCount") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFArrayGetCount);
+	if (std::strcmp(name, "CFArrayGetValueAtIndex") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFArrayGetValueAtIndex);
 	return 0;
 }
 

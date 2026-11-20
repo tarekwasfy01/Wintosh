@@ -568,6 +568,19 @@ extern "C" DARLING_CF_GUEST_ABI void CFRunLoopStop(darling_windows_CFRunLoopRef 
 extern "C" DARLING_CF_GUEST_ABI void CFRunLoopWakeUp(darling_windows_CFRunLoopRef loop);
 extern "C" DARLING_CF_GUEST_ABI void CFRunLoopAddCommonMode(
 	darling_windows_CFRunLoopRef loop, darling_windows_CFStringRef mode);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeID CFStringGetTypeID();
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFStringCreateWithCString(
+	const void* allocator, const char* bytes, std::uint32_t encoding);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFIndex CFStringGetLength(
+	darling_windows_CFStringRef value);
+extern "C" DARLING_CF_GUEST_ABI std::uint8_t CFStringGetCString(
+	darling_windows_CFStringRef value, char* buffer, darling_windows_CFIndex capacity,
+	std::uint32_t encoding);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeID CFArrayGetTypeID();
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFIndex CFArrayGetCount(
+	darling_windows_CFArrayRef value);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeRef CFArrayGetValueAtIndex(
+	darling_windows_CFArrayRef value, darling_windows_CFIndex index);
 extern "C" void* darling_windows_CFNotificationCenterGetLocal();
 extern "C" bool darling_windows_CFNotificationCenterAddObserver(void* center,
 	const void* observer, darling_windows_CFNotificationCallback callback, const char* name);

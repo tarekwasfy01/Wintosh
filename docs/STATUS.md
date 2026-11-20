@@ -23,12 +23,13 @@ target thread's loop. `NSRunLoop` now exposes `currentRunLoop`, `mainRunLoop`,
 `runMode:beforeDate:`, and `acceptInputForMode:beforeDate:`. The AppKit main
 loop pumps default-mode callbacks and is woken when a selector is queued.
 
-Mach-O symbol resolution now exposes the initial public CoreFoundation C ABI
-slice for `CFRunLoopGetCurrent`, `CFRunLoopGetMain`, `CFRunLoopRunInMode`,
-`CFRunLoopStop`, `CFRunLoopWakeUp`, and `CFRunLoopAddCommonMode`. This closes
-the import-resolution gap for those entry points only. `CFRunLoopPerformBlock`
-and the source/timer/observer APIs are not exported yet; run-result handling is
-also a subset and has not been checked against a guest fixture.
+Mach-O symbol resolution exposes a partial public CoreFoundation C ABI:
+run-loop current/main/run/stop/wakeup/common-mode operations, plus
+`CFStringGetTypeID`, `CFStringCreateWithCString`, `CFStringGetLength`,
+`CFStringGetCString`, and array type/count/index reads. String conversions are
+limited to the runtime's UTF-8 representation and do not cover all Darwin
+encodings. `CFRunLoopPerformBlock` and the source/timer/observer APIs remain
+unexported; guest imports and edge-case status behavior need fixture coverage.
 
 This is a useful Foundation scheduling subset, not the complete CoreFoundation
 run-loop contract: CFRunLoopSource/Timer/Observer objects, true input-source

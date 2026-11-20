@@ -48,12 +48,12 @@ still missing. Apple documents that each thread owns one run loop and that
 sources, timers, and observers are activated by their registered modes; current
 evidence is source/build level only.
 
-The Mach-O host resolver currently exports the first C ABI slice:
-`CFRunLoopGetCurrent`, `CFRunLoopGetMain`, `CFRunLoopRunInMode`,
-`CFRunLoopStop`, `CFRunLoopWakeUp`, and `CFRunLoopAddCommonMode`. The guest
-ABI attributes account for the x86_64 Darwin calling convention. Block-based
-`CFRunLoopPerformBlock`, status edge cases, and guest-side invocation remain
-unimplemented or unverified.
+The Mach-O host resolver exports a partial C ABI for run-loop control and
+`CFString` creation/read operations plus `CFArray` type/count/index reads. The
+guest ABI attributes account for the x86_64 Darwin calling convention. String
+conversion is limited to the implementation's UTF-8 representation. Block-
+based `CFRunLoopPerformBlock`, full collection mutation and callbacks, status
+edge cases, and guest-side invocation remain unimplemented or unverified.
 
 References: [Apple NSRunLoop run(mode:before:)](https://developer.apple.com/documentation/foundation/runloop/run%28mode%3Abefore%3A%29),
 [CFRunLoop](https://developer.apple.com/documentation/corefoundation/cfrunloop),

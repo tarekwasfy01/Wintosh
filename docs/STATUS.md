@@ -69,9 +69,12 @@ Clang Release build compiles and links these APIs. Guest ABI behavior remains
 unverified. While waiting on the AppKit main thread, CFRunLoop now waits on
 and dispatches the Win32 message queue; non-main loops retain the condition-
 variable wait. A dispatched message can end a `returnAfterSource` turn, and a
-cross-thread stop wakes the main queue. Mach-port source-1 and arbitrary
-Windows-handle registration, timer tolerance, the remaining observer phases,
-and complete recursive activation semantics remain open.
+cross-thread stop wakes the main queue. The guest `CFRunLoopRunInMode` maps
+outcomes to CoreFoundation's `Finished=1`, `Stopped=2`, `TimedOut=3`, and
+`HandledSource=4`; `CFRunLoopRun` is exported and returns for an empty worker
+mode or a stop. Mach-port source-1 and arbitrary Windows-handle registration,
+timer tolerance, the remaining observer phases, recursive activation
+semantics, and guest ABI fixture verification remain open.
 
 ### Foundation dates and AppKit event queue (2026-11-17)
 

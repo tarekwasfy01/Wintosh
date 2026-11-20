@@ -958,6 +958,23 @@ bool HasRunLoopBlockForMode(const RunLoopState& state, const std::string& mode)
 				});
 		});
 }
+bool RunLoopModeHasWorkSource(const RunLoopState& state, const std::string& mode,
+	const std::shared_ptr<RunLoopState>& state_reference)
+{
+	if (state_reference == main_run_loop.state || HasRunLoopBlockForMode(state, mode))
+		return true;
+	for (const auto& binding : state.sources) {
+		if (binding.mode != mode) continue;
+		std::lock_guard source_lock(binding.object->run_loop_source_mutex);
+		if (binding.object->run_loop_source_valid) return true;
+	}
+	for (const auto& binding : state.timers) {
+		if (binding.mode != mode) continue;
+		std::lock_guard timer_lock(binding.object->run_loop_timer_mutex);
+		if (binding.object->run_loop_timer_valid) return true;
+	}
+	return false;
+}
 bool RunLoopBlockMatchesMode(const RunLoopState& state,
 	const RunLoopState::Block& block, const std::string& mode)
 {
@@ -4668,12 +4685,48 @@ extern "C" DARLING_CF_GUEST_ABI std::int32_t CFRunLoopRunInMode(
 {
 	char mode_name[512]{};
 	if (mode == nullptr || !darling_windows_CFStringGetCString(mode, mode_name,
-		static_cast<darling_windows_CFIndex>(sizeof(mode_name)))) return 1;
+		static_cast<darling_windows_CFIndex>(sizeof(mode_name))) ||
+		std::strcmp(mode_name, "kCFRunLoopCommonModes") == 0 ||
+		!std::isfinite(seconds) || seconds < 0)
+		return DarlingCFRunLoopRunFinished;
+	const auto loop_value = darling_windows_CFRunLoopGetCurrent();
+	auto* loop = static_cast<RunLoop*>(loop_value);
+	bool has_work_source = false;
+	{
+		std::lock_guard lock(loop->state->mutex);
+		has_work_source = RunLoopModeHasWorkSource(
+			*loop->state, mode_name, loop->state);
+	}
+	if (!has_work_source) {
+		// Preserve entry/exit observer delivery for an empty mode without waiting.
+		(void)darling_windows_CFRunLoopRunInModeForLoop(loop_value, mode_name, 0.0, false);
+		std::lock_guard lock(loop->state->mutex);
+		return loop->state->stopped ? DarlingCFRunLoopRunStopped :
+			DarlingCFRunLoopRunFinished;
+	}
 	const int result = darling_windows_CFRunLoopRunInModeForLoop(
-		darling_windows_CFRunLoopGetCurrent(), mode_name, seconds,
-		return_after_source != 0);
-	if (result < 0) return 1; // kCFRunLoopRunFinished
-	return result == 0 ? 4 : 3; // handled source / timed out
+		loop_value, mode_name, seconds, return_after_source != 0);
+	if (result < 0) return DarlingCFRunLoopRunFinished;
+	std::lock_guard lock(loop->state->mutex);
+	if (loop->state->stopped) return DarlingCFRunLoopRunStopped;
+	return result == 0 ? DarlingCFRunLoopRunHandledSource :
+		DarlingCFRunLoopRunTimedOut;
+}
+
+extern "C" DARLING_CF_GUEST_ABI void CFRunLoopRun()
+{
+	const auto loop_value = darling_windows_CFRunLoopGetCurrent();
+	auto* loop = static_cast<RunLoop*>(loop_value);
+	for (;;) {
+		{
+			std::lock_guard lock(loop->state->mutex);
+			if (!RunLoopModeHasWorkSource(*loop->state,
+				"kCFRunLoopDefaultMode", loop->state)) return;
+		}
+		const int result = darling_windows_CFRunLoopRunInModeForLoop(loop_value,
+			"kCFRunLoopDefaultMode", 315360000.0, false);
+		if (result != 1) return;
+	}
 }
 
 extern "C" DARLING_CF_GUEST_ABI void CFRunLoopStop(darling_windows_CFRunLoopRef loop)
@@ -5836,6 +5889,8 @@ extern "C" std::uintptr_t darling_windows_corefoundation_symbol(const char* name
 		return reinterpret_cast<std::uintptr_t>(&CFRunLoopCopyAllModes);
 	if (std::strcmp(name, "CFRunLoopRunInMode") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFRunLoopRunInMode);
+	if (std::strcmp(name, "CFRunLoopRun") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFRunLoopRun);
 	if (std::strcmp(name, "CFRunLoopStop") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFRunLoopStop);
 	if (std::strcmp(name, "CFRunLoopWakeUp") == 0)

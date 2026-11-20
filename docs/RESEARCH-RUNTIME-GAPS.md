@@ -47,9 +47,11 @@ Invalidate angebunden. `CFRunLoopTimer` deckt Create, Kontextabfrage,
 Intervall-/Ordnungs-/Feuerzeitabfrage, SetNextFireDate, DoesRepeat, Add/Remove/
 Contains, IsValid und Invalidate ab. Observer unterstützt Create,
 Activities-/Repeat-/Order- und Kontextabfrage, Add/Remove/Contains, IsValid und
-Invalidate für sechs implementierte Loop-Phasen. Timer-Toleranz, native
-Mach-Port-Quellen und vollständige RunLoop-Rückgabestatus bleiben offen. Die
-ABI-Ausführung ist noch nicht durch einen Gast-Fixture-Lauf bestätigt.
+Invalidate für sechs implementierte Loop-Phasen. Die Gast-ABI bildet
+`CFRunLoopRunInMode` auf Apples vier Run-Ergebnisse ab und exportiert
+`CFRunLoopRun`; leere Worker-Modi kehren als `Finished` zurück. Timer-Toleranz,
+native Mach-Port-Quellen, weitere Aktivitätsphasen und Gast-Fixture-Verifikation
+bleiben offen.
 
 Die Dictionary-Schicht wurde danach erweitert: `CFDictionaryCreate`, mutable
 Erzeugung/Kopie, Set/Add/Replace/Remove sowie synchrone Enumeration sind jetzt

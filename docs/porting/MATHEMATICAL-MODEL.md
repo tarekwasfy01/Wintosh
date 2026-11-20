@@ -540,6 +540,15 @@ handles or Darwin Mach-port source-1 semantics. The Win32 wait contract follows
 [`MsgWaitForMultipleObjectsEx`](https://learn.microsoft.com/en-us/windows/desktop/api/Winuser/nf-winuser-msgwaitformultipleobjectsex),
 while Apple describes input sources in its [CFRunLoop contract](https://developer.apple.com/documentation/corefoundation/cfrunloop).
 
+The guest result mapping is `result(L) = 1` when the active mode has no
+registered source/timer (or a non-main empty mode is queried), `2` after
+`CFRunLoopStop`, `3` when the deadline expires, and `4` when
+`returnAfterSourceHandled` is true and a source/block or main-thread input is
+dispatched. `CFRunLoopRun()` repeats default-mode timed-out turns until the
+loop is stopped or has no worker input source. The current result codes follow
+Apple's [`CFRunLoopRunInMode` contract](https://developer.apple.com/documentation/corefoundation/cfrunloopruninmode%28_%3A_%3A_%3A%29);
+guest-level ABI calls are build-verified but not fixture-verified.
+
 For a timer with next fire time `t`, current absolute time `n`, and positive
 interval `Δ`, a due repeating timer advances to
 `t' = t + (floor((n - t) / Δ) + 1)Δ`. This retains the original cadence and

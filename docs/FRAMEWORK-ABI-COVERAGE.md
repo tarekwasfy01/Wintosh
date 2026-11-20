@@ -71,7 +71,11 @@ array of modes and wakes AppKit. `CFRunLoopGetTypeID`,
 current-mode query returns null while idle; both copy functions return
 caller-owned CoreFoundation objects. The all-modes list is derived from common
 modes, active modes, and registered blocks, sources, timers, and observers.
-These additions have build evidence only, without guest ABI fixtures. The
+`CFRunLoopRunInMode` now maps the internal loop outcome to Apple's result codes
+1 (`Finished`), 2 (`Stopped`), 3 (`TimedOut`), and 4 (`HandledSource`), and the
+resolver exports `CFRunLoopRun`. Empty worker modes return `Finished`; the
+AppKit main loop treats its Windows message queue as an input source. These
+additions have build evidence only, without guest ABI fixtures. The
 resolver also exports CFNumber, CFDate,
 CFBoolean, and CFDictionary create/copy/mutation/enumeration with the built-in
 `kCFType` callback tables. CFSet creation, copying, set algebra and traversal

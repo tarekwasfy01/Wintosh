@@ -18,6 +18,12 @@ enum darling_windows_CFStringCompareFlags {
 	darling_windows_CFCompareNumerically = 1 << 2
 };
 using darling_windows_CFTypeRef = const void*;
+enum DarlingCFRunLoopRunResult : std::int32_t {
+	DarlingCFRunLoopRunFinished = 1,
+	DarlingCFRunLoopRunStopped = 2,
+	DarlingCFRunLoopRunTimedOut = 3,
+	DarlingCFRunLoopRunHandledSource = 4
+};
 using darling_windows_CFOpaqueDestroyCallback = void (*)(void* payload);
 using darling_windows_CFBundleReleaseExecutableCallback = void (*)(void* handle);
 using darling_windows_CFDataProviderReleaseCallback = void (DARLING_CF_GUEST_ABI *)(
@@ -665,6 +671,7 @@ extern "C" DARLING_CF_GUEST_ABI darling_windows_CFArrayRef CFRunLoopCopyAllModes
 	darling_windows_CFRunLoopRef loop);
 extern "C" DARLING_CF_GUEST_ABI std::int32_t CFRunLoopRunInMode(
 	darling_windows_CFStringRef mode, double seconds, std::uint8_t return_after_source);
+extern "C" DARLING_CF_GUEST_ABI void CFRunLoopRun();
 extern "C" DARLING_CF_GUEST_ABI void CFRunLoopStop(darling_windows_CFRunLoopRef loop);
 extern "C" DARLING_CF_GUEST_ABI void CFRunLoopWakeUp(darling_windows_CFRunLoopRef loop);
 extern "C" DARLING_CF_GUEST_ABI void CFRunLoopPerformBlock(

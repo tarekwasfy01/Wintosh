@@ -310,6 +310,10 @@ Win32 message queue, including Cocoa window/input messages, so a mode turn can
 return after dispatched input. Worker loops keep their condition-variable
 wait. These guest ABI paths have not yet been verified with a Mach-O fixture;
 Mach-port source-1 and arbitrary Windows-handle registration remain absent.
+Guest `CFRunLoopRunInMode` returns the CoreFoundation result values for
+finished, stopped, timed out, and handled source; `CFRunLoopRun` is also
+exported and returns when stopped or when its mode has no work source. This is
+build-verified only, without a Mach-O ABI fixture.
 Run-loop introspection also exports `CFRunLoopGetTypeID`,
 `CFRunLoopCopyCurrentMode`, and `CFRunLoopCopyAllModes`. The current mode is
 null while idle; the copied mode array lists known common, active, and

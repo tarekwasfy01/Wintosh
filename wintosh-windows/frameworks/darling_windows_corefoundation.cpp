@@ -51,6 +51,7 @@ struct Object {
 	bool immortal = false;
 	bool mutable_dictionary = false;
 	bool mutable_set = false;
+	bool mutable_array = false;
 	Kind kind;
 	std::string string;
 	std::string bundle_path;
@@ -1913,7 +1914,9 @@ extern "C" darling_windows_CFArrayRef darling_windows_CFArrayCreateMutable(
 	darling_windows_CFIndex capacity)
 {
 	if (capacity < 0) return nullptr;
-	return darling_windows_CFArrayCreate(nullptr, 0);
+	auto* object = As(darling_windows_CFArrayCreate(nullptr, 0));
+	if (object != nullptr) object->mutable_array = true;
+	return object;
 }
 
 extern "C" darling_windows_CFArrayRef darling_windows_CFArrayCreateCopy(
@@ -1929,7 +1932,9 @@ extern "C" darling_windows_CFArrayRef darling_windows_CFArrayCreateMutableCopy(
 	darling_windows_CFIndex capacity, darling_windows_CFArrayRef value)
 {
 	if (capacity < 0) return nullptr;
-	return darling_windows_CFArrayCreateCopy(value);
+	auto* object = As(darling_windows_CFArrayCreateCopy(value));
+	if (object != nullptr) object->mutable_array = true;
+	return object;
 }
 
 extern "C" darling_windows_CFTypeRef darling_windows_CFArrayGetValueAtIndex(
@@ -2045,7 +2050,9 @@ extern "C" bool darling_windows_CFArrayReplaceValues(darling_windows_CFArrayRef 
 		static_cast<std::size_t>(range_count) > object->array.size() - static_cast<std::size_t>(range_start)) return false;
 	for (darling_windows_CFIndex index = 0; index < replacement_count; ++index)
 		if (replacement[index] == nullptr) return false;
-	std::vector<const void*> replacement_values(replacement, replacement + replacement_count);
+	std::vector<const void*> replacement_values;
+	if (replacement_count != 0)
+		replacement_values.assign(replacement, replacement + replacement_count);
 	const auto begin = object->array.begin() + range_start;
 	for (darling_windows_CFIndex index = 0; index < range_count; ++index) ReleaseOwned(As(object->array[static_cast<std::size_t>(range_start + index)]));
 	object->array.erase(begin, begin + range_count);
@@ -3426,6 +3433,15 @@ bool DarlingIsTypeDictionaryKeyCallbacks(const void* callbacks)
 		actual.copy_description == &DarlingCFTypeCopyDescription &&
 		actual.equal == &DarlingCFTypeEqual && actual.hash == &DarlingCFTypeHash;
 }
+bool DarlingIsTypeArrayCallbacks(const void* callbacks)
+{
+	if (callbacks == nullptr) return false;
+	const auto& actual = *static_cast<const DarlingCFArrayCallbacks*>(callbacks);
+	return actual.version == 0 && actual.retain == &DarlingCFTypeRetain &&
+		actual.release == &DarlingCFTypeRelease &&
+		actual.copy_description == &DarlingCFTypeCopyDescription &&
+		actual.equal == &DarlingCFTypeEqual;
+}
 bool DarlingIsTypeDictionaryValueCallbacks(const void* callbacks)
 {
 	if (callbacks == nullptr) return false;
@@ -3451,6 +3467,9 @@ extern "C" const DarlingCFDictionaryValueCallbacks kCFTypeDictionaryValueCallBac
 extern "C" const DarlingCFDictionaryKeyCallbacks kCFTypeSetCallBacks = {
 	0, &DarlingCFTypeRetain, &DarlingCFTypeRelease,
 	&DarlingCFTypeCopyDescription, &DarlingCFTypeEqual, &DarlingCFTypeHash};
+extern "C" const DarlingCFArrayCallbacks kCFTypeArrayCallBacks = {
+	0, &DarlingCFTypeRetain, &DarlingCFTypeRelease,
+	&DarlingCFTypeCopyDescription, &DarlingCFTypeEqual};
 
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeID CFStringGetTypeID()
 {
@@ -3527,6 +3546,102 @@ extern "C" DARLING_CF_GUEST_ABI std::uint8_t CFStringGetFileSystemRepresentation
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeID CFArrayGetTypeID()
 {
 	return darling_windows_CFArrayGetTypeID();
+}
+
+namespace {
+struct DarlingArrayApplyContext {
+	darling_windows_CFArrayGuestApplierFunction callback;
+	void* context;
+};
+void DarlingArrayApplyThunk(const void* value, void* opaque)
+{
+	auto* state = static_cast<DarlingArrayApplyContext*>(opaque);
+	if (state != nullptr && state->callback != nullptr)
+		state->callback(value, state->context);
+}
+bool DarlingArrayIsMutable(darling_windows_CFArrayRef value)
+{
+	const auto* object = static_cast<const Object*>(value);
+	return object != nullptr && object->kind == Kind::Array && object->mutable_array;
+}
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFArrayRef CFArrayCreate(
+	const void*, const void* const* values, darling_windows_CFIndex count,
+	const DarlingCFArrayCallbacks* callbacks)
+{
+	if (!DarlingIsTypeArrayCallbacks(callbacks)) return nullptr;
+	return darling_windows_CFArrayCreate(values, count);
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFArrayRef CFArrayCreateMutable(
+	const void*, darling_windows_CFIndex capacity, const DarlingCFArrayCallbacks* callbacks)
+{
+	if (!DarlingIsTypeArrayCallbacks(callbacks)) return nullptr;
+	return darling_windows_CFArrayCreateMutable(capacity);
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFArrayRef CFArrayCreateCopy(
+	const void*, darling_windows_CFArrayRef value)
+{
+	return darling_windows_CFArrayCreateCopy(value);
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFArrayRef CFArrayCreateMutableCopy(
+	const void*, darling_windows_CFIndex capacity, darling_windows_CFArrayRef value)
+{
+	return darling_windows_CFArrayCreateMutableCopy(capacity, value);
+}
+
+extern "C" DARLING_CF_GUEST_ABI void CFArrayAppendValue(
+	darling_windows_CFArrayRef value, darling_windows_CFTypeRef element)
+{
+	if (DarlingArrayIsMutable(value)) darling_windows_CFArrayAppendValue(value, element);
+}
+
+extern "C" DARLING_CF_GUEST_ABI void CFArrayInsertValueAtIndex(
+	darling_windows_CFArrayRef value, darling_windows_CFIndex index,
+	darling_windows_CFTypeRef element)
+{
+	if (DarlingArrayIsMutable(value)) darling_windows_CFArrayInsertValueAtIndex(value, index, element);
+}
+
+extern "C" DARLING_CF_GUEST_ABI void CFArrayRemoveValueAtIndex(
+	darling_windows_CFArrayRef value, darling_windows_CFIndex index)
+{
+	if (DarlingArrayIsMutable(value)) darling_windows_CFArrayRemoveValueAtIndex(value, index);
+}
+
+extern "C" DARLING_CF_GUEST_ABI void CFArraySetValueAtIndex(
+	darling_windows_CFArrayRef value, darling_windows_CFIndex index,
+	darling_windows_CFTypeRef element)
+{
+	if (!DarlingArrayIsMutable(value) || index < 0 ||
+		index >= darling_windows_CFArrayGetCount(value)) return;
+	darling_windows_CFArrayReplaceValues(value, index, 1, &element, 1);
+}
+
+extern "C" DARLING_CF_GUEST_ABI void CFArrayReplaceValues(
+	darling_windows_CFArrayRef value, darling_windows_CFRange range,
+	const void* const* replacement, darling_windows_CFIndex replacement_count)
+{
+	if (DarlingArrayIsMutable(value))
+		darling_windows_CFArrayReplaceValues(value, range.location, range.length,
+			replacement, replacement_count);
+}
+
+extern "C" DARLING_CF_GUEST_ABI void CFArrayRemoveAllValues(darling_windows_CFArrayRef value)
+{
+	if (DarlingArrayIsMutable(value)) darling_windows_CFArrayRemoveAllValues(value);
+}
+
+extern "C" DARLING_CF_GUEST_ABI void CFArrayApplyFunction(
+	darling_windows_CFArrayRef value, darling_windows_CFRange range,
+	darling_windows_CFArrayGuestApplierFunction callback, void* context)
+{
+	if (callback == nullptr) return;
+	DarlingArrayApplyContext state{callback, context};
+	darling_windows_CFArrayApplyFunction(value, range, &DarlingArrayApplyThunk, &state);
 }
 
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFIndex CFArrayGetCount(
@@ -4066,6 +4181,14 @@ extern "C" std::uintptr_t darling_windows_corefoundation_symbol(const char* name
 		return reinterpret_cast<std::uintptr_t>(&CFStringGetFileSystemRepresentation);
 	if (std::strcmp(name, "CFArrayGetTypeID") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFArrayGetTypeID);
+	if (std::strcmp(name, "CFArrayCreate") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFArrayCreate);
+	if (std::strcmp(name, "CFArrayCreateMutable") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFArrayCreateMutable);
+	if (std::strcmp(name, "CFArrayCreateCopy") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFArrayCreateCopy);
+	if (std::strcmp(name, "CFArrayCreateMutableCopy") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFArrayCreateMutableCopy);
 	if (std::strcmp(name, "CFArrayGetCount") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFArrayGetCount);
 	if (std::strcmp(name, "CFArrayGetValueAtIndex") == 0)
@@ -4074,6 +4197,20 @@ extern "C" std::uintptr_t darling_windows_corefoundation_symbol(const char* name
 		return reinterpret_cast<std::uintptr_t>(&CFArrayGetValues);
 	if (std::strcmp(name, "CFArrayContainsValue") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFArrayContainsValue);
+	if (std::strcmp(name, "CFArrayAppendValue") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFArrayAppendValue);
+	if (std::strcmp(name, "CFArrayInsertValueAtIndex") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFArrayInsertValueAtIndex);
+	if (std::strcmp(name, "CFArrayRemoveValueAtIndex") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFArrayRemoveValueAtIndex);
+	if (std::strcmp(name, "CFArraySetValueAtIndex") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFArraySetValueAtIndex);
+	if (std::strcmp(name, "CFArrayReplaceValues") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFArrayReplaceValues);
+	if (std::strcmp(name, "CFArrayRemoveAllValues") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFArrayRemoveAllValues);
+	if (std::strcmp(name, "CFArrayApplyFunction") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFArrayApplyFunction);
 	if (std::strcmp(name, "CFNumberGetTypeID") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFNumberGetTypeID);
 	if (std::strcmp(name, "CFNumberCreate") == 0)
@@ -4134,6 +4271,8 @@ extern "C" std::uintptr_t darling_windows_corefoundation_symbol(const char* name
 		return reinterpret_cast<std::uintptr_t>(&kCFTypeDictionaryValueCallBacks);
 	if (std::strcmp(name, "kCFTypeSetCallBacks") == 0)
 		return reinterpret_cast<std::uintptr_t>(&kCFTypeSetCallBacks);
+	if (std::strcmp(name, "kCFTypeArrayCallBacks") == 0)
+		return reinterpret_cast<std::uintptr_t>(&kCFTypeArrayCallBacks);
 	if (std::strcmp(name, "CFSetGetTypeID") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFSetGetTypeID);
 	if (std::strcmp(name, "CFSetCreate") == 0)

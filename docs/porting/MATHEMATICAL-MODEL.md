@@ -566,3 +566,13 @@ expected performance profile. Null elements are rejected. These semantics
 follow [Apple CFSet](https://developer.apple.com/documentation/corefoundation/cfset),
 [CFSetCallBacks](https://developer.apple.com/documentation/corefoundation/cfsetcallbacks),
 and [CFSetCreateMutable](https://developer.apple.com/documentation/corefoundation/cfsetcreatemutable%28_%3A_%3A_%29).
+
+`CFArray` is modeled as an ordered sequence `A=(a₀,…,aₙ₋₁)`, so duplicate
+values and order are preserved. Replacing range `[i,i+ℓ)` by sequence `B`
+produces `A'=(a₀,…,aᵢ₋₁)·B·(aᵢ₊ℓ,…,aₙ₋₁)`. Append and insert are the special
+cases `i=n, ℓ=0` and `0≤i≤n, ℓ=0`; setting index `i` uses `ℓ=1, |B|=1`.
+Only arrays constructed as mutable accept these transformations. Current
+guest creation supports the predefined `kCFTypeArrayCallBacks`; custom and
+null callback semantics are not represented. See Apple's
+[CFArrayCreateMutable](https://developer.apple.com/documentation/corefoundation/cfarraycreatemutable%28_%3A_%3A_%29)
+and [`kCFTypeArrayCallBacks`](https://developer.apple.com/documentation/corefoundation/kcftypearraycallbacks).

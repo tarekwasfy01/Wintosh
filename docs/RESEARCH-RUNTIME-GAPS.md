@@ -22,14 +22,16 @@ Referenzen: [Foundation `run(mode:before:)`](https://developer.apple.com/documen
 
 Der Mach-O-Hostresolver exportiert jetzt zusätzlich ausgewählte
 `CFString`-Erzeugungs- und Leseoperationen sowie `CFArray`-Typ-, Anzahl- und
-Indexabfragen. String-ABI-Aufrufe akzeptieren nur die implementierte UTF-8-
-Darstellung. `CFRunLoopPerformBlock` ist nun angebunden: ein einzelner Modus
+Indexabfragen. CFArray unterstützt nun Create/Copy, mutable Create/Copy,
+grundlegende Mutation und synchrones ApplyFunction über
+`kCFTypeArrayCallBacks`; null/custom Callback-Semantik bleibt offen.
+String-ABI-Aufrufe akzeptieren nur die implementierte UTF-8-Darstellung.
+`CFRunLoopPerformBlock` ist nun angebunden: ein einzelner Modus
 oder ein Array von Modi wird kopiert, der Gast-Block bleibt bis zur Ausführung
 retained, und die AppKit-Hauptschleife wird aufgeweckt. Ein Längenlimit von
-4095 UTF-8-Bytes pro Modus gilt vorläufig. `CFRunLoopSource`/Timer/Observer,
-mutierbare Collections und die vollständigen RunLoop-Rückgabestatus bleiben
-offen. Die ABI-Ausführung ist noch nicht durch einen Gast-Fixture-Lauf
-bestätigt.
+4095 UTF-8-Bytes pro Modus gilt vorläufig. `CFRunLoopSource`/Timer/Observer
+und die vollständigen RunLoop-Rückgabestatus bleiben offen. Die ABI-Ausführung
+ist noch nicht durch einen Gast-Fixture-Lauf bestätigt.
 
 Die Dictionary-Schicht wurde danach erweitert: `CFDictionaryCreate`, mutable
 Erzeugung/Kopie, Set/Add/Replace/Remove sowie synchrone Enumeration sind jetzt

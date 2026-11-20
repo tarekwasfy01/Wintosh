@@ -37,8 +37,12 @@ also include CFNumber creation/conversion/comparison, CFDate creation/comparison
 CFBoolean reads, and CFDictionary creation, copying, lookup, mutation and
 enumeration using the built-in `kCFType` callbacks. CFSet creation, copying,
 membership/value queries, enumeration, set algebra and mutation are exposed
-with `kCFTypeSetCallBacks`. Custom callback tables and null callback-table
-semantics are not yet implemented for either collection type.
+with `kCFTypeSetCallBacks`. CFArray now also has creation, mutable copies,
+append/insert/remove/replace/set, remove-all, and synchronous callback
+enumeration through `kCFTypeArrayCallBacks`. Mutable operations are guarded by
+the mutability of the guest object. Custom and null callback tables are not
+modeled; only the predefined CFType callback table and member-wise identical
+copies are accepted for creation.
 
 This is a useful Foundation scheduling subset, not the complete CoreFoundation
 run-loop contract: CFRunLoopSource/Timer/Observer objects, true input-source

@@ -48,10 +48,14 @@ still missing. Apple documents that each thread owns one run loop and that
 sources, timers, and observers are activated by their registered modes; current
 evidence is source/build level only.
 
-The Mach-O host resolver exports a partial C ABI for run-loop control and
-`CFString` creation/read operations plus `CFArray` type/count/index reads. The
-guest ABI attributes account for the x86_64 Darwin calling convention. String
-conversion is limited to the implementation's UTF-8 representation.
+The Mach-O host resolver exports a partial C ABI for run-loop control,
+`CFString` creation/read operations, and CFArray creation, copying, reads,
+mutation, and synchronous callback enumeration. CFArray creation accepts only
+`kCFTypeArrayCallBacks` or a member-wise identical structure. Null and custom
+callback tables remain unsupported. Mutable operations require an array made
+by a mutable constructor. The guest ABI attributes account for the x86_64
+Darwin calling convention. String conversion is limited to the implementation's
+UTF-8 representation.
 `CFRunLoopPerformBlock` now retains and schedules a guest block in a string or
 array of modes and wakes AppKit. The resolver also exports CFNumber, CFDate,
 CFBoolean, and CFDictionary create/copy/mutation/enumeration with the built-in

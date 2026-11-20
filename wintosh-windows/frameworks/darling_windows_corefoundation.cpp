@@ -3791,7 +3791,7 @@ extern "C" int darling_windows_CFRunLoopRunInModeForLoop(
 					static_cast<std::int64_t>((std::numeric_limits<std::uint32_t>::max)()));
 				lock.unlock();
 				const auto input = darling_windows_appkit_wait_run_loop_input(
-					value, static_cast<std::uint32_t>(timeout));
+					value, active_mode.c_str(), static_cast<std::uint32_t>(timeout));
 				lock.lock();
 				if (input >= 0) {
 					used_native_wait = true;
@@ -3896,6 +3896,16 @@ extern "C" bool darling_windows_CFRunLoopIsWaiting(darling_windows_CFRunLoopRef 
 	std::lock_guard lock(loop->state->mutex);
 	return loop->state->waiting && loop->state->running &&
 		loop->state->running_thread != std::this_thread::get_id();
+}
+
+extern "C" bool darling_windows_CFRunLoopIsCommonMode(
+	darling_windows_CFRunLoopRef value, const char* mode)
+{
+	if (value == nullptr || mode == nullptr || *mode == '\0') return false;
+	auto* loop = static_cast<RunLoop*>(value);
+	std::lock_guard lock(loop->state->mutex);
+	return std::find(loop->state->common_modes.begin(),
+		loop->state->common_modes.end(), mode) != loop->state->common_modes.end();
 }
 
 extern "C" void darling_windows_CFRunLoopSetWaiting(

@@ -316,6 +316,10 @@ exported and returns when stopped or when its mode has no work source. This is
 build-verified only, without a Mach-O ABI fixture.
 `CFRunLoopIsWaiting` reports true only during a host wait and only when queried
 from another thread, matching the documented current-thread behavior.
+Queued `NSEvent` retrieval checks the requested mode against the main run
+loop's common-mode set and leaves ineligible events queued.
+The AppKit main loop includes default, event-tracking, and modal-panel modes in
+that set, following the documented Cocoa common-mode defaults.
 Run-loop introspection also exports `CFRunLoopGetTypeID`,
 `CFRunLoopCopyCurrentMode`, and `CFRunLoopCopyAllModes`. The current mode is
 null while idle; the copied mode array lists known common, active, and

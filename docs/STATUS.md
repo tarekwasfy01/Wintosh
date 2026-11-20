@@ -94,7 +94,10 @@ supports `NSApplication.currentEvent`, event polling with
 be queued or sent directly; `NSApplication.run` drains posted events and a
 thread message wakes it when another thread posts. Deadline waits continue
 across Windows' bounded wait intervals. Run-loop mode filtering is not yet
-modeled. Clang and MSVC Release builds link; no guest fixture has exercised
+complete: queued `NSEvent`s are delivered only when the requested mode is in
+the main loop's common-mode set, which starts with default, event-tracking,
+and modal-panel modes; raw Win32 message dispatch remains shared across modes.
+Clang and MSVC Release builds link; no guest fixture has exercised
 event ordering, queue ownership, or deadline behavior.
 
 ### Darwin sysctl guest identity and CPU topology (2026-11-17)

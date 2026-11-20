@@ -14,6 +14,6 @@ extern "C" void darling_windows_appkit_wake_main_run_loop();
 // Wait for and dispatch one message-queue event on the AppKit main thread.
 // Returns 1 for dispatched application input, 0 for timeout/internal wake, -1 on failure.
 extern "C" std::int32_t darling_windows_appkit_wait_run_loop_input(
-	void* loop, std::uint32_t timeout_milliseconds);
+	void* loop, const char* mode, std::uint32_t timeout_milliseconds);
 extern "C" std::uintptr_t darling_windows_appkit_symbol(const char* name);
 extern "C" DARLING_APPKIT_GUEST_ABI int NSApplicationMain(int argc, char** argv);

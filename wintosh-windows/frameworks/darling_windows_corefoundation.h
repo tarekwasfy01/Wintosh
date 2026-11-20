@@ -644,6 +644,8 @@ extern "C" int darling_windows_CFRunLoopRunInModeForLoop(
 extern "C" void darling_windows_CFRunLoopStop(darling_windows_CFRunLoopRef loop);
 extern "C" bool darling_windows_CFRunLoopIsRunning(darling_windows_CFRunLoopRef loop);
 extern "C" bool darling_windows_CFRunLoopIsWaiting(darling_windows_CFRunLoopRef loop);
+extern "C" bool darling_windows_CFRunLoopIsCommonMode(
+	darling_windows_CFRunLoopRef loop, const char* mode);
 extern "C" void darling_windows_CFRunLoopSetWaiting(
 	darling_windows_CFRunLoopRef loop, bool waiting);
 extern "C" bool darling_windows_CFRunLoopContainsPendingBlockForMode(

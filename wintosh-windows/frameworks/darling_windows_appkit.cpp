@@ -597,7 +597,7 @@ bool DispatchAppKitKeyEvent(HWND window, UINT message, WPARAM wparam,
 bool DispatchAppKitScrollEvent(HWND window, UINT message, WPARAM wparam,
 	LPARAM lparam);
 void ClearAppKitMouseTracking(HWND window);
-id TakeMatchingAppKitEvent(std::uint64_t event_mask, bool dequeue);
+id TakeMatchingAppKitEvent(std::uint64_t event_mask, bool dequeue, const char* mode);
 void DispatchAppKitEventToApplication(id application, id event);
 void ClearAppKitMouseTracking(HWND window);
 void NSApplicationSendEvent(id self, SEL selector, id event);
@@ -16710,6 +16710,10 @@ void NSApplicationRun(id self, SEL selector)
 {
 	if (g_application_running.load(std::memory_order_acquire)) return;
 	darling_windows_CFRunLoopUseCurrentAsMain();
+	darling_windows_CFRunLoopAddCommonMode(darling_windows_CFRunLoopGetMain(),
+		"NSEventTrackingRunLoopMode");
+	darling_windows_CFRunLoopAddCommonMode(darling_windows_CFRunLoopGetMain(),
+		"NSModalPanelRunLoopMode");
 	g_appkit_main_thread_id.store(GetCurrentThreadId(), std::memory_order_release);
 	g_application_termination_notified.store(false, std::memory_order_release);
 	g_application_active.store(false, std::memory_order_release);
@@ -16761,7 +16765,7 @@ void NSApplicationRun(id self, SEL selector)
 		darling_windows_CFRunLoopGetCurrent(), "kCFRunLoopDefaultMode",
 			0.0, true) == 0) continue;
 		if (id event = TakeMatchingAppKitEvent((std::numeric_limits<std::uint64_t>::max)(),
-			true)) {
+			true, "kCFRunLoopDefaultMode")) {
 			DispatchAppKitEventToApplication(g_shared_application, event);
 			continue;
 		}
@@ -17150,8 +17154,10 @@ bool QueueAppKitEventWhenPolling(id event, std::uint64_t type)
 		EnqueueAppKitEvent(event, type, false, false);
 }
 
-id TakeMatchingAppKitEvent(std::uint64_t event_mask, bool dequeue)
+id TakeMatchingAppKitEvent(std::uint64_t event_mask, bool dequeue, const char* mode)
 {
+	if (!darling_windows_CFRunLoopIsCommonMode(
+		darling_windows_CFRunLoopGetMain(), mode)) return nullptr;
 	std::lock_guard lock(g_appkit_event_queue_mutex);
 	for (auto it = g_appkit_event_queue.begin(); it != g_appkit_event_queue.end(); ++it) {
 		const std::uint64_t event_bit = it->type < 64 ? (1ull << it->type) : 0;
@@ -17199,13 +17205,15 @@ id NSApplicationNextEventMatchingMask(id, SEL, std::uint64_t event_mask,
 			g_appkit_event_polling.store(previous, std::memory_order_release);
 		}
 	} polling_scope;
-	(void)mode;
+	const char* mode_name = mode == nullptr ? "kCFRunLoopDefaultMode" :
+		NSStringUTF8String(mode, nullptr);
+	if (mode_name == nullptr) return nullptr;
 	const SEL interval_selector = sel_registerName("timeIntervalSinceNow");
 	if (until_date != nullptr && class_getInstanceMethod(
 		object_getClass(until_date), interval_selector) == nullptr) return nullptr;
 	for (;;) {
 		if (DispatchOneAppKitCallback()) continue;
-		if (id event = TakeMatchingAppKitEvent(event_mask, dequeue)) return event;
+		if (id event = TakeMatchingAppKitEvent(event_mask, dequeue, mode_name)) return event;
 		DWORD timeout = INFINITE;
 		if (until_date != nullptr) {
 			const double seconds = darling_objc_msgSend_double0(until_date,
@@ -19987,13 +19995,13 @@ extern "C" void darling_windows_appkit_wake_main_run_loop()
 }
 
 extern "C" std::int32_t darling_windows_appkit_wait_run_loop_input(
-	void* loop, std::uint32_t timeout_milliseconds)
+	void* loop, const char* mode, std::uint32_t timeout_milliseconds)
 {
 	const DWORD thread = g_application_thread_id.load(std::memory_order_acquire);
 	if (thread == 0 || thread != GetCurrentThreadId()) return -1;
 	if (DispatchOneAppKitCallback()) return 1;
 	if (id event = TakeMatchingAppKitEvent(
-		(std::numeric_limits<std::uint64_t>::max)(), true)) {
+		(std::numeric_limits<std::uint64_t>::max)(), true, mode)) {
 		DispatchAppKitEventToApplication(g_shared_application, event);
 		return 1;
 	}

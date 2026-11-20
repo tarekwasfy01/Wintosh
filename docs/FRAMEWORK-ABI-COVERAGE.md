@@ -79,6 +79,10 @@ so generic `CFRetain`/`CFRelease` is safe and does not destroy the loop.
 resolver exports `CFRunLoopRun`. Empty worker modes return `Finished`; the
 AppKit main loop treats its Windows message queue as an input source. These
 additions have build evidence only, without guest ABI fixtures. The
+AppKit's queued `NSEvent` lookup now checks that the requested mode is in the
+main loop's common-mode set, initialized with default, event-tracking, and
+modal-panel modes; raw Win32 messages remain dispatchable in all active modes.
+This mode filter has source/build evidence only. The
 resolver also exports CFNumber, CFDate,
 CFBoolean, and CFDictionary create/copy/mutation/enumeration with the built-in
 `kCFType` callback tables. CFSet creation, copying, set algebra and traversal

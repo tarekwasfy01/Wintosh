@@ -560,6 +560,11 @@ Adding/removing a source or observer, adding a common mode, and scheduling a
 block now post the AppKit wake message as well as notifying worker waiters.
 This ensures the main loop reevaluates its mode after cross-thread changes.
 
+For queued AppKit events, eligibility is `eligible(e,m) = m ∈ C(main)` where
+`C(main)` is the main run loop's registered common-mode set. Retrieval in an
+unregistered mode leaves the event queued; Win32-native input messages remain
+host messages and are dispatched independently of this Cocoa event predicate.
+
 For a timer with next fire time `t`, current absolute time `n`, and positive
 interval `Δ`, a due repeating timer advances to
 `t' = t + (floor((n - t) / Δ) + 1)Δ`. This retains the original cadence and

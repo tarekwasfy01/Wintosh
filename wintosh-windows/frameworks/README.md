@@ -298,8 +298,11 @@ add/remove/contains by mode, signal delivery, and invalidation. Signaling queues
 the source's ordered perform callback on each associated loop; the first
 eligible loop consumes the signal. CF timers and observers, native Windows
 input-source registration, recursive activations, selector cancellation, and
-arbitrary-mode `NSTimer` scheduling remain outside this subset; mode behavior
-has not yet been verified against a Mach-O guest.
+arbitrary-mode `NSTimer` scheduling remain outside this subset. CoreFoundation
+timers can be created, registered by mode, queried, rescheduled, invalidated,
+and fired on the active loop thread. Repeating timers preserve cadence while
+skipping missed intervals. Timer tolerance and observer phases are not modeled;
+these guest ABI paths have not yet been verified with a Mach-O fixture.
 The keyed-archive decoder also recognizes Apple's `NSCustomView` placeholder,
 resolves its `NSClassName`, allocates a loaded `NSView` subclass, and calls
 `initWithFrame:` using `NSFrame` or `NSFrameSize`. It then restores selected

@@ -13,11 +13,13 @@ und mit klaren ABI-Grenzen erweitern.
 
 Seit der vorherigen Bestandsaufnahme existiert ein begrenzter `NSRunLoop`-
 Bridge mit mode-bewusster Callback-Warteschlange und AppKit-Main-Loop-Pump.
-Version-0-`CFRunLoopSource`-Objekte decken nun Kontextbesitz, Reihenfolge,
-Modusregistrierung, Signalisierung und Invalidierung ab. Das Signal reiht einen
-Callback auf den registrierten Loops ein; der erste passende Loop konsumiert
-es. Ein vollständiges Modell benötigt zusätzlich Timer und Observer pro Modus,
-native Eingabequellen sowie rekursive Aktivierungen; diese Teile bleiben offen.
+Version-0-`CFRunLoopSource`-Objekte decken Kontextbesitz, Reihenfolge,
+Modusregistrierung, Signalisierung und Invalidierung ab. `CFRunLoopTimer`
+unterstützt Erzeugung, Kontext-/Ordnungs-/Intervallabfragen, nächste Feuerzeit,
+Modusregistrierung und Invalidierung. Fällige Timer laufen auf dem aktiven
+Loop-Thread; Wiederholungen halten ihre Kadenz ein und überspringen verpasste
+Intervalle. Ein vollständiges Modell benötigt zusätzlich Observer pro Modus,
+Timer-Toleranz, native Eingabequellen sowie rekursive Aktivierungen.
 Referenzen: [Foundation `run(mode:before:)`](https://developer.apple.com/documentation/foundation/runloop/run%28mode%3Abefore%3A%29),
 [CoreFoundation `CFRunLoop`](https://developer.apple.com/documentation/corefoundation/cfrunloop),
 [`CFRunLoopPerformBlock`](https://developer.apple.com/documentation/corefoundation/cfrunloopperformblock%28_%3A_%3A_%3A%29).
@@ -35,9 +37,11 @@ oder ein Array von Modi wird kopiert, der Gast-Block bleibt bis zur Ausführung
 retained, und die AppKit-Hauptschleife wird aufgeweckt. Ein Längenlimit von
 4095 UTF-8-Bytes pro Modus gilt vorläufig. `CFRunLoopSource` ist für Version 0
 mit Create/GetContext/GetOrder, Add/Remove/Contains, Signal, IsValid und
-Invalidate angebunden. Timer, Observer, native Eingabequellen und vollständige
-RunLoop-Rückgabestatus bleiben offen. Die ABI-Ausführung ist noch nicht durch
-einen Gast-Fixture-Lauf bestätigt.
+Invalidate angebunden. `CFRunLoopTimer` deckt Create, Kontextabfrage,
+Intervall-/Ordnungs-/Feuerzeitabfrage, SetNextFireDate, DoesRepeat, Add/Remove/
+Contains, IsValid und Invalidate ab. Observer, Timer-Toleranz, native
+Eingabequellen und vollständige RunLoop-Rückgabestatus bleiben offen. Die
+ABI-Ausführung ist noch nicht durch einen Gast-Fixture-Lauf bestätigt.
 
 Die Dictionary-Schicht wurde danach erweitert: `CFDictionaryCreate`, mutable
 Erzeugung/Kopie, Set/Add/Replace/Remove sowie synchrone Enumeration sind jetzt

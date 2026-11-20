@@ -443,9 +443,12 @@ RunLoop mode and one-shot timer durations now reject NaN and infinite values
 before entering `std::chrono`; the CoreFoundation smoke covers both invalid
 mode and timer inputs. Version-0 `CFRunLoopSource` create/context/order,
 add/remove/contains, signal, validity, and invalidation entry points are now
-implemented through the mode-tagged callback queue. Guest fixture verification
-is still absent; CF timers, observers, native input-source registration, and
-full recursive run-loop semantics remain outside this adapter.
+implemented through the mode-tagged callback queue. `CFRunLoopTimer` also has
+create/query/reschedule/invalidate and mode registration, with run-loop-thread
+delivery and repeating cadence that skips missed intervals. The x64 Release
+build passes; guest fixture verification is still absent. Timer tolerance,
+observers, native input sources, and full recursive run-loop semantics remain
+outside this adapter.
 
 The Objective-C bridge now covers `objc_msgSendSuper` with a boolean argument
 (`B@:B`) in addition to the existing direct-send path; the registry smoke

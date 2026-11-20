@@ -511,7 +511,8 @@ pending. The current default common set is `{kCFRunLoopDefaultMode}` until
 | Ordered selector queue | Process target selector on target thread in requested modes/order | `NSRunLoop.performSelector:target:argument:order:modes:` | No direct WSL1 equivalent | Source/build only |
 | Main AppKit loop | Cocoa loop dispatches AppKit input and Foundation work | Existing Win32 message loop pumps default-mode CF callback work | WSL1 cannot supply AppKit behavior | Source/build only |
 | CF source version 0 | Register by mode, signal, retain, invalidate, and service in order | Mode-tagged callback queue; first eligible loop consumes a signal | Not supplied by WSL1 | Clang Release build; no guest fixture |
-| CF timers and observers | Fire at deadlines and report run-loop phases in registered modes | Not implemented | Not supplied by WSL1 | Missing |
+| CF timer | Fire at deadline, repeat on cadence, invalidate after one shot | Timer registry per loop and mode; repeating fire date advances over missed intervals | Not supplied by WSL1 | Clang Release build; no guest fixture |
+| CF observer | Report run-loop phases in registered modes | Not implemented | Not supplied by WSL1 | Missing |
 
 For a source `s`, registered loops `L(s)` and generation `g`,
 `Signal(s,g)` queues at most one delivery token per loop across the union of
@@ -523,6 +524,15 @@ state machine. References: [Apple CFRunLoopSource](https://developer.apple.com/d
 [source context](https://developer.apple.com/documentation/corefoundation/cfrunloopsourcecontext),
 [CFRunLoop mode contract](https://developer.apple.com/documentation/corefoundation/cfrunloop),
 and [CFRunLoopPerformBlock](https://developer.apple.com/documentation/corefoundation/cfrunloopperformblock%28_%3A_%3A_%3A%29).
+
+For a timer with next fire time `t`, current absolute time `n`, and positive
+interval `Δ`, a due repeating timer advances to
+`t' = t + (floor((n - t) / Δ) + 1)Δ`. This retains the original cadence and
+avoids a burst of callbacks after the host thread was delayed. A timer with
+`Δ ≤ 0` fires once and becomes invalid. Timer callbacks run on the associated
+run-loop thread; tolerance-based coalescing and wall-clock-change handling are
+not modeled. See [Apple CFRunLoopTimerCreate](https://developer.apple.com/documentation/corefoundation/cfrunlooptimercreate%28_%3A_%3A_%3A_%3A_%3A_%3A_%3A%29)
+and [CFRunLoopTimerSetNextFireDate](https://developer.apple.com/documentation/corefoundation/cfrunlooptimersetnextfiredate%28_%3A_%3A%29).
 
 ## CoreFoundation scalar bridge
 

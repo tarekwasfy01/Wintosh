@@ -51,14 +51,16 @@ fields are retained in the copied table for ABI fidelity.
 Comparator-based range sorting and binary search are also exported; binary
 search assumes the searched range is already sorted by the same ordering.
 
-Version-0 `CFRunLoopSource` objects now support create/context/order queries,
-mode registration and removal, signal delivery, validity checks, and
-invalidation. A signal queues one ordered callback across the source's
-registered modes for each associated loop; the first eligible loop consumes
-that signal. The Clang Release build completes with this API surface. Timer and
-observer objects, native Windows input-source registration, full recursive
-activation semantics, and guest ABI fixture coverage remain open. No guest
-fixture has exercised source lifetime, mode filtering, or callback ordering.
+Version-0 `CFRunLoopSource` objects support create/context/order queries, mode
+registration/removal, signal delivery, validity, and invalidation. Guest
+`CFRunLoopTimer` creation, context/order/interval/fire-date queries, repeat
+semantics, next-fire-date mutation, mode registration/removal, and invalidation
+are also wired into the run loop. Due timers fire on the active loop thread;
+repeating timers advance on their scheduled cadence and skip missed intervals.
+The Windows x64 Clang Release build compiles and links this surface. Timer and
+source guest-fixture behavior remains unverified. Observer objects, native
+Windows input-source registration, tolerance, and full recursive activation
+semantics remain open.
 
 ### Foundation dates and AppKit event queue (2026-11-17)
 

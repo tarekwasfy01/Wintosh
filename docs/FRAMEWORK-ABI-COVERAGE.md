@@ -50,18 +50,20 @@ evidence is source/build level only.
 
 The Mach-O host resolver exports a partial C ABI for run-loop control,
 `CFString` creation/read operations, and CFArray creation, copying, reads,
-mutation, and synchronous callback enumeration. CFArray creation accepts only
-`kCFTypeArrayCallBacks` or a member-wise identical structure. Null and custom
-callback tables remain unsupported. Mutable operations require an array made
-by a mutable constructor. The guest ABI attributes account for the x86_64
-Darwin calling convention. String conversion is limited to the implementation's
-UTF-8 representation.
+mutation, and synchronous callback enumeration. CFArray copies its callback
+structure and allocator at creation and applies retain/release/equality
+callbacks to stored values. Range queries, range append, and index exchange
+are exposed. A null callback pointer is treated as a zeroed version-0 table.
+Mutable operations require an array made by a mutable constructor. The guest
+ABI attributes account for the x86_64 Darwin calling convention. String
+conversion is limited to the implementation's UTF-8 representation.
 `CFRunLoopPerformBlock` now retains and schedules a guest block in a string or
 array of modes and wakes AppKit. The resolver also exports CFNumber, CFDate,
 CFBoolean, and CFDictionary create/copy/mutation/enumeration with the built-in
 `kCFType` callback tables. CFSet creation, copying, set algebra and traversal
 are also exported with `kCFTypeSetCallBacks`; its vector-backed model is
-linear-time. Custom callback behavior and null callback tables are rejected.
+linear-time. For CFDictionary and CFSet, custom callback behavior and null
+callback tables remain unsupported.
 This has source/build evidence only; guest-side ABI invocation and status edge
 cases remain unverified.
 

@@ -52,6 +52,9 @@ struct Object {
 	bool mutable_dictionary = false;
 	bool mutable_set = false;
 	bool mutable_array = false;
+	bool has_array_callback_table = false;
+	DarlingCFArrayCallbacks array_callbacks{};
+	const void* array_allocator = nullptr;
 	Kind kind;
 	std::string string;
 	std::string bundle_path;
@@ -158,6 +161,9 @@ std::size_t UTF8OffsetForUTF16(const std::string& value, darling_windows_CFIndex
 	}
 	return units == target ? index : std::string::npos;
 }
+const void* RetainArrayValue(Object* array, const void* value);
+void ReleaseArrayValue(Object* array, const void* value);
+bool EqualArrayValues(const Object* array, const void* left, const void* right);
 void ReleaseOwned(Object* object)
 {
 	if (object == nullptr || object->immortal) return;
@@ -181,7 +187,7 @@ Object::~Object()
 		try { external_data_release(external_data_info, external_data, external_data_size); }
 		catch (...) { /* C callbacks must not unwind through CoreFoundation. */ }
 	}
-	for (const auto* value : array) ReleaseOwned(As(value));
+	for (const auto* value : array) ReleaseArrayValue(this, value);
 	ReleaseOwned(As(bundle_info_dictionary));
 	for (const auto* value : bundle_localized_info_values) ReleaseOwned(As(value));
 	if (bundle_executable_handle != nullptr && bundle_release_executable != nullptr) {
@@ -198,6 +204,36 @@ void RetainOwned(const void* value)
 	auto* object = As(value);
 	if (object != nullptr && !object->immortal)
 		object->references.fetch_add(1, std::memory_order_relaxed);
+}
+const void* RetainArrayValue(Object* array, const void* value)
+{
+	if (array == nullptr || !array->has_array_callback_table) {
+		RetainOwned(value);
+		return value;
+	}
+	if (array->array_callbacks.retain == nullptr) return value;
+	try { return array->array_callbacks.retain(array->array_allocator, value); }
+	catch (...) { return nullptr; }
+}
+void ReleaseArrayValue(Object* array, const void* value)
+{
+	if (array == nullptr || !array->has_array_callback_table) {
+		ReleaseOwned(As(value));
+		return;
+	}
+	if (array->array_callbacks.release != nullptr) {
+		try { array->array_callbacks.release(array->array_allocator, value); }
+		catch (...) { /* C callbacks must not unwind through CoreFoundation. */ }
+	}
+}
+bool EqualArrayValues(const Object* array, const void* left, const void* right)
+{
+	if (array != nullptr && array->has_array_callback_table) {
+		if (array->array_callbacks.equal == nullptr) return left == right;
+		try { return array->array_callbacks.equal(left, right) != 0; }
+		catch (...) { return false; }
+	}
+	return darling_windows_CFEqual(left, right);
 }
 std::string EscapeXML(const std::string& value)
 {
@@ -1952,7 +1988,7 @@ extern "C" darling_windows_CFIndex darling_windows_CFArrayGetFirstIndexOfValue(
 	const auto* object = static_cast<const Object*>(value);
 	if (object == nullptr || object->kind != Kind::Array) return -1;
 	for (std::size_t index = 0; index < object->array.size(); ++index)
-		if (darling_windows_CFEqual(object->array[index], candidate))
+		if (EqualArrayValues(object, object->array[index], candidate))
 			return static_cast<darling_windows_CFIndex>(index);
 	return -1;
 }
@@ -1964,7 +2000,7 @@ extern "C" darling_windows_CFIndex darling_windows_CFArrayGetCountOfValue(
 	if (object == nullptr || object->kind != Kind::Array) return 0;
 	darling_windows_CFIndex count = 0;
 	for (const auto* entry : object->array)
-		if (darling_windows_CFEqual(entry, candidate)) ++count;
+		if (EqualArrayValues(object, entry, candidate)) ++count;
 	return count;
 }
 
@@ -1974,7 +2010,7 @@ extern "C" darling_windows_CFIndex darling_windows_CFArrayGetLastIndexOfValue(
 	const auto* object = static_cast<const Object*>(value);
 	if (object == nullptr || object->kind != Kind::Array) return -1;
 	for (std::size_t index = object->array.size(); index > 0; --index)
-		if (darling_windows_CFEqual(object->array[index - 1], candidate))
+		if (EqualArrayValues(object, object->array[index - 1], candidate))
 			return static_cast<darling_windows_CFIndex>(index - 1);
 	return -1;
 }
@@ -1993,11 +2029,10 @@ extern "C" void darling_windows_CFArrayApplyFunction(darling_windows_CFArrayRef 
 	snapshot.reserve(static_cast<std::size_t>(range.length));
 	for (darling_windows_CFIndex index = 0; index < range.length; ++index) {
 		const auto* element = object->array[static_cast<std::size_t>(range.location + index)];
-		RetainOwned(element);
-		snapshot.push_back(element);
+		snapshot.push_back(RetainArrayValue(const_cast<Object*>(object), element));
 	}
 	for (const auto* element : snapshot) function(element, context);
-	for (const auto* element : snapshot) ReleaseOwned(As(element));
+	for (const auto* element : snapshot) ReleaseArrayValue(const_cast<Object*>(object), element);
 }
 
 extern "C" void darling_windows_CFArrayGetValues(darling_windows_CFArrayRef value,
@@ -2018,7 +2053,11 @@ extern "C" bool darling_windows_CFArrayAppendValue(darling_windows_CFArrayRef va
 {
 	auto* object = As(value);
 	if (object == nullptr || object->kind != Kind::Array || element == nullptr) return false;
-	object->array.push_back(element); RetainOwned(element); return true;
+	try { object->array.reserve(object->array.size() + 1); }
+	catch (...) { return false; }
+	const auto* retained = RetainArrayValue(object, element);
+	if (retained == nullptr) return false;
+	object->array.push_back(retained); return true;
 }
 
 extern "C" bool darling_windows_CFArrayInsertValueAtIndex(darling_windows_CFArrayRef value,
@@ -2027,7 +2066,11 @@ extern "C" bool darling_windows_CFArrayInsertValueAtIndex(darling_windows_CFArra
 	auto* object = As(value);
 	if (object == nullptr || object->kind != Kind::Array || element == nullptr || index < 0 ||
 		static_cast<std::size_t>(index) > object->array.size()) return false;
-	object->array.insert(object->array.begin() + index, element); RetainOwned(element); return true;
+	try { object->array.reserve(object->array.size() + 1); }
+	catch (...) { return false; }
+	const auto* retained = RetainArrayValue(object, element);
+	if (retained == nullptr) return false;
+	object->array.insert(object->array.begin() + index, retained); return true;
 }
 
 extern "C" bool darling_windows_CFArrayRemoveValueAtIndex(darling_windows_CFArrayRef value,
@@ -2036,7 +2079,7 @@ extern "C" bool darling_windows_CFArrayRemoveValueAtIndex(darling_windows_CFArra
 	auto* object = As(value);
 	if (object == nullptr || object->kind != Kind::Array || index < 0 ||
 		static_cast<std::size_t>(index) >= object->array.size()) return false;
-	const auto it = object->array.begin() + index; ReleaseOwned(As(*it)); object->array.erase(it); return true;
+	const auto it = object->array.begin() + index; ReleaseArrayValue(object, *it); object->array.erase(it); return true;
 }
 
 extern "C" bool darling_windows_CFArrayReplaceValues(darling_windows_CFArrayRef value,
@@ -2050,15 +2093,29 @@ extern "C" bool darling_windows_CFArrayReplaceValues(darling_windows_CFArrayRef 
 		static_cast<std::size_t>(range_count) > object->array.size() - static_cast<std::size_t>(range_start)) return false;
 	for (darling_windows_CFIndex index = 0; index < replacement_count; ++index)
 		if (replacement[index] == nullptr) return false;
+	const auto retained_size = object->array.size() - static_cast<std::size_t>(range_count) +
+		static_cast<std::size_t>(replacement_count);
 	std::vector<const void*> replacement_values;
-	if (replacement_count != 0)
-		replacement_values.assign(replacement, replacement + replacement_count);
+	try {
+		object->array.reserve(retained_size);
+		replacement_values.reserve(static_cast<std::size_t>(replacement_count));
+		for (darling_windows_CFIndex index = 0; index < replacement_count; ++index) {
+			const auto* retained = RetainArrayValue(object, replacement[index]);
+			if (retained == nullptr) {
+				for (const auto* previous : replacement_values) ReleaseArrayValue(object, previous);
+				return false;
+			}
+			replacement_values.push_back(retained);
+		}
+	} catch (...) {
+		for (const auto* retained : replacement_values) ReleaseArrayValue(object, retained);
+		return false;
+	}
 	const auto begin = object->array.begin() + range_start;
-	for (darling_windows_CFIndex index = 0; index < range_count; ++index) ReleaseOwned(As(object->array[static_cast<std::size_t>(range_start + index)]));
+	for (darling_windows_CFIndex index = 0; index < range_count; ++index) ReleaseArrayValue(object, object->array[static_cast<std::size_t>(range_start + index)]);
 	object->array.erase(begin, begin + range_count);
 	object->array.insert(object->array.begin() + range_start,
 		replacement_values.begin(), replacement_values.end());
-	for (darling_windows_CFIndex index = 0; index < replacement_count; ++index) RetainOwned(replacement[index]);
 	return true;
 }
 
@@ -2070,7 +2127,7 @@ extern "C" bool darling_windows_CFArrayRemoveValues(darling_windows_CFArrayRef v
 		static_cast<std::size_t>(range_start) > object->array.size() ||
 		static_cast<std::size_t>(range_count) > object->array.size() - static_cast<std::size_t>(range_start)) return false;
 	for (darling_windows_CFIndex index = 0; index < range_count; ++index)
-		ReleaseOwned(As(object->array[static_cast<std::size_t>(range_start + index)]));
+		ReleaseArrayValue(object, object->array[static_cast<std::size_t>(range_start + index)]);
 	object->array.erase(object->array.begin() + range_start, object->array.begin() + range_start + range_count);
 	return true;
 }
@@ -2082,16 +2139,18 @@ extern "C" bool darling_windows_CFArrayAppendArray(darling_windows_CFArrayRef va
 	const auto* source_object = static_cast<const Object*>(source);
 	if (object == nullptr || object->kind != Kind::Array || source_object == nullptr ||
 		source_object->kind != Kind::Array) return false;
-	const auto source_values = source_object->array;
-	object->array.insert(object->array.end(), source_values.begin(), source_values.end());
-	for (const auto* element : source_values) RetainOwned(element);
-	return true;
+	std::vector<const void*> source_values;
+	try { source_values = source_object->array; }
+	catch (...) { return false; }
+	return darling_windows_CFArrayReplaceValues(value,
+		static_cast<darling_windows_CFIndex>(object->array.size()), 0,
+		source_values.data(), static_cast<darling_windows_CFIndex>(source_values.size()));
 }
 
 extern "C" void darling_windows_CFArrayRemoveAllValues(darling_windows_CFArrayRef value)
 {
 	auto* object = As(value); if (object == nullptr || object->kind != Kind::Array) return;
-	for (const auto* element : object->array) ReleaseOwned(As(element)); object->array.clear();
+	for (const auto* element : object->array) ReleaseArrayValue(object, element); object->array.clear();
 }
 
 extern "C" const void* darling_windows_CFNumberCreateInteger(std::int64_t value)
@@ -3433,15 +3492,6 @@ bool DarlingIsTypeDictionaryKeyCallbacks(const void* callbacks)
 		actual.copy_description == &DarlingCFTypeCopyDescription &&
 		actual.equal == &DarlingCFTypeEqual && actual.hash == &DarlingCFTypeHash;
 }
-bool DarlingIsTypeArrayCallbacks(const void* callbacks)
-{
-	if (callbacks == nullptr) return false;
-	const auto& actual = *static_cast<const DarlingCFArrayCallbacks*>(callbacks);
-	return actual.version == 0 && actual.retain == &DarlingCFTypeRetain &&
-		actual.release == &DarlingCFTypeRelease &&
-		actual.copy_description == &DarlingCFTypeCopyDescription &&
-		actual.equal == &DarlingCFTypeEqual;
-}
 bool DarlingIsTypeDictionaryValueCallbacks(const void* callbacks)
 {
 	if (callbacks == nullptr) return false;
@@ -3564,33 +3614,77 @@ bool DarlingArrayIsMutable(darling_windows_CFArrayRef value)
 	const auto* object = static_cast<const Object*>(value);
 	return object != nullptr && object->kind == Kind::Array && object->mutable_array;
 }
+darling_windows_CFArrayRef DarlingCreateGuestArray(const void* const* values,
+	darling_windows_CFIndex count, const DarlingCFArrayCallbacks* callbacks,
+	bool mutable_array, darling_windows_CFIndex capacity, const void* allocator)
+{
+	if (count < 0 || capacity < 0 || (count != 0 && values == nullptr)) return nullptr;
+	DarlingCFArrayCallbacks copied_callbacks{};
+	if (callbacks != nullptr) copied_callbacks = *callbacks;
+	if (copied_callbacks.version != 0) return nullptr;
+	auto* object = new (std::nothrow) Object{};
+	if (object == nullptr) return nullptr;
+	object->kind = Kind::Array;
+	object->mutable_array = mutable_array;
+	object->has_array_callback_table = true;
+	object->array_callbacks = copied_callbacks;
+	object->array_allocator = allocator;
+	try {
+		object->array.reserve(static_cast<std::size_t>((std::max)(count, capacity)));
+		for (darling_windows_CFIndex index = 0; index < count; ++index) {
+			if (values[index] == nullptr) { delete object; return nullptr; }
+			const auto* retained = RetainArrayValue(object, values[index]);
+			if (retained == nullptr) { delete object; return nullptr; }
+			object->array.push_back(retained);
+		}
+	} catch (...) {
+		delete object;
+		return nullptr;
+	}
+	return object;
+}
+DarlingCFArrayCallbacks DarlingGetCallbacksForArray(const Object* object)
+{
+	if (object != nullptr && object->has_array_callback_table)
+		return object->array_callbacks;
+	return kCFTypeArrayCallBacks;
+}
 }
 
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFArrayRef CFArrayCreate(
-	const void*, const void* const* values, darling_windows_CFIndex count,
+	const void* allocator, const void* const* values, darling_windows_CFIndex count,
 	const DarlingCFArrayCallbacks* callbacks)
 {
-	if (!DarlingIsTypeArrayCallbacks(callbacks)) return nullptr;
-	return darling_windows_CFArrayCreate(values, count);
+	return DarlingCreateGuestArray(values, count, callbacks, false, 0, allocator);
 }
 
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFArrayRef CFArrayCreateMutable(
-	const void*, darling_windows_CFIndex capacity, const DarlingCFArrayCallbacks* callbacks)
+	const void* allocator, darling_windows_CFIndex capacity,
+	const DarlingCFArrayCallbacks* callbacks)
 {
-	if (!DarlingIsTypeArrayCallbacks(callbacks)) return nullptr;
-	return darling_windows_CFArrayCreateMutable(capacity);
+	return DarlingCreateGuestArray(nullptr, 0, callbacks, true, capacity, allocator);
 }
 
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFArrayRef CFArrayCreateCopy(
-	const void*, darling_windows_CFArrayRef value)
+	const void* allocator, darling_windows_CFArrayRef value)
 {
-	return darling_windows_CFArrayCreateCopy(value);
+	const auto* source = static_cast<const Object*>(value);
+	if (source == nullptr || source->kind != Kind::Array) return nullptr;
+	const auto callbacks = DarlingGetCallbacksForArray(source);
+	return DarlingCreateGuestArray(source->array.data(),
+		static_cast<darling_windows_CFIndex>(source->array.size()), &callbacks, false, 0,
+		allocator);
 }
 
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFArrayRef CFArrayCreateMutableCopy(
-	const void*, darling_windows_CFIndex capacity, darling_windows_CFArrayRef value)
+	const void* allocator, darling_windows_CFIndex capacity, darling_windows_CFArrayRef value)
 {
-	return darling_windows_CFArrayCreateMutableCopy(capacity, value);
+	const auto* source = static_cast<const Object*>(value);
+	if (source == nullptr || source->kind != Kind::Array || capacity < 0) return nullptr;
+	const auto callbacks = DarlingGetCallbacksForArray(source);
+	return DarlingCreateGuestArray(source->array.data(),
+		static_cast<darling_windows_CFIndex>(source->array.size()), &callbacks, true, capacity,
+		allocator);
 }
 
 extern "C" DARLING_CF_GUEST_ABI void CFArrayAppendValue(
@@ -3644,6 +3738,38 @@ extern "C" DARLING_CF_GUEST_ABI void CFArrayApplyFunction(
 	darling_windows_CFArrayApplyFunction(value, range, &DarlingArrayApplyThunk, &state);
 }
 
+extern "C" DARLING_CF_GUEST_ABI void CFArrayAppendArray(
+	darling_windows_CFArrayRef value, darling_windows_CFArrayRef source,
+	darling_windows_CFRange range)
+{
+	if (!DarlingArrayIsMutable(value)) return;
+	const auto count = darling_windows_CFArrayGetCount(source);
+	if (range.location < 0 || range.length < 0 || range.location > count ||
+		range.length > count - range.location) return;
+	std::vector<const void*> values;
+	try { values.resize(static_cast<std::size_t>(range.length)); }
+	catch (...) { return; }
+	if (!values.empty()) darling_windows_CFArrayGetValues(source, range.location,
+		range.length, values.data());
+	const auto* destination = static_cast<const Object*>(value);
+	darling_windows_CFArrayReplaceValues(value,
+		static_cast<darling_windows_CFIndex>(destination->array.size()), 0,
+		values.data(), static_cast<darling_windows_CFIndex>(values.size()));
+}
+
+extern "C" DARLING_CF_GUEST_ABI void CFArrayExchangeValuesAtIndices(
+	darling_windows_CFArrayRef value, darling_windows_CFIndex first,
+	darling_windows_CFIndex second)
+{
+	if (!DarlingArrayIsMutable(value)) return;
+	auto* object = const_cast<Object*>(static_cast<const Object*>(value));
+	if (first < 0 || second < 0 ||
+		static_cast<std::size_t>(first) >= object->array.size() ||
+		static_cast<std::size_t>(second) >= object->array.size()) return;
+	std::swap(object->array[static_cast<std::size_t>(first)],
+		object->array[static_cast<std::size_t>(second)]);
+}
+
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFIndex CFArrayGetCount(
 	darling_windows_CFArrayRef value)
 {
@@ -3669,12 +3795,59 @@ extern "C" DARLING_CF_GUEST_ABI std::uint8_t CFArrayContainsValue(
 	const auto count = darling_windows_CFArrayGetCount(value);
 	if (range.location < 0 || range.length < 0 || range.location > count ||
 		range.length > count - range.location) return 0;
+	const auto* object = static_cast<const Object*>(value);
 	for (darling_windows_CFIndex index = range.location;
 		index < range.location + range.length; ++index) {
-		if (darling_windows_CFEqual(
+		if (EqualArrayValues(object,
 			darling_windows_CFArrayGetValueAtIndex(value, index), candidate)) return 1;
 	}
 	return 0;
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFIndex CFArrayGetCountOfValue(
+	darling_windows_CFArrayRef value, darling_windows_CFRange range,
+	darling_windows_CFTypeRef candidate)
+{
+	const auto count = darling_windows_CFArrayGetCount(value);
+	if (range.location < 0 || range.length < 0 || range.location > count ||
+		range.length > count - range.location) return 0;
+	const auto* object = static_cast<const Object*>(value);
+	darling_windows_CFIndex matches = 0;
+	for (darling_windows_CFIndex index = range.location;
+		index < range.location + range.length; ++index)
+		if (EqualArrayValues(object, object->array[static_cast<std::size_t>(index)], candidate))
+			++matches;
+	return matches;
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFIndex CFArrayGetFirstIndexOfValue(
+	darling_windows_CFArrayRef value, darling_windows_CFRange range,
+	darling_windows_CFTypeRef candidate)
+{
+	const auto count = darling_windows_CFArrayGetCount(value);
+	if (range.location < 0 || range.length < 0 || range.location > count ||
+		range.length > count - range.location) return -1;
+	const auto* object = static_cast<const Object*>(value);
+	for (darling_windows_CFIndex index = range.location;
+		index < range.location + range.length; ++index)
+		if (EqualArrayValues(object, object->array[static_cast<std::size_t>(index)], candidate))
+			return index;
+	return -1;
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFIndex CFArrayGetLastIndexOfValue(
+	darling_windows_CFArrayRef value, darling_windows_CFRange range,
+	darling_windows_CFTypeRef candidate)
+{
+	const auto count = darling_windows_CFArrayGetCount(value);
+	if (range.location < 0 || range.length < 0 || range.location > count ||
+		range.length > count - range.location) return -1;
+	const auto* object = static_cast<const Object*>(value);
+	for (darling_windows_CFIndex index = range.location + range.length;
+		index > range.location; --index)
+		if (EqualArrayValues(object, object->array[static_cast<std::size_t>(index - 1)], candidate))
+			return index - 1;
+	return -1;
 }
 
 namespace {
@@ -4197,6 +4370,12 @@ extern "C" std::uintptr_t darling_windows_corefoundation_symbol(const char* name
 		return reinterpret_cast<std::uintptr_t>(&CFArrayGetValues);
 	if (std::strcmp(name, "CFArrayContainsValue") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFArrayContainsValue);
+	if (std::strcmp(name, "CFArrayGetCountOfValue") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFArrayGetCountOfValue);
+	if (std::strcmp(name, "CFArrayGetFirstIndexOfValue") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFArrayGetFirstIndexOfValue);
+	if (std::strcmp(name, "CFArrayGetLastIndexOfValue") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFArrayGetLastIndexOfValue);
 	if (std::strcmp(name, "CFArrayAppendValue") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFArrayAppendValue);
 	if (std::strcmp(name, "CFArrayInsertValueAtIndex") == 0)
@@ -4211,6 +4390,10 @@ extern "C" std::uintptr_t darling_windows_corefoundation_symbol(const char* name
 		return reinterpret_cast<std::uintptr_t>(&CFArrayRemoveAllValues);
 	if (std::strcmp(name, "CFArrayApplyFunction") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFArrayApplyFunction);
+	if (std::strcmp(name, "CFArrayAppendArray") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFArrayAppendArray);
+	if (std::strcmp(name, "CFArrayExchangeValuesAtIndices") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFArrayExchangeValuesAtIndices);
 	if (std::strcmp(name, "CFNumberGetTypeID") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFNumberGetTypeID);
 	if (std::strcmp(name, "CFNumberCreate") == 0)

@@ -24,7 +24,9 @@ Der Mach-O-Hostresolver exportiert jetzt zusätzlich ausgewählte
 `CFString`-Erzeugungs- und Leseoperationen sowie `CFArray`-Typ-, Anzahl- und
 Indexabfragen. CFArray unterstützt nun Create/Copy, mutable Create/Copy,
 grundlegende Mutation und synchrones ApplyFunction über
-`kCFTypeArrayCallBacks`; null/custom Callback-Semantik bleibt offen.
+`kCFTypeArrayCallBacks` und kopierte Callback-Strukturen; null-Callbacktabellen
+werden als leere Version-0-Strukturen behandelt. Retain/Release/Gleichheit
+werden gemäß der jeweiligen Array-Tabelle ausgeführt.
 String-ABI-Aufrufe akzeptieren nur die implementierte UTF-8-Darstellung.
 `CFRunLoopPerformBlock` ist nun angebunden: ein einzelner Modus
 oder ein Array von Modi wird kopiert, der Gast-Block bleibt bis zur Ausführung

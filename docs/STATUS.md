@@ -39,10 +39,13 @@ enumeration using the built-in `kCFType` callbacks. CFSet creation, copying,
 membership/value queries, enumeration, set algebra and mutation are exposed
 with `kCFTypeSetCallBacks`. CFArray now also has creation, mutable copies,
 append/insert/remove/replace/set, remove-all, and synchronous callback
-enumeration through `kCFTypeArrayCallBacks`. Mutable operations are guarded by
-the mutability of the guest object. Custom and null callback tables are not
-modeled; only the predefined CFType callback table and member-wise identical
-copies are accepted for creation.
+enumeration through `kCFTypeArrayCallBacks`, plus range queries, append-array,
+and index exchange. Mutable operations are guarded by
+the mutability of the guest object. Callback structures and the allocator are
+stored per array; NULL means a version-0 table with null fields, and custom
+retain/release/equal
+callbacks are invoked for storage, destruction, and lookup. Other callback
+fields are retained in the copied table for ABI fidelity.
 
 This is a useful Foundation scheduling subset, not the complete CoreFoundation
 run-loop contract: CFRunLoopSource/Timer/Observer objects, true input-source

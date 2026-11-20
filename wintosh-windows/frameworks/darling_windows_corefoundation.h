@@ -57,6 +57,8 @@ using darling_windows_CFDictionaryGuestApplierFunction = void (DARLING_CF_GUEST_
 	const void* key, const void* value, void* context);
 using darling_windows_CFArrayGuestApplierFunction = void (DARLING_CF_GUEST_ABI *)(
 	const void* value, void* context);
+using darling_windows_CFComparatorFunction = std::int32_t (DARLING_CF_GUEST_ABI *)(
+	const void* left, const void* right, void* context);
 using DarlingCFArrayRetainCallback = const void* (DARLING_CF_GUEST_ABI *)(
 	const void* allocator, const void* value);
 using DarlingCFArrayReleaseCallback = void (DARLING_CF_GUEST_ABI *)(
@@ -667,6 +669,13 @@ extern "C" DARLING_CF_GUEST_ABI void CFArrayAppendArray(
 extern "C" DARLING_CF_GUEST_ABI void CFArrayExchangeValuesAtIndices(
 	darling_windows_CFArrayRef value, darling_windows_CFIndex first,
 	darling_windows_CFIndex second);
+extern "C" DARLING_CF_GUEST_ABI void CFArraySortValues(
+	darling_windows_CFArrayRef value, darling_windows_CFRange range,
+	darling_windows_CFComparatorFunction comparator, void* context);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFIndex CFArrayBSearchValues(
+	darling_windows_CFArrayRef value, darling_windows_CFRange range,
+	darling_windows_CFTypeRef candidate,
+	darling_windows_CFComparatorFunction comparator, void* context);
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeID CFNumberGetTypeID();
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeRef CFNumberCreate(
 	const void* allocator, darling_windows_CFNumberType type, const void* value);

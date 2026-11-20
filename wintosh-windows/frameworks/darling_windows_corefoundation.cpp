@@ -3770,6 +3770,53 @@ extern "C" DARLING_CF_GUEST_ABI void CFArrayExchangeValuesAtIndices(
 		object->array[static_cast<std::size_t>(second)]);
 }
 
+extern "C" DARLING_CF_GUEST_ABI void CFArraySortValues(
+	darling_windows_CFArrayRef value, darling_windows_CFRange range,
+	darling_windows_CFComparatorFunction comparator, void* context)
+{
+	if (!DarlingArrayIsMutable(value) || comparator == nullptr) return;
+	auto* object = const_cast<Object*>(static_cast<const Object*>(value));
+	if (range.location < 0 || range.length < 0 ||
+		static_cast<std::size_t>(range.location) > object->array.size() ||
+		static_cast<std::size_t>(range.length) > object->array.size() -
+			static_cast<std::size_t>(range.location)) return;
+	auto begin = object->array.begin() + range.location;
+	auto end = begin + range.length;
+	try {
+		std::stable_sort(begin, end, [comparator, context](const void* left, const void* right) {
+			return comparator(left, right, context) < 0;
+		});
+	} catch (...) { /* Comparator failures must not unwind through the guest ABI. */ }
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFIndex CFArrayBSearchValues(
+	darling_windows_CFArrayRef value, darling_windows_CFRange range,
+	darling_windows_CFTypeRef candidate, darling_windows_CFComparatorFunction comparator,
+	void* context)
+{
+	if (comparator == nullptr) return -1;
+	const auto* object = static_cast<const Object*>(value);
+	if (object == nullptr || object->kind != Kind::Array || range.location < 0 ||
+		range.length < 0 || static_cast<std::size_t>(range.location) > object->array.size() ||
+		static_cast<std::size_t>(range.length) > object->array.size() -
+			static_cast<std::size_t>(range.location)) return -1;
+	darling_windows_CFIndex low = range.location;
+	darling_windows_CFIndex high = range.location + range.length;
+	try {
+		while (low < high) {
+			const auto middle = low + (high - low) / 2;
+			if (comparator(object->array[static_cast<std::size_t>(middle)], candidate,
+				context) < 0) low = middle + 1;
+			else high = middle;
+		}
+		if (low < range.location + range.length &&
+			comparator(object->array[static_cast<std::size_t>(low)], candidate, context) == 0) {
+			return low;
+		}
+		return low;
+	} catch (...) { return -1; }
+}
+
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFIndex CFArrayGetCount(
 	darling_windows_CFArrayRef value)
 {
@@ -4394,6 +4441,10 @@ extern "C" std::uintptr_t darling_windows_corefoundation_symbol(const char* name
 		return reinterpret_cast<std::uintptr_t>(&CFArrayAppendArray);
 	if (std::strcmp(name, "CFArrayExchangeValuesAtIndices") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFArrayExchangeValuesAtIndices);
+	if (std::strcmp(name, "CFArraySortValues") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFArraySortValues);
+	if (std::strcmp(name, "CFArrayBSearchValues") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFArrayBSearchValues);
 	if (std::strcmp(name, "CFNumberGetTypeID") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFNumberGetTypeID);
 	if (std::strcmp(name, "CFNumberCreate") == 0)

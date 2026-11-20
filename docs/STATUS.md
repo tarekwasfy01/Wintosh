@@ -46,6 +46,8 @@ stored per array; NULL means a version-0 table with null fields, and custom
 retain/release/equal
 callbacks are invoked for storage, destruction, and lookup. Other callback
 fields are retained in the copied table for ABI fidelity.
+Comparator-based range sorting and binary search are also exported; binary
+search assumes the searched range is already sorted by the same ordering.
 
 This is a useful Foundation scheduling subset, not the complete CoreFoundation
 run-loop contract: CFRunLoopSource/Timer/Observer objects, true input-source

@@ -54,7 +54,8 @@ mutation, and synchronous callback enumeration. CFArray copies its callback
 structure and allocator at creation and applies retain/release/equality
 callbacks to stored values. Range queries, range append, and index exchange
 are exposed. A null callback pointer is treated as a zeroed version-0 table.
-Mutable operations require an array made by a mutable constructor. The guest
+Comparator sorting and binary search are exposed; binary search expects the
+searched range to be sorted using the same comparator. Mutable operations require an array made by a mutable constructor. The guest
 ABI attributes account for the x86_64 Darwin calling convention. String
 conversion is limited to the implementation's UTF-8 representation.
 `CFRunLoopPerformBlock` now retains and schedules a guest block in a string or

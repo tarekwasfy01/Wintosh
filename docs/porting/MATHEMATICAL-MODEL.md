@@ -573,6 +573,12 @@ produces `A'=(a₀,…,aᵢ₋₁)·B·(aᵢ₊ℓ,…,aₙ₋₁)`. Append and 
 cases `i=n, ℓ=0` and `0≤i≤n, ℓ=0`; setting index `i` uses `ℓ=1, |B|=1`.
 Range append is `A'=A·B` for a selected source subsequence `B`; index exchange
 is the permutation `A'[i]=A[j]`, `A'[j]=A[i]` with all other positions fixed.
+Comparator sorting orders a selected interval by `cmp(aᵢ,aⱼ)<0`. Binary search
+on an already sorted interval returns an equal element's index, or the lower
+bound `min{i | cmp(aᵢ,x)≥0}` as the insertion position. Both use the guest
+comparator and context; search takes `O(log n)` comparisons. See Apple's
+[CFArraySortValues](https://developer.apple.com/documentation/corefoundation/cfarraysortvalues%28_%3A_%3A_%3A_%3A%29)
+and [CFArrayBSearchValues](https://developer.apple.com/documentation/corefoundation/cfarraybsearchvalues%28_%3A_%3A_%3A_%3A_%3A%29).
 Only arrays constructed as mutable accept these transformations. Each array
 stores its own copied callback structure: retain maps an inserted value to its
 stored representative, release runs when that representative leaves the

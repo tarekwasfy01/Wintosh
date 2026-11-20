@@ -77,6 +77,8 @@ outcomes to CoreFoundation's `Finished=1`, `Stopped=2`, `TimedOut=3`, and
 mode or a stop. Mach-port source-1 and arbitrary Windows-handle registration,
 timer tolerance, the remaining observer phases, recursive activation
 semantics, and guest ABI fixture verification remain open.
+`CFRunLoopIsWaiting` is exported and reports a blocked loop only to a caller
+on another thread, matching Apple's contract; this has build evidence only.
 
 ### Foundation dates and AppKit event queue (2026-11-17)
 

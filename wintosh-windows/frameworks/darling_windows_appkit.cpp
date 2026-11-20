@@ -19987,7 +19987,7 @@ extern "C" void darling_windows_appkit_wake_main_run_loop()
 }
 
 extern "C" std::int32_t darling_windows_appkit_wait_run_loop_input(
-	std::uint32_t timeout_milliseconds)
+	void* loop, std::uint32_t timeout_milliseconds)
 {
 	const DWORD thread = g_application_thread_id.load(std::memory_order_acquire);
 	if (thread == 0 || thread != GetCurrentThreadId()) return -1;
@@ -19997,8 +19997,10 @@ extern "C" std::int32_t darling_windows_appkit_wait_run_loop_input(
 		DispatchAppKitEventToApplication(g_shared_application, event);
 		return 1;
 	}
+	darling_windows_CFRunLoopSetWaiting(loop, true);
 	const DWORD wait = MsgWaitForMultipleObjectsEx(0, nullptr,
 		static_cast<DWORD>(timeout_milliseconds), QS_ALLINPUT, MWMO_INPUTAVAILABLE);
+	darling_windows_CFRunLoopSetWaiting(loop, false);
 	if (wait == WAIT_TIMEOUT) return 0;
 	if (wait == WAIT_FAILED || wait != WAIT_OBJECT_0) return -1;
 	MSG message{};

@@ -549,6 +549,12 @@ loop is stopped or has no worker input source. The current result codes follow
 Apple's [`CFRunLoopRunInMode` contract](https://developer.apple.com/documentation/corefoundation/cfrunloopruninmode%28_%3A_%3A_%3A%29);
 guest-level ABI calls are build-verified but not fixture-verified.
 
+The waiting predicate is `W(L,q) = waiting(L) ∧ running(L) ∧ (q ≠ owner(L))`:
+it is true only while the host is blocked on the worker condition variable or
+the AppKit thread's Win32 message queue, and only for a caller on another
+thread. This preserves Apple's documented false result for querying the
+current thread's run loop. See [CFRunLoopIsWaiting](https://developer.apple.com/documentation/corefoundation/cfrunloopiswaiting%28_%3A%29).
+
 For a timer with next fire time `t`, current absolute time `n`, and positive
 interval `Δ`, a due repeating timer advances to
 `t' = t + (floor((n - t) / Δ) + 1)Δ`. This retains the original cadence and

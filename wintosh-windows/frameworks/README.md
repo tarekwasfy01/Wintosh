@@ -314,6 +314,8 @@ Guest `CFRunLoopRunInMode` returns the CoreFoundation result values for
 finished, stopped, timed out, and handled source; `CFRunLoopRun` is also
 exported and returns when stopped or when its mode has no work source. This is
 build-verified only, without a Mach-O ABI fixture.
+`CFRunLoopIsWaiting` reports true only during a host wait and only when queried
+from another thread, matching the documented current-thread behavior.
 Run-loop introspection also exports `CFRunLoopGetTypeID`,
 `CFRunLoopCopyCurrentMode`, and `CFRunLoopCopyAllModes`. The current mode is
 null while idle; the copied mode array lists known common, active, and

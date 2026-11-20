@@ -643,6 +643,9 @@ extern "C" int darling_windows_CFRunLoopRunInModeForLoop(
 	bool return_after_source);
 extern "C" void darling_windows_CFRunLoopStop(darling_windows_CFRunLoopRef loop);
 extern "C" bool darling_windows_CFRunLoopIsRunning(darling_windows_CFRunLoopRef loop);
+extern "C" bool darling_windows_CFRunLoopIsWaiting(darling_windows_CFRunLoopRef loop);
+extern "C" void darling_windows_CFRunLoopSetWaiting(
+	darling_windows_CFRunLoopRef loop, bool waiting);
 extern "C" bool darling_windows_CFRunLoopContainsPendingBlockForMode(
 	darling_windows_CFRunLoopRef loop, const char* mode);
 extern "C" bool darling_windows_CFRunLoopPerformBlock(darling_windows_CFRunLoopRef loop,
@@ -673,6 +676,8 @@ extern "C" DARLING_CF_GUEST_ABI std::int32_t CFRunLoopRunInMode(
 	darling_windows_CFStringRef mode, double seconds, std::uint8_t return_after_source);
 extern "C" DARLING_CF_GUEST_ABI void CFRunLoopRun();
 extern "C" DARLING_CF_GUEST_ABI void CFRunLoopStop(darling_windows_CFRunLoopRef loop);
+extern "C" DARLING_CF_GUEST_ABI std::uint8_t CFRunLoopIsWaiting(
+	darling_windows_CFRunLoopRef loop);
 extern "C" DARLING_CF_GUEST_ABI void CFRunLoopWakeUp(darling_windows_CFRunLoopRef loop);
 extern "C" DARLING_CF_GUEST_ABI void CFRunLoopPerformBlock(
 	darling_windows_CFRunLoopRef loop, darling_windows_CFTypeRef modes, void* block);

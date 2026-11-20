@@ -812,6 +812,8 @@ struct RunLoopState {
 	std::mutex mutex;
 	std::condition_variable condition;
 	bool running = false;
+	bool waiting = false;
+	std::thread::id running_thread;
 	std::size_t activation_depth = 0;
 	bool stopped = false;
 	std::string current_mode;
@@ -3752,6 +3754,7 @@ extern "C" int darling_windows_CFRunLoopRunInModeForLoop(
 	catch (...) { return -1; }
 	state->activation_depth = state->mode_stack.size();
 	state->running = true;
+	state->running_thread = std::this_thread::get_id();
 	state->stopped = false;
 	state->current_mode = active_mode;
 	constexpr double max_wait_seconds = 315360000.0;
@@ -3788,7 +3791,7 @@ extern "C" int darling_windows_CFRunLoopRunInModeForLoop(
 					static_cast<std::int64_t>((std::numeric_limits<std::uint32_t>::max)()));
 				lock.unlock();
 				const auto input = darling_windows_appkit_wait_run_loop_input(
-					static_cast<std::uint32_t>(timeout));
+					value, static_cast<std::uint32_t>(timeout));
 				lock.lock();
 				if (input >= 0) {
 					used_native_wait = true;
@@ -3797,11 +3800,13 @@ extern "C" int darling_windows_CFRunLoopRunInModeForLoop(
 				}
 			}
 			if (!used_native_wait) {
+				state->waiting = will_wait;
 				woke = state->condition.wait_until(lock, wait_deadline,
 					[&state, &active_mode] {
 						return state->stopped || HasRunLoopBlockForMode(*state, active_mode) ||
 							HasDueRunLoopTimer(*state, active_mode);
 					});
+				state->waiting = false;
 			}
 			if (will_wait)
 				NotifyRunLoopObservers(state, active_mode, kCFRunLoopActivityAfterWaiting, lock);
@@ -3856,6 +3861,8 @@ extern "C" int darling_windows_CFRunLoopRunInModeForLoop(
 	if (!state->mode_stack.empty()) state->mode_stack.pop_back();
 	state->activation_depth = state->mode_stack.size();
 	state->running = state->activation_depth != 0;
+	state->waiting = false;
+	if (!state->running) state->running_thread = {};
 	state->current_mode = state->mode_stack.empty() ? std::string{} :
 		state->mode_stack.back();
 	return state->stopped || returned_after_source ? 0 : 1;
@@ -3880,6 +3887,24 @@ extern "C" bool darling_windows_CFRunLoopIsRunning(darling_windows_CFRunLoopRef 
 	auto* loop = static_cast<RunLoop*>(value);
 	std::lock_guard lock(loop->state->mutex);
 	return loop->state->running;
+}
+
+extern "C" bool darling_windows_CFRunLoopIsWaiting(darling_windows_CFRunLoopRef value)
+{
+	if (value == nullptr) return false;
+	auto* loop = static_cast<RunLoop*>(value);
+	std::lock_guard lock(loop->state->mutex);
+	return loop->state->waiting && loop->state->running &&
+		loop->state->running_thread != std::this_thread::get_id();
+}
+
+extern "C" void darling_windows_CFRunLoopSetWaiting(
+	darling_windows_CFRunLoopRef value, bool waiting)
+{
+	if (value == nullptr) return;
+	auto* loop = static_cast<RunLoop*>(value);
+	std::lock_guard lock(loop->state->mutex);
+	loop->state->waiting = waiting;
 }
 
 extern "C" bool darling_windows_CFRunLoopContainsPendingBlockForMode(
@@ -4737,6 +4762,12 @@ extern "C" DARLING_CF_GUEST_ABI void CFRunLoopRun()
 extern "C" DARLING_CF_GUEST_ABI void CFRunLoopStop(darling_windows_CFRunLoopRef loop)
 {
 	darling_windows_CFRunLoopStop(loop);
+}
+
+extern "C" DARLING_CF_GUEST_ABI std::uint8_t CFRunLoopIsWaiting(
+	darling_windows_CFRunLoopRef loop)
+{
+	return darling_windows_CFRunLoopIsWaiting(loop) ? 1 : 0;
 }
 
 extern "C" DARLING_CF_GUEST_ABI void CFRunLoopWakeUp(darling_windows_CFRunLoopRef loop)
@@ -5896,6 +5927,8 @@ extern "C" std::uintptr_t darling_windows_corefoundation_symbol(const char* name
 		return reinterpret_cast<std::uintptr_t>(&CFRunLoopRunInMode);
 	if (std::strcmp(name, "CFRunLoopRun") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFRunLoopRun);
+	if (std::strcmp(name, "CFRunLoopIsWaiting") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFRunLoopIsWaiting);
 	if (std::strcmp(name, "CFRunLoopStop") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFRunLoopStop);
 	if (std::strcmp(name, "CFRunLoopWakeUp") == 0)

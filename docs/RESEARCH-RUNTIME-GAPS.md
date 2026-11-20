@@ -1,6 +1,6 @@
 # Runtime-Recherche und offene Lücken
 
-Stand: 14. Oktober 2026
+Stand: 20. November 2026
 
 ## Ergebnis in Kürze
 
@@ -10,6 +10,23 @@ Runtime. Darling selbst besteht aus mehreren Schichten: Mach-O-Loader,
 `dyld`-Integration, Darwin-/POSIX-Syscalls, Mach-IPC und nachgebildeten
 Frameworks. Eine Windows-Portierung muss diese Schichten deshalb getrennt
 und mit klaren ABI-Grenzen erweitern.
+
+Seit der vorherigen Bestandsaufnahme existiert ein begrenzter `NSRunLoop`-
+Bridge mit mode-bewusster Callback-Warteschlange und AppKit-Main-Loop-Pump.
+Apples Dokumentation macht klar, dass ein vollständiges Modell zusätzlich
+quell-, timer- und observerbasierte Eingaben pro Modus sowie rekursive
+Aktivierungen verlangt; die aktuelle Bridge deckt diese Verträge noch nicht ab.
+Referenzen: [Foundation `run(mode:before:)`](https://developer.apple.com/documentation/foundation/runloop/run%28mode%3Abefore%3A%29),
+[CoreFoundation `CFRunLoop`](https://developer.apple.com/documentation/corefoundation/cfrunloop),
+[`CFRunLoopPerformBlock`](https://developer.apple.com/documentation/corefoundation/cfrunloopperformblock%28_%3A_%3A_%3A%29).
+
+Der Mach-O-Hostresolver hat inzwischen C-ABI-Einstiege für sechs grundlegende
+RunLoop-Operationen (Current/Main, RunInMode, Stop, WakeUp und AddCommonMode).
+Das ist kein vollständiger CoreFoundation-Export: Block-Callbacks,
+CFRunLoopSource/Timer/Observer und die vollständigen Rückgabestatus sind noch
+offen. Für `CFRunLoopPerformBlock` verlangt Apple einen Blockwert und ein
+explizites WakeUp; die Runtime braucht dafür noch einen geprüften
+Block-Invocation-Pfad.
 
 ## Externe Referenzen
 

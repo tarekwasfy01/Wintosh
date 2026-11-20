@@ -534,15 +534,40 @@ extern "C" bool darling_windows_CFPropertyListUIDGetValue(
 	darling_windows_CFTypeRef value, std::uint64_t* uid);
 extern "C" darling_windows_CFRunLoopRef darling_windows_CFRunLoopGetCurrent();
 extern "C" darling_windows_CFRunLoopRef darling_windows_CFRunLoopGetMain();
+extern "C" void darling_windows_CFRunLoopUseCurrentAsMain();
 extern "C" int darling_windows_CFRunLoopRunInMode(double seconds, bool return_after_source);
+extern "C" int darling_windows_CFRunLoopRunInModeForLoop(
+	darling_windows_CFRunLoopRef loop, const char* mode, double seconds,
+	bool return_after_source);
 extern "C" void darling_windows_CFRunLoopStop(darling_windows_CFRunLoopRef loop);
 extern "C" bool darling_windows_CFRunLoopIsRunning(darling_windows_CFRunLoopRef loop);
+extern "C" bool darling_windows_CFRunLoopContainsPendingBlockForMode(
+	darling_windows_CFRunLoopRef loop, const char* mode);
 extern "C" bool darling_windows_CFRunLoopPerformBlock(darling_windows_CFRunLoopRef loop,
 	darling_windows_CFRunLoopBlock block, void* context);
+extern "C" bool darling_windows_CFRunLoopPerformBlockInMode(
+	darling_windows_CFRunLoopRef loop, const char* mode,
+	darling_windows_CFRunLoopBlock block, void* context);
+extern "C" bool darling_windows_CFRunLoopPerformBlockInModesWithOrder(
+	darling_windows_CFRunLoopRef loop, const char* const* modes,
+	std::size_t mode_count, std::uint64_t order,
+	darling_windows_CFRunLoopBlock block, void* context);
+extern "C" void darling_windows_CFRunLoopAddCommonMode(
+	darling_windows_CFRunLoopRef loop, const char* mode);
 extern "C" void darling_windows_CFRunLoopWakeUp(darling_windows_CFRunLoopRef loop);
 extern "C" bool darling_windows_CFRunLoopPerformOneShotTimer(
 	darling_windows_CFRunLoopRef loop, double seconds,
 	darling_windows_CFRunLoopBlock block, void* context);
+// Darwin guest-ABI entry points exported to Mach-O import resolution.
+extern "C" std::uintptr_t darling_windows_corefoundation_symbol(const char* name);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFRunLoopRef CFRunLoopGetCurrent();
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFRunLoopRef CFRunLoopGetMain();
+extern "C" DARLING_CF_GUEST_ABI std::int32_t CFRunLoopRunInMode(
+	darling_windows_CFStringRef mode, double seconds, std::uint8_t return_after_source);
+extern "C" DARLING_CF_GUEST_ABI void CFRunLoopStop(darling_windows_CFRunLoopRef loop);
+extern "C" DARLING_CF_GUEST_ABI void CFRunLoopWakeUp(darling_windows_CFRunLoopRef loop);
+extern "C" DARLING_CF_GUEST_ABI void CFRunLoopAddCommonMode(
+	darling_windows_CFRunLoopRef loop, darling_windows_CFStringRef mode);
 extern "C" void* darling_windows_CFNotificationCenterGetLocal();
 extern "C" bool darling_windows_CFNotificationCenterAddObserver(void* center,
 	const void* observer, darling_windows_CFNotificationCallback callback, const char* name);

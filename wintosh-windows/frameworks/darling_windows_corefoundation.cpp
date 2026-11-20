@@ -586,8 +586,18 @@ struct RunLoopState {
 	std::mutex mutex;
 	std::condition_variable condition;
 	bool running = false;
+	std::size_t activation_depth = 0;
 	bool stopped = false;
-	std::vector<std::pair<darling_windows_CFRunLoopBlock, void*>> blocks;
+	std::string current_mode;
+	std::vector<std::string> mode_stack;
+	std::vector<std::string> common_modes{"kCFRunLoopDefaultMode"};
+	struct Block final {
+		darling_windows_CFRunLoopBlock callback{};
+		void* context{};
+		std::vector<std::string> modes;
+		std::uint64_t order{};
+	};
+	std::vector<Block> blocks;
 };
 struct RunLoop {
 	std::shared_ptr<RunLoopState> state = std::make_shared<RunLoopState>();
@@ -597,6 +607,30 @@ struct RunLoop {
 // thread from being consumed by an unrelated thread's run loop.
 thread_local RunLoop current_run_loop;
 RunLoop main_run_loop;
+bool HasRunLoopBlockForMode(const RunLoopState& state, const std::string& mode)
+{
+	return std::any_of(state.blocks.begin(), state.blocks.end(),
+		[&state, &mode](const RunLoopState::Block& block) {
+			return std::any_of(block.modes.begin(), block.modes.end(),
+				[&state, &mode](const std::string& scheduled_mode) {
+					return scheduled_mode == mode ||
+						(scheduled_mode == "kCFRunLoopCommonModes" &&
+						std::find(state.common_modes.begin(), state.common_modes.end(), mode) !=
+							state.common_modes.end());
+				});
+		});
+}
+bool RunLoopBlockMatchesMode(const RunLoopState& state,
+	const RunLoopState::Block& block, const std::string& mode)
+{
+	return std::any_of(block.modes.begin(), block.modes.end(),
+		[&state, &mode](const std::string& scheduled_mode) {
+			return scheduled_mode == mode ||
+				(scheduled_mode == "kCFRunLoopCommonModes" &&
+				std::find(state.common_modes.begin(), state.common_modes.end(), mode) !=
+					state.common_modes.end());
+		});
+}
 struct NotificationObserver {
 	const void* observer;
 	darling_windows_CFNotificationCallback callback;
@@ -3011,37 +3045,87 @@ extern "C" darling_windows_CFRunLoopRef darling_windows_CFRunLoopGetMain()
 	return &main_run_loop;
 }
 
+extern "C" void darling_windows_CFRunLoopUseCurrentAsMain()
+{
+	current_run_loop.state = main_run_loop.state;
+}
+
 extern "C" int darling_windows_CFRunLoopRunInMode(double seconds, bool return_after_source)
 {
-	if (!std::isfinite(seconds) || seconds < 0) return -1;
-	auto& loop = current_run_loop;
+	return darling_windows_CFRunLoopRunInModeForLoop(&current_run_loop,
+		"kCFRunLoopDefaultMode", seconds, return_after_source);
+}
+
+extern "C" int darling_windows_CFRunLoopRunInModeForLoop(
+	darling_windows_CFRunLoopRef value, const char* mode, double seconds,
+	bool return_after_source)
+{
+	if (value == nullptr || mode == nullptr || *mode == '\0' ||
+		std::strcmp(mode, "kCFRunLoopCommonModes") == 0 ||
+		!std::isfinite(seconds) || seconds < 0) return -1;
+	auto& loop = *static_cast<RunLoop*>(value);
 	const auto state = loop.state;
+	const std::string active_mode(mode);
 	std::unique_lock lock(state->mutex);
+	try { state->mode_stack.push_back(active_mode); }
+	catch (...) { return -1; }
+	state->activation_depth = state->mode_stack.size();
 	state->running = true;
 	state->stopped = false;
+	state->current_mode = active_mode;
+	constexpr double max_wait_seconds = 315360000.0;
 	const auto deadline = std::chrono::steady_clock::now() +
 		std::chrono::duration_cast<std::chrono::steady_clock::duration>(
-			std::chrono::duration<double>(seconds));
+			std::chrono::duration<double>((std::min)(seconds, max_wait_seconds)));
 	bool returned_after_source = false;
 	while (!state->stopped) {
-		if (state->blocks.empty() && !state->condition.wait_until(lock, deadline, [&state] {
-			return state->stopped || !state->blocks.empty();
+		if (!HasRunLoopBlockForMode(*state, active_mode) &&
+			!state->condition.wait_until(lock, deadline, [&state, &active_mode] {
+				return state->stopped || HasRunLoopBlockForMode(*state, active_mode);
 		})) break;
-		if (state->stopped || state->blocks.empty()) break;
-		std::vector<std::pair<darling_windows_CFRunLoopBlock, void*>> pending;
+		if (state->stopped || !HasRunLoopBlockForMode(*state, active_mode)) break;
+		std::vector<RunLoopState::Block> pending;
 		if (return_after_source) {
-			pending.push_back(state->blocks.front());
-			state->blocks.erase(state->blocks.begin());
+			auto found = std::find_if(state->blocks.begin(), state->blocks.end(),
+				[&state, &active_mode](const RunLoopState::Block& block) {
+					return RunLoopBlockMatchesMode(*state, block, active_mode);
+				});
+			if (found == state->blocks.end()) continue;
+			for (auto candidate = std::next(found); candidate != state->blocks.end(); ++candidate) {
+				if (RunLoopBlockMatchesMode(*state, *candidate, active_mode) &&
+					candidate->order < found->order) found = candidate;
+			}
+			pending.push_back(std::move(*found));
+			state->blocks.erase(found);
 			returned_after_source = true;
 		} else {
-			pending = std::move(state->blocks);
+			for (auto iterator = state->blocks.begin(); iterator != state->blocks.end();) {
+				if (RunLoopBlockMatchesMode(*state, *iterator, active_mode)) {
+					pending.push_back(std::move(*iterator));
+					iterator = state->blocks.erase(iterator);
+				} else {
+					++iterator;
+				}
+			}
+			std::stable_sort(pending.begin(), pending.end(),
+				[](const RunLoopState::Block& left, const RunLoopState::Block& right) {
+					return left.order < right.order;
+				});
 		}
 		lock.unlock();
-		for (const auto& entry : pending) if (entry.first != nullptr) entry.first(entry.second);
+		for (const auto& entry : pending) {
+			if (entry.callback == nullptr) continue;
+			try { entry.callback(entry.context); }
+			catch (...) { /* Guest callbacks must not unwind through CoreFoundation. */ }
+		}
 		lock.lock();
 		if (return_after_source || std::chrono::steady_clock::now() >= deadline) break;
 	}
-	state->running = false;
+	if (!state->mode_stack.empty()) state->mode_stack.pop_back();
+	state->activation_depth = state->mode_stack.size();
+	state->running = state->activation_depth != 0;
+	state->current_mode = state->mode_stack.empty() ? std::string{} :
+		state->mode_stack.back();
 	return state->stopped || returned_after_source ? 0 : 1;
 }
 
@@ -3064,17 +3148,72 @@ extern "C" bool darling_windows_CFRunLoopIsRunning(darling_windows_CFRunLoopRef 
 	return loop->state->running;
 }
 
+extern "C" bool darling_windows_CFRunLoopContainsPendingBlockForMode(
+	darling_windows_CFRunLoopRef value, const char* mode)
+{
+	if (value == nullptr || mode == nullptr || *mode == '\0') return false;
+	auto* loop = static_cast<RunLoop*>(value);
+	std::lock_guard lock(loop->state->mutex);
+	return HasRunLoopBlockForMode(*loop->state, mode);
+}
+
 extern "C" bool darling_windows_CFRunLoopPerformBlock(darling_windows_CFRunLoopRef value,
 	darling_windows_CFRunLoopBlock block, void* context)
 {
-	if (value == nullptr || block == nullptr) return false;
+	return darling_windows_CFRunLoopPerformBlockInMode(value,
+		"kCFRunLoopDefaultMode", block, context);
+}
+
+extern "C" bool darling_windows_CFRunLoopPerformBlockInMode(
+	darling_windows_CFRunLoopRef value, const char* mode,
+	darling_windows_CFRunLoopBlock block, void* context)
+{
+	return mode == nullptr ? false : darling_windows_CFRunLoopPerformBlockInModesWithOrder(
+		value, &mode, 1, 0, block, context);
+}
+
+extern "C" bool darling_windows_CFRunLoopPerformBlockInModesWithOrder(
+	darling_windows_CFRunLoopRef value, const char* const* modes,
+	std::size_t mode_count, std::uint64_t order,
+	darling_windows_CFRunLoopBlock block, void* context)
+{
+	if (value == nullptr || modes == nullptr || mode_count == 0 || mode_count > 256 ||
+		block == nullptr) return false;
+	RunLoopState::Block pending{block, context, {}, order};
+	try {
+		pending.modes.reserve(mode_count);
+		for (std::size_t index = 0; index < mode_count; ++index) {
+			if (modes[index] == nullptr || *modes[index] == '\0') return false;
+			pending.modes.emplace_back(modes[index]);
+		}
+	} catch (...) {
+		return false;
+	}
 	auto* loop = static_cast<RunLoop*>(value);
 	{
 		std::lock_guard lock(loop->state->mutex);
-		loop->state->blocks.emplace_back(block, context);
+		try { loop->state->blocks.push_back(std::move(pending)); }
+		catch (...) { return false; }
 	}
 	loop->state->condition.notify_all();
 	return true;
+}
+
+extern "C" void darling_windows_CFRunLoopAddCommonMode(
+	darling_windows_CFRunLoopRef value, const char* mode)
+{
+	if (value == nullptr || mode == nullptr || *mode == '\0' ||
+		std::strcmp(mode, "kCFRunLoopCommonModes") == 0) return;
+	auto* loop = static_cast<RunLoop*>(value);
+	{
+		std::lock_guard lock(loop->state->mutex);
+		if (std::find(loop->state->common_modes.begin(),
+			loop->state->common_modes.end(), mode) == loop->state->common_modes.end()) {
+			try { loop->state->common_modes.emplace_back(mode); }
+			catch (...) { return; }
+		}
+	}
+	loop->state->condition.notify_all();
 }
 
 extern "C" void darling_windows_CFRunLoopWakeUp(darling_windows_CFRunLoopRef value)
@@ -3093,11 +3232,75 @@ extern "C" bool darling_windows_CFRunLoopPerformOneShotTimer(
 		std::this_thread::sleep_for(std::chrono::duration<double>(seconds));
 		{
 			std::lock_guard lock(state->mutex);
-			state->blocks.emplace_back(block, context);
+			try {
+				state->blocks.push_back({block, context,
+					{"kCFRunLoopDefaultMode"}, 0});
+			} catch (...) { return; }
 		}
 		state->condition.notify_all();
 	}).detach();
 	return true;
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFRunLoopRef CFRunLoopGetCurrent()
+{
+	return darling_windows_CFRunLoopGetCurrent();
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFRunLoopRef CFRunLoopGetMain()
+{
+	return darling_windows_CFRunLoopGetMain();
+}
+
+extern "C" DARLING_CF_GUEST_ABI std::int32_t CFRunLoopRunInMode(
+	darling_windows_CFStringRef mode, double seconds, std::uint8_t return_after_source)
+{
+	char mode_name[512]{};
+	if (mode == nullptr || !darling_windows_CFStringGetCString(mode, mode_name,
+		static_cast<darling_windows_CFIndex>(sizeof(mode_name)))) return 1;
+	const int result = darling_windows_CFRunLoopRunInModeForLoop(
+		darling_windows_CFRunLoopGetCurrent(), mode_name, seconds,
+		return_after_source != 0);
+	if (result < 0) return 1; // kCFRunLoopRunFinished
+	return result == 0 ? 4 : 3; // handled source / timed out
+}
+
+extern "C" DARLING_CF_GUEST_ABI void CFRunLoopStop(darling_windows_CFRunLoopRef loop)
+{
+	darling_windows_CFRunLoopStop(loop);
+}
+
+extern "C" DARLING_CF_GUEST_ABI void CFRunLoopWakeUp(darling_windows_CFRunLoopRef loop)
+{
+	darling_windows_CFRunLoopWakeUp(loop);
+}
+
+extern "C" DARLING_CF_GUEST_ABI void CFRunLoopAddCommonMode(
+	darling_windows_CFRunLoopRef loop, darling_windows_CFStringRef mode)
+{
+	char mode_name[512]{};
+	if (mode != nullptr && darling_windows_CFStringGetCString(mode, mode_name,
+		static_cast<darling_windows_CFIndex>(sizeof(mode_name))))
+		darling_windows_CFRunLoopAddCommonMode(loop, mode_name);
+}
+
+extern "C" std::uintptr_t darling_windows_corefoundation_symbol(const char* name)
+{
+	if (name == nullptr) return 0;
+	if (*name == '_') ++name;
+	if (std::strcmp(name, "CFRunLoopGetCurrent") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFRunLoopGetCurrent);
+	if (std::strcmp(name, "CFRunLoopGetMain") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFRunLoopGetMain);
+	if (std::strcmp(name, "CFRunLoopRunInMode") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFRunLoopRunInMode);
+	if (std::strcmp(name, "CFRunLoopStop") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFRunLoopStop);
+	if (std::strcmp(name, "CFRunLoopWakeUp") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFRunLoopWakeUp);
+	if (std::strcmp(name, "CFRunLoopAddCommonMode") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFRunLoopAddCommonMode);
+	return 0;
 }
 
 extern "C" void* darling_windows_CFNotificationCenterGetLocal()

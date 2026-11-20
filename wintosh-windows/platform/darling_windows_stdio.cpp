@@ -23,6 +23,7 @@
 #include "../abi/darling_windows_dispatch.h"
 #include "darling_windows_foundation.h"
 #include "darling_windows_coregraphics.h"
+#include "../frameworks/darling_windows_corefoundation.h"
 
 #include <windows.h>
 #include <ws2tcpip.h>
@@ -5000,6 +5001,10 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 	if (const auto appkit_symbol = darling_windows_appkit_symbol(name);
 		appkit_symbol != 0) {
 		return appkit_symbol;
+	}
+	if (const auto corefoundation_symbol = darling_windows_corefoundation_symbol(name);
+		corefoundation_symbol != 0) {
+		return corefoundation_symbol;
 	}
 	struct HostExportAlias final {
 		const char* name;

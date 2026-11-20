@@ -7,7 +7,35 @@ complete macOS compatibility. “Implemented” means host-side code exists;
 validation still requires the guest fixture or application evidence stated in
 each section. Begin with the [repository README](../README.md) for build
 entry points and the [documentation index](DOCUMENTATION-INDEX.md) for the full
-map.\n\nStatus date: 2026-11-20
+map.
+
+Status date: 2026-11-20
+
+### Foundation run-loop modes and NSRunLoop bridge (2026-11-20)
+
+The CoreFoundation callback queue now stores requested run-loop modes and
+supports a per-loop common-mode set (with `kCFRunLoopDefaultMode` included by
+default). Mode-specific turns leave callbacks for other modes queued; callbacks
+scheduled for multiple modes run once in the first eligible mode. Ordered
+`NSRunLoop` selector requests run in increasing `order` and are queued on the
+target thread's loop. `NSRunLoop` now exposes `currentRunLoop`, `mainRunLoop`,
+`getCFRunLoop`, `defaultMode`, `commonModes`, `run`, `runUntilDate:`,
+`runMode:beforeDate:`, and `acceptInputForMode:beforeDate:`. The AppKit main
+loop pumps default-mode callbacks and is woken when a selector is queued.
+
+Mach-O symbol resolution now exposes the initial public CoreFoundation C ABI
+slice for `CFRunLoopGetCurrent`, `CFRunLoopGetMain`, `CFRunLoopRunInMode`,
+`CFRunLoopStop`, `CFRunLoopWakeUp`, and `CFRunLoopAddCommonMode`. This closes
+the import-resolution gap for those entry points only. `CFRunLoopPerformBlock`
+and the source/timer/observer APIs are not exported yet; run-result handling is
+also a subset and has not been checked against a guest fixture.
+
+This is a useful Foundation scheduling subset, not the complete CoreFoundation
+run-loop contract: CFRunLoopSource/Timer/Observer objects, true input-source
+integration for custom modes, full recursive run-loop activation, selector
+cancellation, and timer registration with arbitrary modes remain unimplemented.
+The Clang Release build completed successfully; no guest ABI fixture has
+exercised mode filtering or selector delivery.
 
 ### Foundation dates and AppKit event queue (2026-11-17)
 

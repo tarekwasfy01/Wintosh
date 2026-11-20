@@ -540,6 +540,9 @@ std::mutex g_bezier_mutex;
 std::unordered_map<id, BezierPathState> g_bezier_paths;
 std::mutex g_date_mutex;
 std::unordered_map<id, double> g_dates;
+std::mutex g_nsrunloop_mutex;
+std::unordered_map<darling_windows_CFRunLoopRef, id> g_nsrunloop_objects;
+std::unordered_map<id, darling_windows_CFRunLoopRef> g_nsrunloop_refs;
 std::once_flag g_null_once;
 id g_null_object = nullptr;
 
@@ -2349,6 +2352,93 @@ std::int64_t NSDateCompare(id self, SEL, id other)
 	const double left = NSDateReferenceTime(self, nullptr);
 	const double right = NSDateReferenceTime(other, nullptr);
 	return left < right ? -1 : left > right ? 1 : 0;
+}
+
+id NSRunLoopObjectForRef(Class cls, darling_windows_CFRunLoopRef loop)
+{
+	if (cls == nullptr || loop == nullptr) return nullptr;
+	std::lock_guard lock(g_nsrunloop_mutex);
+	const auto found = g_nsrunloop_objects.find(loop);
+	if (found != g_nsrunloop_objects.end())
+		return objc_retainAutorelease(found->second);
+	id object = class_createInstance(cls, 0);
+	if (object == nullptr) return nullptr;
+	try {
+		g_nsrunloop_objects.emplace(loop, objc_retain(object));
+		g_nsrunloop_refs.emplace(object, loop);
+	} catch (...) {
+		g_nsrunloop_objects.erase(loop);
+		g_nsrunloop_refs.erase(object);
+		objc_release(object);
+		objc_release(object);
+		return nullptr;
+	}
+	return objc_autorelease(object);
+}
+
+id NSRunLoopCurrent(Class cls, SEL)
+{
+	return NSRunLoopObjectForRef(cls, darling_windows_CFRunLoopGetCurrent());
+}
+
+id NSRunLoopMain(Class cls, SEL)
+{
+	return NSRunLoopObjectForRef(cls, darling_windows_CFRunLoopGetMain());
+}
+
+id NSRunLoopDefaultMode(Class, SEL)
+{
+	return NSStringStringWithUTF8String(objc_getClass("NSString"), nullptr,
+		"kCFRunLoopDefaultMode");
+}
+
+id NSRunLoopCommonModes(Class, SEL)
+{
+	return NSStringStringWithUTF8String(objc_getClass("NSString"), nullptr,
+		"kCFRunLoopCommonModes");
+}
+
+darling_windows_CFRunLoopRef NSRunLoopGetCFRunLoop(id self, SEL)
+{
+	std::lock_guard lock(g_nsrunloop_mutex);
+	const auto found = g_nsrunloop_refs.find(self);
+	return found == g_nsrunloop_refs.end() ? nullptr : found->second;
+}
+
+bool NSRunLoopRunMode(id self, SEL, id mode, id limit_date)
+{
+	const auto loop = NSRunLoopGetCFRunLoop(self, nullptr);
+	const char* mode_name = mode == nullptr ? "kCFRunLoopDefaultMode" :
+		NSStringUTF8String(mode, nullptr);
+	if (loop == nullptr || mode_name == nullptr) return false;
+	if (!darling_windows_CFRunLoopContainsPendingBlockForMode(loop, mode_name))
+		return false;
+	const double limit = NSDateReferenceTime(limit_date, nullptr);
+	const double interval = (std::max)(0.0, limit - NSDateNowReferenceTime());
+	return darling_windows_CFRunLoopRunInModeForLoop(loop, mode_name,
+		interval, true) >= 0;
+}
+
+void NSRunLoopRunUntilDate(id self, SEL, id limit_date)
+{
+	const auto loop = NSRunLoopGetCFRunLoop(self, nullptr);
+	if (loop == nullptr) return;
+	const double limit = NSDateReferenceTime(limit_date, nullptr);
+	for (;;) {
+		const double remaining = limit - NSDateNowReferenceTime();
+		if (!std::isfinite(remaining) || remaining <= 0.0) return;
+		const int result = darling_windows_CFRunLoopRunInModeForLoop(loop,
+			"kCFRunLoopDefaultMode", remaining, false);
+		if (result != 1) return;
+	}
+}
+
+void NSRunLoopRun(id self, SEL)
+{
+	const auto loop = NSRunLoopGetCFRunLoop(self, nullptr);
+	if (loop == nullptr) return;
+	while (darling_windows_CFRunLoopRunInModeForLoop(loop,
+		"kCFRunLoopDefaultMode", 315360000.0, false) == 1) { }
 }
 
 std::shared_ptr<AppKitTimerState> NSTimerState(id timer)
@@ -4398,6 +4488,64 @@ id NSArrayObjectAtIndex(id self, SEL, std::uint64_t index)
 	auto found = g_arrays.find(self);
 	if (found == g_arrays.end() || index >= found->second.size()) return nullptr;
 	return objc_retainAutorelease(found->second[static_cast<std::size_t>(index)]);
+}
+
+struct NSRunLoopSelectorInvocation final {
+	id target{};
+	SEL selector{};
+	id argument{};
+	~NSRunLoopSelectorInvocation()
+	{
+		if (target != nullptr) objc_release(target);
+		if (argument != nullptr) objc_release(argument);
+	}
+};
+
+void NSRunLoopInvokeSelector(void* context)
+{
+	std::unique_ptr<NSRunLoopSelectorInvocation> invocation(
+		static_cast<NSRunLoopSelectorInvocation*>(context));
+	if (invocation == nullptr) return;
+	try {
+		darling_objc_msgSend_void1_object(invocation->target,
+			invocation->selector, invocation->argument);
+	} catch (...) {
+		// Guest exceptions must not unwind through the native run loop.
+	}
+}
+
+void NSRunLoopPerformSelector(id self, SEL, SEL selector, id target,
+	id argument, std::uint64_t order, id modes)
+{
+	const auto loop = NSRunLoopGetCFRunLoop(self, nullptr);
+	const auto mode_count = NSArrayCount(modes, nullptr);
+	if (loop == nullptr || selector == nullptr || target == nullptr ||
+		mode_count == 0 || mode_count > 256) return;
+	std::vector<const char*> mode_names;
+	try {
+		mode_names.reserve(static_cast<std::size_t>(mode_count));
+		for (std::uint64_t index = 0; index < mode_count; ++index) {
+			id mode = NSArrayObjectAtIndex(modes, nullptr, index);
+			const char* name = mode == nullptr ? nullptr : NSStringUTF8String(mode, nullptr);
+			if (name == nullptr || *name == '\0') return;
+			mode_names.push_back(name);
+		}
+	} catch (...) {
+		return;
+	}
+	auto invocation = std::unique_ptr<NSRunLoopSelectorInvocation>(
+		new (std::nothrow) NSRunLoopSelectorInvocation{
+			objc_retain(target), selector,
+			argument == nullptr ? nullptr : objc_retain(argument)});
+	if (invocation == nullptr) return;
+	if (!darling_windows_CFRunLoopPerformBlockInModesWithOrder(loop,
+		mode_names.data(), mode_names.size(), order,
+		&NSRunLoopInvokeSelector, invocation.get())) return;
+	invocation.release();
+	darling_windows_CFRunLoopWakeUp(loop);
+	const DWORD application_thread = g_application_thread_id.load(std::memory_order_acquire);
+	if (application_thread != 0)
+		PostThreadMessageW(application_thread, kApplicationEventMessage, 0, 0);
 }
 
 bool NSArrayContainsObject(id self, SEL, id value)
@@ -16561,6 +16709,7 @@ void NSApplicationUnhide(id self, SEL, id)
 void NSApplicationRun(id self, SEL selector)
 {
 	if (g_application_running.load(std::memory_order_acquire)) return;
+	darling_windows_CFRunLoopUseCurrentAsMain();
 	g_appkit_main_thread_id.store(GetCurrentThreadId(), std::memory_order_release);
 	g_application_termination_notified.store(false, std::memory_order_release);
 	g_application_active.store(false, std::memory_order_release);
@@ -16608,6 +16757,9 @@ void NSApplicationRun(id self, SEL selector)
 	for (;;) {
 		EventAutoreleasePool event_pool;
 		if (DispatchOneAppKitCallback()) continue;
+		if (darling_windows_CFRunLoopRunInModeForLoop(
+		darling_windows_CFRunLoopGetCurrent(), "kCFRunLoopDefaultMode",
+			0.0, true) == 0) continue;
 		if (id event = TakeMatchingAppKitEvent((std::numeric_limits<std::uint64_t>::max)(),
 			true)) {
 			DispatchAppKitEventToApplication(g_shared_application, event);
@@ -18529,6 +18681,31 @@ void RegisterAppKitClasses()
 			reinterpret_cast<IMP>(&NSTimerSetFireDate), "v@:@");
 		class_addMethod(timer, sel_registerName("userInfo"),
 			reinterpret_cast<IMP>(&NSTimerUserInfo), "@@:");
+
+		Class run_loop = RegisterHostClass("NSRunLoop", root);
+		if (run_loop == nullptr) return;
+		class_addClassMethod(run_loop, sel_registerName("currentRunLoop"),
+			reinterpret_cast<IMP>(&NSRunLoopCurrent), "@@:");
+		class_addClassMethod(run_loop, sel_registerName("mainRunLoop"),
+			reinterpret_cast<IMP>(&NSRunLoopMain), "@@:");
+		class_addClassMethod(run_loop, sel_registerName("defaultMode"),
+			reinterpret_cast<IMP>(&NSRunLoopDefaultMode), "@@:");
+		class_addClassMethod(run_loop, sel_registerName("commonModes"),
+			reinterpret_cast<IMP>(&NSRunLoopCommonModes), "@@:");
+		class_addMethod(run_loop, sel_registerName("getCFRunLoop"),
+			reinterpret_cast<IMP>(&NSRunLoopGetCFRunLoop), "^v@:");
+		class_addMethod(run_loop, sel_registerName("run"),
+			reinterpret_cast<IMP>(&NSRunLoopRun), "v@:");
+		class_addMethod(run_loop, sel_registerName("runUntilDate:"),
+			reinterpret_cast<IMP>(&NSRunLoopRunUntilDate), "v@:@");
+		class_addMethod(run_loop, sel_registerName("runMode:beforeDate:"),
+			reinterpret_cast<IMP>(&NSRunLoopRunMode), "B@:@@");
+		class_addMethod(run_loop,
+			sel_registerName("acceptInputForMode:beforeDate:"),
+			reinterpret_cast<IMP>(&NSRunLoopRunMode), "B@:@@");
+		class_addMethod(run_loop,
+			sel_registerName("performSelector:target:argument:order:modes:"),
+			reinterpret_cast<IMP>(&NSRunLoopPerformSelector), "v@::@@Q@");
 
 		Class null_class = RegisterHostClass("NSNull", root);
 		if (null_class == nullptr) return;

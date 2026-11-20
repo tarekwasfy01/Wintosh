@@ -36,6 +36,29 @@ objects, Unicode normalization/collation, callback/hash semantics, complex
 binary property lists, AppKit, and the full Darwin framework graph remain
 open.
 
+## Run-loop implementation slice
+
+The current `NSRunLoop` bridge exposes current/main wrappers, its underlying
+CF loop, default/common modes, bounded run methods, and ordered selector
+delivery. The internal callback queue retains mode-tagged work and leaves it
+pending while another mode is active. This covers only scheduled callbacks:
+the `CFRunLoopSource`, `CFRunLoopTimer`, and `CFRunLoopObserver` object graphs,
+native Windows input-source registration, and run-loop phase observers are
+still missing. Apple documents that each thread owns one run loop and that
+sources, timers, and observers are activated by their registered modes; current
+evidence is source/build level only.
+
+The Mach-O host resolver currently exports the first C ABI slice:
+`CFRunLoopGetCurrent`, `CFRunLoopGetMain`, `CFRunLoopRunInMode`,
+`CFRunLoopStop`, `CFRunLoopWakeUp`, and `CFRunLoopAddCommonMode`. The guest
+ABI attributes account for the x86_64 Darwin calling convention. Block-based
+`CFRunLoopPerformBlock`, status edge cases, and guest-side invocation remain
+unimplemented or unverified.
+
+References: [Apple NSRunLoop run(mode:before:)](https://developer.apple.com/documentation/foundation/runloop/run%28mode%3Abefore%3A%29),
+[CFRunLoop](https://developer.apple.com/documentation/corefoundation/cfrunloop),
+and [CFRunLoopPerformBlock](https://developer.apple.com/documentation/corefoundation/cfrunloopperformblock%28_%3A_%3A_%3A%29).
+
 The implementation and source provenance are documented in the repository
 license inventory. The upstream Darling project is the reference project:
 https://github.com/darlinghq/darling

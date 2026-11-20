@@ -487,3 +487,31 @@ while querying nested virtualization. Darling installation could therefore
 not be inspected. The initial sandbox access denial alone was not used to
 infer the host's WSL configuration. No distribution conversion or Windows
 feature change was performed.
+
+## Run-loop mode scheduling
+
+Apple's contract is mode-selective: a source is serviced only while the run
+loop executes in a mode to which that source was registered. A common-mode
+registration expands to each mode in that loop's common set. Wintosh now
+applies the same filter to queued callbacks. Let `M(w)` be the mode set for
+work item `w`, `C(L)` the common-mode set for loop `L`, and `m` its active
+mode:
+
+`Eligible(w,L,m) = (m ∈ M(w)) ∨ (Common ∈ M(w) ∧ m ∈ C(L))`
+
+For a one-source turn, Wintosh selects the earliest eligible queue item with
+the lowest declared order; FIFO insertion order breaks ties. A draining turn
+extracts only eligible items, sorts them by order, and leaves all other modes
+pending. The current default common set is `{kCFRunLoopDefaultMode}` until
+`CFRunLoopAddCommonMode` extends it.
+
+| Contract layer | Darwin expectation | Wintosh implementation | WSL1 comparison | Evidence |
+|---|---|---|---|---|
+| Mode membership | Work runs only in registered modes | Mode-tagged callbacks; default and common modes | WSL1 offers Linux compatibility but does not define Cocoa run-loop modes | Clang Release build; no guest fixture |
+| Ordered selector queue | Process target selector on target thread in requested modes/order | `NSRunLoop.performSelector:target:argument:order:modes:` | No direct WSL1 equivalent | Source/build only |
+| Main AppKit loop | Cocoa loop dispatches AppKit input and Foundation work | Existing Win32 message loop pumps default-mode CF callback work | WSL1 cannot supply AppKit behavior | Source/build only |
+| CF sources/timers/observers | Register, invalidate, retain, and service by mode | Not implemented | Not supplied by WSL1 | Missing |
+
+References: [Apple NSRunLoop `run(mode:before:)`](https://developer.apple.com/documentation/foundation/runloop/run%28mode%3Abefore%3A%29),
+[CFRunLoop mode contract](https://developer.apple.com/documentation/corefoundation/cfrunloop),
+and [CFRunLoopPerformBlock](https://developer.apple.com/documentation/corefoundation/cfrunloopperformblock%28_%3A_%3A_%3A%29). This is a callback-queue contract, not yet the full run-loop object graph.

@@ -287,6 +287,15 @@ counterpart, `fire`, `invalidate`, `isValid`, `timeInterval`, `fireDate`,
 fire dates and skip missed intervals. Scheduled callbacks are queued onto the
 AppKit application thread and wake its message loop. Run-loop modes,
 invocation-based timers, and delivery when no AppKit loop runs are not modeled.
+The `NSRunLoop` subset exposes current/main loop wrappers, underlying
+`CFRunLoop` access, default/common mode values, run-until-date and one-mode
+turns, plus ordered `performSelector:target:argument:order:modes:` scheduling.
+The CoreFoundation callback queue preserves work for inactive modes and
+recognizes the default mode as a member of common modes. On the AppKit main
+thread, queued selector work wakes and is drained by `NSApplication.run`.
+Run-loop sources, observers, CF timers, recursive activations, selector
+cancellation, and arbitrary-mode `NSTimer` scheduling remain outside this
+subset; mode behavior has not yet been verified against a Mach-O guest.
 The keyed-archive decoder also recognizes Apple's `NSCustomView` placeholder,
 resolves its `NSClassName`, allocates a loaded `NSView` subclass, and calls
 `initWithFrame:` using `NSFrame` or `NSFrameSize`. It then restores selected

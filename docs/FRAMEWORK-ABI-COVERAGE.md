@@ -63,8 +63,10 @@ array of modes and wakes AppKit. The resolver also exports CFNumber, CFDate,
 CFBoolean, and CFDictionary create/copy/mutation/enumeration with the built-in
 `kCFType` callback tables. CFSet creation, copying, set algebra and traversal
 are also exported with `kCFTypeSetCallBacks`; its vector-backed model is
-linear-time. For CFDictionary and CFSet, custom callback behavior and null
-callback tables remain unsupported.
+linear-time. CFSet custom callback behavior and null callback tables remain
+unsupported. CFDictionary copies its callback tables and allocator, and applies
+key/value retain/release callbacks plus key equality callbacks. Null tables
+become zeroed version-0 structures; custom version-0 tables are accepted.
 This has source/build evidence only; guest-side ABI invocation and status edge
 cases remain unverified.
 

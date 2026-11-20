@@ -544,9 +544,9 @@ For dictionary collection semantics the supported callback matrix is explicit:
 
 | Key callbacks | Value callbacks | Wintosh behavior |
 |---|---|---|
-| `kCFTypeDictionaryKeyCallBacks` | `kCFTypeDictionaryValueCallBacks` | Create/copy/mutate; retain/release CF objects and compare keys with `CFEqual` |
-| Copies of the predefined structures with matching function pointers | Same | Accepted after member-wise validation |
-| Null or custom callback structure | Any | Rejected because custom ownership/equality/hash behavior is not modeled |
+| Any version-0 key/value tables | Any version-0 key/value tables | Tables are copied; null pointers become zeroed tables |
+| Key retain/release/equal callbacks | Value retain/release callbacks | Invoked on create/copy/mutate/destroy and key lookup; null fields mean pointer equality or no ownership callback |
+| Hash/description callbacks | Description callback | Stored in the per-dictionary table; hash callback is not used by the current vector-backed lookup |
 
 Mutable operations are enabled only for dictionaries created by
 `CFDictionaryCreateMutable` or `CFDictionaryCreateMutableCopy`; mutation calls

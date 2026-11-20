@@ -75,6 +75,33 @@ struct DarlingCFArrayCallbacks {
 	DarlingCFArrayEqualCallback equal;
 };
 extern "C" const DarlingCFArrayCallbacks kCFTypeArrayCallBacks;
+using DarlingCFDictionaryRetainCallback = const void* (DARLING_CF_GUEST_ABI *)(
+	const void* allocator, const void* value);
+using DarlingCFDictionaryReleaseCallback = void (DARLING_CF_GUEST_ABI *)(
+	const void* allocator, const void* value);
+using DarlingCFDictionaryCopyDescriptionCallback = const void* (DARLING_CF_GUEST_ABI *)(
+	const void* value);
+using DarlingCFDictionaryEqualCallback = std::uint8_t (DARLING_CF_GUEST_ABI *)(
+	const void* left, const void* right);
+using DarlingCFDictionaryHashCallback = std::uintptr_t (DARLING_CF_GUEST_ABI *)(
+	const void* value);
+struct DarlingCFDictionaryKeyCallbacks {
+	darling_windows_CFIndex version;
+	DarlingCFDictionaryRetainCallback retain;
+	DarlingCFDictionaryReleaseCallback release;
+	DarlingCFDictionaryCopyDescriptionCallback copy_description;
+	DarlingCFDictionaryEqualCallback equal;
+	DarlingCFDictionaryHashCallback hash;
+};
+struct DarlingCFDictionaryValueCallbacks {
+	darling_windows_CFIndex version;
+	DarlingCFDictionaryRetainCallback retain;
+	DarlingCFDictionaryReleaseCallback release;
+	DarlingCFDictionaryCopyDescriptionCallback copy_description;
+};
+extern "C" const DarlingCFDictionaryKeyCallbacks kCFTypeDictionaryKeyCallBacks;
+extern "C" const DarlingCFDictionaryValueCallbacks kCFTypeDictionaryValueCallBacks;
+extern "C" const DarlingCFDictionaryKeyCallbacks kCFTypeSetCallBacks;
 extern "C" int darling_windows_CFStringGetSystemEncoding();
 
 extern "C" darling_windows_CFRange darling_windows_CFRangeMake(

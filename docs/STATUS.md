@@ -35,7 +35,7 @@ currently bounded to 4095 UTF-8 bytes. Source/timer/observer APIs, guest import
 fixtures, and edge-case status behavior still need coverage. Guest exports now
 also include CFNumber creation/conversion/comparison, CFDate creation/comparison,
 CFBoolean reads, and CFDictionary creation, copying, lookup, mutation and
-enumeration using the built-in `kCFType` callbacks. CFSet creation, copying,
+enumeration with copied key/value callback tables. CFSet creation, copying,
 membership/value queries, enumeration, set algebra and mutation are exposed
 with `kCFTypeSetCallBacks`. CFArray now also has creation, mutable copies,
 append/insert/remove/replace/set, remove-all, and synchronous callback

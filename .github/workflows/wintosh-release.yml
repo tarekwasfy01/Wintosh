@@ -33,9 +33,19 @@ jobs:
         with:
           arch: x64
 
+      - name: Select Visual Studio bundled Clang
+        shell: pwsh
+        run: |
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+          $vsRoot = & $vswhere -latest -products '*' -property installationPath
+          if (-not $vsRoot) { throw 'Could not locate the Visual Studio installation' }
+          $clang = Join-Path $vsRoot 'VC\Tools\Llvm\x64\bin\clang-cl.exe'
+          if (-not (Test-Path $clang)) { throw "Visual Studio bundled clang-cl was not found: $clang" }
+          "WINTOSH_CLANG_CL=$clang" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
       - name: Configure ClangCL build
         shell: pwsh
-        run: cmake -S wintosh-windows -B build-clang-x64 -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=clang-cl -DCMAKE_C_COMPILER=clang-cl -DCMAKE_ASM_COMPILER=clang-cl
+        run: cmake -S wintosh-windows -B build-clang-x64 -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER="$env:WINTOSH_CLANG_CL" -DCMAKE_ASM_COMPILER="$env:WINTOSH_CLANG_CL"
 
       - name: Build Clang targets
         shell: pwsh

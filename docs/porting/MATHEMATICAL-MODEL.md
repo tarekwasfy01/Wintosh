@@ -548,6 +548,11 @@ For dictionary collection semantics the supported callback matrix is explicit:
 | Key retain/release/equal callbacks | Value retain/release callbacks | Invoked on create/copy/mutate/destroy and key lookup; null fields mean pointer equality or no ownership callback |
 | Hash/description callbacks | Description callback | Stored in the per-dictionary table; hash callback is not used by the current vector-backed lookup |
 
+The key invariant is `∀(kᵢ,vᵢ),(kⱼ,vⱼ) ∈ D, i≠j ⇒ ¬equal(kᵢ,kⱼ)`.
+The vector implementation enforces that invariant with linear scans, `O(n)`
+per lookup or mutation; a hash callback is preserved but not yet used to meet
+CoreFoundation's expected hash-table performance.
+
 Mutable operations are enabled only for dictionaries created by
 `CFDictionaryCreateMutable` or `CFDictionaryCreateMutableCopy`; mutation calls
 on immutable guest objects are ignored. `CFDictionaryApplyFunction` adapts the

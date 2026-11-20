@@ -53,9 +53,11 @@ The Mach-O host resolver exports a partial C ABI for run-loop control and
 guest ABI attributes account for the x86_64 Darwin calling convention. String
 conversion is limited to the implementation's UTF-8 representation.
 `CFRunLoopPerformBlock` now retains and schedules a guest block in a string or
-array of modes and wakes AppKit. This has source/build evidence only; full
-collection mutation and callbacks, status edge cases, and guest-side ABI
-invocation remain unverified.
+array of modes and wakes AppKit. The resolver also exports CFNumber, CFDate,
+CFBoolean, and CFDictionary create/copy/mutation/enumeration with the built-in
+`kCFType` callback tables. Custom callback behavior and null callback tables
+are rejected. This has source/build evidence only; guest-side ABI invocation
+and status edge cases remain unverified.
 
 References: [Apple NSRunLoop run(mode:before:)](https://developer.apple.com/documentation/foundation/runloop/run%28mode%3Abefore%3A%29),
 [CFRunLoop](https://developer.apple.com/documentation/corefoundation/cfrunloop),

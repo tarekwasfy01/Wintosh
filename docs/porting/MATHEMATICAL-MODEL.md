@@ -536,7 +536,21 @@ The implementation's matrix maps Darwin number tags to host storage as follows:
 This bridge keeps values usable by property-list and collection code but does
 not claim CFNumber's exact internal-type preservation or all architecture and
 overflow corner cases. `CFDate` stores Darwin absolute time as a double and
-compares in reference-date seconds; dictionary operations currently expose
-lookups and enumeration only. These contracts follow [Apple CFNumber](https://developer.apple.com/documentation/corefoundation/cfnumber),
+compares in reference-date seconds. These contracts follow [Apple CFNumber](https://developer.apple.com/documentation/corefoundation/cfnumber),
 [CFDate](https://developer.apple.com/documentation/corefoundation/cfdatecreate%28_%3A_%3A%29),
 and [CFDictionary](https://developer.apple.com/documentation/corefoundation/cfdictionary).
+
+For dictionary collection semantics the supported callback matrix is explicit:
+
+| Key callbacks | Value callbacks | Wintosh behavior |
+|---|---|---|
+| `kCFTypeDictionaryKeyCallBacks` | `kCFTypeDictionaryValueCallBacks` | Create/copy/mutate; retain/release CF objects and compare keys with `CFEqual` |
+| Copies of the predefined structures with matching function pointers | Same | Accepted after member-wise validation |
+| Null or custom callback structure | Any | Rejected because custom ownership/equality/hash behavior is not modeled |
+
+Mutable operations are enabled only for dictionaries created by
+`CFDictionaryCreateMutable` or `CFDictionaryCreateMutableCopy`; mutation calls
+on immutable guest objects are ignored. `CFDictionaryApplyFunction` adapts the
+guest callback synchronously and holds the internal snapshot through the pass.
+This mapping currently targets the Darwin x86_64 ABI and does not imply ARM64
+support.

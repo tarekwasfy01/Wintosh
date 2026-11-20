@@ -49,6 +49,7 @@ extern "C" int darling_windows_CFStringGetSystemEncoding()
 struct Object {
 	std::atomic<std::size_t> references{1};
 	bool immortal = false;
+	bool mutable_dictionary = false;
 	Kind kind;
 	std::string string;
 	std::string bundle_path;
@@ -2185,7 +2186,9 @@ extern "C" darling_windows_CFDictionaryRef darling_windows_CFDictionaryCreateMut
 	darling_windows_CFIndex capacity)
 {
 	if (capacity < 0) return nullptr;
-	return darling_windows_CFDictionaryCreate(nullptr, nullptr, 0);
+	auto* object = As(darling_windows_CFDictionaryCreate(nullptr, nullptr, 0));
+	if (object != nullptr) object->mutable_dictionary = true;
+	return object;
 }
 
 extern "C" darling_windows_CFDictionaryRef darling_windows_CFDictionaryCreateCopy(
@@ -2209,7 +2212,9 @@ extern "C" darling_windows_CFDictionaryRef darling_windows_CFDictionaryCreateMut
 	darling_windows_CFIndex capacity, darling_windows_CFDictionaryRef value)
 {
 	if (capacity < 0) return nullptr;
-	return darling_windows_CFDictionaryCreateCopy(value);
+	auto* object = As(darling_windows_CFDictionaryCreateCopy(value));
+	if (object != nullptr) object->mutable_dictionary = true;
+	return object;
 }
 
 extern "C" darling_windows_CFTypeRef darling_windows_CFDictionaryGetValue(
@@ -3361,6 +3366,70 @@ extern "C" DARLING_CF_GUEST_ABI void CFRunLoopAddCommonMode(
 // encoding and Darwin's explicit UTF-8 encoding; other conversions are not
 // silently treated as UTF-8.
 namespace {
+using DarlingDictionaryRetainCallback = const void* (DARLING_CF_GUEST_ABI *)(
+	const void*, const void*);
+using DarlingDictionaryReleaseCallback = void (DARLING_CF_GUEST_ABI *)(
+	const void*, const void*);
+using DarlingDictionaryCopyDescriptionCallback = darling_windows_CFStringRef (
+	DARLING_CF_GUEST_ABI *)(const void*);
+using DarlingDictionaryEqualCallback = std::uint8_t (DARLING_CF_GUEST_ABI *)(
+	const void*, const void*);
+using DarlingDictionaryHashCallback = std::uintptr_t (DARLING_CF_GUEST_ABI *)(const void*);
+struct DarlingCFDictionaryKeyCallbacks final {
+	darling_windows_CFIndex version;
+	DarlingDictionaryRetainCallback retain;
+	DarlingDictionaryReleaseCallback release;
+	DarlingDictionaryCopyDescriptionCallback copy_description;
+	DarlingDictionaryEqualCallback equal;
+	DarlingDictionaryHashCallback hash;
+};
+struct DarlingCFDictionaryValueCallbacks final {
+	darling_windows_CFIndex version;
+	DarlingDictionaryRetainCallback retain;
+	DarlingDictionaryReleaseCallback release;
+	DarlingDictionaryCopyDescriptionCallback copy_description;
+};
+
+const void* DARLING_CF_GUEST_ABI DarlingCFTypeRetain(const void*, const void* value)
+{
+	return darling_windows_CFRetain(value);
+}
+void DARLING_CF_GUEST_ABI DarlingCFTypeRelease(const void*, const void* value)
+{
+	darling_windows_CFRelease(value);
+}
+darling_windows_CFStringRef DARLING_CF_GUEST_ABI DarlingCFTypeCopyDescription(
+	const void*)
+{
+	return darling_windows_CFStringCreateWithCString("<CFType>");
+}
+std::uint8_t DARLING_CF_GUEST_ABI DarlingCFTypeEqual(const void* left, const void* right)
+{
+	return darling_windows_CFEqual(left, right) ? 1 : 0;
+}
+std::uintptr_t DARLING_CF_GUEST_ABI DarlingCFTypeHash(const void* value)
+{
+	return static_cast<std::uintptr_t>(darling_windows_CFHash(value));
+}
+
+bool DarlingIsTypeDictionaryKeyCallbacks(const void* callbacks)
+{
+	if (callbacks == nullptr) return false;
+	const auto& actual = *static_cast<const DarlingCFDictionaryKeyCallbacks*>(callbacks);
+	return actual.version == 0 && actual.retain == &DarlingCFTypeRetain &&
+		actual.release == &DarlingCFTypeRelease &&
+		actual.copy_description == &DarlingCFTypeCopyDescription &&
+		actual.equal == &DarlingCFTypeEqual && actual.hash == &DarlingCFTypeHash;
+}
+bool DarlingIsTypeDictionaryValueCallbacks(const void* callbacks)
+{
+	if (callbacks == nullptr) return false;
+	const auto& actual = *static_cast<const DarlingCFDictionaryValueCallbacks*>(callbacks);
+	return actual.version == 0 && actual.retain == &DarlingCFTypeRetain &&
+		actual.release == &DarlingCFTypeRelease &&
+		actual.copy_description == &DarlingCFTypeCopyDescription;
+}
+
 constexpr std::uint32_t kDarlingCfUtf8Encoding = 0x08000100;
 bool DarlingCfSupportsStringEncoding(std::uint32_t encoding)
 {
@@ -3368,6 +3437,12 @@ bool DarlingCfSupportsStringEncoding(std::uint32_t encoding)
 		encoding == kDarlingCfUtf8Encoding;
 }
 }
+
+extern "C" const DarlingCFDictionaryKeyCallbacks kCFTypeDictionaryKeyCallBacks = {
+	0, &DarlingCFTypeRetain, &DarlingCFTypeRelease,
+	&DarlingCFTypeCopyDescription, &DarlingCFTypeEqual, &DarlingCFTypeHash};
+extern "C" const DarlingCFDictionaryValueCallbacks kCFTypeDictionaryValueCallBacks = {
+	0, &DarlingCFTypeRetain, &DarlingCFTypeRelease, &DarlingCFTypeCopyDescription};
 
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeID CFStringGetTypeID()
 {
@@ -3654,6 +3729,107 @@ extern "C" DARLING_CF_GUEST_ABI void CFDictionaryGetKeysAndValues(
 	darling_windows_CFDictionaryGetKeysAndValues(value, keys, values);
 }
 
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFDictionaryRef CFDictionaryCreate(
+	const void*, const void* const* keys, const void* const* values,
+	darling_windows_CFIndex count, const void* key_callbacks, const void* value_callbacks)
+{
+	if (!DarlingIsTypeDictionaryKeyCallbacks(key_callbacks) ||
+		!DarlingIsTypeDictionaryValueCallbacks(value_callbacks)) return nullptr;
+	return darling_windows_CFDictionaryCreate(keys, values, count);
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFDictionaryRef CFDictionaryCreateMutable(
+	const void*, darling_windows_CFIndex capacity,
+	const void* key_callbacks, const void* value_callbacks)
+{
+	if (!DarlingIsTypeDictionaryKeyCallbacks(key_callbacks) ||
+		!DarlingIsTypeDictionaryValueCallbacks(value_callbacks)) return nullptr;
+	return darling_windows_CFDictionaryCreateMutable(capacity);
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFDictionaryRef CFDictionaryCreateCopy(
+	const void*, darling_windows_CFDictionaryRef value)
+{
+	return darling_windows_CFDictionaryCreateCopy(value);
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFDictionaryRef CFDictionaryCreateMutableCopy(
+	const void*, darling_windows_CFIndex capacity, darling_windows_CFDictionaryRef value)
+{
+	return darling_windows_CFDictionaryCreateMutableCopy(capacity, value);
+}
+
+extern "C" DARLING_CF_GUEST_ABI void CFDictionarySetValue(
+	darling_windows_CFDictionaryRef value, darling_windows_CFTypeRef key,
+	darling_windows_CFTypeRef element)
+{
+	auto* object = As(value);
+	if (object != nullptr && object->mutable_dictionary)
+		(void)darling_windows_CFDictionarySetValue(value, key, element);
+}
+
+extern "C" DARLING_CF_GUEST_ABI void CFDictionaryAddValue(
+	darling_windows_CFDictionaryRef value, darling_windows_CFTypeRef key,
+	darling_windows_CFTypeRef element)
+{
+	auto* object = As(value);
+	if (object != nullptr && object->mutable_dictionary &&
+		!darling_windows_CFDictionaryContainsKey(value, key))
+		(void)darling_windows_CFDictionarySetValue(value, key, element);
+}
+
+extern "C" DARLING_CF_GUEST_ABI void CFDictionaryReplaceValue(
+	darling_windows_CFDictionaryRef value, darling_windows_CFTypeRef key,
+	darling_windows_CFTypeRef element)
+{
+	auto* object = As(value);
+	if (object != nullptr && object->mutable_dictionary &&
+		darling_windows_CFDictionaryContainsKey(value, key))
+		(void)darling_windows_CFDictionarySetValue(value, key, element);
+}
+
+extern "C" DARLING_CF_GUEST_ABI void CFDictionaryRemoveValue(
+	darling_windows_CFDictionaryRef value, darling_windows_CFTypeRef key)
+{
+	auto* object = As(value);
+	if (object != nullptr && object->mutable_dictionary)
+		(void)darling_windows_CFDictionaryRemoveValue(value, key);
+}
+
+extern "C" DARLING_CF_GUEST_ABI void CFDictionaryRemoveAllValues(
+	darling_windows_CFDictionaryRef value)
+{
+	auto* object = As(value);
+	if (object != nullptr && object->mutable_dictionary)
+		darling_windows_CFDictionaryRemoveAllValues(value);
+}
+
+namespace {
+using DarlingGuestDictionaryApplier = void (DARLING_CF_GUEST_ABI *)(
+	const void*, const void*, void*);
+struct DarlingGuestDictionaryApplyContext final {
+	DarlingGuestDictionaryApplier callback{};
+	void* context{};
+};
+void DarlingInvokeGuestDictionaryApplier(const void* key, const void* value, void* raw_context)
+{
+	auto* context = static_cast<DarlingGuestDictionaryApplyContext*>(raw_context);
+	if (context == nullptr || context->callback == nullptr) return;
+	try { context->callback(key, value, context->context); }
+	catch (...) { /* Do not unwind through the CoreFoundation collection loop. */ }
+}
+}
+
+extern "C" DARLING_CF_GUEST_ABI void CFDictionaryApplyFunction(
+	darling_windows_CFDictionaryRef value, DarlingGuestDictionaryApplier callback,
+	void* context)
+{
+	if (callback == nullptr) return;
+	DarlingGuestDictionaryApplyContext apply_context{callback, context};
+	darling_windows_CFDictionaryApplyFunction(value,
+		&DarlingInvokeGuestDictionaryApplier, &apply_context);
+}
+
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeID CFBooleanGetTypeID()
 {
 	return darling_windows_CFBooleanGetTypeID();
@@ -3749,6 +3925,30 @@ extern "C" std::uintptr_t darling_windows_corefoundation_symbol(const char* name
 		return reinterpret_cast<std::uintptr_t>(&CFDictionaryContainsValue);
 	if (std::strcmp(name, "CFDictionaryGetKeysAndValues") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFDictionaryGetKeysAndValues);
+	if (std::strcmp(name, "CFDictionaryCreate") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFDictionaryCreate);
+	if (std::strcmp(name, "CFDictionaryCreateMutable") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFDictionaryCreateMutable);
+	if (std::strcmp(name, "CFDictionaryCreateCopy") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFDictionaryCreateCopy);
+	if (std::strcmp(name, "CFDictionaryCreateMutableCopy") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFDictionaryCreateMutableCopy);
+	if (std::strcmp(name, "CFDictionarySetValue") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFDictionarySetValue);
+	if (std::strcmp(name, "CFDictionaryAddValue") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFDictionaryAddValue);
+	if (std::strcmp(name, "CFDictionaryReplaceValue") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFDictionaryReplaceValue);
+	if (std::strcmp(name, "CFDictionaryRemoveValue") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFDictionaryRemoveValue);
+	if (std::strcmp(name, "CFDictionaryRemoveAllValues") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFDictionaryRemoveAllValues);
+	if (std::strcmp(name, "CFDictionaryApplyFunction") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFDictionaryApplyFunction);
+	if (std::strcmp(name, "kCFTypeDictionaryKeyCallBacks") == 0)
+		return reinterpret_cast<std::uintptr_t>(&kCFTypeDictionaryKeyCallBacks);
+	if (std::strcmp(name, "kCFTypeDictionaryValueCallBacks") == 0)
+		return reinterpret_cast<std::uintptr_t>(&kCFTypeDictionaryValueCallBacks);
 	if (std::strcmp(name, "CFBooleanGetTypeID") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFBooleanGetTypeID);
 	if (std::strcmp(name, "CFBooleanGetValue") == 0)

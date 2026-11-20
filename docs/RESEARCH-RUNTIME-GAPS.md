@@ -31,6 +31,17 @@ mutierbare Collections und die vollständigen RunLoop-Rückgabestatus bleiben
 offen. Die ABI-Ausführung ist noch nicht durch einen Gast-Fixture-Lauf
 bestätigt.
 
+Die Dictionary-Schicht wurde danach erweitert: `CFDictionaryCreate`, mutable
+Erzeugung/Kopie, Set/Add/Replace/Remove sowie synchrone Enumeration sind jetzt
+im Resolver. Als Callback-Verträge gelten nur die exportierten
+`kCFTypeDictionaryKeyCallBacks` und `kCFTypeDictionaryValueCallBacks` oder
+inhaltlich identische Kopien. Apples Dokumentation bestätigt deren Retain/
+Release-/Equality-Semantik; benutzerdefinierte und vollständig leere Callback-
+Tabellen werden abgewiesen, weil Wintosh deren Ownership- und Hashregeln noch
+nicht abbildet. Referenzen: [Apple kCFType key callbacks](https://developer.apple.com/documentation/corefoundation/kcftypedictionarykeycallbacks),
+[`CFDictionaryCreateMutable`](https://developer.apple.com/documentation/corefoundation/cfdictionarycreatemutable%28_%3A_%3A_%3A_%3A%29),
+und [`CFDictionarySetValue`](https://developer.apple.com/documentation/corefoundation/cfdictionarysetvalue%28_%3A_%3A_%3A%29).
+
 ## Externe Referenzen
 
 - [Darling auf GitHub](https://github.com/darlinghq/darling) beschreibt Darling

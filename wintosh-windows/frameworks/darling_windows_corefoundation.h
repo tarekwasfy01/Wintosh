@@ -53,6 +53,8 @@ using darling_windows_CFDictionaryApplierFunction = void (*)(const void* key,
 
 using darling_windows_CFTypeID = std::uint64_t;
 using darling_windows_CFNumberType = std::int32_t;
+using darling_windows_CFDictionaryGuestApplierFunction = void (DARLING_CF_GUEST_ABI *)(
+	const void* key, const void* value, void* context);
 extern "C" int darling_windows_CFStringGetSystemEncoding();
 
 extern "C" darling_windows_CFRange darling_windows_CFRangeMake(
@@ -635,6 +637,33 @@ extern "C" DARLING_CF_GUEST_ABI std::uint8_t CFDictionaryContainsValue(
 	darling_windows_CFDictionaryRef value, darling_windows_CFTypeRef candidate);
 extern "C" DARLING_CF_GUEST_ABI void CFDictionaryGetKeysAndValues(
 	darling_windows_CFDictionaryRef value, const void** keys, const void** values);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFDictionaryRef CFDictionaryCreate(
+	const void* allocator, const void* const* keys, const void* const* values,
+	darling_windows_CFIndex count, const void* key_callbacks, const void* value_callbacks);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFDictionaryRef CFDictionaryCreateMutable(
+	const void* allocator, darling_windows_CFIndex capacity,
+	const void* key_callbacks, const void* value_callbacks);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFDictionaryRef CFDictionaryCreateCopy(
+	const void* allocator, darling_windows_CFDictionaryRef value);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFDictionaryRef CFDictionaryCreateMutableCopy(
+	const void* allocator, darling_windows_CFIndex capacity,
+	darling_windows_CFDictionaryRef value);
+extern "C" DARLING_CF_GUEST_ABI void CFDictionarySetValue(
+	darling_windows_CFDictionaryRef value, darling_windows_CFTypeRef key,
+	darling_windows_CFTypeRef element);
+extern "C" DARLING_CF_GUEST_ABI void CFDictionaryAddValue(
+	darling_windows_CFDictionaryRef value, darling_windows_CFTypeRef key,
+	darling_windows_CFTypeRef element);
+extern "C" DARLING_CF_GUEST_ABI void CFDictionaryReplaceValue(
+	darling_windows_CFDictionaryRef value, darling_windows_CFTypeRef key,
+	darling_windows_CFTypeRef element);
+extern "C" DARLING_CF_GUEST_ABI void CFDictionaryRemoveValue(
+	darling_windows_CFDictionaryRef value, darling_windows_CFTypeRef key);
+extern "C" DARLING_CF_GUEST_ABI void CFDictionaryRemoveAllValues(
+	darling_windows_CFDictionaryRef value);
+extern "C" DARLING_CF_GUEST_ABI void CFDictionaryApplyFunction(
+	darling_windows_CFDictionaryRef value,
+	darling_windows_CFDictionaryGuestApplierFunction callback, void* context);
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeID CFBooleanGetTypeID();
 extern "C" DARLING_CF_GUEST_ABI std::uint8_t CFBooleanGetValue(
 	darling_windows_CFBooleanRef value);

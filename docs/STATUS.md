@@ -79,6 +79,9 @@ timer tolerance, the remaining observer phases, recursive activation
 semantics, and guest ABI fixture verification remain open.
 `CFRunLoopIsWaiting` is exported and reports a blocked loop only to a caller
 on another thread, matching Apple's contract; this has build evidence only.
+Cross-thread block, source, common-mode, and observer changes also post a
+Win32 wake message when targeting the AppKit main loop, so its native wait
+reevaluates changed scheduler state.
 
 ### Foundation dates and AppKit event queue (2026-11-17)
 

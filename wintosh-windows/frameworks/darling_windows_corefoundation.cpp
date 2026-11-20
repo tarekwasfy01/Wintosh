@@ -3955,6 +3955,7 @@ extern "C" bool darling_windows_CFRunLoopPerformBlockInModesWithOrder(
 		catch (...) { return false; }
 	}
 	loop->state->condition.notify_all();
+	if (loop->state == main_run_loop.state) darling_windows_appkit_wake_main_run_loop();
 	return true;
 }
 
@@ -3973,6 +3974,7 @@ extern "C" void darling_windows_CFRunLoopAddCommonMode(
 		}
 	}
 	loop->state->condition.notify_all();
+	if (loop->state == main_run_loop.state) darling_windows_appkit_wake_main_run_loop();
 }
 
 namespace {
@@ -4049,6 +4051,7 @@ bool AddRunLoopSourceMode(void* loop, const std::shared_ptr<RunLoopState>& state
 	}
 	InvokeRunLoopSourceModeCallback(source, true, loop, mode);
 	state->condition.notify_all();
+	if (state == main_run_loop.state) darling_windows_appkit_wake_main_run_loop();
 	DispatchSignaledRunLoopSource(source);
 	return true;
 }
@@ -4076,6 +4079,8 @@ void RemoveRunLoopSourceMode(void* loop, const std::shared_ptr<RunLoopState>& st
 	if (!removed) return;
 	InvokeRunLoopSourceModeCallback(source, false, loop, mode);
 	ReleaseOwned(source);
+	state->condition.notify_all();
+	if (state == main_run_loop.state) darling_windows_appkit_wake_main_run_loop();
 }
 }
 
@@ -4172,6 +4177,8 @@ extern "C" DARLING_CF_GUEST_ABI void CFRunLoopSourceInvalidate(
 		}
 		InvokeRunLoopSourceModeCallback(source, false, schedule.loop, schedule.mode);
 		if (removed) ReleaseOwned(source);
+		state->condition.notify_all();
+		if (state == main_run_loop.state) darling_windows_appkit_wake_main_run_loop();
 	}
 }
 
@@ -4636,6 +4643,7 @@ extern "C" DARLING_CF_GUEST_ABI void CFRunLoopAddObserver(
 			continue;
 		}
 		loop->state->condition.notify_all();
+		if (loop->state == main_run_loop.state) darling_windows_appkit_wake_main_run_loop();
 	}
 }
 

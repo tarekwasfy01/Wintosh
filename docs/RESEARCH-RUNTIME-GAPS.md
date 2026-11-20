@@ -129,3 +129,13 @@ sondern eine Fixture-Leiter, die jede ABI-Familie isoliert beweist:
 Diese Reihenfolge entspricht der Architektur der Referenzprojekte und hält
 den jetzigen synthetischen Fixture-Pfad funktionsfähig, während die reale
 Darwin-Kompatibilität schrittweise zunimmt.
+
+## CFSet ABI-Portierung
+
+Die Gast-ABI ergänzt CFSet-Erzeugung, mutable Kopien, Abfragen, Traversierung,
+Mutation und Mengenoperationen. `CFEqual`-gleiche Einträge gelten als ein
+Element; der aktuelle Vektorpfad ist linear statt hashbasiert. Unterstützt
+wird `kCFTypeSetCallBacks`; benutzerdefinierte und leere Callbacktabellen
+werden abgewiesen. Das folgt Apples [CFSet-Vertrag](https://developer.apple.com/documentation/corefoundation/cfset),
+dem [CFSetCallBacks-Layout](https://developer.apple.com/documentation/corefoundation/cfsetcallbacks)
+und [CFSetCreateMutable](https://developer.apple.com/documentation/corefoundation/cfsetcreatemutable%28_%3A_%3A_%3A%29).

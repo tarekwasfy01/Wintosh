@@ -50,6 +50,7 @@ struct Object {
 	std::atomic<std::size_t> references{1};
 	bool immortal = false;
 	bool mutable_dictionary = false;
+	bool mutable_set = false;
 	Kind kind;
 	std::string string;
 	std::string bundle_path;
@@ -2343,7 +2344,9 @@ extern "C" darling_windows_CFSetRef darling_windows_CFSetCreateMutable(
 	darling_windows_CFIndex capacity)
 {
 	if (capacity < 0) return nullptr;
-	return darling_windows_CFSetCreate(nullptr, 0);
+	auto* object = As(darling_windows_CFSetCreate(nullptr, 0));
+	if (object != nullptr) object->mutable_set = true;
+	return object;
 }
 
 extern "C" darling_windows_CFSetRef darling_windows_CFSetCreateCopy(
@@ -2359,7 +2362,9 @@ extern "C" darling_windows_CFSetRef darling_windows_CFSetCreateMutableCopy(
 	darling_windows_CFIndex capacity, darling_windows_CFSetRef value)
 {
 	if (capacity < 0) return nullptr;
-	return darling_windows_CFSetCreateCopy(value);
+	auto* object = As(darling_windows_CFSetCreateCopy(value));
+	if (object != nullptr) object->mutable_set = true;
+	return object;
 }
 
 extern "C" bool darling_windows_CFSetContainsValue(darling_windows_CFSetRef value,
@@ -3443,6 +3448,9 @@ extern "C" const DarlingCFDictionaryKeyCallbacks kCFTypeDictionaryKeyCallBacks =
 	&DarlingCFTypeCopyDescription, &DarlingCFTypeEqual, &DarlingCFTypeHash};
 extern "C" const DarlingCFDictionaryValueCallbacks kCFTypeDictionaryValueCallBacks = {
 	0, &DarlingCFTypeRetain, &DarlingCFTypeRelease, &DarlingCFTypeCopyDescription};
+extern "C" const DarlingCFDictionaryKeyCallbacks kCFTypeSetCallBacks = {
+	0, &DarlingCFTypeRetain, &DarlingCFTypeRelease,
+	&DarlingCFTypeCopyDescription, &DarlingCFTypeEqual, &DarlingCFTypeHash};
 
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeID CFStringGetTypeID()
 {
@@ -3830,6 +3838,181 @@ extern "C" DARLING_CF_GUEST_ABI void CFDictionaryApplyFunction(
 		&DarlingInvokeGuestDictionaryApplier, &apply_context);
 }
 
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeID CFSetGetTypeID()
+{
+	return darling_windows_CFSetGetTypeID();
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFSetRef CFSetCreate(
+	const void*, const void* const* values, darling_windows_CFIndex count,
+	const void* callbacks)
+{
+	if (!DarlingIsTypeDictionaryKeyCallbacks(callbacks) || count < 0 ||
+		(count != 0 && values == nullptr)) return nullptr;
+	for (darling_windows_CFIndex index = 0; index < count; ++index)
+		if (values[index] == nullptr) return nullptr;
+	return darling_windows_CFSetCreate(values, count);
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFSetRef CFSetCreateMutable(
+	const void*, darling_windows_CFIndex capacity, const void* callbacks)
+{
+	return DarlingIsTypeDictionaryKeyCallbacks(callbacks) ?
+		darling_windows_CFSetCreateMutable(capacity) : nullptr;
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFSetRef CFSetCreateCopy(
+	const void*, darling_windows_CFSetRef value)
+{
+	return darling_windows_CFSetCreateCopy(value);
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFSetRef CFSetCreateMutableCopy(
+	const void*, darling_windows_CFIndex capacity, darling_windows_CFSetRef value)
+{
+	return darling_windows_CFSetCreateMutableCopy(capacity, value);
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFIndex CFSetGetCount(
+	darling_windows_CFSetRef value)
+{
+	return darling_windows_CFSetGetCount(value);
+}
+
+extern "C" DARLING_CF_GUEST_ABI std::uint8_t CFSetContainsValue(
+	darling_windows_CFSetRef value, darling_windows_CFTypeRef candidate)
+{
+	return darling_windows_CFSetContainsValue(value, candidate) ? 1 : 0;
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFIndex CFSetGetCountOfValue(
+	darling_windows_CFSetRef value, darling_windows_CFTypeRef candidate)
+{
+	return darling_windows_CFSetContainsValue(value, candidate) ? 1 : 0;
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeRef CFSetGetValue(
+	darling_windows_CFSetRef value, darling_windows_CFTypeRef candidate)
+{
+	return darling_windows_CFSetGetValue(value, candidate);
+}
+
+extern "C" DARLING_CF_GUEST_ABI std::uint8_t CFSetGetValueIfPresent(
+	darling_windows_CFSetRef value, darling_windows_CFTypeRef candidate,
+	const void** output)
+{
+	const auto result = darling_windows_CFSetGetValue(value, candidate);
+	if (result == nullptr) return 0;
+	if (output != nullptr) *output = result;
+	return 1;
+}
+
+extern "C" DARLING_CF_GUEST_ABI void CFSetGetValues(
+	darling_windows_CFSetRef value, const void** output)
+{
+	darling_windows_CFSetGetValues(value, output);
+}
+
+namespace {
+struct DarlingGuestSetApplyContext final {
+	darling_windows_CFSetGuestApplierFunction callback{};
+	void* context{};
+};
+void DarlingInvokeGuestSetApplier(const void* value, void* raw_context)
+{
+	auto* context = static_cast<DarlingGuestSetApplyContext*>(raw_context);
+	if (context == nullptr || context->callback == nullptr) return;
+	try { context->callback(value, context->context); }
+	catch (...) { /* Keep guest exceptions inside the framework boundary. */ }
+}
+}
+
+extern "C" DARLING_CF_GUEST_ABI void CFSetApplyFunction(
+	darling_windows_CFSetRef value, darling_windows_CFSetGuestApplierFunction callback,
+	void* context)
+{
+	if (callback == nullptr) return;
+	DarlingGuestSetApplyContext apply_context{callback, context};
+	darling_windows_CFSetApplyFunction(value, &DarlingInvokeGuestSetApplier,
+		&apply_context);
+}
+
+extern "C" DARLING_CF_GUEST_ABI void CFSetAddValue(
+	darling_windows_CFSetRef value, darling_windows_CFTypeRef element)
+{
+	auto* object = As(value);
+	if (object != nullptr && object->mutable_set)
+		(void)darling_windows_CFSetAddValue(value, element);
+}
+
+extern "C" DARLING_CF_GUEST_ABI void CFSetSetValue(
+	darling_windows_CFSetRef value, darling_windows_CFTypeRef element)
+{
+	auto* object = As(value);
+	if (object == nullptr || !object->mutable_set || element == nullptr) return;
+	for (auto& entry : object->array) {
+		if (!darling_windows_CFEqual(entry, element)) continue;
+		RetainOwned(element);
+		ReleaseOwned(As(entry));
+		entry = element;
+		return;
+	}
+	(void)darling_windows_CFSetAddValue(value, element);
+}
+
+extern "C" DARLING_CF_GUEST_ABI void CFSetReplaceValue(
+	darling_windows_CFSetRef value, darling_windows_CFTypeRef element)
+{
+	auto* object = As(value);
+	if (object == nullptr || !object->mutable_set || element == nullptr) return;
+	for (auto& entry : object->array) {
+		if (!darling_windows_CFEqual(entry, element)) continue;
+		RetainOwned(element);
+		ReleaseOwned(As(entry));
+		entry = element;
+		return;
+	}
+}
+
+extern "C" DARLING_CF_GUEST_ABI void CFSetRemoveValue(
+	darling_windows_CFSetRef value, darling_windows_CFTypeRef element)
+{
+	auto* object = As(value);
+	if (object != nullptr && object->mutable_set)
+		(void)darling_windows_CFSetRemoveValue(value, element);
+}
+
+extern "C" DARLING_CF_GUEST_ABI void CFSetRemoveAllValues(darling_windows_CFSetRef value)
+{
+	auto* object = As(value);
+	if (object != nullptr && object->mutable_set)
+		darling_windows_CFSetRemoveAllValues(value);
+}
+
+extern "C" DARLING_CF_GUEST_ABI void CFSetUnion(
+	darling_windows_CFSetRef value, darling_windows_CFSetRef source)
+{
+	auto* object = As(value);
+	if (object != nullptr && object->mutable_set)
+		(void)darling_windows_CFSetUnion(value, source);
+}
+
+extern "C" DARLING_CF_GUEST_ABI void CFSetIntersect(
+	darling_windows_CFSetRef value, darling_windows_CFSetRef source)
+{
+	auto* object = As(value);
+	if (object != nullptr && object->mutable_set)
+		(void)darling_windows_CFSetIntersect(value, source);
+}
+
+extern "C" DARLING_CF_GUEST_ABI void CFSetSubtract(
+	darling_windows_CFSetRef value, darling_windows_CFSetRef source)
+{
+	auto* object = As(value);
+	if (object != nullptr && object->mutable_set)
+		(void)darling_windows_CFSetSubtract(value, source);
+}
+
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeID CFBooleanGetTypeID()
 {
 	return darling_windows_CFBooleanGetTypeID();
@@ -3949,6 +4132,48 @@ extern "C" std::uintptr_t darling_windows_corefoundation_symbol(const char* name
 		return reinterpret_cast<std::uintptr_t>(&kCFTypeDictionaryKeyCallBacks);
 	if (std::strcmp(name, "kCFTypeDictionaryValueCallBacks") == 0)
 		return reinterpret_cast<std::uintptr_t>(&kCFTypeDictionaryValueCallBacks);
+	if (std::strcmp(name, "kCFTypeSetCallBacks") == 0)
+		return reinterpret_cast<std::uintptr_t>(&kCFTypeSetCallBacks);
+	if (std::strcmp(name, "CFSetGetTypeID") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFSetGetTypeID);
+	if (std::strcmp(name, "CFSetCreate") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFSetCreate);
+	if (std::strcmp(name, "CFSetCreateMutable") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFSetCreateMutable);
+	if (std::strcmp(name, "CFSetCreateCopy") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFSetCreateCopy);
+	if (std::strcmp(name, "CFSetCreateMutableCopy") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFSetCreateMutableCopy);
+	if (std::strcmp(name, "CFSetGetCount") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFSetGetCount);
+	if (std::strcmp(name, "CFSetContainsValue") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFSetContainsValue);
+	if (std::strcmp(name, "CFSetGetCountOfValue") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFSetGetCountOfValue);
+	if (std::strcmp(name, "CFSetGetValue") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFSetGetValue);
+	if (std::strcmp(name, "CFSetGetValueIfPresent") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFSetGetValueIfPresent);
+	if (std::strcmp(name, "CFSetGetValues") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFSetGetValues);
+	if (std::strcmp(name, "CFSetApplyFunction") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFSetApplyFunction);
+	if (std::strcmp(name, "CFSetAddValue") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFSetAddValue);
+	if (std::strcmp(name, "CFSetSetValue") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFSetSetValue);
+	if (std::strcmp(name, "CFSetReplaceValue") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFSetReplaceValue);
+	if (std::strcmp(name, "CFSetRemoveValue") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFSetRemoveValue);
+	if (std::strcmp(name, "CFSetRemoveAllValues") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFSetRemoveAllValues);
+	if (std::strcmp(name, "CFSetUnion") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFSetUnion);
+	if (std::strcmp(name, "CFSetIntersect") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFSetIntersect);
+	if (std::strcmp(name, "CFSetSubtract") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFSetSubtract);
 	if (std::strcmp(name, "CFBooleanGetTypeID") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFBooleanGetTypeID);
 	if (std::strcmp(name, "CFBooleanGetValue") == 0)

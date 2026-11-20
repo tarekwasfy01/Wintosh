@@ -35,8 +35,10 @@ currently bounded to 4095 UTF-8 bytes. Source/timer/observer APIs, guest import
 fixtures, and edge-case status behavior still need coverage. Guest exports now
 also include CFNumber creation/conversion/comparison, CFDate creation/comparison,
 CFBoolean reads, and CFDictionary creation, copying, lookup, mutation and
-enumeration using the built-in `kCFType` callbacks. Custom dictionary callback
-tables and null callback-table semantics are not yet implemented.
+enumeration using the built-in `kCFType` callbacks. CFSet creation, copying,
+membership/value queries, enumeration, set algebra and mutation are exposed
+with `kCFTypeSetCallBacks`. Custom callback tables and null callback-table
+semantics are not yet implemented for either collection type.
 
 This is a useful Foundation scheduling subset, not the complete CoreFoundation
 run-loop contract: CFRunLoopSource/Timer/Observer objects, true input-source

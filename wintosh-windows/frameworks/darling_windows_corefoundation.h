@@ -664,6 +664,50 @@ extern "C" DARLING_CF_GUEST_ABI void CFDictionaryRemoveAllValues(
 extern "C" DARLING_CF_GUEST_ABI void CFDictionaryApplyFunction(
 	darling_windows_CFDictionaryRef value,
 	darling_windows_CFDictionaryGuestApplierFunction callback, void* context);
+using darling_windows_CFSetGuestApplierFunction = void (DARLING_CF_GUEST_ABI *)(
+	const void* value, void* context);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeID CFSetGetTypeID();
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFSetRef CFSetCreate(
+	const void* allocator, const void* const* values, darling_windows_CFIndex count,
+	const void* callbacks);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFSetRef CFSetCreateMutable(
+	const void* allocator, darling_windows_CFIndex capacity, const void* callbacks);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFSetRef CFSetCreateCopy(
+	const void* allocator, darling_windows_CFSetRef value);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFSetRef CFSetCreateMutableCopy(
+	const void* allocator, darling_windows_CFIndex capacity,
+	darling_windows_CFSetRef value);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFIndex CFSetGetCount(
+	darling_windows_CFSetRef value);
+extern "C" DARLING_CF_GUEST_ABI std::uint8_t CFSetContainsValue(
+	darling_windows_CFSetRef value, darling_windows_CFTypeRef candidate);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFIndex CFSetGetCountOfValue(
+	darling_windows_CFSetRef value, darling_windows_CFTypeRef candidate);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeRef CFSetGetValue(
+	darling_windows_CFSetRef value, darling_windows_CFTypeRef candidate);
+extern "C" DARLING_CF_GUEST_ABI std::uint8_t CFSetGetValueIfPresent(
+	darling_windows_CFSetRef value, darling_windows_CFTypeRef candidate,
+	const void** output);
+extern "C" DARLING_CF_GUEST_ABI void CFSetGetValues(
+	darling_windows_CFSetRef value, const void** output);
+extern "C" DARLING_CF_GUEST_ABI void CFSetApplyFunction(
+	darling_windows_CFSetRef value,
+	darling_windows_CFSetGuestApplierFunction callback, void* context);
+extern "C" DARLING_CF_GUEST_ABI void CFSetAddValue(
+	darling_windows_CFSetRef value, darling_windows_CFTypeRef element);
+extern "C" DARLING_CF_GUEST_ABI void CFSetSetValue(
+	darling_windows_CFSetRef value, darling_windows_CFTypeRef element);
+extern "C" DARLING_CF_GUEST_ABI void CFSetReplaceValue(
+	darling_windows_CFSetRef value, darling_windows_CFTypeRef element);
+extern "C" DARLING_CF_GUEST_ABI void CFSetRemoveValue(
+	darling_windows_CFSetRef value, darling_windows_CFTypeRef element);
+extern "C" DARLING_CF_GUEST_ABI void CFSetRemoveAllValues(darling_windows_CFSetRef value);
+extern "C" DARLING_CF_GUEST_ABI void CFSetUnion(
+	darling_windows_CFSetRef value, darling_windows_CFSetRef source);
+extern "C" DARLING_CF_GUEST_ABI void CFSetIntersect(
+	darling_windows_CFSetRef value, darling_windows_CFSetRef source);
+extern "C" DARLING_CF_GUEST_ABI void CFSetSubtract(
+	darling_windows_CFSetRef value, darling_windows_CFSetRef source);
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeID CFBooleanGetTypeID();
 extern "C" DARLING_CF_GUEST_ABI std::uint8_t CFBooleanGetValue(
 	darling_windows_CFBooleanRef value);

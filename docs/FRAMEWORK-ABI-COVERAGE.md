@@ -55,9 +55,11 @@ conversion is limited to the implementation's UTF-8 representation.
 `CFRunLoopPerformBlock` now retains and schedules a guest block in a string or
 array of modes and wakes AppKit. The resolver also exports CFNumber, CFDate,
 CFBoolean, and CFDictionary create/copy/mutation/enumeration with the built-in
-`kCFType` callback tables. Custom callback behavior and null callback tables
-are rejected. This has source/build evidence only; guest-side ABI invocation
-and status edge cases remain unverified.
+`kCFType` callback tables. CFSet creation, copying, set algebra and traversal
+are also exported with `kCFTypeSetCallBacks`; its vector-backed model is
+linear-time. Custom callback behavior and null callback tables are rejected.
+This has source/build evidence only; guest-side ABI invocation and status edge
+cases remain unverified.
 
 References: [Apple NSRunLoop run(mode:before:)](https://developer.apple.com/documentation/foundation/runloop/run%28mode%3Abefore%3A%29),
 [CFRunLoop](https://developer.apple.com/documentation/corefoundation/cfrunloop),

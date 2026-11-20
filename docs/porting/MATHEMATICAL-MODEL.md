@@ -565,13 +565,17 @@ callback (pointer identity when it is null). Add is
 idempotent, Set replaces an equal member's stored representative, and Replace
 has no effect when no equal member exists. The exposed set algebra is
 `Union(S,T)=S∪T`, `Intersect(S,T)=S∩T`, and `Subtract(S,T)=S\T`; each mutating
-operation requires a mutable set. Wintosh currently implements these equations
-with linear scans over a vector, so membership and mutation are `O(n)` rather
-than hash-table complexity. This preserves set results but not Apple's
-expected performance profile. Callback tables are copied per set, and
+operation requires a mutable set. Wintosh indexes each value in a bucket by
+its callback hash and checks equality only inside that bucket. Membership and
+insertion are expected `O(1)` with well-distributed hashes and degrade to
+`O(n)` under collisions. Callback tables are copied per set, and
 retain/release/equality callbacks are applied on insertion, removal, lookup,
 copy, and destruction; a null table has no retain/release and pointer equality.
-Hash and description callbacks are stored but not used by the vector model.
+Hash and description callbacks are preserved; hash callbacks determine the
+bucket index used for lookup and mutation.
+Formally, `Bₕ={x∈S | hash(x)=h}` and `find(x)` searches only
+`{y∈B_hash(x) | equal(y,x)}`. The callback contract therefore requires equal
+values to produce equal hashes, as in Apple's [CFSet callback structure](https://developer.apple.com/documentation/corefoundation/cfsetcallbacks).
 Null elements are rejected. These semantics
 follow [Apple CFSet](https://developer.apple.com/documentation/corefoundation/cfset),
 [CFSetCallBacks](https://developer.apple.com/documentation/corefoundation/cfsetcallbacks),

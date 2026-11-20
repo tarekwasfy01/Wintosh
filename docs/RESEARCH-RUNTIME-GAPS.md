@@ -138,8 +138,9 @@ Darwin-Kompatibilität schrittweise zunimmt.
 Die Gast-ABI ergänzt CFSet-Erzeugung, mutable Kopien, Abfragen, Traversierung,
 Mutation und Mengenoperationen. Callback-Strukturen der Version 0 werden
 kopiert; `NULL` bedeutet eine leere Tabelle. Gleichheit sowie Retain/Release
-verwenden die Set-spezifischen Callback-Funktionen. Der Vektorpfad bleibt linear;
-Hash-Callbacks werden gespeichert, aber nicht zur Beschleunigung verwendet.
+verwenden die Set-spezifischen Callback-Funktionen. Hashwerte indizieren die
+Elemente in Buckets; Gleichheit wird nur im passenden Bucket geprüft. Lookup
+ist damit im Erwartungsfall `O(1)`, bei Hash-Kollisionen weiterhin `O(n)`.
 Das folgt Apples [CFSet-Vertrag](https://developer.apple.com/documentation/corefoundation/cfset),
 dem [CFSetCallBacks-Layout](https://developer.apple.com/documentation/corefoundation/cfsetcallbacks)
 und [CFSetCreateMutable](https://developer.apple.com/documentation/corefoundation/cfsetcreatemutable%28_%3A_%3A_%3A%29).

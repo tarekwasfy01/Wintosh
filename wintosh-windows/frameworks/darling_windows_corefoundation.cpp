@@ -3394,6 +3394,52 @@ extern "C" DARLING_CF_GUEST_ABI std::uint8_t CFStringGetCString(
 		darling_windows_CFStringGetCString(value, buffer, capacity) ? 1 : 0;
 }
 
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFStringCreateWithCharacters(
+	const void*, const std::uint16_t* characters, darling_windows_CFIndex length)
+{
+	return darling_windows_CFStringCreateWithCharacters(characters, length);
+}
+
+extern "C" DARLING_CF_GUEST_ABI const char* CFStringGetCStringPtr(
+	darling_windows_CFStringRef value, std::uint32_t encoding)
+{
+	return DarlingCfSupportsStringEncoding(encoding) ?
+		darling_windows_CFStringGetCStringPtr(value) : nullptr;
+}
+
+extern "C" DARLING_CF_GUEST_ABI std::uint16_t CFStringGetCharacterAtIndex(
+	darling_windows_CFStringRef value, darling_windows_CFIndex index)
+{
+	return darling_windows_CFStringGetCharacterAtIndex(value, index);
+}
+
+extern "C" DARLING_CF_GUEST_ABI std::uint8_t CFStringGetCharacters(
+	darling_windows_CFStringRef value, darling_windows_CFRange range, std::uint16_t* output)
+{
+	return darling_windows_CFStringGetCharacters(value, range, output) ? 1 : 0;
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFIndex CFStringGetMaximumSizeForEncoding(
+	darling_windows_CFIndex length, std::uint32_t encoding)
+{
+	return DarlingCfSupportsStringEncoding(encoding) ?
+		darling_windows_CFStringGetMaximumSizeForEncoding(length,
+			darling_windows_CFStringGetSystemEncoding()) : 0;
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFIndex
+CFStringGetMaximumSizeOfFileSystemRepresentation(darling_windows_CFStringRef value)
+{
+	return darling_windows_CFStringGetMaximumSizeOfFileSystemRepresentation(value);
+}
+
+extern "C" DARLING_CF_GUEST_ABI std::uint8_t CFStringGetFileSystemRepresentation(
+	darling_windows_CFStringRef value, char* buffer, darling_windows_CFIndex capacity)
+{
+	return darling_windows_CFStringGetFileSystemRepresentation(value,
+		reinterpret_cast<unsigned char*>(buffer), capacity) ? 1 : 0;
+}
+
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeID CFArrayGetTypeID()
 {
 	return darling_windows_CFArrayGetTypeID();
@@ -3409,6 +3455,27 @@ extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeRef CFArrayGetValueAtIndex
 	darling_windows_CFArrayRef value, darling_windows_CFIndex index)
 {
 	return darling_windows_CFArrayGetValueAtIndex(value, index);
+}
+
+extern "C" DARLING_CF_GUEST_ABI void CFArrayGetValues(
+	darling_windows_CFArrayRef value, darling_windows_CFRange range, const void** output)
+{
+	darling_windows_CFArrayGetValues(value, range.location, range.length, output);
+}
+
+extern "C" DARLING_CF_GUEST_ABI std::uint8_t CFArrayContainsValue(
+	darling_windows_CFArrayRef value, darling_windows_CFRange range,
+	darling_windows_CFTypeRef candidate)
+{
+	const auto count = darling_windows_CFArrayGetCount(value);
+	if (range.location < 0 || range.length < 0 || range.location > count ||
+		range.length > count - range.location) return 0;
+	for (darling_windows_CFIndex index = range.location;
+		index < range.location + range.length; ++index) {
+		if (darling_windows_CFEqual(
+			darling_windows_CFArrayGetValueAtIndex(value, index), candidate)) return 1;
+	}
+	return 0;
 }
 
 extern "C" std::uintptr_t darling_windows_corefoundation_symbol(const char* name)
@@ -3437,12 +3504,30 @@ extern "C" std::uintptr_t darling_windows_corefoundation_symbol(const char* name
 		return reinterpret_cast<std::uintptr_t>(&CFStringGetLength);
 	if (std::strcmp(name, "CFStringGetCString") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFStringGetCString);
+	if (std::strcmp(name, "CFStringCreateWithCharacters") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFStringCreateWithCharacters);
+	if (std::strcmp(name, "CFStringGetCStringPtr") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFStringGetCStringPtr);
+	if (std::strcmp(name, "CFStringGetCharacterAtIndex") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFStringGetCharacterAtIndex);
+	if (std::strcmp(name, "CFStringGetCharacters") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFStringGetCharacters);
+	if (std::strcmp(name, "CFStringGetMaximumSizeForEncoding") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFStringGetMaximumSizeForEncoding);
+	if (std::strcmp(name, "CFStringGetMaximumSizeOfFileSystemRepresentation") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFStringGetMaximumSizeOfFileSystemRepresentation);
+	if (std::strcmp(name, "CFStringGetFileSystemRepresentation") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFStringGetFileSystemRepresentation);
 	if (std::strcmp(name, "CFArrayGetTypeID") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFArrayGetTypeID);
 	if (std::strcmp(name, "CFArrayGetCount") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFArrayGetCount);
 	if (std::strcmp(name, "CFArrayGetValueAtIndex") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFArrayGetValueAtIndex);
+	if (std::strcmp(name, "CFArrayGetValues") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFArrayGetValues);
+	if (std::strcmp(name, "CFArrayContainsValue") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFArrayContainsValue);
 	return 0;
 }
 

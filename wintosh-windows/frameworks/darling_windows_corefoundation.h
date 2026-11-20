@@ -578,11 +578,30 @@ extern "C" DARLING_CF_GUEST_ABI darling_windows_CFIndex CFStringGetLength(
 extern "C" DARLING_CF_GUEST_ABI std::uint8_t CFStringGetCString(
 	darling_windows_CFStringRef value, char* buffer, darling_windows_CFIndex capacity,
 	std::uint32_t encoding);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFStringCreateWithCharacters(
+	const void* allocator, const std::uint16_t* characters, darling_windows_CFIndex length);
+extern "C" DARLING_CF_GUEST_ABI const char* CFStringGetCStringPtr(
+	darling_windows_CFStringRef value, std::uint32_t encoding);
+extern "C" DARLING_CF_GUEST_ABI std::uint16_t CFStringGetCharacterAtIndex(
+	darling_windows_CFStringRef value, darling_windows_CFIndex index);
+extern "C" DARLING_CF_GUEST_ABI std::uint8_t CFStringGetCharacters(
+	darling_windows_CFStringRef value, darling_windows_CFRange range, std::uint16_t* output);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFIndex CFStringGetMaximumSizeForEncoding(
+	darling_windows_CFIndex length, std::uint32_t encoding);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFIndex
+CFStringGetMaximumSizeOfFileSystemRepresentation(darling_windows_CFStringRef value);
+extern "C" DARLING_CF_GUEST_ABI std::uint8_t CFStringGetFileSystemRepresentation(
+	darling_windows_CFStringRef value, char* buffer, darling_windows_CFIndex capacity);
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeID CFArrayGetTypeID();
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFIndex CFArrayGetCount(
 	darling_windows_CFArrayRef value);
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeRef CFArrayGetValueAtIndex(
 	darling_windows_CFArrayRef value, darling_windows_CFIndex index);
+extern "C" DARLING_CF_GUEST_ABI void CFArrayGetValues(
+	darling_windows_CFArrayRef value, darling_windows_CFRange range, const void** output);
+extern "C" DARLING_CF_GUEST_ABI std::uint8_t CFArrayContainsValue(
+	darling_windows_CFArrayRef value, darling_windows_CFRange range,
+	darling_windows_CFTypeRef candidate);
 extern "C" void* darling_windows_CFNotificationCenterGetLocal();
 extern "C" bool darling_windows_CFNotificationCenterAddObserver(void* center,
 	const void* observer, darling_windows_CFNotificationCallback callback, const char* name);

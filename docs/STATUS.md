@@ -26,8 +26,9 @@ loop pumps default-mode callbacks and is woken when a selector is queued.
 Mach-O symbol resolution exposes a partial public CoreFoundation C ABI:
 run-loop current/main/run/stop/wakeup/common-mode operations, plus
 `CFStringGetTypeID`, `CFStringCreateWithCString`, `CFStringGetLength`,
-`CFStringGetCString`, and array type/count/index reads. String conversions are
-limited to the runtime's UTF-8 representation and do not cover all Darwin
+`CFStringGetCString`, UTF-16 character access, filesystem-representation
+queries, and `CFArray` type/count/index/range/contains reads. String conversions
+are limited to the runtime's UTF-8 representation and do not cover all Darwin
 encodings. `CFRunLoopPerformBlock` accepts a string or array of modes, retains
 and queues the guest block, and wakes the AppKit main thread. Mode names are
 currently bounded to 4095 UTF-8 bytes. Source/timer/observer APIs, guest import

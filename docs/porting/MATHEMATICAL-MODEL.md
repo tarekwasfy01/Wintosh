@@ -515,3 +515,28 @@ pending. The current default common set is `{kCFRunLoopDefaultMode}` until
 References: [Apple NSRunLoop `run(mode:before:)`](https://developer.apple.com/documentation/foundation/runloop/run%28mode%3Abefore%3A%29),
 [CFRunLoop mode contract](https://developer.apple.com/documentation/corefoundation/cfrunloop),
 and [CFRunLoopPerformBlock](https://developer.apple.com/documentation/corefoundation/cfrunloopperformblock%28_%3A_%3A_%3A%29). This is a callback-queue contract, not yet the full run-loop object graph.
+
+## CoreFoundation scalar bridge
+
+For a numeric guest value `x` requested in target type `T`, conversion is
+defined by `Q_T(x) = trunc(x)` for integer targets and `Q_T(x) = round_T(x)`
+for floating targets. An integer conversion succeeds only when `x` is finite
+and `min(T) ≤ Q_T(x) ≤ max(T)`; the output buffer is unchanged on failure.
+The implementation's matrix maps Darwin number tags to host storage as follows:
+
+| Darwin tags | Input/output width | Canonical host storage | Status |
+|---|---:|---|---|
+| SInt8 / Char | 8-bit signed | signed 64-bit | Implemented |
+| SInt16 / Short | 16-bit signed | signed 64-bit | Implemented |
+| SInt32 / Int | 32-bit signed | signed 64-bit | Implemented |
+| SInt64 / Long / LongLong / CFIndex / NSInteger | 64-bit signed | signed 64-bit | Implemented for x86_64 guest |
+| Float32 / Float | 32-bit float | double | Implemented |
+| Float64 / Double / CGFloat | 64-bit float | double | Implemented for 64-bit guest |
+
+This bridge keeps values usable by property-list and collection code but does
+not claim CFNumber's exact internal-type preservation or all architecture and
+overflow corner cases. `CFDate` stores Darwin absolute time as a double and
+compares in reference-date seconds; dictionary operations currently expose
+lookups and enumeration only. These contracts follow [Apple CFNumber](https://developer.apple.com/documentation/corefoundation/cfnumber),
+[CFDate](https://developer.apple.com/documentation/corefoundation/cfdatecreate%28_%3A_%3A%29),
+and [CFDictionary](https://developer.apple.com/documentation/corefoundation/cfdictionary).

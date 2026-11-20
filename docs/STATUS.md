@@ -32,7 +32,11 @@ are limited to the runtime's UTF-8 representation and do not cover all Darwin
 encodings. `CFRunLoopPerformBlock` accepts a string or array of modes, retains
 and queues the guest block, and wakes the AppKit main thread. Mode names are
 currently bounded to 4095 UTF-8 bytes. Source/timer/observer APIs, guest import
-fixtures, and edge-case status behavior still need coverage.
+fixtures, and edge-case status behavior still need coverage. Guest exports now
+also include CFNumber creation/conversion/comparison, CFDate creation/comparison,
+CFBoolean reads, and CFDictionary type/count/value/key/value-array reads.
+CFDictionary creation/mutation and its custom callback tables remain outside
+the guest ABI slice.
 
 This is a useful Foundation scheduling subset, not the complete CoreFoundation
 run-loop contract: CFRunLoopSource/Timer/Observer objects, true input-source

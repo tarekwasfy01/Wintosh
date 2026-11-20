@@ -674,7 +674,8 @@ extern "C" void darling_windows_CFRelease(const void* value)
 extern "C" darling_windows_CFTypeID darling_windows_CFGetTypeID(const void* value)
 {
 	const auto* object = static_cast<const Object*>(value);
-	return object == nullptr ? 0 : TypeId(object->kind);
+	if (object == nullptr) return 0;
+	return object->kind == Kind::Real ? TypeId(Kind::Number) : TypeId(object->kind);
 }
 
 extern "C" darling_windows_CFTypeRef darling_windows_CFImageDestinationCreateOpaque(
@@ -3478,6 +3479,192 @@ extern "C" DARLING_CF_GUEST_ABI std::uint8_t CFArrayContainsValue(
 	return 0;
 }
 
+namespace {
+template<class T> T DarlingCfReadScalar(const void* value)
+{
+	T result{};
+	if (value != nullptr) std::memcpy(&result, value, sizeof(result));
+	return result;
+}
+
+template<class T> bool DarlingCfWriteSigned(const Object* object, void* output)
+{
+	if (object == nullptr || output == nullptr ||
+		(object->kind != Kind::Number && object->kind != Kind::Real)) return false;
+	T converted{};
+	if (object->kind == Kind::Number) {
+		if (object->number < static_cast<std::int64_t>((std::numeric_limits<T>::min)()) ||
+			object->number > static_cast<std::int64_t>((std::numeric_limits<T>::max)())) return false;
+		converted = static_cast<T>(object->number);
+	} else {
+		const double value = object->real_number;
+		if (!std::isfinite(value)) return false;
+		if constexpr (std::numeric_limits<T>::digits == 63) {
+			constexpr double signed_64_limit = 9223372036854775808.0;
+			if (value < -signed_64_limit || value >= signed_64_limit) return false;
+		} else if (value < static_cast<double>((std::numeric_limits<T>::min)()) ||
+			value > static_cast<double>((std::numeric_limits<T>::max)())) return false;
+		converted = static_cast<T>(value);
+	}
+	std::memcpy(output, &converted, sizeof(converted));
+	return true;
+}
+
+template<class T> bool DarlingCfWriteFloat(const Object* object, void* output)
+{
+	if (object == nullptr || output == nullptr ||
+		(object->kind != Kind::Number && object->kind != Kind::Real)) return false;
+	const double value = object->kind == Kind::Number ?
+		static_cast<double>(object->number) : object->real_number;
+	if constexpr (sizeof(T) < sizeof(double)) {
+		if (std::isfinite(value) && std::abs(value) >
+			static_cast<double>((std::numeric_limits<T>::max)())) return false;
+	}
+	const T converted = static_cast<T>(value);
+	std::memcpy(output, &converted, sizeof(converted));
+	return true;
+}
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeID CFNumberGetTypeID()
+{
+	return darling_windows_CFNumberGetTypeID();
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeRef CFNumberCreate(
+	const void*, darling_windows_CFNumberType type, const void* value)
+{
+	if (value == nullptr) return nullptr;
+	switch (type) {
+	case 1: case 7: return darling_windows_CFNumberCreateInteger(DarlingCfReadScalar<std::int8_t>(value));
+	case 2: case 8: return darling_windows_CFNumberCreateInteger(DarlingCfReadScalar<std::int16_t>(value));
+	case 3: case 9: return darling_windows_CFNumberCreateInteger(DarlingCfReadScalar<std::int32_t>(value));
+	case 4: case 10: case 11: case 14: case 15:
+		return darling_windows_CFNumberCreateInteger(DarlingCfReadScalar<std::int64_t>(value));
+	case 5: case 12: return darling_windows_CFNumberCreateDouble(DarlingCfReadScalar<float>(value));
+	case 6: case 13: case 16: return darling_windows_CFNumberCreateDouble(DarlingCfReadScalar<double>(value));
+	default: return nullptr;
+	}
+}
+
+extern "C" DARLING_CF_GUEST_ABI std::uint8_t CFNumberGetValue(
+	darling_windows_CFTypeRef number, darling_windows_CFNumberType type, void* output)
+{
+	const auto* object = static_cast<const Object*>(number);
+	switch (type) {
+	case 1: case 7: return DarlingCfWriteSigned<std::int8_t>(object, output);
+	case 2: case 8: return DarlingCfWriteSigned<std::int16_t>(object, output);
+	case 3: case 9: return DarlingCfWriteSigned<std::int32_t>(object, output);
+	case 4: case 10: case 11: case 14: case 15: return DarlingCfWriteSigned<std::int64_t>(object, output);
+	case 5: case 12: return DarlingCfWriteFloat<float>(object, output);
+	case 6: case 13: case 16: return DarlingCfWriteFloat<double>(object, output);
+	default: return 0;
+	}
+}
+
+extern "C" DARLING_CF_GUEST_ABI std::uint8_t CFNumberIsFloatType(darling_windows_CFTypeRef number)
+{
+	const auto* object = static_cast<const Object*>(number);
+	return object != nullptr && object->kind == Kind::Real;
+}
+
+extern "C" DARLING_CF_GUEST_ABI std::intptr_t CFNumberCompare(
+	darling_windows_CFTypeRef left, darling_windows_CFTypeRef right, const void*)
+{
+	return darling_windows_CFNumberCompare(left, right);
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeID CFDateGetTypeID()
+{
+	return darling_windows_CFDateGetTypeID();
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFDateRef CFDateCreate(const void*, double absolute_time)
+{
+	return darling_windows_CFDateCreate(absolute_time);
+}
+
+extern "C" DARLING_CF_GUEST_ABI double CFDateGetAbsoluteTime(darling_windows_CFDateRef value)
+{
+	return darling_windows_CFDateGetAbsoluteTime(value);
+}
+
+extern "C" DARLING_CF_GUEST_ABI std::intptr_t CFDateCompare(
+	darling_windows_CFDateRef left, darling_windows_CFDateRef right, const void*)
+{
+	return darling_windows_CFDateCompare(left, right);
+}
+
+extern "C" DARLING_CF_GUEST_ABI double CFDateGetTimeIntervalSinceDate(
+	darling_windows_CFDateRef value, darling_windows_CFDateRef reference)
+{
+	return darling_windows_CFDateGetTimeIntervalSinceDate(value, reference);
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeID CFDictionaryGetTypeID()
+{
+	return darling_windows_CFDictionaryGetTypeID();
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFIndex CFDictionaryGetCount(
+	darling_windows_CFDictionaryRef value)
+{
+	return darling_windows_CFDictionaryGetCount(value);
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeRef CFDictionaryGetValue(
+	darling_windows_CFDictionaryRef value, darling_windows_CFTypeRef key)
+{
+	return darling_windows_CFDictionaryGetValue(value, key);
+}
+
+extern "C" DARLING_CF_GUEST_ABI std::uint8_t CFDictionaryGetValueIfPresent(
+	darling_windows_CFDictionaryRef value, darling_windows_CFTypeRef key, const void** output)
+{
+	if (!darling_windows_CFDictionaryContainsKey(value, key)) return 0;
+	if (output != nullptr) *output = darling_windows_CFDictionaryGetValue(value, key);
+	return 1;
+}
+
+extern "C" DARLING_CF_GUEST_ABI std::uint8_t CFDictionaryContainsKey(
+	darling_windows_CFDictionaryRef value, darling_windows_CFTypeRef key)
+{
+	return darling_windows_CFDictionaryContainsKey(value, key) ? 1 : 0;
+}
+
+extern "C" DARLING_CF_GUEST_ABI std::uint8_t CFDictionaryContainsValue(
+	darling_windows_CFDictionaryRef value, darling_windows_CFTypeRef candidate)
+{
+	const auto count = darling_windows_CFDictionaryGetCount(value);
+	if (count < 0 || static_cast<std::uint64_t>(count) >
+		std::numeric_limits<std::size_t>::max() / sizeof(void*)) return 0;
+	try {
+		std::vector<const void*> keys(static_cast<std::size_t>(count));
+		std::vector<const void*> values(static_cast<std::size_t>(count));
+		darling_windows_CFDictionaryGetKeysAndValues(value, keys.data(), values.data());
+		return std::any_of(values.begin(), values.end(), [candidate](const void* current) {
+			return darling_windows_CFEqual(current, candidate);
+		}) ? 1 : 0;
+	} catch (...) { return 0; }
+}
+
+extern "C" DARLING_CF_GUEST_ABI void CFDictionaryGetKeysAndValues(
+	darling_windows_CFDictionaryRef value, const void** keys, const void** values)
+{
+	darling_windows_CFDictionaryGetKeysAndValues(value, keys, values);
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeID CFBooleanGetTypeID()
+{
+	return darling_windows_CFBooleanGetTypeID();
+}
+
+extern "C" DARLING_CF_GUEST_ABI std::uint8_t CFBooleanGetValue(
+	darling_windows_CFBooleanRef value)
+{
+	return darling_windows_CFBooleanIsTrue(value) ? 1 : 0;
+}
+
 extern "C" std::uintptr_t darling_windows_corefoundation_symbol(const char* name)
 {
 	if (name == nullptr) return 0;
@@ -3528,6 +3715,44 @@ extern "C" std::uintptr_t darling_windows_corefoundation_symbol(const char* name
 		return reinterpret_cast<std::uintptr_t>(&CFArrayGetValues);
 	if (std::strcmp(name, "CFArrayContainsValue") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFArrayContainsValue);
+	if (std::strcmp(name, "CFNumberGetTypeID") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFNumberGetTypeID);
+	if (std::strcmp(name, "CFNumberCreate") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFNumberCreate);
+	if (std::strcmp(name, "CFNumberGetValue") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFNumberGetValue);
+	if (std::strcmp(name, "CFNumberIsFloatType") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFNumberIsFloatType);
+	if (std::strcmp(name, "CFNumberCompare") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFNumberCompare);
+	if (std::strcmp(name, "CFDateGetTypeID") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFDateGetTypeID);
+	if (std::strcmp(name, "CFDateCreate") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFDateCreate);
+	if (std::strcmp(name, "CFDateGetAbsoluteTime") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFDateGetAbsoluteTime);
+	if (std::strcmp(name, "CFDateCompare") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFDateCompare);
+	if (std::strcmp(name, "CFDateGetTimeIntervalSinceDate") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFDateGetTimeIntervalSinceDate);
+	if (std::strcmp(name, "CFDictionaryGetTypeID") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFDictionaryGetTypeID);
+	if (std::strcmp(name, "CFDictionaryGetCount") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFDictionaryGetCount);
+	if (std::strcmp(name, "CFDictionaryGetValue") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFDictionaryGetValue);
+	if (std::strcmp(name, "CFDictionaryGetValueIfPresent") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFDictionaryGetValueIfPresent);
+	if (std::strcmp(name, "CFDictionaryContainsKey") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFDictionaryContainsKey);
+	if (std::strcmp(name, "CFDictionaryContainsValue") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFDictionaryContainsValue);
+	if (std::strcmp(name, "CFDictionaryGetKeysAndValues") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFDictionaryGetKeysAndValues);
+	if (std::strcmp(name, "CFBooleanGetTypeID") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFBooleanGetTypeID);
+	if (std::strcmp(name, "CFBooleanGetValue") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFBooleanGetValue);
 	return 0;
 }
 

@@ -52,6 +52,7 @@ using darling_windows_CFDictionaryApplierFunction = void (*)(const void* key,
 	const void* value, void* context);
 
 using darling_windows_CFTypeID = std::uint64_t;
+using darling_windows_CFNumberType = std::int32_t;
 extern "C" int darling_windows_CFStringGetSystemEncoding();
 
 extern "C" darling_windows_CFRange darling_windows_CFRangeMake(
@@ -602,6 +603,41 @@ extern "C" DARLING_CF_GUEST_ABI void CFArrayGetValues(
 extern "C" DARLING_CF_GUEST_ABI std::uint8_t CFArrayContainsValue(
 	darling_windows_CFArrayRef value, darling_windows_CFRange range,
 	darling_windows_CFTypeRef candidate);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeID CFNumberGetTypeID();
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeRef CFNumberCreate(
+	const void* allocator, darling_windows_CFNumberType type, const void* value);
+extern "C" DARLING_CF_GUEST_ABI std::uint8_t CFNumberGetValue(
+	darling_windows_CFTypeRef number, darling_windows_CFNumberType type, void* output);
+extern "C" DARLING_CF_GUEST_ABI std::uint8_t CFNumberIsFloatType(
+	darling_windows_CFTypeRef number);
+extern "C" DARLING_CF_GUEST_ABI std::intptr_t CFNumberCompare(
+	darling_windows_CFTypeRef left, darling_windows_CFTypeRef right, const void* context);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeID CFDateGetTypeID();
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFDateRef CFDateCreate(
+	const void* allocator, double absolute_time);
+extern "C" DARLING_CF_GUEST_ABI double CFDateGetAbsoluteTime(
+	darling_windows_CFDateRef value);
+extern "C" DARLING_CF_GUEST_ABI std::intptr_t CFDateCompare(
+	darling_windows_CFDateRef left, darling_windows_CFDateRef right, const void* context);
+extern "C" DARLING_CF_GUEST_ABI double CFDateGetTimeIntervalSinceDate(
+	darling_windows_CFDateRef value, darling_windows_CFDateRef reference);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeID CFDictionaryGetTypeID();
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFIndex CFDictionaryGetCount(
+	darling_windows_CFDictionaryRef value);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeRef CFDictionaryGetValue(
+	darling_windows_CFDictionaryRef value, darling_windows_CFTypeRef key);
+extern "C" DARLING_CF_GUEST_ABI std::uint8_t CFDictionaryGetValueIfPresent(
+	darling_windows_CFDictionaryRef value, darling_windows_CFTypeRef key,
+	const void** output);
+extern "C" DARLING_CF_GUEST_ABI std::uint8_t CFDictionaryContainsKey(
+	darling_windows_CFDictionaryRef value, darling_windows_CFTypeRef key);
+extern "C" DARLING_CF_GUEST_ABI std::uint8_t CFDictionaryContainsValue(
+	darling_windows_CFDictionaryRef value, darling_windows_CFTypeRef candidate);
+extern "C" DARLING_CF_GUEST_ABI void CFDictionaryGetKeysAndValues(
+	darling_windows_CFDictionaryRef value, const void** keys, const void** values);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeID CFBooleanGetTypeID();
+extern "C" DARLING_CF_GUEST_ABI std::uint8_t CFBooleanGetValue(
+	darling_windows_CFBooleanRef value);
 extern "C" void* darling_windows_CFNotificationCenterGetLocal();
 extern "C" bool darling_windows_CFNotificationCenterAddObserver(void* center,
 	const void* observer, darling_windows_CFNotificationCallback callback, const char* name);

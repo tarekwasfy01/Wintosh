@@ -37,7 +37,7 @@ also include CFNumber creation/conversion/comparison, CFDate creation/comparison
 CFBoolean reads, and CFDictionary creation, copying, lookup, mutation and
 enumeration with copied key/value callback tables. CFSet creation, copying,
 membership/value queries, enumeration, set algebra and mutation are exposed
-with `kCFTypeSetCallBacks`. CFArray now also has creation, mutable copies,
+with copied callback tables, including `kCFTypeSetCallBacks`. CFArray now also has creation, mutable copies,
 append/insert/remove/replace/set, remove-all, and synchronous callback
 enumeration through `kCFTypeArrayCallBacks`, plus range queries, append-array,
 and index exchange. Mutable operations are guarded by

@@ -62,11 +62,12 @@ conversion is limited to the implementation's UTF-8 representation.
 array of modes and wakes AppKit. The resolver also exports CFNumber, CFDate,
 CFBoolean, and CFDictionary create/copy/mutation/enumeration with the built-in
 `kCFType` callback tables. CFSet creation, copying, set algebra and traversal
-are also exported with `kCFTypeSetCallBacks`; its vector-backed model is
-linear-time. CFSet custom callback behavior and null callback tables remain
-unsupported. CFDictionary copies its callback tables and allocator, and applies
-key/value retain/release callbacks plus key equality callbacks. Null tables
-become zeroed version-0 structures; custom version-0 tables are accepted.
+are also exported with copied callbacks. Both copy callback tables and
+allocators, and apply their retain/release/equality functions. Their
+vector-backed models are linear-time; hash callbacks are stored but do not
+accelerate lookup. Callback table versions other than 0 are rejected. Null
+tables become zeroed version-0 structures; custom version-0 tables are
+accepted.
 This has source/build evidence only; guest-side ABI invocation and status edge
 cases remain unverified.
 

@@ -59,6 +59,9 @@ struct Object {
 	DarlingCFDictionaryKeyCallbacks dictionary_key_callbacks{};
 	DarlingCFDictionaryValueCallbacks dictionary_value_callbacks{};
 	const void* dictionary_allocator = nullptr;
+	bool has_set_callback_table = false;
+	DarlingCFDictionaryKeyCallbacks set_callbacks{};
+	const void* set_allocator = nullptr;
 	Kind kind;
 	std::string string;
 	std::string bundle_path;
@@ -173,6 +176,9 @@ const void* RetainDictionaryValue(Object* dictionary, const void* value);
 void ReleaseDictionaryKey(Object* dictionary, const void* key);
 void ReleaseDictionaryValue(Object* dictionary, const void* value);
 bool EqualDictionaryKeys(const Object* dictionary, const void* left, const void* right);
+const void* RetainSetValue(Object* set, const void* value);
+void ReleaseSetValue(Object* set, const void* value);
+bool EqualSetValues(const Object* set, const void* left, const void* right);
 void ReleaseOwned(Object* object)
 {
 	if (object == nullptr || object->immortal) return;
@@ -196,7 +202,10 @@ Object::~Object()
 		try { external_data_release(external_data_info, external_data, external_data_size); }
 		catch (...) { /* C callbacks must not unwind through CoreFoundation. */ }
 	}
-	for (const auto* value : array) ReleaseArrayValue(this, value);
+	for (const auto* value : array) {
+		if (kind == Kind::Set) ReleaseSetValue(this, value);
+		else ReleaseArrayValue(this, value);
+	}
 	ReleaseOwned(As(bundle_info_dictionary));
 	for (const auto* value : bundle_localized_info_values) ReleaseOwned(As(value));
 	if (bundle_executable_handle != nullptr && bundle_release_executable != nullptr) {
@@ -291,6 +300,36 @@ bool EqualDictionaryKeys(const Object* dictionary, const void* left, const void*
 	if (dictionary != nullptr && dictionary->has_dictionary_callback_tables) {
 		if (dictionary->dictionary_key_callbacks.equal == nullptr) return left == right;
 		try { return dictionary->dictionary_key_callbacks.equal(left, right) != 0; }
+		catch (...) { return false; }
+	}
+	return darling_windows_CFEqual(left, right);
+}
+const void* RetainSetValue(Object* set, const void* value)
+{
+	if (set == nullptr || !set->has_set_callback_table) {
+		RetainOwned(value);
+		return value;
+	}
+	if (set->set_callbacks.retain == nullptr) return value;
+	try { return set->set_callbacks.retain(set->set_allocator, value); }
+	catch (...) { return nullptr; }
+}
+void ReleaseSetValue(Object* set, const void* value)
+{
+	if (set == nullptr || !set->has_set_callback_table) {
+		ReleaseOwned(As(value));
+		return;
+	}
+	if (set->set_callbacks.release != nullptr) {
+		try { set->set_callbacks.release(set->set_allocator, value); }
+		catch (...) { /* C callbacks must not unwind through CoreFoundation. */ }
+	}
+}
+bool EqualSetValues(const Object* set, const void* left, const void* right)
+{
+	if (set != nullptr && set->has_set_callback_table) {
+		if (set->set_callbacks.equal == nullptr) return left == right;
+		try { return set->set_callbacks.equal(left, right) != 0; }
 		catch (...) { return false; }
 	}
 	return darling_windows_CFEqual(left, right);
@@ -2482,11 +2521,14 @@ extern "C" darling_windows_CFSetRef darling_windows_CFSetCreate(
 	auto* object = new Object{};
 	object->kind = Kind::Set;
 	for (darling_windows_CFIndex index = 0; index < count; ++index) {
+		if (values[index] == nullptr) { delete object; return nullptr; }
 		const auto duplicate = std::find_if(object->array.begin(), object->array.end(),
-			[&](const void* existing) { return darling_windows_CFEqual(existing, values[index]); });
+			[&](const void* existing) { return EqualSetValues(object, existing, values[index]); });
 		if (duplicate == object->array.end()) {
-			object->array.push_back(values[index]);
-			RetainOwned(values[index]);
+			const auto* retained = RetainSetValue(object, values[index]);
+			if (retained == nullptr) { delete object; return nullptr; }
+			try { object->array.push_back(retained); }
+			catch (...) { ReleaseSetValue(object, retained); delete object; return nullptr; }
 		}
 	}
 	return object;
@@ -2532,7 +2574,7 @@ extern "C" bool darling_windows_CFSetContainsValue(darling_windows_CFSetRef valu
 	const auto* object = static_cast<const Object*>(value);
 	if (object == nullptr || object->kind != Kind::Set) return false;
 	for (const auto* entry : object->array)
-		if (darling_windows_CFEqual(entry, candidate)) return true;
+		if (EqualSetValues(object, entry, candidate)) return true;
 	return false;
 }
 
@@ -2542,7 +2584,7 @@ extern "C" darling_windows_CFTypeRef darling_windows_CFSetGetValue(
 	const auto* object = static_cast<const Object*>(value);
 	if (object == nullptr || object->kind != Kind::Set) return nullptr;
 	for (const auto* entry : object->array)
-		if (darling_windows_CFEqual(entry, candidate)) return entry;
+		if (EqualSetValues(object, entry, candidate)) return entry;
 	return nullptr;
 }
 
@@ -2560,24 +2602,38 @@ extern "C" void darling_windows_CFSetApplyFunction(darling_windows_CFSetRef valu
 {
 	const auto* object = static_cast<const Object*>(value);
 	if (object == nullptr || object->kind != Kind::Set || function == nullptr) return;
-	const auto snapshot = object->array;
-	for (const auto* element : snapshot) RetainOwned(element);
+	std::vector<const void*> snapshot;
+	try {
+		snapshot.reserve(object->array.size());
+		for (const auto* element : object->array) {
+			const auto* retained = RetainSetValue(const_cast<Object*>(object), element);
+			if (retained == nullptr) throw std::bad_alloc{};
+			snapshot.push_back(retained);
+		}
+	} catch (...) {
+		for (const auto* element : snapshot) ReleaseSetValue(const_cast<Object*>(object), element);
+		return;
+	}
 	for (const auto* element : snapshot) function(element, context);
-	for (const auto* element : snapshot) ReleaseOwned(As(element));
+	for (const auto* element : snapshot) ReleaseSetValue(const_cast<Object*>(object), element);
 }
 
 extern "C" bool darling_windows_CFSetAddValue(darling_windows_CFSetRef value, const void* element)
 {
 	auto* object = As(value); if (object == nullptr || object->kind != Kind::Set || element == nullptr) return false;
-	for (const auto* entry : object->array) if (darling_windows_CFEqual(entry, element)) return false;
-	object->array.push_back(element); RetainOwned(element); return true;
+	for (const auto* entry : object->array) if (EqualSetValues(object, entry, element)) return false;
+	try { object->array.reserve(object->array.size() + 1); }
+	catch (...) { return false; }
+	const auto* retained = RetainSetValue(object, element);
+	if (retained == nullptr) return false;
+	object->array.push_back(retained); return true;
 }
 
 extern "C" bool darling_windows_CFSetRemoveValue(darling_windows_CFSetRef value, const void* element)
 {
 	auto* object = As(value); if (object == nullptr || object->kind != Kind::Set || element == nullptr) return false;
-	for (auto it = object->array.begin(); it != object->array.end(); ++it) if (darling_windows_CFEqual(*it, element)) {
-		ReleaseOwned(As(*it)); object->array.erase(it); return true;
+	for (auto it = object->array.begin(); it != object->array.end(); ++it) if (EqualSetValues(object, *it, element)) {
+		ReleaseSetValue(object, *it); object->array.erase(it); return true;
 	}
 	return false;
 }
@@ -2585,7 +2641,7 @@ extern "C" bool darling_windows_CFSetRemoveValue(darling_windows_CFSetRef value,
 extern "C" void darling_windows_CFSetRemoveAllValues(darling_windows_CFSetRef value)
 {
 	auto* object = As(value); if (object == nullptr || object->kind != Kind::Set) return;
-	for (const auto* element : object->array) ReleaseOwned(As(element)); object->array.clear();
+	for (const auto* element : object->array) ReleaseSetValue(object, element); object->array.clear();
 }
 
 extern "C" bool darling_windows_CFSetUnion(darling_windows_CFSetRef value,
@@ -2599,8 +2655,8 @@ extern "C" bool darling_windows_CFSetUnion(darling_windows_CFSetRef value,
 	for (const auto* candidate : source_values) {
 		bool found = false;
 		for (const auto* existing : object->array)
-			if (darling_windows_CFEqual(existing, candidate)) { found = true; break; }
-		if (!found) { object->array.push_back(candidate); RetainOwned(candidate); }
+			if (EqualSetValues(object, existing, candidate)) { found = true; break; }
+		if (!found && !darling_windows_CFSetAddValue(object, candidate)) return false;
 	}
 	return true;
 }
@@ -2616,9 +2672,9 @@ extern "C" bool darling_windows_CFSetIntersect(darling_windows_CFSetRef value,
 	for (auto it = object->array.begin(); it != object->array.end();) {
 		bool found = false;
 		for (const auto* candidate : source_values)
-			if (darling_windows_CFEqual(*it, candidate)) { found = true; break; }
+			if (EqualSetValues(object, *it, candidate)) { found = true; break; }
 		if (found) { ++it; continue; }
-		ReleaseOwned(As(*it)); it = object->array.erase(it);
+		ReleaseSetValue(object, *it); it = object->array.erase(it);
 	}
 	return true;
 }
@@ -2634,9 +2690,9 @@ extern "C" bool darling_windows_CFSetSubtract(darling_windows_CFSetRef value,
 	for (auto it = object->array.begin(); it != object->array.end();) {
 		bool found = false;
 		for (const auto* candidate : source_values)
-			if (darling_windows_CFEqual(*it, candidate)) { found = true; break; }
+			if (EqualSetValues(object, *it, candidate)) { found = true; break; }
 		if (!found) { ++it; continue; }
-		ReleaseOwned(As(*it)); it = object->array.erase(it);
+		ReleaseSetValue(object, *it); it = object->array.erase(it);
 	}
 	return true;
 }
@@ -4327,45 +4383,90 @@ extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeID CFSetGetTypeID()
 }
 
 namespace {
-bool DarlingIsTypeSetCallbacks(const void* callbacks)
+std::pair<DarlingCFDictionaryKeyCallbacks, const void*> DarlingGetCallbacksForSet(
+	const Object* object)
 {
-	if (callbacks == nullptr) return false;
-	const auto& actual = *static_cast<const DarlingCFDictionaryKeyCallbacks*>(callbacks);
-	return actual.version == 0 && actual.retain == &DarlingCFTypeRetain &&
-		actual.release == &DarlingCFTypeRelease &&
-		actual.copy_description == &DarlingCFTypeCopyDescription &&
-		actual.equal == &DarlingCFTypeEqual && actual.hash == &DarlingCFTypeHash;
+	if (object != nullptr && object->has_set_callback_table)
+		return {object->set_callbacks, object->set_allocator};
+	return {kCFTypeSetCallBacks, nullptr};
+}
+darling_windows_CFSetRef DarlingCreateGuestSet(const void* const* values,
+	darling_windows_CFIndex count, const DarlingCFDictionaryKeyCallbacks* callbacks,
+	bool mutable_set, darling_windows_CFIndex capacity, const void* allocator);
+}
+
+namespace {
+darling_windows_CFSetRef DarlingCreateGuestSet(const void* const* values,
+	darling_windows_CFIndex count, const DarlingCFDictionaryKeyCallbacks* callbacks,
+	bool mutable_set, darling_windows_CFIndex capacity, const void* allocator)
+{
+	if (count < 0 || capacity < 0 || (count != 0 && values == nullptr)) return nullptr;
+	DarlingCFDictionaryKeyCallbacks copied_callbacks{};
+	if (callbacks != nullptr) copied_callbacks = *callbacks;
+	if (copied_callbacks.version != 0) return nullptr;
+	auto* object = new (std::nothrow) Object{};
+	if (object == nullptr) return nullptr;
+	object->kind = Kind::Set;
+	object->mutable_set = mutable_set;
+	object->has_set_callback_table = true;
+	object->set_callbacks = copied_callbacks;
+	object->set_allocator = allocator;
+	try {
+		object->array.reserve(static_cast<std::size_t>((std::max)(count, capacity)));
+		for (darling_windows_CFIndex index = 0; index < count; ++index) {
+			if (values[index] == nullptr) { delete object; return nullptr; }
+			const auto duplicate = std::find_if(object->array.begin(), object->array.end(),
+				[&](const void* current) { return EqualSetValues(object, current, values[index]); });
+			if (duplicate != object->array.end()) continue;
+			const auto* retained = RetainSetValue(object, values[index]);
+			if (retained == nullptr) { delete object; return nullptr; }
+			object->array.push_back(retained);
+		}
+	} catch (...) {
+		delete object;
+		return nullptr;
+	}
+	return object;
 }
 }
 
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFSetRef CFSetCreate(
-	const void*, const void* const* values, darling_windows_CFIndex count,
+	const void* allocator, const void* const* values, darling_windows_CFIndex count,
 	const void* callbacks)
 {
-	if (!DarlingIsTypeSetCallbacks(callbacks) || count < 0 ||
-		(count != 0 && values == nullptr)) return nullptr;
-	for (darling_windows_CFIndex index = 0; index < count; ++index)
-		if (values[index] == nullptr) return nullptr;
-	return darling_windows_CFSetCreate(values, count);
+	return DarlingCreateGuestSet(values, count,
+		static_cast<const DarlingCFDictionaryKeyCallbacks*>(callbacks), false, 0, allocator);
 }
 
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFSetRef CFSetCreateMutable(
-	const void*, darling_windows_CFIndex capacity, const void* callbacks)
+	const void* allocator, darling_windows_CFIndex capacity, const void* callbacks)
 {
-	return DarlingIsTypeSetCallbacks(callbacks) ?
-		darling_windows_CFSetCreateMutable(capacity) : nullptr;
+	return DarlingCreateGuestSet(nullptr, 0,
+		static_cast<const DarlingCFDictionaryKeyCallbacks*>(callbacks), true, capacity,
+		allocator);
 }
 
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFSetRef CFSetCreateCopy(
-	const void*, darling_windows_CFSetRef value)
+	const void* allocator, darling_windows_CFSetRef value)
 {
-	return darling_windows_CFSetCreateCopy(value);
+	const auto* source = static_cast<const Object*>(value);
+	if (source == nullptr || source->kind != Kind::Set) return nullptr;
+	const auto callbacks = DarlingGetCallbacksForSet(source);
+	return DarlingCreateGuestSet(source->array.data(),
+		static_cast<darling_windows_CFIndex>(source->array.size()), &callbacks.first, false, 0,
+		allocator);
 }
 
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFSetRef CFSetCreateMutableCopy(
-	const void*, darling_windows_CFIndex capacity, darling_windows_CFSetRef value)
+	const void* allocator, darling_windows_CFIndex capacity, darling_windows_CFSetRef value)
 {
-	return darling_windows_CFSetCreateMutableCopy(capacity, value);
+	if (capacity < 0) return nullptr;
+	const auto* source = static_cast<const Object*>(value);
+	if (source == nullptr || source->kind != Kind::Set) return nullptr;
+	const auto callbacks = DarlingGetCallbacksForSet(source);
+	return DarlingCreateGuestSet(source->array.data(),
+		static_cast<darling_windows_CFIndex>(source->array.size()), &callbacks.first, true,
+		capacity, allocator);
 }
 
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFIndex CFSetGetCount(
@@ -4446,10 +4547,11 @@ extern "C" DARLING_CF_GUEST_ABI void CFSetSetValue(
 	auto* object = As(value);
 	if (object == nullptr || !object->mutable_set || element == nullptr) return;
 	for (auto& entry : object->array) {
-		if (!darling_windows_CFEqual(entry, element)) continue;
-		RetainOwned(element);
-		ReleaseOwned(As(entry));
-		entry = element;
+		if (!EqualSetValues(object, entry, element)) continue;
+		const auto* retained = RetainSetValue(object, element);
+		if (retained == nullptr) return;
+		ReleaseSetValue(object, entry);
+		entry = retained;
 		return;
 	}
 	(void)darling_windows_CFSetAddValue(value, element);
@@ -4461,10 +4563,11 @@ extern "C" DARLING_CF_GUEST_ABI void CFSetReplaceValue(
 	auto* object = As(value);
 	if (object == nullptr || !object->mutable_set || element == nullptr) return;
 	for (auto& entry : object->array) {
-		if (!darling_windows_CFEqual(entry, element)) continue;
-		RetainOwned(element);
-		ReleaseOwned(As(entry));
-		entry = element;
+		if (!EqualSetValues(object, entry, element)) continue;
+		const auto* retained = RetainSetValue(object, element);
+		if (retained == nullptr) return;
+		ReleaseSetValue(object, entry);
+		entry = retained;
 		return;
 	}
 }

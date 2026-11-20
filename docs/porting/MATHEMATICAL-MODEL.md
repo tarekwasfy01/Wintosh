@@ -560,14 +560,19 @@ guest callback synchronously and holds the internal snapshot through the pass.
 This mapping currently targets the Darwin x86_64 ABI and does not imply ARM64
 support.
 
-`CFSet` uses the set invariant `∀x,y ∈ S: x ≠ y` under `CFEqual`. Add is
+`CFSet` uses the set invariant `∀x,y ∈ S: x ≠ y` under the set's equality
+callback (pointer identity when it is null). Add is
 idempotent, Set replaces an equal member's stored representative, and Replace
 has no effect when no equal member exists. The exposed set algebra is
 `Union(S,T)=S∪T`, `Intersect(S,T)=S∩T`, and `Subtract(S,T)=S\T`; each mutating
 operation requires a mutable set. Wintosh currently implements these equations
 with linear scans over a vector, so membership and mutation are `O(n)` rather
 than hash-table complexity. This preserves set results but not Apple's
-expected performance profile. Null elements are rejected. These semantics
+expected performance profile. Callback tables are copied per set, and
+retain/release/equality callbacks are applied on insertion, removal, lookup,
+copy, and destruction; a null table has no retain/release and pointer equality.
+Hash and description callbacks are stored but not used by the vector model.
+Null elements are rejected. These semantics
 follow [Apple CFSet](https://developer.apple.com/documentation/corefoundation/cfset),
 [CFSetCallBacks](https://developer.apple.com/documentation/corefoundation/cfsetcallbacks),
 and [CFSetCreateMutable](https://developer.apple.com/documentation/corefoundation/cfsetcreatemutable%28_%3A_%3A_%29).

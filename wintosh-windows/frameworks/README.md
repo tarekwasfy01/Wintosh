@@ -307,6 +307,11 @@ before/after-wait, and exit activities, with activity, context, order, repeat,
 and validity queries. One-shot observers invalidate on their first matching
 callback. These guest ABI paths have not yet been verified with a Mach-O
 fixture; native Windows input-source registration is absent.
+Run-loop introspection also exports `CFRunLoopGetTypeID`,
+`CFRunLoopCopyCurrentMode`, and `CFRunLoopCopyAllModes`. The current mode is
+null while idle; the copied mode array lists known common, active, and
+registered modes. These new guest ABI calls compile and link, but still need
+invocation from a Mach-O fixture.
 The keyed-archive decoder also recognizes Apple's `NSCustomView` placeholder,
 resolves its `NSClassName`, allocates a loaded `NSView` subclass, and calls
 `initWithFrame:` using `NSFrame` or `NSFrameSize`. It then restores selected

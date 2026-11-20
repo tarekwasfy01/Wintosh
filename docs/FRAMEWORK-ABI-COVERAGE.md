@@ -66,7 +66,13 @@ searched range to be sorted using the same comparator. Mutable operations requir
 ABI attributes account for the x86_64 Darwin calling convention. String
 conversion is limited to the implementation's UTF-8 representation.
 `CFRunLoopPerformBlock` now retains and schedules a guest block in a string or
-array of modes and wakes AppKit. The resolver also exports CFNumber, CFDate,
+array of modes and wakes AppKit. `CFRunLoopGetTypeID`,
+`CFRunLoopCopyCurrentMode`, and `CFRunLoopCopyAllModes` are also exported. The
+current-mode query returns null while idle; both copy functions return
+caller-owned CoreFoundation objects. The all-modes list is derived from common
+modes, active modes, and registered blocks, sources, timers, and observers.
+These additions have build evidence only, without guest ABI fixtures. The
+resolver also exports CFNumber, CFDate,
 CFBoolean, and CFDictionary create/copy/mutation/enumeration with the built-in
 `kCFType` callback tables. CFSet creation, copying, set algebra and traversal
 are also exported with copied callbacks. Both copy callback tables and

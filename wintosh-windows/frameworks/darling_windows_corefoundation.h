@@ -658,6 +658,11 @@ extern "C" bool darling_windows_CFRunLoopPerformOneShotTimer(
 extern "C" std::uintptr_t darling_windows_corefoundation_symbol(const char* name);
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFRunLoopRef CFRunLoopGetCurrent();
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFRunLoopRef CFRunLoopGetMain();
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeID CFRunLoopGetTypeID();
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFRunLoopCopyCurrentMode(
+	darling_windows_CFRunLoopRef loop);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFArrayRef CFRunLoopCopyAllModes(
+	darling_windows_CFRunLoopRef loop);
 extern "C" DARLING_CF_GUEST_ABI std::int32_t CFRunLoopRunInMode(
 	darling_windows_CFStringRef mode, double seconds, std::uint8_t return_after_source);
 extern "C" DARLING_CF_GUEST_ABI void CFRunLoopStop(darling_windows_CFRunLoopRef loop);

@@ -9,9 +9,9 @@ each section. Begin with the [repository README](../README.md) for build
 entry points and the [documentation index](DOCUMENTATION-INDEX.md) for the full
 map.
 
-Status date: 2026-11-20
+Status date: 2026-11-21
 
-### Foundation run-loop modes and NSRunLoop bridge (2026-11-20)
+### Foundation run-loop modes and NSRunLoop bridge (2026-11-21)
 
 The CoreFoundation callback queue now stores requested run-loop modes and
 supports a per-loop common-mode set (with `kCFRunLoopDefaultMode` included by
@@ -30,9 +30,13 @@ run-loop current/main/run/stop/wakeup/common-mode operations, plus
 queries, and `CFArray` type/count/index/range/contains reads. String conversions
 are limited to the runtime's UTF-8 representation and do not cover all Darwin
 encodings. `CFRunLoopPerformBlock` accepts a string or array of modes, retains
-and queues the guest block, and wakes the AppKit main thread. Mode names are
-currently bounded to 4095 UTF-8 bytes. Source/timer/observer APIs, guest import
-fixtures, and edge-case status behavior still need coverage. Guest exports now
+and queues the guest block, and wakes the AppKit main thread. The resolver now
+also exports `CFRunLoopGetTypeID`, `CFRunLoopCopyCurrentMode`, and
+`CFRunLoopCopyAllModes`. The mode-copy calls follow Create/Copy ownership;
+defined modes are collected from common modes, active modes, and registered
+blocks, sources, timers, and observers. Mode names are currently bounded to
+4095 UTF-8 bytes. Guest import fixtures and edge-case status behavior still
+need coverage. Guest exports now
 also include CFNumber creation/conversion/comparison, CFDate creation/comparison,
 CFBoolean reads, and CFDictionary creation, copying, lookup, mutation and
 enumeration with copied key/value callback tables. CFSet creation, copying,

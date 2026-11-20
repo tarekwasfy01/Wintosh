@@ -544,6 +544,16 @@ afterWaiting, exit}`. Native event-source phases and remaining activity-mask
 bits are not implemented. See [Apple CFRunLoopObserverCreate](https://developer.apple.com/documentation/corefoundation/cfrunloopobservercreate%28_%3A_%3A_%3A_%3A_%3A_%3A%29)
 and [CFRunLoopActivity](https://developer.apple.com/documentation/corefoundation/cfrunloopactivity).
 
+Run-loop mode introspection is represented as a snapshot. For a loop `L`,
+`CopyCurrentMode(L) = null` when its activation stack is empty and otherwise
+returns a newly owned string for the top mode. `CopyAllModes(L)` returns a
+newly owned array over the deduplicated union of common modes, active modes,
+and modes referenced by queued blocks or registered sources, timers, and
+observers. The common-mode pseudo-name itself is excluded because it is a
+registration set, not an executable mode. See Apple's
+[`CFRunLoopCopyCurrentMode`](https://developer.apple.com/documentation/corefoundation/cfrunloopcopycurrentmode%28_%3A%29)
+and [`CFRunLoopCopyAllModes`](https://developer.apple.com/documentation/corefoundation/cfrunloopcopyallmodes%28_%3A%29) contracts.
+
 ## CoreFoundation scalar bridge
 
 For a numeric guest value `x` requested in target type `T`, conversion is

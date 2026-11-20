@@ -36,7 +36,7 @@
 #include <new>
 
 namespace {
-enum class Kind { String, Data, Array, Number, Real, Dictionary, Set, Date, URL, Boolean, Null, ImageSource, DataProvider, ImageDestination, DataConsumer, Bundle, PropertyListUID, RunLoopSource, RunLoopTimer, RunLoopObserver };
+enum class Kind { String, Data, Array, Number, Real, Dictionary, Set, Date, URL, Boolean, Null, ImageSource, DataProvider, ImageDestination, DataConsumer, Bundle, PropertyListUID, RunLoopSource, RunLoopTimer, RunLoopObserver, RunLoop };
 constexpr darling_windows_CFTypeID TypeId(Kind kind)
 {
 	return static_cast<darling_windows_CFTypeID>(kind) + 1;
@@ -3501,6 +3501,81 @@ extern "C" darling_windows_CFRunLoopRef darling_windows_CFRunLoopGetMain()
 	return &main_run_loop;
 }
 
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeID CFRunLoopGetTypeID()
+{
+	return TypeId(Kind::RunLoop);
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFRunLoopCopyCurrentMode(
+	darling_windows_CFRunLoopRef value)
+{
+	if (value == nullptr) return nullptr;
+	auto* loop = static_cast<RunLoop*>(value);
+	std::string mode;
+	{
+		std::lock_guard lock(loop->state->mutex);
+		try { mode = loop->state->current_mode; }
+		catch (...) { return nullptr; }
+	}
+	if (mode.empty()) return nullptr;
+	auto* result = new (std::nothrow) Object{};
+	if (result == nullptr) return nullptr;
+	result->kind = Kind::String;
+	try { result->string = std::move(mode); }
+	catch (...) { delete result; return nullptr; }
+	return result;
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFArrayRef CFRunLoopCopyAllModes(
+	darling_windows_CFRunLoopRef value)
+{
+	if (value == nullptr) return nullptr;
+	auto* loop = static_cast<RunLoop*>(value);
+	std::vector<std::string> modes;
+	try {
+		std::lock_guard lock(loop->state->mutex);
+		modes = loop->state->common_modes;
+		auto append_mode = [&modes](const std::string& mode) {
+			if (!mode.empty() && std::find(modes.begin(), modes.end(), mode) == modes.end())
+				modes.push_back(mode);
+		};
+		for (const auto& mode : loop->state->mode_stack) append_mode(mode);
+		for (const auto& entry : loop->state->blocks)
+			for (const auto& mode : entry.modes) append_mode(mode);
+		for (const auto& entry : loop->state->sources) append_mode(entry.mode);
+		for (const auto& entry : loop->state->timers) append_mode(entry.mode);
+		for (const auto& entry : loop->state->observers) append_mode(entry.mode);
+	} catch (...) { return nullptr; }
+	std::vector<const void*> strings;
+	try { strings.reserve(modes.size()); }
+	catch (...) { return nullptr; }
+	for (const auto& mode : modes) {
+		auto* string = new (std::nothrow) Object{};
+		if (string == nullptr) {
+			for (const auto* item : strings)
+				ReleaseOwned(const_cast<Object*>(static_cast<const Object*>(item)));
+			return nullptr;
+		}
+		string->kind = Kind::String;
+		try { string->string = mode; }
+		catch (...) {
+			delete string;
+			for (const auto* item : strings)
+				ReleaseOwned(const_cast<Object*>(static_cast<const Object*>(item)));
+			return nullptr;
+		}
+		strings.push_back(string);
+	}
+	darling_windows_CFArrayRef result = nullptr;
+	try {
+		result = darling_windows_CFArrayCreate(strings.data(),
+			static_cast<darling_windows_CFIndex>(strings.size()));
+	} catch (...) { result = nullptr; }
+	for (const auto* item : strings)
+		ReleaseOwned(const_cast<Object*>(static_cast<const Object*>(item)));
+	return result;
+}
+
 extern "C" void darling_windows_CFRunLoopUseCurrentAsMain()
 {
 	current_run_loop.state = main_run_loop.state;
@@ -5727,6 +5802,12 @@ extern "C" std::uintptr_t darling_windows_corefoundation_symbol(const char* name
 		return reinterpret_cast<std::uintptr_t>(&CFRunLoopGetCurrent);
 	if (std::strcmp(name, "CFRunLoopGetMain") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFRunLoopGetMain);
+	if (std::strcmp(name, "CFRunLoopGetTypeID") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFRunLoopGetTypeID);
+	if (std::strcmp(name, "CFRunLoopCopyCurrentMode") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFRunLoopCopyCurrentMode);
+	if (std::strcmp(name, "CFRunLoopCopyAllModes") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFRunLoopCopyAllModes);
 	if (std::strcmp(name, "CFRunLoopRunInMode") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFRunLoopRunInMode);
 	if (std::strcmp(name, "CFRunLoopStop") == 0)

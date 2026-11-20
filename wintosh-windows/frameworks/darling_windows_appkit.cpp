@@ -19986,6 +19986,46 @@ extern "C" void darling_windows_appkit_wake_main_run_loop()
 	if (thread != 0) PostThreadMessageW(thread, kApplicationEventMessage, 0, 0);
 }
 
+extern "C" std::int32_t darling_windows_appkit_wait_run_loop_input(
+	std::uint32_t timeout_milliseconds)
+{
+	const DWORD thread = g_application_thread_id.load(std::memory_order_acquire);
+	if (thread == 0 || thread != GetCurrentThreadId()) return -1;
+	if (DispatchOneAppKitCallback()) return 1;
+	if (id event = TakeMatchingAppKitEvent(
+		(std::numeric_limits<std::uint64_t>::max)(), true)) {
+		DispatchAppKitEventToApplication(g_shared_application, event);
+		return 1;
+	}
+	const DWORD wait = MsgWaitForMultipleObjectsEx(0, nullptr,
+		static_cast<DWORD>(timeout_milliseconds), QS_ALLINPUT, MWMO_INPUTAVAILABLE);
+	if (wait == WAIT_TIMEOUT) return 0;
+	if (wait == WAIT_FAILED || wait != WAIT_OBJECT_0) return -1;
+	MSG message{};
+	if (!PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) return 0;
+	if (message.message == WM_QUIT) {
+		darling_windows_CFRunLoopStop(darling_windows_CFRunLoopGetCurrent());
+		PostQuitMessage(static_cast<int>(message.wParam));
+		return 1;
+	}
+	if (message.message == kApplicationStopMessage) {
+		darling_windows_CFRunLoopStop(darling_windows_CFRunLoopGetCurrent());
+		PostQuitMessage(g_application_exit_code);
+		return 1;
+	}
+	if (message.message == kApplicationTerminateMessage) {
+		NSApplicationNotifyWillTerminate(g_shared_application);
+		darling_windows_CFRunLoopStop(darling_windows_CFRunLoopGetCurrent());
+		PostQuitMessage(g_application_exit_code);
+		return 1;
+	}
+	if (message.message == kApplicationEventMessage) return 0;
+	if (darling_windows_dispatch_main_queue_handle_message(message.message)) return 1;
+	TranslateMessage(&message);
+	DispatchMessageW(&message);
+	return 1;
+}
+
 extern "C" std::uintptr_t darling_windows_appkit_symbol(const char* name)
 {
 	if (name == nullptr) return 0;

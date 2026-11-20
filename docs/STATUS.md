@@ -66,9 +66,12 @@ registration/removal, validity, and invalidation are also exported. Callbacks
 run at entry, before timers/sources, before/after waiting, and exit; one-shot
 observers invalidate after their first matching activity. The Windows x64
 Clang Release build compiles and links these APIs. Guest ABI behavior remains
-unverified. Native Windows input-source registration, timer tolerance, the
-remaining observer phases, and complete recursive activation semantics remain
-open.
+unverified. While waiting on the AppKit main thread, CFRunLoop now waits on
+and dispatches the Win32 message queue; non-main loops retain the condition-
+variable wait. A dispatched message can end a `returnAfterSource` turn, and a
+cross-thread stop wakes the main queue. Mach-port source-1 and arbitrary
+Windows-handle registration, timer tolerance, the remaining observer phases,
+and complete recursive activation semantics remain open.
 
 ### Foundation dates and AppKit event queue (2026-11-17)
 

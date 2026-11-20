@@ -305,8 +305,11 @@ skipping missed intervals. Timer tolerance is not modeled.
 `CFRunLoopObserver` can register for entry, before-timer/source,
 before/after-wait, and exit activities, with activity, context, order, repeat,
 and validity queries. One-shot observers invalidate on their first matching
-callback. These guest ABI paths have not yet been verified with a Mach-O
-fixture; native Windows input-source registration is absent.
+callback. The AppKit main-thread run loop now waits on and dispatches the
+Win32 message queue, including Cocoa window/input messages, so a mode turn can
+return after dispatched input. Worker loops keep their condition-variable
+wait. These guest ABI paths have not yet been verified with a Mach-O fixture;
+Mach-port source-1 and arbitrary Windows-handle registration remain absent.
 Run-loop introspection also exports `CFRunLoopGetTypeID`,
 `CFRunLoopCopyCurrentMode`, and `CFRunLoopCopyAllModes`. The current mode is
 null while idle; the copied mode array lists known common, active, and

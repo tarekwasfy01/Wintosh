@@ -1,6 +1,6 @@
 # Runtime-Recherche und offene Lücken
 
-Stand: 20. November 2026
+Stand: 21. November 2026
 
 ## Ergebnis in Kürze
 
@@ -20,8 +20,12 @@ Modusregistrierung und Invalidierung. Fällige Timer laufen auf dem aktiven
 Loop-Thread; Wiederholungen halten ihre Kadenz ein und überspringen verpasste
 Intervalle. `CFRunLoopObserver`-Callbacks sind für Eintritt, vor Timer-/Quellen-
 Verarbeitung, vor/nach dem Warten und Austritt angebunden; one-shot Observer
-invalidieren beim ersten passenden Callback. Offen bleiben Timer-Toleranz,
-weitere Aktivitätsphasen, native Eingabequellen und rekursive Aktivierungen.
+invalidieren beim ersten passenden Callback. Der AppKit-Hauptthread integriert
+beim Warten seine Win32-Nachrichtenqueue in den Run-Loop; Fenster- und
+Eingabenachrichten werden dort dispatched, und `returnAfterSource` kann danach
+zurückkehren. Worker-Loops behalten Condition-Variable-Waits. Offen bleiben
+Timer-Toleranz, weitere Aktivitätsphasen, native Mach-Port-Quellen, beliebige
+Windows-Handles und rekursive Aktivierungen.
 Referenzen: [Foundation `run(mode:before:)`](https://developer.apple.com/documentation/foundation/runloop/run%28mode%3Abefore%3A%29),
 [CoreFoundation `CFRunLoop`](https://developer.apple.com/documentation/corefoundation/cfrunloop),
 [`CFRunLoopPerformBlock`](https://developer.apple.com/documentation/corefoundation/cfrunloopperformblock%28_%3A_%3A_%3A%29).
@@ -44,7 +48,7 @@ Intervall-/Ordnungs-/Feuerzeitabfrage, SetNextFireDate, DoesRepeat, Add/Remove/
 Contains, IsValid und Invalidate ab. Observer unterstützt Create,
 Activities-/Repeat-/Order- und Kontextabfrage, Add/Remove/Contains, IsValid und
 Invalidate für sechs implementierte Loop-Phasen. Timer-Toleranz, native
-Eingabequellen und vollständige RunLoop-Rückgabestatus bleiben offen. Die
+Mach-Port-Quellen und vollständige RunLoop-Rückgabestatus bleiben offen. Die
 ABI-Ausführung ist noch nicht durch einen Gast-Fixture-Lauf bestätigt.
 
 Die Dictionary-Schicht wurde danach erweitert: `CFDictionaryCreate`, mutable

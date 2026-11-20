@@ -525,6 +525,21 @@ state machine. References: [Apple CFRunLoopSource](https://developer.apple.com/d
 [CFRunLoop mode contract](https://developer.apple.com/documentation/corefoundation/cfrunloop),
 and [CFRunLoopPerformBlock](https://developer.apple.com/documentation/corefoundation/cfrunloopperformblock%28_%3A_%3A_%3A%29).
 
+For a run loop `L` waiting until deadline `d` with next timer deadline `t`,
+the host wait bound is `w = min(d,t)` when a timer exists, otherwise `w = d`.
+For the AppKit main thread, `Wait(L,w)` is implemented by
+`MsgWaitForMultipleObjectsEx` over the Win32 message queue; one dispatched
+message is an input-source delivery. Thus
+`RunInMode(L, m, d, returnAfterSource=true)` returns after the first delivered
+message. The other threads wait on `L`'s condition variable, whose predicate
+is `stopped ∨ pendingBlock(m) ∨ dueTimer(m)`. A stop transition sets
+`stopped := true` and signals the condition variable; on the main loop it also
+posts a thread message so that the Win32 wait becomes observable. This only
+models the AppKit main-thread queue; it does not implement arbitrary native
+handles or Darwin Mach-port source-1 semantics. The Win32 wait contract follows
+[`MsgWaitForMultipleObjectsEx`](https://learn.microsoft.com/en-us/windows/desktop/api/Winuser/nf-winuser-msgwaitformultipleobjectsex),
+while Apple describes input sources in its [CFRunLoop contract](https://developer.apple.com/documentation/corefoundation/cfrunloop).
+
 For a timer with next fire time `t`, current absolute time `n`, and positive
 interval `Δ`, a due repeating timer advances to
 `t' = t + (floor((n - t) / Δ) + 1)Δ`. This retains the original cadence and

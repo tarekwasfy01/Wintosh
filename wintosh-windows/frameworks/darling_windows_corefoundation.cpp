@@ -3756,13 +3756,37 @@ extern "C" int darling_windows_CFRunLoopRunInModeForLoop(
 				wait_deadline > std::chrono::steady_clock::now();
 			if (will_wait)
 				NotifyRunLoopObservers(state, active_mode, kCFRunLoopActivityBeforeWaiting, lock);
-			const bool woke = state->condition.wait_until(lock, wait_deadline,
-				[&state, &active_mode] {
-					return state->stopped || HasRunLoopBlockForMode(*state, active_mode) ||
-						HasDueRunLoopTimer(*state, active_mode);
-				});
+			bool woke = false;
+			bool dispatched_input = false;
+			bool used_native_wait = false;
+			if (will_wait && state == main_run_loop.state) {
+				const auto remaining = wait_deadline - std::chrono::steady_clock::now();
+				auto timeout = std::chrono::ceil<std::chrono::milliseconds>(remaining).count();
+				timeout = (std::clamp)(timeout, std::int64_t{0},
+					static_cast<std::int64_t>((std::numeric_limits<std::uint32_t>::max)()));
+				lock.unlock();
+				const auto input = darling_windows_appkit_wait_run_loop_input(
+					static_cast<std::uint32_t>(timeout));
+				lock.lock();
+				if (input >= 0) {
+					used_native_wait = true;
+					woke = input > 0;
+					dispatched_input = input > 0;
+				}
+			}
+			if (!used_native_wait) {
+				woke = state->condition.wait_until(lock, wait_deadline,
+					[&state, &active_mode] {
+						return state->stopped || HasRunLoopBlockForMode(*state, active_mode) ||
+							HasDueRunLoopTimer(*state, active_mode);
+					});
+			}
 			if (will_wait)
 				NotifyRunLoopObservers(state, active_mode, kCFRunLoopActivityAfterWaiting, lock);
+			if (return_after_source && dispatched_input) {
+				returned_after_source = true;
+				break;
+			}
 			if (!woke && std::chrono::steady_clock::now() >= deadline) break;
 			continue;
 		}
@@ -3824,6 +3848,8 @@ extern "C" void darling_windows_CFRunLoopStop(darling_windows_CFRunLoopRef value
 		loop->state->stopped = true;
 	}
 	loop->state->condition.notify_all();
+	if (loop->state == main_run_loop.state)
+		darling_windows_appkit_wake_main_run_loop();
 }
 
 extern "C" bool darling_windows_CFRunLoopIsRunning(darling_windows_CFRunLoopRef value)

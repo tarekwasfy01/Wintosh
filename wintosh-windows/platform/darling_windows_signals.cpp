@@ -16,6 +16,8 @@
 #include <condition_variable>
 #include <mutex>
 #include <thread>
+#include <unordered_map>
+#include <vector>
 
 namespace darling::windows_host {
 
@@ -32,6 +34,13 @@ std::condition_variable sigwait_condition;
 std::uint64_t sigwait_mask = 0;
 std::uint64_t sigwait_pending = 0;
 std::array<darling_signal_value, 64> sigwait_values{};
+struct SignalSourceSubscription final {
+	int signal_number{};
+	DarwinSignals::SourceHandler handler;
+};
+std::mutex signal_sources_mutex;
+std::unordered_map<std::uint64_t, SignalSourceSubscription> signal_sources;
+std::uint64_t next_signal_source_token = 1;
 
 void InitializeActions() noexcept
 {
@@ -149,6 +158,23 @@ bool DarwinSignals::Raise(int signal_number) noexcept
 			return true;
 		}
 	}
+	std::vector<SourceHandler> source_handlers;
+	try {
+		std::lock_guard lock(signal_sources_mutex);
+		for (const auto& [token, subscription] : signal_sources) {
+			(void)token;
+			if (subscription.signal_number == signal_number)
+				source_handlers.push_back(subscription.handler);
+		}
+	} catch (...) {
+		return false;
+	}
+	if (!source_handlers.empty()) {
+		for (auto& source_handler : source_handlers) {
+			try { source_handler(signal_number); } catch (...) {}
+		}
+		return true;
+	}
 	if ((blocked_signals & bit) != 0) {
 		pending_signals |= bit;
 		return true;
@@ -193,6 +219,29 @@ bool DarwinSignals::Raise(int signal_number) noexcept
 	// Fail closed: native CRT signal delivery is not a Darwin ABI bridge and
 	// can terminate the host with a platform-specific exit status.
 	return false;
+}
+
+std::uint64_t DarwinSignals::Subscribe(int signal_number,
+	SourceHandler handler) noexcept
+{
+	if (!ValidSetSignal(signal_number) || !handler) return 0;
+	try {
+		std::lock_guard lock(signal_sources_mutex);
+		if (next_signal_source_token == 0) return 0;
+		const auto token = next_signal_source_token++;
+		signal_sources.emplace(token,
+			SignalSourceSubscription{signal_number, std::move(handler)});
+		return token;
+	} catch (...) {
+		return 0;
+	}
+}
+
+void DarwinSignals::Unsubscribe(std::uint64_t token) noexcept
+{
+	if (token == 0) return;
+	std::lock_guard lock(signal_sources_mutex);
+	signal_sources.erase(token);
 }
 
 DarwinSignals::Handler DarwinSignals::Reset(int signal_number) noexcept

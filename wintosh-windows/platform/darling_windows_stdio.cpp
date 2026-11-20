@@ -7,6 +7,7 @@
  */
 
 #include "darling_windows_stdio.h"
+#include "../frameworks/darling_windows_appkit.h"
 #include "darling_windows_abi_bridge.h"
 #include "darling_windows_objc.h"
 #include "darling_windows_syscalls.h"
@@ -19,7 +20,9 @@
 #include "darling_windows_signals.h"
 #include "darling_windows_memory.h"
 #include "darling_windows_mach.h"
+#include "../abi/darling_windows_dispatch.h"
 #include "darling_windows_foundation.h"
+#include "darling_windows_coregraphics.h"
 
 #include <windows.h>
 #include <ws2tcpip.h>
@@ -741,6 +744,30 @@ std::mutex dynamic_image_mutex;
 std::unordered_map<void*, darling::windows_host::DarwinDynamicImage*> dynamic_images;
 std::unordered_map<void*, std::size_t> dynamic_image_references;
 std::unordered_map<std::wstring, void*> dynamic_image_paths;
+struct DarwinDyldImageEntry final {
+	std::string path;
+	const void* header = nullptr;
+	std::intptr_t slide = 0;
+};
+std::mutex guest_dyld_image_mutex;
+std::vector<DarwinDyldImageEntry> guest_dyld_images;
+bool guest_dyld_image_list_active = false;
+using DarwinDyldImageCallback = void (DARLING_HOST_GUEST_ABI *)(
+	const void*, std::intptr_t);
+std::recursive_mutex guest_dyld_notification_mutex;
+std::mutex guest_dyld_callback_mutex;
+std::vector<DarwinDyldImageCallback> guest_dyld_add_callbacks;
+std::vector<DarwinDyldImageCallback> guest_dyld_remove_callbacks;
+std::vector<DarwinDyldImageEntry> guest_dyld_notified_images;
+
+void InvokeDyldImageCallbacks(
+	const std::vector<DarwinDyldImageCallback>& callbacks,
+	const DarwinDyldImageEntry& image)
+{
+	for (const auto callback : callbacks) {
+		if (callback != nullptr) callback(image.header, image.slide);
+	}
+}
 struct DynamicImageLoadState final {
 	std::condition_variable condition;
 	bool complete = false;
@@ -781,6 +808,101 @@ std::vector<HMODULE> CurrentProcessModules()
 			return modules;
 		}
 		modules.resize(modules.size() * 2);
+	}
+}
+
+std::string PathUtf8(const std::filesystem::path& path)
+{
+	const auto value = path.u8string();
+	return std::string(reinterpret_cast<const char*>(value.data()), value.size());
+}
+
+std::vector<DarwinDyldImageEntry> CurrentDarwinImages()
+{
+	std::vector<DarwinDyldImageEntry> images;
+	bool guest_list_active = false;
+	{
+		std::lock_guard lock(guest_dyld_image_mutex);
+		guest_list_active = guest_dyld_image_list_active;
+		if (guest_list_active) images = guest_dyld_images;
+	}
+	if (!guest_list_active) {
+		const auto modules = CurrentProcessModules();
+		images.reserve(modules.size());
+		for (const auto module : modules) {
+			wchar_t path[MAX_PATH]{};
+			const DWORD length = GetModuleFileNameW(module, path,
+				static_cast<DWORD>(std::size(path)));
+			if (length == 0 || length >= std::size(path)) continue;
+			images.push_back({PathUtf8(std::filesystem::path(path, path + length)),
+				static_cast<const void*>(module), 0});
+		}
+	}
+	{
+		std::lock_guard lock(dynamic_image_mutex);
+		std::vector<DarwinDyldImageEntry> dynamic;
+		dynamic.reserve(dynamic_images.size() * 2);
+		for (const auto& entry : dynamic_images) {
+			const auto* image = entry.second;
+			const auto provider_count =
+				darling::windows_host::DynamicImageProviderCount(*image);
+			for (std::uint32_t index = 0; index < provider_count; ++index) {
+				const auto* header = darling::windows_host::DynamicImageProviderHeader(
+					*image, index);
+				if (header != nullptr)
+					dynamic.push_back({PathUtf8(
+						darling::windows_host::DynamicImageProviderPath(*image, index)),
+						header, darling::windows_host::DynamicImageProviderSlide(*image, index)});
+			}
+			const auto* header = darling::windows_host::DynamicImageHeader(*image);
+			if (header == nullptr) continue;
+			dynamic.push_back({PathUtf8(darling::windows_host::DynamicImagePath(*image)),
+				header, darling::windows_host::DynamicImageSlide(*image)});
+		}
+		std::sort(dynamic.begin(), dynamic.end(), [](const auto& left, const auto& right) {
+			return left.path < right.path;
+		});
+		for (auto& entry : dynamic) {
+			const auto duplicate = std::find_if(images.begin(), images.end(),
+				[&entry](const auto& current) { return current.header == entry.header; });
+			if (duplicate == images.end()) images.push_back(std::move(entry));
+		}
+	}
+	return images;
+}
+
+void NotifyGuestDyldImageChanges()
+{
+	std::lock_guard notification_lock(guest_dyld_notification_mutex);
+	std::vector<DarwinDyldImageEntry> current;
+	bool active = false;
+	{
+		std::lock_guard lock(guest_dyld_image_mutex);
+		active = guest_dyld_image_list_active;
+	}
+	if (active) current = CurrentDarwinImages();
+	std::vector<DarwinDyldImageEntry> previous;
+	std::vector<DarwinDyldImageCallback> add_callbacks;
+	std::vector<DarwinDyldImageCallback> remove_callbacks;
+	{
+		std::lock_guard lock(guest_dyld_callback_mutex);
+		previous = std::move(guest_dyld_notified_images);
+		guest_dyld_notified_images = current;
+		add_callbacks = guest_dyld_add_callbacks;
+		remove_callbacks = guest_dyld_remove_callbacks;
+	}
+	const auto contains_header = [](const auto& list, const void* header) {
+		return std::any_of(list.begin(), list.end(), [header](const auto& image) {
+			return image.header == header;
+		});
+	};
+	for (const auto& image : previous) {
+		if (!contains_header(current, image.header))
+			InvokeDyldImageCallbacks(remove_callbacks, image);
+	}
+	for (const auto& image : current) {
+		if (!contains_header(previous, image.header))
+			InvokeDyldImageCallbacks(add_callbacks, image);
 	}
 }
 
@@ -1193,6 +1315,36 @@ bool CurrentDarwinIdentityId(int& result)
 }
 
 } // namespace
+
+extern "C" int darling_windows_dispatch_poll_descriptor(int descriptor,
+	int writable, std::uint64_t* data)
+{
+	return global_syscalls.PollDispatchSource(descriptor, writable != 0, data);
+}
+
+extern "C" HANDLE darling_windows_dispatch_duplicate_vnode(int descriptor)
+{
+	try { return global_syscalls.DuplicateVnodeDescriptor(descriptor); }
+	catch (...) { return nullptr; }
+}
+
+extern "C" HANDLE darling_windows_dispatch_duplicate_descriptor_handle(
+	int descriptor)
+{
+	try {
+		const HANDLE original = global_syscalls.MappingHandle(descriptor);
+		HANDLE duplicate{};
+		if (!DuplicateHandle(GetCurrentProcess(), original, GetCurrentProcess(),
+			&duplicate, 0, FALSE, DUPLICATE_SAME_ACCESS)) return nullptr;
+		return duplicate;
+	} catch (...) { return nullptr; }
+}
+
+extern "C" int darling_windows_dispatch_snapshot_vnode(HANDLE handle,
+	darling::windows_host::DarwinVnodeSnapshot* snapshot)
+{
+	return global_syscalls.SnapshotVnodeHandle(handle, snapshot) ? 1 : 0;
+}
 
 extern "C" DARLING_HOST_GUEST_ABI int darling_windows_read(int descriptor, void* data, std::size_t bytes)
 {
@@ -4545,6 +4697,13 @@ extern "C" void* darling_windows_mmap(void* address, std::size_t length,
 	const std::uint64_t granularity = system_info.dwAllocationGranularity == 0 ?
 		65536ull : system_info.dwAllocationGranularity;
 	const auto unsigned_offset = static_cast<std::uint64_t>(offset);
+	const auto guest_page_size = static_cast<std::uint64_t>(darling_windows_getpagesize());
+	if (guest_page_size == 0 || unsigned_offset % guest_page_size != 0 ||
+		((flags & map_fixed) != 0 && address != nullptr &&
+		 reinterpret_cast<std::uintptr_t>(address) % guest_page_size != 0)) {
+		darling::windows_host::DarwinErrno::Set(22);
+		return reinterpret_cast<void*>(-1);
+	}
 	const auto aligned_offset = unsigned_offset - (unsigned_offset % granularity);
 	const auto delta = static_cast<std::size_t>(unsigned_offset - aligned_offset);
 	if (delta > (std::numeric_limits<std::size_t>::max)() - length ||
@@ -4554,8 +4713,7 @@ extern "C" void* darling_windows_mmap(void* address, std::size_t length,
 	}
 	const auto map_bytes = delta + length;
 	const auto mapping_end = aligned_offset + map_bytes;
-	const std::uint64_t page_size = system_info.dwPageSize == 0 ? 4096ull :
-		system_info.dwPageSize;
+	const std::uint64_t page_size = guest_page_size;
 	if (static_cast<std::uint64_t>(map_bytes) >
 		(std::numeric_limits<std::uint64_t>::max)() - (page_size - 1)) {
 		darling::windows_host::DarwinErrno::Set(75);
@@ -4798,6 +4956,51 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 	if (name == nullptr) {
 		return 0;
 	}
+	if (std::strcmp(name, "__dispatch_source_type_timer") == 0 ||
+		std::strcmp(name, "_dispatch_source_type_timer") == 0 ||
+		std::strcmp(name, "dispatch_source_type_timer") == 0)
+		return reinterpret_cast<std::uintptr_t>(
+			&_dispatch_source_type_timer);
+	if (std::strcmp(name, "__dispatch_source_type_data_add") == 0 ||
+		std::strcmp(name, "_dispatch_source_type_data_add") == 0)
+		return reinterpret_cast<std::uintptr_t>(
+			&_dispatch_source_type_data_add);
+	if (std::strcmp(name, "__dispatch_source_type_data_or") == 0 ||
+		std::strcmp(name, "_dispatch_source_type_data_or") == 0)
+		return reinterpret_cast<std::uintptr_t>(
+			&_dispatch_source_type_data_or);
+	if (std::strcmp(name, "__dispatch_source_type_data_replace") == 0 ||
+		std::strcmp(name, "_dispatch_source_type_data_replace") == 0)
+		return reinterpret_cast<std::uintptr_t>(
+			&_dispatch_source_type_data_replace);
+	if (std::strcmp(name, "__dispatch_source_type_read") == 0 ||
+		std::strcmp(name, "_dispatch_source_type_read") == 0)
+		return reinterpret_cast<std::uintptr_t>(&_dispatch_source_type_read);
+	if (std::strcmp(name, "__dispatch_source_type_write") == 0 ||
+		std::strcmp(name, "_dispatch_source_type_write") == 0)
+		return reinterpret_cast<std::uintptr_t>(&_dispatch_source_type_write);
+	if (std::strcmp(name, "__dispatch_source_type_proc") == 0 ||
+		std::strcmp(name, "_dispatch_source_type_proc") == 0)
+		return reinterpret_cast<std::uintptr_t>(&_dispatch_source_type_proc);
+	if (std::strcmp(name, "__dispatch_source_type_signal") == 0 ||
+		std::strcmp(name, "_dispatch_source_type_signal") == 0)
+		return reinterpret_cast<std::uintptr_t>(&_dispatch_source_type_signal);
+	if (std::strcmp(name, "__dispatch_source_type_vnode") == 0 ||
+		std::strcmp(name, "_dispatch_source_type_vnode") == 0)
+		return reinterpret_cast<std::uintptr_t>(&_dispatch_source_type_vnode);
+	if (std::strcmp(name, "__dispatch_source_type_mach_recv") == 0 ||
+		std::strcmp(name, "_dispatch_source_type_mach_recv") == 0)
+		return reinterpret_cast<std::uintptr_t>(&_dispatch_source_type_mach_recv);
+	if (std::strcmp(name, "__dispatch_source_type_mach_send") == 0 ||
+		std::strcmp(name, "_dispatch_source_type_mach_send") == 0)
+		return reinterpret_cast<std::uintptr_t>(&_dispatch_source_type_mach_send);
+	if (std::strcmp(name, "__dispatch_queue_attr_concurrent") == 0 ||
+		std::strcmp(name, "_dispatch_queue_attr_concurrent") == 0)
+		return reinterpret_cast<std::uintptr_t>(&_dispatch_queue_attr_concurrent);
+	if (const auto appkit_symbol = darling_windows_appkit_symbol(name);
+		appkit_symbol != 0) {
+		return appkit_symbol;
+	}
 	struct HostExportAlias final {
 		const char* name;
 		std::uintptr_t address;
@@ -4844,7 +5047,170 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 		if (std::strcmp(name, export_entry.name) == 0)
 			return export_entry.address;
 	}
+	const HostExportAlias core_graphics_exports[] = {
+		{"_CGColorSpaceCreateDeviceRGB", reinterpret_cast<std::uintptr_t>(&CGColorSpaceCreateDeviceRGB)},
+		{"_CGColorSpaceCreateDeviceGray", reinterpret_cast<std::uintptr_t>(&CGColorSpaceCreateDeviceGray)},
+		{"_CGColorSpaceRetain", reinterpret_cast<std::uintptr_t>(&CGColorSpaceRetain)},
+		{"_CGColorSpaceRelease", reinterpret_cast<std::uintptr_t>(&CGColorSpaceRelease)},
+		{"_CGColorSpaceGetNumberOfComponents", reinterpret_cast<std::uintptr_t>(&CGColorSpaceGetNumberOfComponents)},
+		{"_CGColorCreate", reinterpret_cast<std::uintptr_t>(&CGColorCreate)},
+		{"_CGColorRetain", reinterpret_cast<std::uintptr_t>(&CGColorRetain)},
+		{"_CGColorRelease", reinterpret_cast<std::uintptr_t>(&CGColorRelease)},
+		{"_CGColorGetAlpha", reinterpret_cast<std::uintptr_t>(&CGColorGetAlpha)},
+		{"_CGBitmapContextCreate", reinterpret_cast<std::uintptr_t>(&CGBitmapContextCreate)},
+		{"_CGBitmapContextGetData", reinterpret_cast<std::uintptr_t>(&CGBitmapContextGetData)},
+		{"_CGBitmapContextGetWidth", reinterpret_cast<std::uintptr_t>(&CGBitmapContextGetWidth)},
+		{"_CGBitmapContextGetHeight", reinterpret_cast<std::uintptr_t>(&CGBitmapContextGetHeight)},
+		{"_CGBitmapContextGetBytesPerRow", reinterpret_cast<std::uintptr_t>(&CGBitmapContextGetBytesPerRow)},
+		{"_CGBitmapContextCreateImage", reinterpret_cast<std::uintptr_t>(&CGBitmapContextCreateImage)},
+		{"_CGImageRetain", reinterpret_cast<std::uintptr_t>(&CGImageRetain)},
+		{"_CGImageRelease", reinterpret_cast<std::uintptr_t>(&CGImageRelease)},
+		{"_CGDataProviderCreateWithCFData", reinterpret_cast<std::uintptr_t>(&CGDataProviderCreateWithCFData)},
+		{"_CGDataProviderCreateWithData", reinterpret_cast<std::uintptr_t>(&CGDataProviderCreateWithData)},
+		{"_CGDataProviderCreateSequential", reinterpret_cast<std::uintptr_t>(&CGDataProviderCreateSequential)},
+		{"_CGDataProviderCreateDirect", reinterpret_cast<std::uintptr_t>(&CGDataProviderCreateDirect)},
+		{"_CGDataProviderCreateWithURL", reinterpret_cast<std::uintptr_t>(&CGDataProviderCreateWithURL)},
+		{"_CGDataProviderCreateWithFilename", reinterpret_cast<std::uintptr_t>(&CGDataProviderCreateWithFilename)},
+		{"_CGDataProviderRetain", reinterpret_cast<std::uintptr_t>(&CGDataProviderRetain)},
+		{"_CGDataProviderRelease", reinterpret_cast<std::uintptr_t>(&CGDataProviderRelease)},
+		{"_CGDataProviderGetTypeID", reinterpret_cast<std::uintptr_t>(&CGDataProviderGetTypeID)},
+		{"_CGDataProviderGetSize", reinterpret_cast<std::uintptr_t>(&CGDataProviderGetSize)},
+		{"_CGDataProviderGetBytePointer", reinterpret_cast<std::uintptr_t>(&CGDataProviderGetBytePointer)},
+		{"_CGDataProviderReleaseBytePointer", reinterpret_cast<std::uintptr_t>(&CGDataProviderReleaseBytePointer)},
+		{"_CGDataProviderGetBytesAtPosition", reinterpret_cast<std::uintptr_t>(&CGDataProviderGetBytesAtPosition)},
+		{"_CGDataProviderCopyData", reinterpret_cast<std::uintptr_t>(&CGDataProviderCopyData)},
+		{"_CFRetain", reinterpret_cast<std::uintptr_t>(&CFRetain)},
+		{"_CFRelease", reinterpret_cast<std::uintptr_t>(&CFRelease)},
+		{"_CFGetTypeID", reinterpret_cast<std::uintptr_t>(&CFGetTypeID)},
+		{"_CFDataCreate", reinterpret_cast<std::uintptr_t>(&CFDataCreate)},
+		{"_CFDataCreateMutable", reinterpret_cast<std::uintptr_t>(&CFDataCreateMutable)},
+		{"_CFDataCreateCopy", reinterpret_cast<std::uintptr_t>(&CFDataCreateCopy)},
+		{"_CFDataGetBytePtr", reinterpret_cast<std::uintptr_t>(&CFDataGetBytePtr)},
+		{"_CFDataGetMutableBytePtr", reinterpret_cast<std::uintptr_t>(&CFDataGetMutableBytePtr)},
+		{"_CFDataGetLength", reinterpret_cast<std::uintptr_t>(&CFDataGetLength)},
+		{"_CFDataGetBytes", reinterpret_cast<std::uintptr_t>(&CFDataGetBytes)},
+		{"_CFDataAppendBytes", reinterpret_cast<std::uintptr_t>(&CFDataAppendBytes)},
+		{"_CFDataReplaceBytes", reinterpret_cast<std::uintptr_t>(&CFDataReplaceBytes)},
+		{"_CFDataSetLength", reinterpret_cast<std::uintptr_t>(&CFDataSetLength)},
+		{"_CFDataGetTypeID", reinterpret_cast<std::uintptr_t>(&CFDataGetTypeID)},
+		{"_CFBundleCreate", reinterpret_cast<std::uintptr_t>(&CFBundleCreate)},
+		{"_CFBundleGetMainBundle", reinterpret_cast<std::uintptr_t>(&CFBundleGetMainBundle)},
+		{"_CFBundleCopyBundleURL", reinterpret_cast<std::uintptr_t>(&CFBundleCopyBundleURL)},
+		{"_CFBundleCopyExecutableURL", reinterpret_cast<std::uintptr_t>(&CFBundleCopyExecutableURL)},
+		{"_CFBundleCopyResourcesDirectoryURL", reinterpret_cast<std::uintptr_t>(&CFBundleCopyResourcesDirectoryURL)},
+		{"_CFBundleCopyBuiltInPlugInsURL", reinterpret_cast<std::uintptr_t>(&CFBundleCopyBuiltInPlugInsURL)},
+		{"_CFBundleCopyPrivateFrameworksURL", reinterpret_cast<std::uintptr_t>(&CFBundleCopyPrivateFrameworksURL)},
+		{"_CFBundleCopySharedFrameworksURL", reinterpret_cast<std::uintptr_t>(&CFBundleCopySharedFrameworksURL)},
+		{"_CFBundleCopySharedSupportURL", reinterpret_cast<std::uintptr_t>(&CFBundleCopySharedSupportURL)},
+		{"_CFBundleCopyResourceURL", reinterpret_cast<std::uintptr_t>(&CFBundleCopyResourceURL)},
+		{"_CFBundleCreateBundlesFromDirectory", reinterpret_cast<std::uintptr_t>(&CFBundleCreateBundlesFromDirectory)},
+		{"_CFBundleGetBundleWithIdentifier", reinterpret_cast<std::uintptr_t>(&CFBundleGetBundleWithIdentifier)},
+		{"_CFBundleGetAllBundles", reinterpret_cast<std::uintptr_t>(&CFBundleGetAllBundles)},
+		{"_CFBundleGetInfoDictionary", reinterpret_cast<std::uintptr_t>(&CFBundleGetInfoDictionary)},
+		{"_CFBundleGetValueForInfoDictionaryKey", reinterpret_cast<std::uintptr_t>(&CFBundleGetValueForInfoDictionaryKey)},
+		{"_CFBundleGetIdentifier", reinterpret_cast<std::uintptr_t>(&CFBundleGetIdentifier)},
+		{"_CFBundleCopyLocalizedString", reinterpret_cast<std::uintptr_t>(&CFBundleCopyLocalizedString)},
+		{"_CFBundleGetTypeID", reinterpret_cast<std::uintptr_t>(&CFBundleGetTypeID)},
+		{"_CFBundleIsExecutableLoaded", reinterpret_cast<std::uintptr_t>(&CFBundleIsExecutableLoaded)},
+		{"_CFBundlePreflightExecutable", reinterpret_cast<std::uintptr_t>(&CFBundlePreflightExecutable)},
+		{"_CFBundleLoadExecutable", reinterpret_cast<std::uintptr_t>(&CFBundleLoadExecutable)},
+		{"_CFBundleUnloadExecutable", reinterpret_cast<std::uintptr_t>(&CFBundleUnloadExecutable)},
+		{"_CFBundleGetFunctionPointerForName", reinterpret_cast<std::uintptr_t>(&CFBundleGetFunctionPointerForName)},
+		{"_CFBundleGetDataPointerForName", reinterpret_cast<std::uintptr_t>(&CFBundleGetDataPointerForName)},
+		{"_CGImageDestinationCreateWithData", reinterpret_cast<std::uintptr_t>(&CGImageDestinationCreateWithData)},
+		{"_CGImageDestinationCreateWithDataConsumer", reinterpret_cast<std::uintptr_t>(&CGImageDestinationCreateWithDataConsumer)},
+		{"_CGImageDestinationCreateWithURL", reinterpret_cast<std::uintptr_t>(&CGImageDestinationCreateWithURL)},
+		{"_CGDataConsumerCreate", reinterpret_cast<std::uintptr_t>(&CGDataConsumerCreate)},
+		{"_CGDataConsumerCreateWithCFData", reinterpret_cast<std::uintptr_t>(&CGDataConsumerCreateWithCFData)},
+		{"_CGDataConsumerCreateWithURL", reinterpret_cast<std::uintptr_t>(&CGDataConsumerCreateWithURL)},
+		{"_CGDataConsumerRetain", reinterpret_cast<std::uintptr_t>(&CGDataConsumerRetain)},
+		{"_CGDataConsumerRelease", reinterpret_cast<std::uintptr_t>(&CGDataConsumerRelease)},
+		{"_CGDataConsumerGetTypeID", reinterpret_cast<std::uintptr_t>(&CGDataConsumerGetTypeID)},
+		{"_CGImageDestinationAddImage", reinterpret_cast<std::uintptr_t>(&CGImageDestinationAddImage)},
+		{"_CGImageDestinationAddImageFromSource", reinterpret_cast<std::uintptr_t>(&CGImageDestinationAddImageFromSource)},
+		{"_CGImageDestinationFinalize", reinterpret_cast<std::uintptr_t>(&CGImageDestinationFinalize)},
+		{"_CGImageDestinationCopyTypeIdentifiers", reinterpret_cast<std::uintptr_t>(&CGImageDestinationCopyTypeIdentifiers)},
+		{"_CGImageDestinationGetTypeID", reinterpret_cast<std::uintptr_t>(&CGImageDestinationGetTypeID)},
+		{"_CGImageSourceCreateWithData", reinterpret_cast<std::uintptr_t>(&CGImageSourceCreateWithData)},
+		{"_CGImageSourceCreateWithDataProvider", reinterpret_cast<std::uintptr_t>(&CGImageSourceCreateWithDataProvider)},
+		{"_CGImageSourceCreateWithURL", reinterpret_cast<std::uintptr_t>(&CGImageSourceCreateWithURL)},
+		{"_CGImageSourceCreateIncremental", reinterpret_cast<std::uintptr_t>(&CGImageSourceCreateIncremental)},
+		{"_CGImageSourceUpdateData", reinterpret_cast<std::uintptr_t>(&CGImageSourceUpdateData)},
+		{"_CGImageSourceGetCount", reinterpret_cast<std::uintptr_t>(&CGImageSourceGetCount)},
+		{"_CGImageSourceGetTypeID", reinterpret_cast<std::uintptr_t>(&CGImageSourceGetTypeID)},
+		{"_CGImageSourceGetStatus", reinterpret_cast<std::uintptr_t>(&CGImageSourceGetStatus)},
+		{"_CGImageSourceGetStatusAtIndex", reinterpret_cast<std::uintptr_t>(&CGImageSourceGetStatusAtIndex)},
+		{"_CGImageSourceGetType", reinterpret_cast<std::uintptr_t>(&CGImageSourceGetType)},
+		{"_CGImageSourceCopyTypeIdentifiers", reinterpret_cast<std::uintptr_t>(&CGImageSourceCopyTypeIdentifiers)},
+		{"_CGImageSourceCreateImageAtIndex", reinterpret_cast<std::uintptr_t>(&CGImageSourceCreateImageAtIndex)},
+		{"_CGImageSourceCreateThumbnailAtIndex", reinterpret_cast<std::uintptr_t>(&CGImageSourceCreateThumbnailAtIndex)},
+		{"_kCGImageSourceThumbnailMaxPixelSize", reinterpret_cast<std::uintptr_t>(kCGImageSourceThumbnailMaxPixelSize)},
+		{"_kCGImageSourceCreateThumbnailFromImageAlways", reinterpret_cast<std::uintptr_t>(kCGImageSourceCreateThumbnailFromImageAlways)},
+		{"_kCGImageSourceCreateThumbnailFromImageIfAbsent", reinterpret_cast<std::uintptr_t>(kCGImageSourceCreateThumbnailFromImageIfAbsent)},
+		{"_kCGImageSourceCreateThumbnailWithTransform", reinterpret_cast<std::uintptr_t>(kCGImageSourceCreateThumbnailWithTransform)},
+		{"_CGImageSourceCopyPropertiesAtIndex", reinterpret_cast<std::uintptr_t>(&CGImageSourceCopyPropertiesAtIndex)},
+		{"_CGImageSourceCopyProperties", reinterpret_cast<std::uintptr_t>(&CGImageSourceCopyProperties)},
+		{"_kCGImagePropertyImageCount", reinterpret_cast<std::uintptr_t>(kCGImagePropertyImageCount)},
+		{"_kCGImagePropertyPixelWidth", reinterpret_cast<std::uintptr_t>(kCGImagePropertyPixelWidth)},
+		{"_kCGImagePropertyPixelHeight", reinterpret_cast<std::uintptr_t>(kCGImagePropertyPixelHeight)},
+		{"_CGImageGetWidth", reinterpret_cast<std::uintptr_t>(&CGImageGetWidth)},
+		{"_CGImageGetHeight", reinterpret_cast<std::uintptr_t>(&CGImageGetHeight)},
+		{"_CGImageGetBytesPerRow", reinterpret_cast<std::uintptr_t>(&CGImageGetBytesPerRow)},
+		{"_CGImageGetBitsPerComponent", reinterpret_cast<std::uintptr_t>(&CGImageGetBitsPerComponent)},
+		{"_CGImageGetBitsPerPixel", reinterpret_cast<std::uintptr_t>(&CGImageGetBitsPerPixel)},
+		{"_CGImageGetColorSpace", reinterpret_cast<std::uintptr_t>(&CGImageGetColorSpace)},
+		{"_CGImageGetBitmapInfo", reinterpret_cast<std::uintptr_t>(&CGImageGetBitmapInfo)},
+		{"_CGContextRetain", reinterpret_cast<std::uintptr_t>(&CGContextRetain)},
+		{"_CGContextRelease", reinterpret_cast<std::uintptr_t>(&CGContextRelease)},
+		{"_CGContextSetRGBFillColor", reinterpret_cast<std::uintptr_t>(&CGContextSetRGBFillColor)},
+		{"_CGContextSetRGBStrokeColor", reinterpret_cast<std::uintptr_t>(&CGContextSetRGBStrokeColor)},
+		{"_CGContextSetLineWidth", reinterpret_cast<std::uintptr_t>(&CGContextSetLineWidth)},
+		{"_CGContextSetAlpha", reinterpret_cast<std::uintptr_t>(&CGContextSetAlpha)},
+		{"_CGContextSetBlendMode", reinterpret_cast<std::uintptr_t>(&CGContextSetBlendMode)},
+		{"_CGContextSaveGState", reinterpret_cast<std::uintptr_t>(&CGContextSaveGState)},
+		{"_CGContextRestoreGState", reinterpret_cast<std::uintptr_t>(&CGContextRestoreGState)},
+		{"_CGContextClip", reinterpret_cast<std::uintptr_t>(&CGContextClip)},
+		{"_CGContextEOClip", reinterpret_cast<std::uintptr_t>(&CGContextEOClip)},
+		{"_CGContextClipToRect", reinterpret_cast<std::uintptr_t>(&CGContextClipToRect)},
+		{"_CGContextClipToMask", reinterpret_cast<std::uintptr_t>(&CGContextClipToMask)},
+		{"_CGContextResetClip", reinterpret_cast<std::uintptr_t>(&CGContextResetClip)},
+		{"_CGContextGetCTM", reinterpret_cast<std::uintptr_t>(&CGContextGetCTM)},
+		{"_CGContextSetCTM", reinterpret_cast<std::uintptr_t>(&CGContextSetCTM)},
+		{"_CGContextConcatCTM", reinterpret_cast<std::uintptr_t>(&CGContextConcatCTM)},
+		{"_CGContextTranslateCTM", reinterpret_cast<std::uintptr_t>(&CGContextTranslateCTM)},
+		{"_CGContextScaleCTM", reinterpret_cast<std::uintptr_t>(&CGContextScaleCTM)},
+		{"_CGContextRotateCTM", reinterpret_cast<std::uintptr_t>(&CGContextRotateCTM)},
+		{"_CGContextSetFillColorWithColor", reinterpret_cast<std::uintptr_t>(&CGContextSetFillColorWithColor)},
+		{"_CGContextFillRect", reinterpret_cast<std::uintptr_t>(&CGContextFillRect)},
+		{"_CGContextClearRect", reinterpret_cast<std::uintptr_t>(&CGContextClearRect)},
+		{"_CGContextDrawImage", reinterpret_cast<std::uintptr_t>(&CGContextDrawImage)},
+		{"_CGContextStrokeRect", reinterpret_cast<std::uintptr_t>(&CGContextStrokeRect)},
+		{"_CGContextBeginPath", reinterpret_cast<std::uintptr_t>(&CGContextBeginPath)},
+		{"_CGContextMoveToPoint", reinterpret_cast<std::uintptr_t>(&CGContextMoveToPoint)},
+		{"_CGContextAddLineToPoint", reinterpret_cast<std::uintptr_t>(&CGContextAddLineToPoint)},
+		{"_CGContextClosePath", reinterpret_cast<std::uintptr_t>(&CGContextClosePath)},
+		{"_CGContextAddRect", reinterpret_cast<std::uintptr_t>(&CGContextAddRect)},
+		{"_CGContextAddEllipseInRect", reinterpret_cast<std::uintptr_t>(&CGContextAddEllipseInRect)},
+		{"_CGContextFillEllipseInRect", reinterpret_cast<std::uintptr_t>(&CGContextFillEllipseInRect)},
+		{"_CGContextStrokeEllipseInRect", reinterpret_cast<std::uintptr_t>(&CGContextStrokeEllipseInRect)},
+		{"_CGContextAddCurveToPoint", reinterpret_cast<std::uintptr_t>(&CGContextAddCurveToPoint)},
+		{"_CGContextAddQuadCurveToPoint", reinterpret_cast<std::uintptr_t>(&CGContextAddQuadCurveToPoint)},
+		{"_CGContextAddArc", reinterpret_cast<std::uintptr_t>(&CGContextAddArc)},
+		{"_CGContextAddArcToPoint", reinterpret_cast<std::uintptr_t>(&CGContextAddArcToPoint)},
+		{"_CGContextFillPath", reinterpret_cast<std::uintptr_t>(&CGContextFillPath)},
+		{"_CGContextEOFillPath", reinterpret_cast<std::uintptr_t>(&CGContextEOFillPath)},
+		{"_CGContextStrokePath", reinterpret_cast<std::uintptr_t>(&CGContextStrokePath)},
+		{"_CGContextFlush", reinterpret_cast<std::uintptr_t>(&CGContextFlush)},
+	};
+	for (const auto& export_entry : core_graphics_exports) {
+		if (std::strcmp(name, export_entry.name) == 0)
+			return export_entry.address;
+	}
 	const HostExportAlias runtime_exports[] = {
+		{"__tlv_bootstrap", reinterpret_cast<std::uintptr_t>(
+			&darling::windows_host::abi::darling_windows_abi_tlv_get_addr)},
+		{"___tlv_bootstrap", reinterpret_cast<std::uintptr_t>(
+			&darling::windows_host::abi::darling_windows_abi_tlv_get_addr)},
 		{"___error", reinterpret_cast<std::uintptr_t>(&darling::windows_host::abi::darling_windows_abi_error)},
 		{"__error", reinterpret_cast<std::uintptr_t>(&darling::windows_host::abi::darling_windows_abi_error)},
 		{"__stack_chk_fail", reinterpret_cast<std::uintptr_t>(&darling_windows_stack_chk_fail)},
@@ -5045,8 +5411,50 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 	if (std::strcmp(name, "_class_copyProtocolList") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&class_copyProtocolList);
 	}
-	if (std::strcmp(name, "_objc_msgSend") == 0) {
+	if (std::strcmp(name, "_objc_msgSend") == 0 ||
+		std::strcmp(name, "objc_msgSend") == 0) {
+#if defined(DARLING_ARM64_GUEST_BRIDGE)
+		return reinterpret_cast<std::uintptr_t>(
+			&darling::windows_host::abi::darling_windows_abi_objc_msgSend_arm64);
+#elif defined(__clang__) && defined(_WIN64) && !defined(_M_ARM64) && !defined(__aarch64__)
+		return reinterpret_cast<std::uintptr_t>(
+			&darling::windows_host::abi::darling_windows_abi_objc_msgSend_sysv);
+#else
 		return reinterpret_cast<std::uintptr_t>(&objc_msgSend);
+#endif
+	}
+	if (std::strcmp(name, "_objc_msgSend_stret") == 0 ||
+		std::strcmp(name, "objc_msgSend_stret") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_objc_msgSend_stret);
+	if (std::strcmp(name, "_objc_msgSendSuper_stret") == 0 ||
+		std::strcmp(name, "objc_msgSendSuper_stret") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_objc_msgSendSuper_stret);
+	if (std::strcmp(name, "_objc_msgSendSuper2_stret") == 0 ||
+		std::strcmp(name, "objc_msgSendSuper2_stret") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_objc_msgSendSuper2_stret);
+	if (std::strcmp(name, "_objc_msgSendSuper") == 0 ||
+		std::strcmp(name, "objc_msgSendSuper") == 0) {
+#if defined(DARLING_ARM64_GUEST_BRIDGE)
+		return reinterpret_cast<std::uintptr_t>(
+			&darling::windows_host::abi::darling_windows_abi_objc_msgSendSuper_arm64);
+#elif defined(__clang__) && defined(_WIN64) && !defined(_M_ARM64) && !defined(__aarch64__)
+		return reinterpret_cast<std::uintptr_t>(
+			&darling::windows_host::abi::darling_windows_abi_objc_msgSendSuper_sysv);
+#else
+		return reinterpret_cast<std::uintptr_t>(&objc_msgSendSuper);
+#endif
+	}
+	if (std::strcmp(name, "_objc_msgSendSuper2") == 0 ||
+		std::strcmp(name, "objc_msgSendSuper2") == 0) {
+#if defined(DARLING_ARM64_GUEST_BRIDGE)
+		return reinterpret_cast<std::uintptr_t>(
+			&darling::windows_host::abi::darling_windows_abi_objc_msgSendSuper2_arm64);
+#elif defined(__clang__) && defined(_WIN64) && !defined(_M_ARM64) && !defined(__aarch64__)
+		return reinterpret_cast<std::uintptr_t>(
+			&darling::windows_host::abi::darling_windows_abi_objc_msgSendSuper2_sysv);
+#else
+		return reinterpret_cast<std::uintptr_t>(&objc_msgSendSuper);
+#endif
 	}
 	if (std::strcmp(name, "_objc_retain") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&objc_retain);
@@ -5059,6 +5467,58 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 		std::strcmp(name, "objc_loadWeakRetained") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&objc_loadWeakRetained);
 	}
+	if (std::strcmp(name, "_objc_initWeak") == 0 || std::strcmp(name, "objc_initWeak") == 0)
+		return reinterpret_cast<std::uintptr_t>(&objc_initWeak);
+	if (std::strcmp(name, "_objc_storeWeak") == 0 || std::strcmp(name, "objc_storeWeak") == 0)
+		return reinterpret_cast<std::uintptr_t>(&objc_storeWeak);
+	if (std::strcmp(name, "_objc_loadWeak") == 0 || std::strcmp(name, "objc_loadWeak") == 0)
+		return reinterpret_cast<std::uintptr_t>(&objc_loadWeak);
+	if (std::strcmp(name, "_objc_destroyWeak") == 0 || std::strcmp(name, "objc_destroyWeak") == 0)
+		return reinterpret_cast<std::uintptr_t>(&objc_destroyWeak);
+	if (std::strcmp(name, "_objc_copyWeak") == 0 || std::strcmp(name, "objc_copyWeak") == 0)
+		return reinterpret_cast<std::uintptr_t>(&objc_copyWeak);
+	if (std::strcmp(name, "_objc_moveWeak") == 0 || std::strcmp(name, "objc_moveWeak") == 0)
+		return reinterpret_cast<std::uintptr_t>(&objc_moveWeak);
+	if (std::strcmp(name, "_objc_retainAutoreleasedReturnValue") == 0 ||
+		std::strcmp(name, "objc_retainAutoreleasedReturnValue") == 0)
+		return reinterpret_cast<std::uintptr_t>(&objc_retainAutoreleasedReturnValue);
+	if (std::strcmp(name, "_objc_autoreleaseReturnValue") == 0 ||
+		std::strcmp(name, "objc_autoreleaseReturnValue") == 0)
+		return reinterpret_cast<std::uintptr_t>(&objc_autoreleaseReturnValue);
+	if (std::strcmp(name, "_objc_retainAutorelease") == 0 ||
+		std::strcmp(name, "objc_retainAutorelease") == 0)
+		return reinterpret_cast<std::uintptr_t>(&objc_retainAutorelease);
+	if (std::strcmp(name, "_objc_retainAutoreleaseReturnValue") == 0 ||
+		std::strcmp(name, "objc_retainAutoreleaseReturnValue") == 0)
+		return reinterpret_cast<std::uintptr_t>(&objc_retainAutoreleaseReturnValue);
+	if (std::strcmp(name, "_objc_unsafeClaimAutoreleasedReturnValue") == 0 ||
+		std::strcmp(name, "objc_unsafeClaimAutoreleasedReturnValue") == 0)
+		return reinterpret_cast<std::uintptr_t>(&objc_unsafeClaimAutoreleasedReturnValue);
+	if (std::strcmp(name, "_objc_opt_self") == 0 || std::strcmp(name, "objc_opt_self") == 0)
+		return reinterpret_cast<std::uintptr_t>(&objc_opt_self);
+	if (std::strcmp(name, "_objc_opt_class") == 0 || std::strcmp(name, "objc_opt_class") == 0)
+		return reinterpret_cast<std::uintptr_t>(&objc_opt_class);
+	if (std::strcmp(name, "_objc_opt_respondsToSelector") == 0 ||
+		std::strcmp(name, "objc_opt_respondsToSelector") == 0)
+		return reinterpret_cast<std::uintptr_t>(&objc_opt_respondsToSelector);
+	if (std::strcmp(name, "_objc_opt_isKindOfClass") == 0 ||
+		std::strcmp(name, "objc_opt_isKindOfClass") == 0)
+		return reinterpret_cast<std::uintptr_t>(&objc_opt_isKindOfClass);
+	if (std::strcmp(name, "_objc_autoreleasePoolPush") == 0 ||
+		std::strcmp(name, "objc_autoreleasePoolPush") == 0)
+		return reinterpret_cast<std::uintptr_t>(&objc_autoreleasePoolPush);
+	if (std::strcmp(name, "_objc_autoreleasePoolPop") == 0 ||
+		std::strcmp(name, "objc_autoreleasePoolPop") == 0)
+		return reinterpret_cast<std::uintptr_t>(&objc_autoreleasePoolPop);
+	if (std::strcmp(name, "_objc_getAssociatedObject") == 0 ||
+		std::strcmp(name, "objc_getAssociatedObject") == 0)
+		return reinterpret_cast<std::uintptr_t>(&objc_getAssociatedObject);
+	if (std::strcmp(name, "_objc_setAssociatedObject") == 0 ||
+		std::strcmp(name, "objc_setAssociatedObject") == 0)
+		return reinterpret_cast<std::uintptr_t>(&objc_setAssociatedObject);
+	if (std::strcmp(name, "_objc_removeAssociatedObjects") == 0 ||
+		std::strcmp(name, "objc_removeAssociatedObjects") == 0)
+		return reinterpret_cast<std::uintptr_t>(&objc_removeAssociatedObjects);
 	if (std::strcmp(name, "_objc_release") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&objc_release);
 	}
@@ -5070,6 +5530,162 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 		std::strcmp(name, "_Block_release") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&objc_releaseBlock);
 	}
+	if (std::strcmp(name, "dispatch_get_main_queue") == 0 ||
+		std::strcmp(name, "_dispatch_get_main_queue") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_dispatch_get_main_queue);
+	if (std::strcmp(name, "dispatch_get_global_queue") == 0 ||
+		std::strcmp(name, "_dispatch_get_global_queue") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_dispatch_get_global_queue);
+	if (std::strcmp(name, "dispatch_queue_create") == 0 ||
+		std::strcmp(name, "_dispatch_queue_create") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_dispatch_queue_create);
+	if (std::strcmp(name, "dispatch_retain") == 0 ||
+		std::strcmp(name, "_dispatch_retain") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_dispatch_retain);
+	if (std::strcmp(name, "dispatch_release") == 0 ||
+		std::strcmp(name, "_dispatch_release") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_dispatch_release);
+	if (std::strcmp(name, "dispatch_async_f") == 0 ||
+		std::strcmp(name, "_dispatch_async_f") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_dispatch_async_f);
+	if (std::strcmp(name, "dispatch_sync_f") == 0 ||
+		std::strcmp(name, "_dispatch_sync_f") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_dispatch_sync_f);
+	if (std::strcmp(name, "dispatch_async") == 0 ||
+		std::strcmp(name, "_dispatch_async") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_dispatch_async);
+	if (std::strcmp(name, "dispatch_sync") == 0 ||
+		std::strcmp(name, "_dispatch_sync") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_dispatch_sync);
+	if (std::strcmp(name, "dispatch_barrier_async_f") == 0 ||
+		std::strcmp(name, "_dispatch_barrier_async_f") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_dispatch_barrier_async_f);
+	if (std::strcmp(name, "dispatch_barrier_sync_f") == 0 ||
+		std::strcmp(name, "_dispatch_barrier_sync_f") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_dispatch_barrier_sync_f);
+	if (std::strcmp(name, "dispatch_barrier_async") == 0 ||
+		std::strcmp(name, "_dispatch_barrier_async") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_dispatch_barrier_async);
+	if (std::strcmp(name, "dispatch_barrier_sync") == 0 ||
+		std::strcmp(name, "_dispatch_barrier_sync") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_dispatch_barrier_sync);
+	if (std::strcmp(name, "dispatch_after_f") == 0 ||
+		std::strcmp(name, "_dispatch_after_f") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_dispatch_after_f);
+	if (std::strcmp(name, "dispatch_after") == 0 ||
+		std::strcmp(name, "_dispatch_after") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_dispatch_after);
+	if (std::strcmp(name, "dispatch_once_f") == 0 ||
+		std::strcmp(name, "_dispatch_once_f") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_dispatch_once_f);
+	if (std::strcmp(name, "dispatch_once") == 0 ||
+		std::strcmp(name, "_dispatch_once") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_dispatch_once);
+	if (std::strcmp(name, "dispatch_group_create") == 0 ||
+		std::strcmp(name, "_dispatch_group_create") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_dispatch_group_create);
+	if (std::strcmp(name, "dispatch_group_enter") == 0 ||
+		std::strcmp(name, "_dispatch_group_enter") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_dispatch_group_enter);
+	if (std::strcmp(name, "dispatch_group_leave") == 0 ||
+		std::strcmp(name, "_dispatch_group_leave") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_dispatch_group_leave);
+	if (std::strcmp(name, "dispatch_group_wait") == 0 ||
+		std::strcmp(name, "_dispatch_group_wait") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_dispatch_group_wait);
+	if (std::strcmp(name, "dispatch_group_async_f") == 0 ||
+		std::strcmp(name, "_dispatch_group_async_f") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_dispatch_group_async_f);
+	if (std::strcmp(name, "dispatch_group_async") == 0 ||
+		std::strcmp(name, "_dispatch_group_async") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_dispatch_group_async);
+	if (std::strcmp(name, "dispatch_group_notify_f") == 0 ||
+		std::strcmp(name, "_dispatch_group_notify_f") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_dispatch_group_notify_f);
+	if (std::strcmp(name, "dispatch_group_notify") == 0 ||
+		std::strcmp(name, "_dispatch_group_notify") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_dispatch_group_notify);
+	if (std::strcmp(name, "dispatch_semaphore_create") == 0 ||
+		std::strcmp(name, "_dispatch_semaphore_create") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_dispatch_semaphore_create);
+	if (std::strcmp(name, "dispatch_semaphore_signal") == 0 ||
+		std::strcmp(name, "_dispatch_semaphore_signal") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_dispatch_semaphore_signal);
+	if (std::strcmp(name, "dispatch_semaphore_wait") == 0 ||
+		std::strcmp(name, "_dispatch_semaphore_wait") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_dispatch_semaphore_wait);
+	if (std::strcmp(name, "dispatch_semaphore_dispose") == 0 ||
+		std::strcmp(name, "_dispatch_semaphore_dispose") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_dispatch_semaphore_dispose);
+	if (std::strcmp(name, "dispatch_time") == 0 ||
+		std::strcmp(name, "_dispatch_time") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_dispatch_time);
+	if (std::strcmp(name, "dispatch_walltime") == 0 ||
+		std::strcmp(name, "_dispatch_walltime") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_dispatch_walltime);
+	if (std::strcmp(name, "dispatch_queue_get_label") == 0 ||
+		std::strcmp(name, "_dispatch_queue_get_label") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_dispatch_queue_get_label);
+	if (std::strcmp(name, "dispatch_queue_set_specific") == 0 ||
+		std::strcmp(name, "_dispatch_queue_set_specific") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_dispatch_queue_set_specific);
+	if (std::strcmp(name, "dispatch_queue_get_specific") == 0 ||
+		std::strcmp(name, "_dispatch_queue_get_specific") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_dispatch_queue_get_specific);
+	if (std::strcmp(name, "dispatch_get_specific") == 0 ||
+		std::strcmp(name, "_dispatch_get_specific") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_dispatch_get_specific);
+	if (std::strcmp(name, "dispatch_source_create") == 0 ||
+		std::strcmp(name, "_dispatch_source_create") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_dispatch_source_create);
+	if (std::strcmp(name, "dispatch_source_set_event_handler_f") == 0 ||
+		std::strcmp(name, "_dispatch_source_set_event_handler_f") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_dispatch_source_set_event_handler_f);
+	if (std::strcmp(name, "dispatch_source_set_event_handler") == 0 ||
+		std::strcmp(name, "_dispatch_source_set_event_handler") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_dispatch_source_set_event_handler);
+	if (std::strcmp(name, "dispatch_source_set_cancel_handler_f") == 0 ||
+		std::strcmp(name, "_dispatch_source_set_cancel_handler_f") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_dispatch_source_set_cancel_handler_f);
+	if (std::strcmp(name, "dispatch_source_set_cancel_handler") == 0 ||
+		std::strcmp(name, "_dispatch_source_set_cancel_handler") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_dispatch_source_set_cancel_handler);
+	if (std::strcmp(name, "dispatch_source_set_timer") == 0 ||
+		std::strcmp(name, "_dispatch_source_set_timer") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_dispatch_source_set_timer);
+	if (std::strcmp(name, "dispatch_source_cancel") == 0 ||
+		std::strcmp(name, "_dispatch_source_cancel") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_dispatch_source_cancel);
+	if (std::strcmp(name, "dispatch_source_testcancel") == 0 ||
+		std::strcmp(name, "_dispatch_source_testcancel") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_dispatch_source_testcancel);
+	if (std::strcmp(name, "dispatch_source_get_handle") == 0 ||
+		std::strcmp(name, "_dispatch_source_get_handle") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_dispatch_source_get_handle);
+	if (std::strcmp(name, "dispatch_source_get_mask") == 0 ||
+		std::strcmp(name, "_dispatch_source_get_mask") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_dispatch_source_get_mask);
+	if (std::strcmp(name, "dispatch_source_get_data") == 0 ||
+		std::strcmp(name, "_dispatch_source_get_data") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_dispatch_source_get_data);
+	if (std::strcmp(name, "dispatch_source_merge_data") == 0 ||
+		std::strcmp(name, "_dispatch_source_merge_data") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_dispatch_source_merge_data);
+	if (std::strcmp(name, "dispatch_set_context") == 0 ||
+		std::strcmp(name, "_dispatch_set_context") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_dispatch_set_context);
+	if (std::strcmp(name, "dispatch_get_context") == 0 ||
+		std::strcmp(name, "_dispatch_get_context") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_dispatch_get_context);
+	if (std::strcmp(name, "dispatch_resume") == 0 ||
+		std::strcmp(name, "_dispatch_resume") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_dispatch_resume);
+	if (std::strcmp(name, "dispatch_suspend") == 0 ||
+		std::strcmp(name, "_dispatch_suspend") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_dispatch_suspend);
+	if (std::strcmp(name, "dispatch_activate") == 0 ||
+		std::strcmp(name, "_dispatch_activate") == 0)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_dispatch_activate);
 	if (std::strcmp(name, "_Block_object_assign") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&_Block_object_assign);
 	}
@@ -5621,6 +6237,18 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 		std::strcmp(name, "___dyld_image_count") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_dyld_image_count);
 	}
+	if (std::strcmp(name, "_dyld_register_func_for_add_image") == 0 ||
+		std::strcmp(name, "__dyld_register_func_for_add_image") == 0 ||
+		std::strcmp(name, "___dyld_register_func_for_add_image") == 0) {
+		return reinterpret_cast<std::uintptr_t>(
+			&darling_windows_dyld_register_func_for_add_image);
+	}
+	if (std::strcmp(name, "_dyld_register_func_for_remove_image") == 0 ||
+		std::strcmp(name, "__dyld_register_func_for_remove_image") == 0 ||
+		std::strcmp(name, "___dyld_register_func_for_remove_image") == 0) {
+		return reinterpret_cast<std::uintptr_t>(
+			&darling_windows_dyld_register_func_for_remove_image);
+	}
 	if (std::strcmp(name, "_dyld_get_image_name") == 0 ||
 		std::strcmp(name, "__dyld_get_image_name") == 0 ||
 		std::strcmp(name, "___dyld_get_image_name") == 0) {
@@ -6137,7 +6765,7 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 	if (std::strcmp(name, "_mach_continuous_time") == 0 ||
 		std::strcmp(name, "__mach_continuous_time") == 0 ||
 		std::strcmp(name, "mach_continuous_time") == 0) {
-		return reinterpret_cast<std::uintptr_t>(&darling_windows_mach_absolute_time);
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_mach_continuous_time);
 	}
 	if (std::strcmp(name, "_mach_timebase_info") == 0 ||
 		std::strcmp(name, "__mach_timebase_info") == 0 ||
@@ -6435,7 +7063,7 @@ extern "C" int darling_windows_atexit_guest(void (*function)())
 	try {
 		std::lock_guard lock(exit_handler_mutex);
 		darling_exit_handlers.push_back({[function]() {
-#if defined(__clang__) && defined(_WIN64)
+#if defined(__clang__) && defined(_WIN64) && !defined(_M_ARM64) && !defined(__aarch64__)
 			using GuestCallback = void(__attribute__((sysv_abi))*)();
 			reinterpret_cast<GuestCallback>(function)();
 #else
@@ -6479,7 +7107,7 @@ extern "C" int darling_windows_cxa_atexit_guest(void (*function)(void*),
 	try {
 		std::lock_guard lock(exit_handler_mutex);
 		darling_exit_handlers.push_back({[function, argument]() {
-#if defined(__clang__) && defined(_WIN64)
+#if defined(__clang__) && defined(_WIN64) && !defined(_M_ARM64) && !defined(__aarch64__)
 			using GuestCallback = void(__attribute__((sysv_abi))*)(void*);
 			reinterpret_cast<GuestCallback>(function)(argument);
 #else
@@ -7162,6 +7790,7 @@ extern "C" void* darling_windows_dlopen(const char* path, int)
 			break;
 		}
 		auto* image = darling::windows_host::OpenDynamicImage(wide_path);
+		std::lock_guard notification_lock(guest_dyld_notification_mutex);
 		darling::windows_host::DarwinDynamicImage* duplicate_image = nullptr;
 		void* duplicate_handle = nullptr;
 		{
@@ -7190,6 +7819,7 @@ extern "C" void* darling_windows_dlopen(const char* path, int)
 			dynamic_loader_error.clear();
 			return duplicate_handle;
 		}
+		NotifyGuestDyldImageChanges();
 		dynamic_loader_error.clear();
 		return image;
 	} catch (...) {
@@ -7739,6 +8369,7 @@ extern "C" int darling_windows_dlclose(void* handle)
 		dynamic_loader_error.clear();
 		return 0;
 	}
+	std::lock_guard notification_lock(guest_dyld_notification_mutex);
 	darling::windows_host::DarwinDynamicImage* dynamic_image = nullptr;
 	{
 		std::lock_guard lock(dynamic_image_mutex);
@@ -7763,6 +8394,7 @@ extern "C" int darling_windows_dlclose(void* handle)
 		}
 	}
 	if (dynamic_image != nullptr) {
+		NotifyGuestDyldImageChanges();
 		darling::windows_host::CloseDynamicImage(dynamic_image);
 		dynamic_loader_error.clear();
 		return 0;
@@ -7773,6 +8405,142 @@ extern "C" int darling_windows_dlclose(void* handle)
 	}
 	dynamic_loader_error.clear();
 	return 0;
+}
+
+namespace {
+
+void ReleaseCFBundleExecutableHandle(void* handle)
+{
+	if (handle != nullptr && handle != DarwinRtldDefaultHandle())
+		darling_windows_dlclose(handle);
+}
+
+bool CFBundleExecutablePath(darling_windows_CFBundleRef bundle, std::string& path)
+{
+	try {
+		const auto url = darling_windows_CFBundleCopyExecutableURL(bundle);
+		if (url == nullptr) return false;
+		std::array<unsigned char, 32768> buffer{};
+		const bool ok = darling_windows_CFURLGetFileSystemRepresentation(
+			url, true, buffer.data(), static_cast<darling_windows_CFIndex>(buffer.size()));
+		darling_windows_CFRelease(url);
+		if (!ok) return false;
+		path.assign(reinterpret_cast<const char*>(buffer.data()));
+		return !path.empty();
+	} catch (...) {
+		path.clear();
+		return false;
+	}
+}
+
+bool CFBundleSymbolName(darling_windows_CFStringRef value, std::array<char, 32768>& name)
+{
+	try {
+		return value != nullptr && darling_windows_CFStringGetCString(
+			value, name.data(), static_cast<darling_windows_CFIndex>(name.size())) &&
+			name[0] != '\0';
+	} catch (...) {
+		return false;
+	}
+}
+
+bool CFBundleMachOAppearsLoadable(const std::string& path)
+{
+	try {
+		const auto image = darling::windows_host::MachOImage::Open(
+			Utf8Path(path.c_str()).wstring());
+		const auto file_type = image.Header().file_type;
+		if (file_type != darling::windows_host::MH_EXECUTE &&
+			file_type != darling::windows_host::MH_DYLIB &&
+			file_type != darling::windows_host::MH_BUNDLE) return false;
+#if defined(_M_ARM64)
+		return image.IsArm64() && !image.Is32Bit();
+#elif defined(_WIN64)
+		return !image.IsArm64() && !image.Is32Bit();
+#else
+		return !image.IsArm64() && image.Is32Bit();
+#endif
+	} catch (...) {
+		return false;
+	}
+}
+
+}
+
+extern "C" DARLING_CF_GUEST_ABI bool CFBundleIsExecutableLoaded(
+	darling_windows_CFBundleRef bundle)
+{
+	return darling_windows_CFBundleIsMainExecutable(bundle) ||
+		darling_windows_CFBundleGetExecutableHandle(bundle) != nullptr;
+}
+
+extern "C" DARLING_CF_GUEST_ABI bool CFBundlePreflightExecutable(
+	darling_windows_CFBundleRef bundle, void** error)
+{
+	if (error != nullptr) *error = nullptr;
+	if (bundle == nullptr) return false;
+	if (CFBundleIsExecutableLoaded(bundle)) return true;
+	std::string path;
+	return CFBundleExecutablePath(bundle, path) &&
+		CFBundleMachOAppearsLoadable(path);
+}
+
+extern "C" DARLING_CF_GUEST_ABI bool CFBundleLoadExecutable(
+	darling_windows_CFBundleRef bundle)
+{
+	try {
+		if (bundle == nullptr || CFBundleIsExecutableLoaded(bundle)) return bundle != nullptr;
+		std::string path;
+		if (!CFBundleExecutablePath(bundle, path)) return false;
+		void* handle = darling_windows_dlopen(path.c_str(), 0);
+		if (handle == nullptr || handle == DarwinRtldDefaultHandle()) return false;
+		if (darling_windows_CFBundleSetExecutableHandle(bundle, handle,
+			&ReleaseCFBundleExecutableHandle)) return true;
+		// A concurrent loader may have installed the bundle handle first. Balance
+		// this call's dlopen reference and report the resulting state.
+		darling_windows_dlclose(handle);
+		return CFBundleIsExecutableLoaded(bundle);
+	} catch (...) {
+		return false;
+	}
+}
+
+extern "C" DARLING_CF_GUEST_ABI void CFBundleUnloadExecutable(
+	darling_windows_CFBundleRef bundle)
+{
+	darling_windows_CFBundleReleaseExecutable(bundle);
+}
+
+extern "C" DARLING_CF_GUEST_ABI void* CFBundleGetFunctionPointerForName(
+	darling_windows_CFBundleRef bundle, darling_windows_CFStringRef function_name)
+{
+	try {
+		std::array<char, 32768> name{};
+		if (bundle == nullptr || !CFBundleSymbolName(function_name, name)) return nullptr;
+		if (!CFBundleIsExecutableLoaded(bundle) && !CFBundleLoadExecutable(bundle)) return nullptr;
+		void* handle = darling_windows_CFBundleIsMainExecutable(bundle)
+			? darling_windows_dlopen(nullptr, 0)
+			: darling_windows_CFBundleGetExecutableHandle(bundle);
+		return handle == nullptr ? nullptr : darling_windows_dlsym(handle, name.data());
+	} catch (...) {
+		return nullptr;
+	}
+}
+
+extern "C" DARLING_CF_GUEST_ABI void* CFBundleGetDataPointerForName(
+	darling_windows_CFBundleRef bundle, darling_windows_CFStringRef symbol_name)
+{
+	try {
+		std::array<char, 32768> name{};
+		if (bundle == nullptr || !CFBundleSymbolName(symbol_name, name)) return nullptr;
+		if (!CFBundleIsExecutableLoaded(bundle) && !CFBundleLoadExecutable(bundle)) return nullptr;
+		void* handle = darling_windows_CFBundleIsMainExecutable(bundle)
+			? darling_windows_dlopen(nullptr, 0)
+			: darling_windows_CFBundleGetExecutableHandle(bundle);
+		return handle == nullptr ? nullptr : darling_windows_dlsym(handle, name.data());
+	} catch (...) {
+		return nullptr;
+	}
 }
 
 extern "C" const char* darling_windows_dlerror()
@@ -7835,70 +8603,110 @@ extern "C" int darling_windows_dladdr(const void* address, darling_dl_info* info
 
 extern "C" std::uint32_t darling_windows_dyld_image_count()
 {
-	const auto modules = CurrentProcessModules();
-	std::lock_guard lock(dynamic_image_mutex);
-	return static_cast<std::uint32_t>(modules.size() + dynamic_images.size());
+	const auto images = CurrentDarwinImages();
+	return static_cast<std::uint32_t>((std::min)(images.size(),
+		static_cast<std::size_t>((std::numeric_limits<std::uint32_t>::max)())));
 }
 
 extern "C" const char* darling_windows_dyld_get_image_name(std::uint32_t index)
 {
-	const auto modules = CurrentProcessModules();
-	if (index < modules.size()) {
-		static thread_local std::string image_name;
-		char path[MAX_PATH]{};
-		const DWORD length = GetModuleFileNameA(modules[index], path,
-			static_cast<DWORD>(std::size(path)));
-		if (length == 0 || length >= std::size(path)) {
-			return nullptr;
-		}
-		image_name.assign(path, length);
-		return image_name.c_str();
-	}
-	std::lock_guard lock(dynamic_image_mutex);
-	const auto dynamic_index = index - static_cast<std::uint32_t>(modules.size());
-	if (dynamic_index >= dynamic_images.size()) return nullptr;
+	const auto images = CurrentDarwinImages();
+	if (index >= images.size()) return nullptr;
 	static thread_local std::string image_name;
-	auto iterator = dynamic_images.begin();
-	std::advance(iterator, dynamic_index);
-	image_name = darling::windows_host::DynamicImagePath(*iterator->second).string();
+	image_name = images[index].path;
 	return image_name.c_str();
 }
 
 extern "C" const void* darling_windows_dyld_get_image_header(std::uint32_t index)
 {
-	const auto modules = CurrentProcessModules();
-	if (index < modules.size()) {
-		return static_cast<const void*>(modules[index]);
-	}
-	std::lock_guard lock(dynamic_image_mutex);
-	const auto dynamic_index = index - static_cast<std::uint32_t>(modules.size());
-	if (dynamic_index >= dynamic_images.size()) return nullptr;
-	auto iterator = dynamic_images.begin();
-	std::advance(iterator, dynamic_index);
-	return darling::windows_host::DynamicImageHeader(*iterator->second);
+	const auto images = CurrentDarwinImages();
+	return index < images.size() ? images[index].header : nullptr;
 }
 
 extern "C" std::intptr_t darling_windows_dyld_get_image_vmaddr_slide(std::uint32_t index)
 {
-	const auto modules = CurrentProcessModules();
-	if (index < modules.size()) return 0;
-	std::lock_guard lock(dynamic_image_mutex);
-	const auto dynamic_index = index - static_cast<std::uint32_t>(modules.size());
-	if (dynamic_index >= dynamic_images.size()) return 0;
-	auto iterator = dynamic_images.begin();
-	std::advance(iterator, dynamic_index);
-	return darling::windows_host::DynamicImageSlide(*iterator->second);
+	const auto images = CurrentDarwinImages();
+	return index < images.size() ? images[index].slide : 0;
+}
+
+extern "C" DARLING_HOST_GUEST_ABI void
+darling_windows_dyld_register_func_for_add_image(
+	darling_dyld_image_callback callback)
+{
+	std::lock_guard notification_lock(guest_dyld_notification_mutex);
+	if (callback == nullptr) return;
+	bool active = false;
+	{
+		std::lock_guard lock(guest_dyld_image_mutex);
+		active = guest_dyld_image_list_active;
+	}
+	if (!active) return;
+	{
+		std::lock_guard lock(guest_dyld_callback_mutex);
+		guest_dyld_add_callbacks.push_back(callback);
+	}
+	const auto images = CurrentDarwinImages();
+	for (const auto& image : images) callback(image.header, image.slide);
+}
+
+extern "C" DARLING_HOST_GUEST_ABI void
+darling_windows_dyld_register_func_for_remove_image(
+	darling_dyld_image_callback callback)
+{
+	std::lock_guard notification_lock(guest_dyld_notification_mutex);
+	if (callback == nullptr) return;
+	{
+		std::lock_guard image_lock(guest_dyld_image_mutex);
+		if (!guest_dyld_image_list_active) return;
+	}
+	std::lock_guard lock(guest_dyld_callback_mutex);
+	guest_dyld_remove_callbacks.push_back(callback);
+}
+
+extern "C" void darling_windows_dyld_set_guest_image_list(
+	const darling_dyld_image_info* images, std::size_t count)
+{
+	std::lock_guard notification_lock(guest_dyld_notification_mutex);
+	std::vector<DarwinDyldImageEntry> replacement;
+	if (images != nullptr && count <= 65536) {
+		replacement.reserve(count);
+		for (std::size_t index = 0; index < count; ++index) {
+			if (images[index].path == nullptr || images[index].header == nullptr) continue;
+			replacement.push_back({images[index].path, images[index].header,
+				images[index].slide});
+		}
+	}
+	{
+		std::lock_guard lock(guest_dyld_image_mutex);
+		guest_dyld_images = replacement;
+		guest_dyld_image_list_active = images != nullptr;
+	}
+	NotifyGuestDyldImageChanges();
+	if (images == nullptr) {
+		std::lock_guard lock(guest_dyld_callback_mutex);
+		guest_dyld_add_callbacks.clear();
+		guest_dyld_remove_callbacks.clear();
+		guest_dyld_notified_images.clear();
+	}
 }
 
 extern "C" int darling_windows_getpagesize()
 {
-	SYSTEM_INFO system_info{};
-	GetSystemInfo(&system_info);
-	if (system_info.dwPageSize == 0 || system_info.dwPageSize > static_cast<DWORD>((std::numeric_limits<int>::max)())) {
-		darling::windows_host::DarwinErrno::Set(22);
-		return -1;
-	}
-	return static_cast<int>(system_info.dwPageSize);
+	constexpr int host_guest_page_size =
+#if defined(_M_ARM64) || defined(__aarch64__)
+		16384;
+#else
+		4096;
+#endif
+	const char* configured = darling_windows_getenv("WINTOSH_DARWIN_PAGESIZE");
+	if (configured == nullptr || *configured == '\0') return host_guest_page_size;
+	for (const char* digit = configured; *digit != '\0'; ++digit)
+		if (*digit < '0' || *digit > '9') return host_guest_page_size;
+	char* end = nullptr;
+	const auto parsed = std::strtol(configured, &end, 10);
+	if (end == configured || *end != '\0' ||
+		(parsed != 4096 && parsed != 16384)) return host_guest_page_size;
+	return static_cast<int>(parsed);
 }
 
 extern "C" int darling_windows_getpagesizes(std::size_t* pagesizes, int count)
@@ -7912,6 +8720,18 @@ extern "C" int darling_windows_getpagesizes(std::size_t* pagesizes, int count)
 	return 1;
 }
 
+namespace {
+std::int64_t DarwinProcessorCountForSysconf(bool maximum)
+{
+	std::uint64_t count = 0;
+	const WORD groups = GetActiveProcessorGroupCount();
+	for (WORD group = 0; group < groups; ++group)
+		count += maximum ? GetMaximumProcessorCount(group) : GetActiveProcessorCount(group);
+	return count > static_cast<std::uint64_t>((std::numeric_limits<std::int64_t>::max)()) ?
+		(std::numeric_limits<std::int64_t>::max)() : static_cast<std::int64_t>(count);
+}
+}
+
 extern "C" std::int64_t darling_windows_sysconf(int name)
 {
 	// Darwin's public sysconf numbering for the values handled here.
@@ -7921,8 +8741,6 @@ extern "C" std::int64_t darling_windows_sysconf(int name)
 	constexpr int sc_nprocessors_onln = 58;
 	constexpr int sc_phys_pages = 200;
 	constexpr int sc_avphys_pages = 201;
-	SYSTEM_INFO system_info{};
-	GetSystemInfo(&system_info);
 	switch (name) {
 	case sc_clk_tck:
 		return 100;
@@ -7931,9 +8749,9 @@ extern "C" std::int64_t darling_windows_sysconf(int name)
 	case 4: // _SC_OPEN_MAX
 		return darling_windows_getdtablesize();
 	case sc_nprocessors_conf:
+		return DarwinProcessorCountForSysconf(true);
 	case sc_nprocessors_onln:
-		return system_info.dwNumberOfProcessors == 0 ? 1 :
-			static_cast<std::int64_t>(system_info.dwNumberOfProcessors);
+		return DarwinProcessorCountForSysconf(false);
 	case sc_phys_pages:
 	case sc_avphys_pages: {
 		MEMORYSTATUSEX memory{};
@@ -8167,6 +8985,242 @@ extern "C" int darling_windows_setpriority(int which, std::uint32_t who, int pri
 	return 0;
 }
 
+namespace {
+
+std::string DarwinSysctlProfileValue(const char* variable, const char* fallback)
+{
+	const char* value = darling_windows_getenv(variable);
+	if (value == nullptr || value[0] == '\0') return fallback;
+	const auto length = std::strlen(value);
+	if (length > 64) return fallback;
+	for (std::size_t index = 0; index < length; ++index) {
+		const auto character = static_cast<unsigned char>(value[index]);
+		if (!std::isalnum(character) && character != '.' && character != '-' &&
+			character != '_' && character != ',') return fallback;
+	}
+	return value;
+}
+
+const char* DarwinHostMachine()
+{
+#if defined(_M_ARM64) || defined(__aarch64__)
+	return "arm64";
+#elif defined(_M_X64) || defined(__x86_64__) || defined(_WIN64)
+	return "x86_64";
+#else
+	return "i386";
+#endif
+}
+
+std::int32_t DarwinHostCPUType()
+{
+#if defined(_M_ARM64) || defined(__aarch64__)
+	return 0x0100000c;
+#elif defined(_M_X64) || defined(__x86_64__) || defined(_WIN64)
+	return 0x01000007;
+#else
+	return 7;
+#endif
+}
+
+std::int32_t DarwinHostCPUSubtype()
+{
+#if defined(_M_ARM64) || defined(__aarch64__)
+	return 0;
+#elif defined(_M_X64) || defined(__x86_64__) || defined(_WIN64)
+	return 3;
+#else
+	return 3;
+#endif
+}
+
+struct DarwinProcessorCounts {
+	int logical_active = 1;
+	int logical_max = 1;
+	int physical_active = 1;
+	int physical_max = 1;
+};
+
+DarwinProcessorCounts QueryDarwinProcessorCounts()
+{
+	DarwinProcessorCounts result;
+	DWORD active_logical = 0;
+	DWORD maximum_logical = 0;
+	const WORD groups = GetActiveProcessorGroupCount();
+	for (WORD group = 0; group < groups; ++group) {
+		active_logical += GetActiveProcessorCount(group);
+		maximum_logical += GetMaximumProcessorCount(group);
+	}
+	if (active_logical != 0) result.logical_active = static_cast<int>(active_logical);
+	if (maximum_logical != 0) result.logical_max = static_cast<int>(maximum_logical);
+	DWORD bytes = 0;
+	(void)GetLogicalProcessorInformationEx(RelationProcessorCore, nullptr, &bytes);
+	if (GetLastError() == ERROR_INSUFFICIENT_BUFFER && bytes != 0) {
+		std::vector<std::byte> storage(bytes);
+		if (GetLogicalProcessorInformationEx(RelationProcessorCore,
+			reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(storage.data()),
+			&bytes)) {
+			DWORD offset = 0;
+			int physical_active = 0;
+			int physical_max = 0;
+			while (offset <= bytes && bytes - offset >= 2 * sizeof(DWORD)) {
+				const auto* record = reinterpret_cast<
+					const SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX*>(storage.data() + offset);
+				if (record->Size < 2 * sizeof(DWORD) ||
+					record->Size > bytes - offset) break;
+				if (record->Relationship == RelationProcessorCore &&
+					record->Size >= offsetof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX,
+						Processor.GroupMask)) {
+					++physical_max;
+					const auto group_count = record->Processor.GroupCount;
+					const auto masks_offset = offsetof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX,
+						Processor.GroupMask);
+					if (group_count <= (record->Size - masks_offset) / sizeof(GROUP_AFFINITY)) {
+						for (WORD group_index = 0; group_index < group_count; ++group_index) {
+							if (record->Processor.GroupMask[group_index].Mask != 0) {
+								++physical_active;
+								break;
+							}
+						}
+					}
+				}
+				offset += record->Size;
+			}
+			if (physical_max > 0) result.physical_max = physical_max;
+			if (physical_active > 0) result.physical_active = physical_active;
+		}
+	}
+	return result;
+}
+
+std::vector<CACHE_RELATIONSHIP> DarwinHostCacheRelationships()
+{
+	std::vector<CACHE_RELATIONSHIP> result;
+	DWORD bytes = 0;
+	(void)GetLogicalProcessorInformationEx(RelationCache, nullptr, &bytes);
+	if (GetLastError() != ERROR_INSUFFICIENT_BUFFER || bytes == 0) return result;
+	std::vector<std::byte> storage(bytes);
+	if (!GetLogicalProcessorInformationEx(RelationCache,
+		reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(storage.data()), &bytes))
+		return result;
+	DWORD offset = 0;
+	while (offset <= bytes && bytes - offset >= 2 * sizeof(DWORD)) {
+		const auto* record = reinterpret_cast<
+			const SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX*>(storage.data() + offset);
+		if (record->Size < 2 * sizeof(DWORD) || record->Size > bytes - offset) break;
+		const auto cache_offset = offsetof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX, Cache);
+		if (record->Relationship == RelationCache &&
+			record->Size >= cache_offset + sizeof(CACHE_RELATIONSHIP))
+			result.push_back(record->Cache);
+		offset += record->Size;
+	}
+	return result;
+}
+
+bool DarwinHostCacheSize(BYTE level, bool instruction_cache, std::uint64_t& size)
+{
+	const auto caches = DarwinHostCacheRelationships();
+	DWORD smallest = (std::numeric_limits<DWORD>::max)();
+	for (const auto& cache : caches) {
+		if (cache.Level != level || cache.CacheSize == 0) continue;
+		const bool matching_type = instruction_cache ?
+			(cache.Type == CacheInstruction || cache.Type == CacheUnified) :
+			(cache.Type == CacheData || cache.Type == CacheUnified);
+		if (matching_type) smallest = (std::min)(smallest, cache.CacheSize);
+	}
+	if (smallest == (std::numeric_limits<DWORD>::max)()) return false;
+	size = smallest;
+	return true;
+}
+
+bool DarwinOptionalHardwareFeature(const char* name, int& value)
+{
+	if (std::strcmp(name, "hw.optional.floatingpoint") == 0 ||
+		std::strcmp(name, "hw.optional.64bitops") == 0) {
+		value = 1;
+		return true;
+	}
+	if (std::strcmp(name, "hw.optional.arm64") == 0) {
+#if defined(_M_ARM64) || defined(__aarch64__)
+		value = 1;
+#else
+		value = 0;
+#endif
+		return true;
+	}
+	if (std::strcmp(name, "hw.optional.x86_64") == 0) {
+#if defined(_M_X64) || defined(__x86_64__)
+		value = 1;
+#else
+		value = 0;
+#endif
+		return true;
+	}
+#if defined(_M_ARM64) || defined(__aarch64__)
+	if (std::strcmp(name, "hw.optional.neon") == 0) {
+		value = IsProcessorFeaturePresent(PF_ARM_VFP_32_REGISTERS_AVAILABLE) ? 1 : 0;
+		return true;
+	}
+	if (std::strcmp(name, "hw.optional.armv8_1_atomics") == 0) {
+		value = IsProcessorFeaturePresent(PF_ARM_V81_ATOMIC_INSTRUCTIONS_AVAILABLE) ? 1 : 0;
+		return true;
+	}
+	if (std::strcmp(name, "hw.optional.armv8_crc32") == 0) {
+		value = IsProcessorFeaturePresent(PF_ARM_V8_CRC32_INSTRUCTIONS_AVAILABLE) ? 1 : 0;
+		return true;
+	}
+	if (std::strcmp(name, "hw.optional.arm.FEAT_AES") == 0 ||
+		std::strcmp(name, "hw.optional.arm.FEAT_SHA1") == 0 ||
+		std::strcmp(name, "hw.optional.arm.FEAT_SHA256") == 0) {
+		value = IsProcessorFeaturePresent(PF_ARM_V8_CRYPTO_INSTRUCTIONS_AVAILABLE) ? 1 : 0;
+		return true;
+	}
+#elif defined(_M_X64) || defined(__x86_64__)
+	if (std::strcmp(name, "hw.optional.sse2") == 0) {
+		value = IsProcessorFeaturePresent(PF_XMMI64_INSTRUCTIONS_AVAILABLE) ? 1 : 0;
+		return true;
+	}
+	if (std::strcmp(name, "hw.optional.sse3") == 0) {
+		value = IsProcessorFeaturePresent(PF_SSE3_INSTRUCTIONS_AVAILABLE) ? 1 : 0;
+		return true;
+	}
+	if (std::strcmp(name, "hw.optional.avx2_0") == 0) {
+		value = IsProcessorFeaturePresent(PF_AVX2_INSTRUCTIONS_AVAILABLE) ? 1 : 0;
+		return true;
+	}
+	if (std::strcmp(name, "hw.optional.avx512f") == 0) {
+		value = IsProcessorFeaturePresent(PF_AVX512F_INSTRUCTIONS_AVAILABLE) ? 1 : 0;
+		return true;
+	}
+#endif
+	return false;
+}
+
+int DarwinHostCacheLineSize()
+{
+	if (const char* configured = darling_windows_getenv("WINTOSH_DARWIN_CACHELINESIZE");
+		configured != nullptr && *configured != '\0') {
+		bool decimal = true;
+		for (const char* digit = configured; *digit != '\0'; ++digit)
+			if (*digit < '0' || *digit > '9') decimal = false;
+		if (decimal) {
+			char* end = nullptr;
+			const long parsed = std::strtol(configured, &end, 10);
+			if (end != configured && *end == '\0' && parsed >= 16 && parsed <= 4096 &&
+				(parsed & (parsed - 1)) == 0) return static_cast<int>(parsed);
+		}
+	}
+	WORD largest_level_one_data_line = 0;
+	for (const auto& cache : DarwinHostCacheRelationships())
+		if (cache.Level == 1 && (cache.Type == CacheData || cache.Type == CacheUnified))
+			largest_level_one_data_line = (std::max)(largest_level_one_data_line, cache.LineSize);
+	if (largest_level_one_data_line != 0)
+		return static_cast<int>(largest_level_one_data_line);
+	return 64;
+}
+
+} // namespace
+
 extern "C" int darling_windows_sysctlbyname(const char* name, void* old_value,
 	std::size_t* old_length, const void* new_value, std::size_t new_length)
 {
@@ -8188,20 +9242,62 @@ extern "C" int darling_windows_sysctlbyname(const char* name, void* old_value,
 		*old_length = value_length;
 		return 0;
 	};
-	if (std::strcmp(name, "hw.ncpu") == 0 || std::strcmp(name, "hw.logicalcpu") == 0 ||
-		std::strcmp(name, "hw.activecpu") == 0 || std::strcmp(name, "hw.physicalcpu") == 0) {
-		const DWORD count = GetActiveProcessorCount(ALL_PROCESSOR_GROUPS);
-		const int value = count == 0 ? 1 : static_cast<int>(count);
+	if (std::strcmp(name, "hw.ncpu") == 0 || std::strcmp(name, "hw.logicalcpu_max") == 0) {
+		const int value = QueryDarwinProcessorCounts().logical_max;
 		return copy_value(&value, sizeof(value));
 	}
-	if (std::strcmp(name, "hw.optional.arm64") == 0) {
+	if (std::strcmp(name, "hw.logicalcpu") == 0 || std::strcmp(name, "hw.activecpu") == 0) {
+		const int value = QueryDarwinProcessorCounts().logical_active;
+		return copy_value(&value, sizeof(value));
+	}
+	if (std::strcmp(name, "hw.physicalcpu") == 0 ||
+		std::strcmp(name, "hw.physicalcpu_max") == 0) {
+		const auto counts = QueryDarwinProcessorCounts();
+		const int value = std::strcmp(name, "hw.physicalcpu") == 0 ?
+			counts.physical_active : counts.physical_max;
+		return copy_value(&value, sizeof(value));
+	}
+	if (std::strcmp(name, "hw.cputype") == 0) {
+		const int value = DarwinHostCPUType();
+		return copy_value(&value, sizeof(value));
+	}
+	if (std::strcmp(name, "hw.cpusubtype") == 0) {
+		const int value = DarwinHostCPUSubtype();
+		return copy_value(&value, sizeof(value));
+	}
+	if (std::strcmp(name, "hw.byteorder") == 0) {
+		constexpr int little_endian = 1234;
+		return copy_value(&little_endian, sizeof(little_endian));
+	}
+	if (std::strcmp(name, "hw.pagesize") == 0) {
+		const int value = darling_windows_getpagesize();
+		return copy_value(&value, sizeof(value));
+	}
+	if (std::strcmp(name, "hw.cachelinesize") == 0) {
+		const int value = DarwinHostCacheLineSize();
 #if defined(_M_ARM64) || defined(__aarch64__)
-		const int value = 1;
+		const std::uint64_t quad_value = static_cast<std::uint64_t>(value);
+		return copy_value(&quad_value, sizeof(quad_value));
 #else
-		const int value = 0;
+		return copy_value(&value, sizeof(value));
 #endif
+	}
+	struct CacheSizeSelector final { const char* name; BYTE level; bool instruction; };
+	constexpr CacheSizeSelector cache_size_selectors[] = {
+		{"hw.l1icachesize", 1, true}, {"hw.l1dcachesize", 1, false},
+		{"hw.l2cachesize", 2, false}, {"hw.l3cachesize", 3, false}};
+	for (const auto& selector : cache_size_selectors) {
+		if (std::strcmp(name, selector.name) != 0) continue;
+		std::uint64_t value = 0;
+		if (!DarwinHostCacheSize(selector.level, selector.instruction, value)) {
+			darling::windows_host::DarwinErrno::Set(2);
+			return -1;
+		}
 		return copy_value(&value, sizeof(value));
 	}
+	int optional_feature = 0;
+	if (DarwinOptionalHardwareFeature(name, optional_feature))
+		return copy_value(&optional_feature, sizeof(optional_feature));
 	if (std::strcmp(name, "hw.memsize") == 0) {
 		MEMORYSTATUSEX memory{};
 		memory.dwLength = sizeof(memory);
@@ -8211,26 +9307,34 @@ extern "C" int darling_windows_sysctlbyname(const char* name, void* old_value,
 		}
 		return copy_value(&memory.ullTotalPhys, sizeof(memory.ullTotalPhys));
 	}
-	if (std::strcmp(name, "hw.machine") == 0 || std::strcmp(name, "hw.model") == 0 ||
+	if (std::strcmp(name, "hw.machine") == 0 ||
+		std::strcmp(name, "hw.machine_arch") == 0 ||
+		std::strcmp(name, "hw.model") == 0 ||
 		std::strcmp(name, "kern.ostype") == 0 || std::strcmp(name, "kern.osrelease") == 0 ||
-		std::strcmp(name, "kern.osversion") == 0) {
-		const char* value = nullptr;
-		if (std::strcmp(name, "hw.machine") == 0) {
-#if defined(_WIN64)
-			value = "x86_64";
-#else
-			value = "i386";
-#endif
+		std::strcmp(name, "kern.version") == 0 || std::strcmp(name, "kern.osversion") == 0 ||
+		std::strcmp(name, "kern.osproductversion") == 0) {
+		std::string value;
+		if (std::strcmp(name, "hw.machine") == 0 ||
+			std::strcmp(name, "hw.machine_arch") == 0) {
+			value = DarwinHostMachine();
 		} else if (std::strcmp(name, "hw.model") == 0) {
-			value = "Darling Windows Host";
+			value = DarwinSysctlProfileValue("WINTOSH_DARWIN_MODEL",
+				DarwinHostCPUType() == 0x0100000c ? "Mac14,2" : "MacPro7,1");
 		} else if (std::strcmp(name, "kern.ostype") == 0) {
 			value = "Darwin";
 		} else if (std::strcmp(name, "kern.osrelease") == 0) {
-			value = "Windows";
+			value = DarwinSysctlProfileValue("WINTOSH_DARWIN_OSRELEASE", "23.0.0");
+		} else if (std::strcmp(name, "kern.version") == 0) {
+			const auto release = DarwinSysctlProfileValue(
+				"WINTOSH_DARWIN_OSRELEASE", "23.0.0");
+			value = "Darwin Kernel Version " + release +
+				": Wintosh compatibility runtime";
+		} else if (std::strcmp(name, "kern.osproductversion") == 0) {
+			value = DarwinSysctlProfileValue("WINTOSH_MACOS_VERSION", "14.0.0");
 		} else {
-			value = "Darling Windows port";
+			value = DarwinSysctlProfileValue("WINTOSH_DARWIN_OSVERSION", "23A344");
 		}
-		return copy_value(value, std::strlen(value) + 1);
+		return copy_value(value.c_str(), value.size() + 1);
 	}
 	darling::windows_host::DarwinErrno::Set(2);
 	return -1;
@@ -8243,10 +9347,6 @@ extern "C" int darling_windows_sysctl(const int* mib, std::uint32_t mib_length,
 	if (mib == nullptr || mib_length != 2 || old_length == nullptr ||
 		(new_value != nullptr && new_length != 0)) {
 		darling::windows_host::DarwinErrno::Set(22);
-		return -1;
-	}
-	if (mib[0] != 6) {
-		darling::windows_host::DarwinErrno::Set(2);
 		return -1;
 	}
 	const auto copy_value = [&](const void* value, std::size_t value_length) {
@@ -8263,33 +9363,70 @@ extern "C" int darling_windows_sysctl(const int* mib, std::uint32_t mib_length,
 		*old_length = value_length;
 		return 0;
 	};
-	const DWORD processor_count = GetActiveProcessorCount(ALL_PROCESSOR_GROUPS);
-	const int processor_value = processor_count == 0 ? 1 : static_cast<int>(processor_count);
+	if (mib[0] == 1) { // CTL_KERN
+		std::string value;
+		switch (mib[1]) {
+		case 1: value = "Darwin"; break; // KERN_OSTYPE
+		case 2: value = DarwinSysctlProfileValue("WINTOSH_DARWIN_OSRELEASE", "23.0.0"); break;
+		case 4: {
+			const auto release = DarwinSysctlProfileValue(
+				"WINTOSH_DARWIN_OSRELEASE", "23.0.0");
+			value = "Darwin Kernel Version " + release +
+				": Wintosh compatibility runtime";
+			break;
+		}
+		case 65: value = DarwinSysctlProfileValue("WINTOSH_DARWIN_OSVERSION", "23A344"); break;
+		default:
+			darling::windows_host::DarwinErrno::Set(2);
+			return -1;
+		}
+		return copy_value(value.c_str(), value.size() + 1);
+	}
+	if (mib[0] != 6) {
+		darling::windows_host::DarwinErrno::Set(2);
+		return -1;
+	}
+	const auto processor_counts = QueryDarwinProcessorCounts();
 	const int page_size = darling_windows_getpagesize();
-	const char* machine = nullptr;
-#if defined(_WIN64)
-	const char* machine_name = "x86_64";
-#else
-	const char* machine_name = "i386";
-#endif
+	const char* machine_name = DarwinHostMachine();
 	switch (mib[1]) {
 	case 1: // HW_MACHINE
 	case 12: // HW_MACHINE_ARCH
-		machine = machine_name;
-		return copy_value(machine, std::strlen(machine) + 1);
+		return copy_value(machine_name, std::strlen(machine_name) + 1);
 	case 2: { // HW_MODEL
-		machine = "Darling Windows Host";
-		return copy_value(machine, std::strlen(machine) + 1);
+		const auto model = DarwinSysctlProfileValue("WINTOSH_DARWIN_MODEL",
+			DarwinHostCPUType() == 0x0100000c ? "Mac14,2" : "MacPro7,1");
+		return copy_value(model.c_str(), model.size() + 1);
 	}
 	case 3: // HW_NCPU
+		return copy_value(&processor_counts.logical_max, sizeof(processor_counts.logical_max));
 	case 25: // HW_AVAILCPU
-		return copy_value(&processor_value, sizeof(processor_value));
+		return copy_value(&processor_counts.logical_active, sizeof(processor_counts.logical_active));
 	case 4: { // HW_BYTEORDER
 		const int byte_order = 1234;
 		return copy_value(&byte_order, sizeof(byte_order));
 	}
 	case 7: // HW_PAGESIZE
 		return copy_value(&page_size, sizeof(page_size));
+	case 16: { // HW_CACHELINE
+		const int cache_line_size = DarwinHostCacheLineSize();
+		return copy_value(&cache_line_size, sizeof(cache_line_size));
+	}
+	case 17: // HW_L1ICACHESIZE
+	case 18: // HW_L1DCACHESIZE
+	case 20: // HW_L2CACHESIZE
+	case 22: { // HW_L3CACHESIZE
+		const BYTE level = mib[1] == 17 || mib[1] == 18 ? 1 :
+			(mib[1] == 20 ? 2 : 3);
+		const bool instruction_cache = mib[1] == 17;
+		std::uint64_t cache_size = 0;
+		if (!DarwinHostCacheSize(level, instruction_cache, cache_size)) {
+			darling::windows_host::DarwinErrno::Set(2);
+			return -1;
+		}
+		const int legacy_cache_size = static_cast<int>(cache_size);
+		return copy_value(&legacy_cache_size, sizeof(legacy_cache_size));
+	}
 	case 24: { // HW_MEMSIZE
 		MEMORYSTATUSEX memory{};
 		memory.dwLength = sizeof(memory);
@@ -8554,19 +9691,46 @@ extern "C" int darling_windows_uname(darling_utsname* result)
 	return 0;
 }
 
+namespace {
+std::mutex guest_executable_path_mutex;
+std::wstring current_guest_executable_path;
+}
+
+extern "C" void darling_windows_set_guest_executable_path(const wchar_t* path)
+{
+	try {
+		std::lock_guard<std::mutex> lock(guest_executable_path_mutex);
+		current_guest_executable_path = path == nullptr ? L"" : path;
+		std::replace(current_guest_executable_path.begin(),
+			current_guest_executable_path.end(), L'\\', L'/');
+	} catch (...) {
+		current_guest_executable_path.clear();
+	}
+}
+
 extern "C" int darling_windows_NSGetExecutablePath(char* buffer, std::uint32_t* size)
 {
 	if (size == nullptr) {
 		darling::windows_host::DarwinErrno::Set(22);
 		return -1;
 	}
-	wchar_t path[MAX_PATH]{};
-	const DWORD length = GetModuleFileNameW(nullptr, path, static_cast<DWORD>(std::size(path)));
-	if (length == 0 || length >= std::size(path)) {
-		*size = 0;
-		return -1;
+	std::string utf8_path;
+	std::wstring guest_path;
+	{
+		std::lock_guard<std::mutex> lock(guest_executable_path_mutex);
+		guest_path = current_guest_executable_path;
 	}
-	const std::string utf8_path = Utf8String(std::wstring(path, length));
+	if (!guest_path.empty()) {
+		utf8_path = Utf8String(guest_path);
+	} else {
+		wchar_t path[MAX_PATH]{};
+		const DWORD length = GetModuleFileNameW(nullptr, path, static_cast<DWORD>(std::size(path)));
+		if (length == 0 || length >= std::size(path)) {
+			*size = 0;
+			return -1;
+		}
+		utf8_path = Utf8String(std::wstring(path, length));
+	}
 	const std::size_t required = utf8_path.size() + 1;
 	if (required > std::numeric_limits<std::uint32_t>::max()) {
 		*size = 0;
@@ -8689,6 +9853,25 @@ extern "C" std::uint64_t darling_windows_mach_absolute_time()
 		return 0;
 	}
 	return static_cast<std::uint64_t>(counter.QuadPart);
+}
+
+extern "C" std::uint64_t darling_windows_mach_continuous_time()
+{
+	LARGE_INTEGER frequency{};
+	if (!QueryPerformanceFrequency(&frequency) || frequency.QuadPart <= 0) {
+		darling::windows_host::DarwinErrno::SetFromWin32(GetLastError());
+		return 0;
+	}
+	const auto elapsed_ms = GetTickCount64();
+	const auto rate = static_cast<std::uint64_t>(frequency.QuadPart);
+	const auto seconds = elapsed_ms / 1000;
+	const auto remainder_ms = elapsed_ms % 1000;
+	const auto maximum = (std::numeric_limits<std::uint64_t>::max)();
+	if (seconds > maximum / rate) return maximum;
+	const auto fraction = (rate / 1000) * remainder_ms +
+		((rate % 1000) * remainder_ms) / 1000;
+	const auto whole = seconds * rate;
+	return whole > maximum - fraction ? maximum : whole + fraction;
 }
 
 extern "C" int darling_windows_mach_timebase_info(darling_mach_timebase_info* result)

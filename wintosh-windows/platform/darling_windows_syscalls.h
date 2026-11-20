@@ -16,6 +16,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <mutex>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -26,6 +27,13 @@ struct darling_pollfd final {
 	int fd = -1;
 	short events = 0;
 	short revents = 0;
+};
+
+struct DarwinVnodeSnapshot final {
+	BY_HANDLE_FILE_INFORMATION file{};
+	std::wstring path;
+	DWORD link_count{};
+	bool delete_pending{};
 };
 
 class DarwinSyscalls final {
@@ -48,6 +56,9 @@ public:
 	void Lock(int descriptor, int operation);
 	void Flush(int descriptor);
 	[[nodiscard]] HANDLE MappingHandle(int descriptor) const;
+	[[nodiscard]] HANDLE DuplicateVnodeDescriptor(int descriptor) const;
+	[[nodiscard]] bool SnapshotVnodeHandle(HANDLE handle,
+		DarwinVnodeSnapshot* snapshot) const noexcept;
 	void GetFileInformation(int descriptor, BY_HANDLE_FILE_INFORMATION* information) const;
 	[[nodiscard]] std::filesystem::path PathForDescriptor(int descriptor) const;
 	[[nodiscard]] int GetDescriptorFlags(int descriptor) const;
@@ -60,6 +71,8 @@ public:
 	void Truncate(int descriptor, std::int64_t length);
 	void CreatePipe(int descriptors[2]);
 	[[nodiscard]] int Poll(darling_pollfd* descriptors, std::size_t count, int timeout_ms);
+	[[nodiscard]] int PollDispatchSource(int descriptor, bool writable,
+		std::uint64_t* data);
 	[[nodiscard]] bool IsNonblocking(int descriptor) const;
 	[[nodiscard]] int Socket(int domain, int type, int protocol);
 	void SocketPair(int domain, int type, int protocol, int descriptors[2]);

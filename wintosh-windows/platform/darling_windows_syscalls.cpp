@@ -353,6 +353,53 @@ HANDLE DarwinSyscalls::MappingHandle(int descriptor) const
 	return GetHandle(descriptor);
 }
 
+HANDLE DarwinSyscalls::DuplicateVnodeDescriptor(int descriptor) const
+{
+	const HANDLE original = GetHandle(descriptor);
+	if (GetFileType(original) != FILE_TYPE_DISK) {
+		DarwinErrno::Set(22);
+		throw std::invalid_argument("vnode dispatch source requires a disk file");
+	}
+	HANDLE duplicate{};
+	if (!DuplicateHandle(GetCurrentProcess(), original, GetCurrentProcess(),
+		&duplicate, 0, FALSE, DUPLICATE_SAME_ACCESS)) {
+		ThrowLastError("DuplicateHandle(vnode dispatch source)");
+	}
+	return duplicate;
+}
+
+bool DarwinSyscalls::SnapshotVnodeHandle(HANDLE handle,
+	DarwinVnodeSnapshot* snapshot) const noexcept
+{
+	if (handle == nullptr || handle == INVALID_HANDLE_VALUE || snapshot == nullptr)
+		return false;
+	DarwinVnodeSnapshot current{};
+	if (!GetFileInformationByHandle(handle, &current.file)) return false;
+	FILE_STANDARD_INFO standard{};
+	if (GetFileInformationByHandleEx(handle, FileStandardInfo, &standard,
+		sizeof(standard))) {
+		current.link_count = standard.NumberOfLinks;
+		current.delete_pending = standard.DeletePending != FALSE;
+	} else {
+		current.link_count = current.file.nNumberOfLinks;
+	}
+	const DWORD required = GetFinalPathNameByHandleW(handle, nullptr, 0,
+		FILE_NAME_NORMALIZED | VOLUME_NAME_DOS);
+	if (required != 0) {
+		try {
+			current.path.resize(required);
+			const DWORD written = GetFinalPathNameByHandleW(handle,
+				current.path.data(), required, FILE_NAME_NORMALIZED | VOLUME_NAME_DOS);
+			if (written != 0 && written < required) current.path.resize(written);
+			else current.path.clear();
+		} catch (...) {
+			current.path.clear();
+		}
+	}
+	*snapshot = std::move(current);
+	return true;
+}
+
 std::size_t DarwinSyscalls::ReadAt(int descriptor, void* buffer, std::size_t bytes,
 	std::int64_t offset)
 {
@@ -973,6 +1020,62 @@ int DarwinSyscalls::Poll(darling_pollfd* descriptors, std::size_t count, int tim
 			return ready;
 	}
 	return 0;
+}
+
+int DarwinSyscalls::PollDispatchSource(int descriptor, bool writable,
+	std::uint64_t* data)
+{
+	darling_pollfd poll_descriptor{};
+	poll_descriptor.fd = descriptor;
+	poll_descriptor.events = writable ? 0x0004 : 0x0001;
+	if (Poll(&poll_descriptor, 1, 0) < 0 ||
+		(poll_descriptor.revents & 0x0020) != 0) return -1;
+	const short desired = writable ? 0x0004 : 0x0001;
+	if ((poll_descriptor.revents & (desired | 0x0010)) == 0) return 0;
+	std::uint64_t available = 1;
+	if (!writable) {
+		SOCKET socket = INVALID_SOCKET;
+		{
+			std::scoped_lock lock(m_mutex);
+			const auto found = m_sockets.find(descriptor);
+			if (found != m_sockets.end()) socket = found->second;
+		}
+		if (socket != INVALID_SOCKET) {
+			u_long pending = 0;
+			if (ioctlsocket(socket, FIONREAD, &pending) == 0 && pending != 0)
+				available = pending;
+		} else {
+			HANDLE handle = nullptr;
+			try {
+				handle = descriptor < 3
+					? GetStdHandle(descriptor == 0 ? STD_INPUT_HANDLE :
+						descriptor == 1 ? STD_OUTPUT_HANDLE : STD_ERROR_HANDLE)
+					: GetHandle(descriptor);
+			} catch (...) { return -1; }
+			if (handle != nullptr && handle != INVALID_HANDLE_VALUE) {
+				const DWORD type = GetFileType(handle);
+				if (type == FILE_TYPE_PIPE) {
+					DWORD pending = 0;
+					if (PeekNamedPipe(handle, nullptr, 0, nullptr, &pending, nullptr) &&
+						pending != 0) available = pending;
+				} else if (type == FILE_TYPE_CHAR) {
+					DWORD pending = 0;
+					if (GetNumberOfConsoleInputEvents(handle, &pending) && pending != 0)
+						available = pending;
+				} else if (type == FILE_TYPE_DISK) {
+					LARGE_INTEGER size{};
+					LARGE_INTEGER current{};
+					LARGE_INTEGER zero{};
+					if (GetFileSizeEx(handle, &size) &&
+						SetFilePointerEx(handle, zero, &current, FILE_CURRENT))
+						available = current.QuadPart >= size.QuadPart ? 1 :
+							static_cast<std::uint64_t>(size.QuadPart - current.QuadPart);
+				}
+			}
+		}
+	}
+	if (data != nullptr) *data = available;
+	return 1;
 }
 
 bool DarwinSyscalls::IsNonblocking(int descriptor) const

@@ -68,19 +68,20 @@ std::unordered_map<std::uintptr_t, std::vector<std::byte>> templates;
 void* ResolveDarwinTLV(DarwinTLVDescriptor* descriptor) noexcept
 {
 	if (descriptor == nullptr || descriptor->key == 0 ||
-		descriptor->offset > MaxTLVObjectBytes)
+		descriptor->offset >= MaxTLVObjectBytes)
 		return nullptr;
 	try {
 		auto& object = storage.objects[descriptor->key];
 		if (object.empty()) {
 			std::lock_guard lock(template_mutex);
 			const auto template_it = templates.find(descriptor->key);
-			if (template_it != templates.end())
-				object = template_it->second;
+			if (template_it == templates.end())
+				return nullptr;
+			object = template_it->second;
 		}
-		const auto required = static_cast<std::size_t>(descriptor->offset) + 1;
-		if (object.size() < required)
-			object.insert(object.end(), required - object.size(), std::byte{0});
+		// Never grow a published TLS block: guest pointers must stay stable.
+		if (descriptor->offset >= object.size())
+			return nullptr;
 		return object.data() + descriptor->offset;
 	} catch (...) {
 		return nullptr;
@@ -96,24 +97,43 @@ void InitializeDarwinTLV(DarwinTLVDescriptor* descriptors, std::size_t count)
 void InitializeDarwinTLV(DarwinTLVDescriptor* descriptors, std::size_t count,
 	const void* initial_data, std::size_t initial_bytes)
 {
-	if (descriptors == nullptr || count == 0)
+	const DarwinTLVDescriptorRange range{descriptors, count};
+	InitializeDarwinTLV(&range, 1, initial_data, initial_bytes);
+}
+
+void InitializeDarwinTLV(const DarwinTLVDescriptorRange* ranges, std::size_t range_count,
+	const void* initial_data, std::size_t initial_bytes)
+{
+	if (ranges == nullptr || range_count == 0)
 		return;
 	if (initial_bytes > MaxTLVObjectBytes ||
 		(initial_bytes != 0 && initial_data == nullptr))
 		throw std::invalid_argument("invalid Mach-O TLV initial-value template");
-	if (count > std::numeric_limits<std::size_t>::max() / sizeof(*descriptors))
-		throw std::overflow_error("Mach-O TLV descriptor count overflows");
-	for (std::size_t index = 0; index < count; ++index) {
-		auto& descriptor = descriptors[index];
-		descriptor.thunk = &ResolveDarwinTLV;
-		descriptor.key = next_key.fetch_add(1, std::memory_order_relaxed);
-		if (descriptor.key == 0)
-			throw std::overflow_error("Mach-O TLV descriptor key exhausted");
-		std::vector<std::byte> template_bytes(initial_bytes);
-		if (initial_bytes != 0)
-			std::memcpy(template_bytes.data(), initial_data, initial_bytes);
+	std::size_t object_bytes = initial_bytes;
+	for (std::size_t r = 0; r < range_count; ++r) {
+		if (ranges[r].descriptors == nullptr || ranges[r].count > std::numeric_limits<std::size_t>::max() / sizeof(*ranges[r].descriptors))
+			throw std::invalid_argument("invalid Mach-O TLV descriptor range");
+		for (std::size_t i = 0; i < ranges[r].count; ++i) {
+			if (ranges[r].descriptors[i].offset >= MaxTLVObjectBytes)
+				throw std::invalid_argument("Mach-O TLV descriptor offset exceeds limit");
+			object_bytes = (std::max)(object_bytes, static_cast<std::size_t>(ranges[r].descriptors[i].offset) + 1);
+		}
+	}
+	const auto key = next_key.fetch_add(1, std::memory_order_relaxed);
+	if (key == 0)
+		throw std::overflow_error("Mach-O TLV descriptor key exhausted");
+	std::vector<std::byte> template_bytes(object_bytes);
+	if (initial_bytes != 0)
+		std::memcpy(template_bytes.data(), initial_data, initial_bytes);
+	{
 		std::lock_guard lock(template_mutex);
-		templates.emplace(descriptor.key, std::move(template_bytes));
+		templates.emplace(key, std::move(template_bytes));
+	}
+	for (std::size_t r = 0; r < range_count; ++r) {
+		for (std::size_t i = 0; i < ranges[r].count; ++i) {
+			ranges[r].descriptors[i].thunk = &ResolveDarwinTLV;
+			ranges[r].descriptors[i].key = key;
+		}
 	}
 }
 

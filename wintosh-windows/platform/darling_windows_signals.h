@@ -10,6 +10,7 @@
 
 #include <csignal>
 #include <cstdint>
+#include <functional>
 
 struct darling_darwin_sigset final {
 	std::uint32_t bits[4]{};
@@ -63,6 +64,7 @@ namespace darling::windows_host {
 class DarwinSignals final {
 public:
 	using Handler = void (*)(int);
+	using SourceHandler = std::function<void(int)>;
 
 	[[nodiscard]] static Handler Install(int signal_number, Handler handler) noexcept;
 	static bool Raise(int signal_number) noexcept;
@@ -73,6 +75,9 @@ public:
 	static std::uint64_t Block(std::uint64_t mask) noexcept;
 	static std::uint64_t Unblock(std::uint64_t mask) noexcept;
 	static std::uint64_t Pending() noexcept;
+	[[nodiscard]] static std::uint64_t Subscribe(int signal_number,
+		SourceHandler handler) noexcept;
+	static void Unsubscribe(std::uint64_t token) noexcept;
 };
 
 } // namespace darling::windows_host

@@ -19,7 +19,7 @@ struct hostent;
 struct servent;
 struct protoent;
 
-#if defined(__clang__) && defined(_WIN64)
+#if defined(__clang__) && defined(_WIN64) && !defined(_M_ARM64) && !defined(__aarch64__)
 #define DARLING_HOST_GUEST_ABI __attribute__((sysv_abi))
 #else
 #define DARLING_HOST_GUEST_ABI
@@ -69,6 +69,12 @@ struct darling_dl_info final {
 	void* dli_fbase = nullptr;
 	const char* dli_sname = nullptr;
 	void* dli_saddr = nullptr;
+};
+
+struct darling_dyld_image_info final {
+	const char* path = nullptr;
+	const void* header = nullptr;
+	std::intptr_t slide = 0;
 };
 
 struct darling_siginfo final {
@@ -534,10 +540,25 @@ extern "C" void* darling_windows_dlsym(void* handle, const char* symbol);
 extern "C" int darling_windows_dlclose(void* handle);
 extern "C" const char* darling_windows_dlerror();
 extern "C" int darling_windows_dladdr(const void* address, darling_dl_info* info);
-extern "C" std::uint32_t darling_windows_dyld_image_count();
-extern "C" const char* darling_windows_dyld_get_image_name(std::uint32_t index);
-extern "C" const void* darling_windows_dyld_get_image_header(std::uint32_t index);
-extern "C" std::intptr_t darling_windows_dyld_get_image_vmaddr_slide(std::uint32_t index);
+extern "C" DARLING_HOST_GUEST_ABI std::uint32_t darling_windows_dyld_image_count();
+extern "C" DARLING_HOST_GUEST_ABI const char* darling_windows_dyld_get_image_name(
+	std::uint32_t index);
+extern "C" DARLING_HOST_GUEST_ABI const void* darling_windows_dyld_get_image_header(
+	std::uint32_t index);
+extern "C" DARLING_HOST_GUEST_ABI std::intptr_t darling_windows_dyld_get_image_vmaddr_slide(
+	std::uint32_t index);
+using darling_dyld_image_callback = void (DARLING_HOST_GUEST_ABI *)(
+	const void* header, std::intptr_t slide);
+extern "C" DARLING_HOST_GUEST_ABI void
+	darling_windows_dyld_register_func_for_add_image(
+		darling_dyld_image_callback callback);
+extern "C" DARLING_HOST_GUEST_ABI void
+	darling_windows_dyld_register_func_for_remove_image(
+		darling_dyld_image_callback callback);
+// Internal bootstrap handoff. The setter copies every path and is not exported
+// through the guest symbol table.
+extern "C" void darling_windows_dyld_set_guest_image_list(
+	const darling_dyld_image_info* images, std::size_t count);
 extern "C" int darling_windows_getpagesize();
 extern "C" int darling_windows_getpagesizes(std::size_t* pagesizes, int count);
 extern "C" void* darling_windows_mmap(void* address, std::size_t length,
@@ -571,6 +592,7 @@ extern "C" int darling_windows_gethostname(char* buffer, std::size_t size);
 extern "C" int darling_windows_getdomainname(char* buffer, std::size_t size);
 extern "C" int darling_windows_uname(darling_utsname* result);
 extern "C" int darling_windows_NSGetExecutablePath(char* buffer, std::uint32_t* size);
+extern "C" void darling_windows_set_guest_executable_path(const wchar_t* path);
 extern "C" int darling_windows_NSVersionOfRunTimeLibrary(const char* name);
 extern "C" int darling_windows_NSVersionOfLinkTimeLibrary(const char* name);
 extern "C" void* darling_windows_NSLookupSymbolInImage(const void* image_header,
@@ -601,6 +623,7 @@ extern "C" int darling_windows_clock_getres(int clock_id, darling_timespec* resu
 extern "C" int darling_windows_clock_nanosleep(int clock_id, int flags,
 	const darling_timespec* request, darling_timespec* remaining);
 extern "C" std::uint64_t darling_windows_mach_absolute_time();
+extern "C" std::uint64_t darling_windows_mach_continuous_time();
 extern "C" int darling_windows_mach_timebase_info(darling_mach_timebase_info* result);
 extern "C" int darling_windows_nanosleep(const darling_timespec* request, darling_timespec* remaining);
 extern "C" int darling_windows_gettimeofday(darling_timeval* result, void* timezone);

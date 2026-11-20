@@ -3,11 +3,37 @@
 Wintosh process runner and executable-entry support for the native Windows
 adapter.
 
-The runner accepts a Mach-O image and invokes the mapped entry point after the
+The runner accepts a Mach-O image or an application `.app` bundle and invokes the mapped entry point after the
 current parser, dyld graph, relocations, bindings, initializers, and Windows
 page protections have been applied. On an x86_64 Windows build this execution
 path is limited to x86_64 Mach-O images whose entry ABI and imported symbols
 are compatible with the Wintosh bridge.
+The Windows ARM64 source now admits matching ARM64 guest code through the
+native instruction path and uses a dedicated Darwin-start stack transfer.
+This path is intended for Clang Windows ARM64 builds; ARM64 MSVC remains
+fail-closed for real guest entry. A fresh ARM64 CMake configure currently fails
+during compiler identification because `msvcrtd.lib` is missing, so the runner
+and guest path are not verified in this environment. All 32 host C++ translation
+units plus the ARM64 startup trampoline compiled directly with Clang and archived
+as 33 ARM64 COFF members in the earlier source pass. The Objective-C guest
+`objc_msgSend`, `objc_msgSendSuper`, and `objc_msgSendSuper2` entries now use
+ARM64 assembly adapters to pass Apple's variadic stack area into the
+signature-aware typed dispatcher; Super2 begins lookup at the superclass of
+the supplied class. The updated Objective-C source, Windows symbol resolver,
+and adapters each compile as ARM64 COFF objects. The shims also restore
+`x0-x1` and `d0-d3` return registers for the supported scalar, HFA, and
+NSRange return classes. This establishes source code generation only, not a
+refreshed full archive, executable link, or working guest ABI. Unsupported
+method signatures, indirect returns, and overflow cases remain unverified.
+
+For `.app` input, it reads `Contents/Info.plist` through Wintosh's existing
+CoreFoundation XML or binary property-list decoder, resolves a string-valued
+`CFBundleExecutable`, and falls back to the bundle filename when metadata is
+missing or invalid. The executable name must be a single path component and
+is resolved under `Contents/MacOS`; Windows drive prefixes and path separators
+in the plist value are rejected. The selected path is normalized to an absolute
+path before bootstrap. This only selects the entry image. It does not imply
+complete bundle resource, plug-in, signing, or framework support.
 
 Example:
 
@@ -24,17 +50,25 @@ without entering the image. Execution of 32-bit i386 or ARM64 Mach-O images
 is rejected on x86_64 Windows because no CPU translation layer is included.
 `--diagnose-host` is independent of an input image and reports the current
 Windows architecture, pointer width, supported native Mach-O target, prefix
-source, and the deliberately unsupported full-macOS boundaries.
+source, preferred universal-binary slice, and the absence of cross-architecture
+CPU translation. This diagnostic reports host-level capability; app-specific
+ABI and framework coverage remain separate.
 `--init-prefix` creates the minimal directory layout used by the native
 Darwin adapter.  It deliberately does not download or invent Apple system
 libraries; the current `libSystem` and `libobjc` boundary is provided by the
 host symbol table, while real Darwin dylibs and frameworks remain a separate
 licensed runtime component.
-`--startup-abi darwin` selects the x86_64 stack trampoline for a Mach-O whose
-entrypoint is a Darwin `crt1`/`dyld` start routine.  `--startup-abi main` is the
-real compatible `int(argc, argv, envp)` path and requires a Clang Windows build
-with System-V ABI support; the MSVC build fails closed before entering guest
-code.  `--startup-abi synthetic-main` is reserved for the repository's marked
+`--startup-abi darwin` selects the native x86_64 or ARM64 trampoline for a
+matching-architecture Mach-O whose entrypoint is a Darwin `crt1`/`dyld` start
+routine. The ARM64 path requires Clang and remains source/build verified only;
+an ARM64 runner executable and guest runtime have not yet been verified.
+`--startup-abi main` is the real compatible `int(argc, argv, envp)` path and
+requires a Clang Windows build. On x86_64 it uses Clang's System-V ABI support;
+on ARM64 the basic integer/pointer entry parameters use x0-x2. Apple ARM64
+differs from Windows for other ABI cases, so this does not establish general
+ARM64 Objective-C or framework-call compatibility. The MSVC build fails closed
+before entering guest code.
+`--startup-abi synthetic-main` is reserved for the repository's marked
 synthetic fixtures, which intentionally use the Windows-compatible calling
 convention and are not proof of Apple ABI execution.
 The runner automatically adds `executable_path=<resolved-image>` to the Apple

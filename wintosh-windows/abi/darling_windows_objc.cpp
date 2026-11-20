@@ -17,7 +17,9 @@
 #include <memory>
 #include <mutex>
 #include <new>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -43,6 +45,7 @@ struct objc_method final {
 	std::string types;
 	Class owner_class{};
 	bool class_method{};
+	bool guest_abi{};
 };
 
 struct objc_class final {
@@ -54,6 +57,7 @@ struct objc_class final {
 	struct Method final {
 		IMP implementation{};
 		std::string types;
+		bool guest_abi{};
 	};
 	std::unordered_map<SEL, Method> methods;
 	std::unordered_map<SEL, Method> class_methods;
@@ -80,6 +84,7 @@ struct objc_protocol final {
 struct darling_objc_image_token final {
 	std::vector<Class> classes;
 	std::vector<Protocol> protocols;
+	std::vector<id> constant_strings;
 };
 
 struct objc_object final {
@@ -162,6 +167,13 @@ constexpr std::int32_t AppleBlockHasCopyDispose = 1 << 25;
 constexpr std::int32_t AppleBlockNeedsFree = 1 << 24;
 constexpr std::int32_t AppleBlockIsGlobal = 1 << 28;
 constexpr std::int32_t AppleBlockHasSignature = 1 << 30;
+#if defined(__clang__) && defined(_WIN64) && !defined(_M_ARM64) && !defined(__aarch64__)
+using AppleBlockCopyHelper = void(__attribute__((sysv_abi)) *)(void*, const void*);
+using AppleBlockDisposeHelper = void(__attribute__((sysv_abi)) *)(const void*);
+#else
+using AppleBlockCopyHelper = void (*)(void*, const void*);
+using AppleBlockDisposeHelper = void (*)(const void*);
+#endif
 
 struct AppleBlockHeader final {
 	void* isa{};
@@ -174,7 +186,7 @@ struct AppleBlockHeader final {
 struct AppleBlockRuntimeState final {
 	std::uint32_t retain_count = 1;
 	std::size_t size = 0;
-	void (*dispose_helper)(const void*){};
+	AppleBlockDisposeHelper dispose_helper{};
 };
 
 std::mutex& AppleBlockRuntimeMutex()
@@ -292,8 +304,8 @@ bool IsManagedAppleBlock(void* raw_block)
 }
 
 bool ReadExternalDescriptor(const AppleBlockHeader& block,
-	std::size_t& size, void (**copy_helper)(void*, const void*),
-	void (**dispose_helper)(const void*))
+	std::size_t& size, AppleBlockCopyHelper* copy_helper,
+	AppleBlockDisposeHelper* dispose_helper)
 {
 	if (block.descriptor == nullptr)
 		return false;
@@ -331,8 +343,8 @@ void* CopyExternalAppleBlock(void* raw_block)
 	if ((block.flags & AppleBlockNeedsFree) != 0)
 		return raw_block;
 	std::size_t size = 0;
-	void (*copy_helper)(void*, const void*) = nullptr;
-	void (*dispose_helper)(const void*) = nullptr;
+	AppleBlockCopyHelper copy_helper = nullptr;
+	AppleBlockDisposeHelper dispose_helper = nullptr;
 	if (!ReadExternalDescriptor(block, size, &copy_helper, &dispose_helper))
 		return raw_block;
 	void* copy = HeapAlloc(GetProcessHeap(), 0, size);
@@ -423,6 +435,12 @@ std::vector<std::unique_ptr<objc_class>>& ClassStorage()
 	return storage;
 }
 
+std::unordered_set<id>& ConstantStrings()
+{
+	static std::unordered_set<id> strings;
+	return strings;
+}
+
 Class EnsureMetaClass(Class cls)
 {
 	if (!cls || cls->is_metaclass) return cls;
@@ -465,6 +483,7 @@ Method MakeMethodView(Class owner, SEL selector, const objc_class::Method& metho
 	MethodViewStorage().back()->types = method.types;
 	MethodViewStorage().back()->owner_class = owner;
 	MethodViewStorage().back()->class_method = class_method;
+	MethodViewStorage().back()->guest_abi = method.guest_abi;
 	return MethodViewStorage().back().get();
 }
 
@@ -473,6 +492,7 @@ struct AutoreleasePoolFrame final {
 };
 thread_local std::vector<std::unique_ptr<AutoreleasePoolFrame>> AutoreleasePools;
 std::unordered_map<id, std::unordered_set<id*>> WeakReferences;
+std::unordered_map<id, darling_objc_object_finalizer> ObjectFinalizers;
 struct AssociatedObjectEntry final {
 	id value = nullptr;
 	objc_AssociationPolicy policy = OBJC_ASSOCIATION_ASSIGN;
@@ -516,6 +536,983 @@ IMP FindMethod(id receiver, SEL selector)
 	return nullptr;
 }
 
+struct DarlingObjcSuper final {
+	id receiver;
+	Class super_class;
+};
+
+#if defined(__clang__) && defined(_WIN64) && !defined(_M_ARM64) && !defined(__aarch64__)
+struct DarlingSysVObjcCallFrame final {
+	std::uintptr_t gp[6];
+	alignas(16) unsigned char xmm[8][16];
+	const std::uintptr_t* stack_arguments;
+	std::uintptr_t vector_argument_count;
+	alignas(16) unsigned char xmm_return[16];
+};
+static_assert(offsetof(DarlingSysVObjcCallFrame, xmm) == 48);
+static_assert(offsetof(DarlingSysVObjcCallFrame, stack_arguments) == 176);
+static_assert(offsetof(DarlingSysVObjcCallFrame, vector_argument_count) == 184);
+static_assert(offsetof(DarlingSysVObjcCallFrame, xmm_return) == 192);
+static_assert(sizeof(DarlingSysVObjcCallFrame) == 208);
+extern "C" std::uintptr_t darling_windows_objc_invoke_sysv_raw(
+	DarlingSysVObjcCallFrame* frame, IMP implementation,
+	std::size_t stack_argument_bytes);
+
+namespace {
+struct ObjcMethodSnapshot final {
+	IMP implementation{};
+	std::string types;
+	bool guest_abi{};
+};
+
+enum class ObjcScalarKind { General, Floating, Void, Unsupported };
+
+bool SkipObjcType(const std::string& encoding, std::size_t& cursor)
+{
+	while (cursor < encoding.size() &&
+		std::string_view("rnNoORV").find(encoding[cursor]) !=
+			std::string_view::npos) ++cursor;
+	if (cursor >= encoding.size()) return false;
+	const char code = encoding[cursor++];
+	if (code == '^') return SkipObjcType(encoding, cursor);
+	if (code == '@' && cursor < encoding.size()) {
+		if (encoding[cursor] == '?') {
+			++cursor;
+			return true;
+		}
+	if (encoding[cursor] == '"') {
+		++cursor;
+		while (cursor < encoding.size() && encoding[cursor] != '"') ++cursor;
+		if (cursor == encoding.size()) return false;
+		++cursor;
+	}
+	return true;
+	}
+	if (code == '{' || code == '(' || code == '[') {
+		const char close = code == '{' ? '}' : code == '(' ? ')' : ']';
+		unsigned depth = 1;
+		bool quoted = false;
+		while (cursor < encoding.size() && depth != 0) {
+			const char current = encoding[cursor++];
+			if (current == '"') quoted = !quoted;
+			if (quoted) continue;
+			if (current == code) ++depth;
+			else if (current == close) --depth;
+		}
+		return depth == 0;
+	}
+	return std::string_view("cCsSiIlLqQBfdv@#:*?b").find(code) !=
+		std::string_view::npos;
+}
+
+std::optional<std::pair<ObjcScalarKind, std::size_t>>
+ClassifyScalarObjcType(const std::string& encoding, std::size_t cursor)
+{
+	const std::size_t start = cursor;
+	while (cursor < encoding.size() &&
+		std::string_view("rnNoORV").find(encoding[cursor]) !=
+			std::string_view::npos) ++cursor;
+	if (cursor >= encoding.size()) return std::nullopt;
+	const char code = encoding[cursor];
+	if (code == '^') {
+		++cursor;
+		if (!SkipObjcType(encoding, cursor)) return std::nullopt;
+		return std::pair{ObjcScalarKind::General, cursor - start};
+	}
+	if (code == '{' || code == '(' || code == '[' || code == 'b' ||
+		code == '?' || code == 'D') return std::nullopt;
+	if (code == '@' && cursor + 1 < encoding.size() && encoding[cursor + 1] == '?')
+		return std::pair{ObjcScalarKind::General, cursor + 2 - start};
+	if (code == '@' && cursor + 1 < encoding.size() &&
+		encoding[cursor + 1] == '"') {
+		const auto end = encoding.find('"', cursor + 2);
+		if (end == std::string::npos) return std::nullopt;
+		return std::pair{ObjcScalarKind::General, end + 1 - start};
+	}
+	if (code == 'f' || code == 'd')
+		return std::pair{ObjcScalarKind::Floating, cursor + 1 - start};
+	if (code == 'v')
+		return std::pair{ObjcScalarKind::Void, cursor + 1 - start};
+	if (std::string_view("cCsSiIlLqQB@#:*").find(code) !=
+		std::string_view::npos)
+		return std::pair{ObjcScalarKind::General, cursor + 1 - start};
+	return std::nullopt;
+}
+
+std::optional<std::size_t> GenericGuestStackArgumentBytes(
+	const std::string& encoding, ObjcScalarKind& return_kind)
+{
+	const auto result_type = ClassifyScalarObjcType(encoding, 0);
+	if (!result_type) return std::nullopt;
+	return_kind = result_type->first;
+	std::size_t cursor = result_type->second;
+	std::size_t general_registers = 0;
+	std::size_t floating_registers = 0;
+	std::size_t stack_slots = 0;
+	while (cursor < encoding.size()) {
+		const auto argument = ClassifyScalarObjcType(encoding, cursor);
+		if (!argument || argument->first == ObjcScalarKind::Void)
+			return std::nullopt;
+		cursor += argument->second;
+		if (argument->first == ObjcScalarKind::Floating) {
+			if (floating_registers < 8) ++floating_registers;
+			else ++stack_slots;
+		} else {
+			if (general_registers < 6) ++general_registers;
+			else ++stack_slots;
+		}
+	}
+	if (stack_slots > 64) return std::nullopt;
+	return stack_slots * sizeof(std::uint64_t);
+}
+
+template <typename Return, typename... Arguments>
+Return InvokeObjcImplementation(IMP implementation, bool guest_abi, id receiver,
+	SEL selector, Arguments... arguments)
+{
+	if (guest_abi) {
+		using Function = Return (__attribute__((sysv_abi)) *)(id, SEL, Arguments...);
+		return reinterpret_cast<Function>(implementation)(receiver, selector,
+			arguments...);
+	}
+	using Function = Return (*)(id, SEL, Arguments...);
+	return reinterpret_cast<Function>(implementation)(receiver, selector,
+		arguments...);
+}
+
+ObjcMethodSnapshot LookupMethodSnapshot(Class start, SEL selector,
+	bool class_method)
+{
+	ObjcMethodSnapshot result;
+	if (start == nullptr || selector == nullptr) return result;
+	std::lock_guard lock(RuntimeMutex());
+	for (Class current = start; current != nullptr; current = current->superclass) {
+		const auto& methods = (class_method && !current->is_metaclass) ?
+			current->class_methods : current->methods;
+		const auto found = methods.find(selector);
+		if (found == methods.end()) continue;
+		result.implementation = found->second.implementation;
+		result.types = found->second.types;
+		result.guest_abi = found->second.guest_abi;
+		break;
+	}
+	return result;
+}
+
+std::string CanonicalObjcEncoding(const std::string& encoding)
+{
+	std::string result;
+	result.reserve(encoding.size());
+	bool quoted = false;
+	for (const unsigned char value : encoding) {
+		if (value == '"') quoted = !quoted;
+		if (!quoted && value >= '0' && value <= '9') continue;
+		result.push_back(static_cast<char>(value));
+	}
+	return result;
+}
+}
+
+namespace {
+std::uintptr_t DispatchSysVObjcCall(DarlingSysVObjcCallFrame* input,
+	unsigned dispatch_kind)
+{
+	if (input == nullptr) return 0;
+	DarlingSysVObjcCallFrame* frame = input;
+	id receiver = nullptr;
+	SEL selector = nullptr;
+	std::size_t argument_index = 2;
+	Class super_start = nullptr;
+	if (dispatch_kind == 0) {
+		receiver = reinterpret_cast<id>(frame->gp[0]);
+		selector = reinterpret_cast<SEL>(frame->gp[1]);
+	} else {
+		const auto* super = reinterpret_cast<const DarlingObjcSuper*>(frame->gp[0]);
+		if (super == nullptr) return 0;
+		receiver = super->receiver;
+		super_start = super->super_class;
+		selector = reinterpret_cast<SEL>(frame->gp[1]);
+		if (dispatch_kind == 2) {
+			if (super_start == nullptr) return 0;
+			super_start = super_start->superclass;
+		}
+	}
+	if (receiver == nullptr || selector == nullptr) return 0;
+	const bool class_method = object_isClass(receiver);
+	const Class start = dispatch_kind != 0 ? super_start :
+		(class_method ? reinterpret_cast<Class>(receiver) : receiver->isa);
+	const auto method = LookupMethodSnapshot(start, selector, class_method);
+	if (method.implementation == nullptr) return 0;
+	const auto types = CanonicalObjcEncoding(method.types);
+	const IMP imp = method.implementation;
+	constexpr std::string_view range_argument_encoding = "{_NSRange=QQ}";
+	if (types == std::string(range_argument_encoding) + "@:") {
+		const DarlingObjcRange result = InvokeObjcImplementation<DarlingObjcRange>(
+			imp, method.guest_abi, receiver, selector);
+		std::memcpy(frame->xmm_return, &result, sizeof(result));
+		return static_cast<std::uintptr_t>(result.location);
+	}
+	if (types == std::string(range_argument_encoding) + "@:@") {
+		const id argument = reinterpret_cast<id>(frame->gp[argument_index]);
+		const DarlingObjcRange result =
+			InvokeObjcImplementation<DarlingObjcRange, id>(imp,
+				method.guest_abi, receiver, selector, argument);
+		std::memcpy(frame->xmm_return, &result, sizeof(result));
+		return static_cast<std::uintptr_t>(result.location);
+	}
+	if (types == std::string(range_argument_encoding) + "@:@Q") {
+		const id argument = reinterpret_cast<id>(frame->gp[argument_index]);
+		const std::uint64_t options = frame->gp[argument_index + 1];
+		const DarlingObjcRange result =
+			InvokeObjcImplementation<DarlingObjcRange, id, std::uint64_t>(imp,
+				method.guest_abi, receiver, selector, argument, options);
+		std::memcpy(frame->xmm_return, &result, sizeof(result));
+		return static_cast<std::uintptr_t>(result.location);
+	}
+	const std::string range_with_options_and_range =
+		std::string(range_argument_encoding) + "@:@Q" +
+		std::string(range_argument_encoding);
+	if (types == range_with_options_and_range) {
+		const id argument = reinterpret_cast<id>(frame->gp[argument_index]);
+		const std::uint64_t options = frame->gp[argument_index + 1];
+		const DarlingObjcRange search_range{frame->gp[argument_index + 2],
+			frame->gp[argument_index + 3]};
+		const DarlingObjcRange result =
+			InvokeObjcImplementation<DarlingObjcRange, id, std::uint64_t,
+				DarlingObjcRange>(imp, method.guest_abi, receiver, selector,
+				argument, options, search_range);
+		std::memcpy(frame->xmm_return, &result, sizeof(result));
+		return static_cast<std::uintptr_t>(result.location);
+	}
+	if (types == std::string("@@:") + std::string(range_argument_encoding)) {
+		const DarlingObjcRange range{frame->gp[argument_index],
+			frame->gp[argument_index + 1]};
+		return reinterpret_cast<std::uintptr_t>(
+			InvokeObjcImplementation<id, DarlingObjcRange>(imp, method.guest_abi,
+				receiver, selector, range));
+	}
+	if (types == std::string("v@:") + std::string(range_argument_encoding)) {
+		const DarlingObjcRange range{frame->gp[argument_index],
+			frame->gp[argument_index + 1]};
+		InvokeObjcImplementation<void, DarlingObjcRange>(imp, method.guest_abi,
+			receiver, selector, range);
+		return 0;
+	}
+	if (types == std::string("v@:") + std::string(range_argument_encoding) + "@") {
+		const DarlingObjcRange range{frame->gp[argument_index],
+			frame->gp[argument_index + 1]};
+		const id value = reinterpret_cast<id>(frame->gp[argument_index + 2]);
+		InvokeObjcImplementation<void, DarlingObjcRange, id>(imp,
+			method.guest_abi, receiver, selector, range, value);
+		return 0;
+	}
+	if (types == std::string("v@:@") +
+		std::string(range_argument_encoding)) {
+		const id value = reinterpret_cast<id>(frame->gp[argument_index]);
+		const DarlingObjcRange range{frame->gp[argument_index + 1],
+			frame->gp[argument_index + 2]};
+		InvokeObjcImplementation<void, id, DarlingObjcRange>(imp,
+			method.guest_abi, receiver, selector, value, range);
+		return 0;
+	}
+	if (types == std::string("v@:") + std::string(range_argument_encoding) + "^vQ") {
+		const DarlingObjcRange range{frame->gp[argument_index],
+			frame->gp[argument_index + 1]};
+		const void* bytes = reinterpret_cast<const void*>(
+			frame->gp[argument_index + 2]);
+		const std::uint64_t length = frame->gp[argument_index + 3];
+		InvokeObjcImplementation<void, DarlingObjcRange, const void*,
+			std::uint64_t>(imp, method.guest_abi, receiver, selector, range,
+				bytes, length);
+		return 0;
+	}
+	constexpr std::string_view point_encoding = "{CGPoint=dd}";
+	if (types == "{CGPoint=dd}@:" || types == "{CGSize=dd}@:") {
+		const DarlingObjcPoint result = InvokeObjcImplementation<DarlingObjcPoint>(
+			imp, method.guest_abi, receiver, selector);
+		std::memcpy(frame->xmm_return, &result, sizeof(result));
+		return 0;
+	}
+	if (types == "v@:{CGPoint=dd}" || types == "v@:{CGSize=dd}") {
+		DarlingObjcPoint point{};
+		std::memcpy(&point.x, frame->xmm[0], sizeof(point.x));
+		std::memcpy(&point.y, frame->xmm[1], sizeof(point.y));
+		InvokeObjcImplementation<void, DarlingObjcPoint>(imp, method.guest_abi,
+			receiver, selector, point);
+		return 0;
+	}
+	if (types == "v@:{CGPoint=dd}@") {
+		DarlingObjcPoint point{};
+		std::memcpy(&point.x, frame->xmm[0], sizeof(point.x));
+		std::memcpy(&point.y, frame->xmm[1], sizeof(point.y));
+		const id attributes = reinterpret_cast<id>(frame->gp[argument_index]);
+		InvokeObjcImplementation<void, DarlingObjcPoint, id>(imp,
+			method.guest_abi, receiver, selector, point, attributes);
+		return 0;
+	}
+	if (types == std::string(point_encoding) + "@:" +
+		std::string(point_encoding) + "@") {
+		DarlingObjcPoint point{};
+		std::memcpy(&point.x, frame->xmm[0], sizeof(point.x));
+		std::memcpy(&point.y, frame->xmm[1], sizeof(point.y));
+		const id other_view = reinterpret_cast<id>(frame->gp[argument_index]);
+		const DarlingObjcPoint result =
+			InvokeObjcImplementation<DarlingObjcPoint, DarlingObjcPoint, id>(
+				imp, method.guest_abi, receiver, selector, point, other_view);
+		std::memcpy(frame->xmm_return, &result, sizeof(result));
+		return 0;
+	}
+	if (types == "v@:{CGPoint=dd}{CGPoint=dd}{CGPoint=dd}") {
+		DarlingObjcPoint points[3]{};
+		for (std::size_t index = 0; index < 3; ++index) {
+			std::memcpy(&points[index].x, frame->xmm[index * 2],
+				sizeof(double));
+			std::memcpy(&points[index].y, frame->xmm[index * 2 + 1],
+				sizeof(double));
+		}
+		InvokeObjcImplementation<void, DarlingObjcPoint, DarlingObjcPoint,
+			DarlingObjcPoint>(imp, method.guest_abi, receiver, selector,
+				points[0], points[1], points[2]);
+		return 0;
+	}
+	constexpr std::string_view rect_argument_encoding =
+		"{CGRect={CGPoint=dd}{CGSize=dd}}";
+	constexpr std::string_view operating_system_version_argument_encoding =
+		"{NSOperatingSystemVersion=qqq}";
+	if (types == std::string("B@:") +
+		std::string(operating_system_version_argument_encoding)) {
+		if (frame->stack_arguments == nullptr) return 0;
+		DarlingObjcOperatingSystemVersion version{};
+		std::memcpy(&version, frame->stack_arguments, sizeof(version));
+		return InvokeObjcImplementation<bool, DarlingObjcOperatingSystemVersion>(
+			imp, method.guest_abi, receiver, selector, version) ? 1u : 0u;
+	}
+	const std::string rect_with_radii_encoding =
+		"@@:" + std::string(rect_argument_encoding) + "dd";
+	const std::string void_rect_with_radii_encoding =
+		"v@:" + std::string(rect_argument_encoding) + "dd";
+	if (types == rect_with_radii_encoding ||
+		types == void_rect_with_radii_encoding) {
+		if (frame->stack_arguments == nullptr) return 0;
+		DarlingObjcRect rect{};
+		double x_radius = 0.0;
+		double y_radius = 0.0;
+		std::memcpy(&rect, frame->stack_arguments, sizeof(rect));
+		std::memcpy(&x_radius, frame->xmm[0], sizeof(x_radius));
+		std::memcpy(&y_radius, frame->xmm[1], sizeof(y_radius));
+		if (types == rect_with_radii_encoding) {
+			return reinterpret_cast<std::uintptr_t>(
+				InvokeObjcImplementation<id, DarlingObjcRect, double, double>(imp,
+					method.guest_abi, receiver, selector, rect, x_radius, y_radius));
+		}
+		InvokeObjcImplementation<void, DarlingObjcRect, double, double>(imp,
+			method.guest_abi, receiver, selector, rect, x_radius, y_radius);
+		return 0;
+	}
+	if (types == std::string("@@:") + std::string(rect_argument_encoding)) {
+		if (frame->stack_arguments == nullptr) return 0;
+		DarlingObjcRect rect{};
+		std::memcpy(&rect, frame->stack_arguments, sizeof(rect));
+		return reinterpret_cast<std::uintptr_t>(
+			InvokeObjcImplementation<id, DarlingObjcRect>(imp, method.guest_abi,
+				receiver, selector, rect));
+	}
+	if (types == std::string("v@:") + std::string(rect_argument_encoding)) {
+		if (frame->stack_arguments == nullptr) return 0;
+		DarlingObjcRect rect{};
+		std::memcpy(&rect, frame->stack_arguments, sizeof(rect));
+		InvokeObjcImplementation<void, DarlingObjcRect>(imp, method.guest_abi,
+			receiver, selector, rect);
+		return 0;
+	}
+	if (types == std::string("v@:") + std::string(rect_argument_encoding) + "B") {
+		if (frame->stack_arguments == nullptr) return 0;
+		DarlingObjcRect rect{};
+		std::memcpy(&rect, frame->stack_arguments, sizeof(rect));
+		const bool flag = (frame->gp[argument_index] & 0xffu) != 0;
+		InvokeObjcImplementation<void, DarlingObjcRect, bool>(imp,
+			method.guest_abi, receiver, selector, rect, flag);
+		return 0;
+	}
+	if (types == std::string("B@:") + std::string(rect_argument_encoding)) {
+		if (frame->stack_arguments == nullptr) return 0;
+		DarlingObjcRect rect{};
+		std::memcpy(&rect, frame->stack_arguments, sizeof(rect));
+		return InvokeObjcImplementation<bool, DarlingObjcRect>(imp,
+			method.guest_abi, receiver, selector, rect) ? 1u : 0u;
+	}
+	constexpr std::string_view rect_initializer_prefix =
+		"@@:{CGRect={CGPoint=dd}{CGSize=dd}}";
+	if (types.size() == rect_initializer_prefix.size() + 3 &&
+		types.compare(0, rect_initializer_prefix.size(),
+			rect_initializer_prefix) == 0 &&
+		std::string_view("QqIiLl").find(types[rect_initializer_prefix.size()]) !=
+			std::string_view::npos &&
+		std::string_view("QqIiLl").find(types[rect_initializer_prefix.size() + 1]) !=
+			std::string_view::npos &&
+		std::string_view("cCB").find(types[rect_initializer_prefix.size() + 2]) !=
+			std::string_view::npos &&
+		std::strcmp(sel_getName(selector),
+			"initWithContentRect:styleMask:backing:defer:") == 0) {
+		if (frame->stack_arguments == nullptr) return 0;
+		DarlingObjcRect content_rect{};
+		std::memcpy(&content_rect, frame->stack_arguments,
+			sizeof(content_rect));
+		const std::uint64_t style_mask = frame->gp[argument_index];
+		const std::uint64_t backing = frame->gp[argument_index + 1];
+		const std::uint64_t defer = frame->gp[argument_index + 2];
+		return reinterpret_cast<std::uintptr_t>(
+			InvokeObjcImplementation<id, DarlingObjcRect, std::uint64_t,
+				std::uint64_t, std::uint64_t>(imp, method.guest_abi, receiver,
+				selector, content_rect, style_mask, backing, defer));
+	}
+
+	if (types == "@@:") {
+		if (method.guest_abi) {
+			using Function = id (__attribute__((sysv_abi)) *)(id, SEL);
+			return reinterpret_cast<std::uintptr_t>(reinterpret_cast<Function>(imp)(receiver, selector));
+		}
+		using Function = id (*)(id, SEL);
+		return reinterpret_cast<std::uintptr_t>(reinterpret_cast<Function>(imp)(receiver, selector));
+	}
+	if (types == "@@:Q") {
+		const std::uint64_t argument = frame->gp[argument_index];
+		return reinterpret_cast<std::uintptr_t>(
+			InvokeObjcImplementation<id, std::uint64_t>(imp, method.guest_abi,
+				receiver, selector, argument));
+	}
+	if (types == "@@:i") {
+		const int argument = static_cast<int>(frame->gp[argument_index]);
+		return reinterpret_cast<std::uintptr_t>(
+			InvokeObjcImplementation<id, int>(imp, method.guest_abi, receiver,
+				selector, argument));
+	}
+	if (types == "@@:q") {
+		const auto argument = static_cast<std::int64_t>(frame->gp[argument_index]);
+		return reinterpret_cast<std::uintptr_t>(
+			InvokeObjcImplementation<id, std::int64_t>(imp, method.guest_abi,
+				receiver, selector, argument));
+	}
+	if (types == "@@:B") {
+		const bool argument = (frame->gp[argument_index] & 0xffu) != 0;
+		return reinterpret_cast<std::uintptr_t>(
+			InvokeObjcImplementation<id, bool>(imp, method.guest_abi, receiver,
+				selector, argument));
+	}
+	if (types == "@@:d") {
+		double argument = 0;
+		std::memcpy(&argument, frame->xmm[0], sizeof(argument));
+		return reinterpret_cast<std::uintptr_t>(
+			InvokeObjcImplementation<id, double>(imp, method.guest_abi, receiver,
+				selector, argument));
+	}
+	if (types == "@@:@d") {
+		const id name = reinterpret_cast<id>(frame->gp[argument_index]);
+		double point_size = 0.0;
+		std::memcpy(&point_size, frame->xmm[0], sizeof(point_size));
+		return reinterpret_cast<std::uintptr_t>(
+			InvokeObjcImplementation<id, id, double>(imp, method.guest_abi,
+				receiver, selector, name, point_size));
+	}
+	if (types == "@@:d@") {
+		double fraction = 0.0;
+		std::memcpy(&fraction, frame->xmm[0], sizeof(fraction));
+		const id other_color = reinterpret_cast<id>(frame->gp[argument_index]);
+		return reinterpret_cast<std::uintptr_t>(
+			InvokeObjcImplementation<id, double, id>(imp, method.guest_abi,
+				receiver, selector, fraction, other_color));
+	}
+	if (types == "@@:d@::@B") {
+		double interval = 0.0;
+		std::memcpy(&interval, frame->xmm[0], sizeof(interval));
+		const id target = reinterpret_cast<id>(frame->gp[argument_index]);
+		const SEL timer_selector = reinterpret_cast<SEL>(
+			frame->gp[argument_index + 1]);
+		const id user_info = reinterpret_cast<id>(
+			frame->gp[argument_index + 2]);
+		const bool repeats =
+			(frame->gp[argument_index + 3] & 0xffu) != 0;
+		return reinterpret_cast<std::uintptr_t>(
+			InvokeObjcImplementation<id, double, id, SEL, id, bool>(imp,
+				method.guest_abi, receiver, selector, interval, target,
+				timer_selector, user_info, repeats));
+	}
+	if (types == "*@:") {
+		const auto result = InvokeObjcImplementation<const char*>(imp,
+			method.guest_abi, receiver, selector);
+		return reinterpret_cast<std::uintptr_t>(result);
+	}
+	if (types == "^v@:") {
+		const auto result = InvokeObjcImplementation<void*>(imp,
+			method.guest_abi, receiver, selector);
+		return reinterpret_cast<std::uintptr_t>(result);
+	}
+	if (types == "v@:^d") {
+		auto* components = reinterpret_cast<double*>(frame->gp[argument_index]);
+		InvokeObjcImplementation<void, double*>(imp, method.guest_abi, receiver,
+			selector, components);
+		return 0;
+	}
+	if (types == "v@:") {
+		if (method.guest_abi) {
+			using Function = void (__attribute__((sysv_abi)) *)(id, SEL);
+			reinterpret_cast<Function>(imp)(receiver, selector);
+		} else {
+			using Function = void (*)(id, SEL);
+			reinterpret_cast<Function>(imp)(receiver, selector);
+		}
+		return 0;
+	}
+	if (types == "i@:") {
+		if (method.guest_abi) {
+			using Function = int (__attribute__((sysv_abi)) *)(id, SEL);
+			return static_cast<std::uintptr_t>(static_cast<std::intptr_t>(reinterpret_cast<Function>(imp)(receiver, selector)));
+		}
+		using Function = int (*)(id, SEL);
+		return static_cast<std::uintptr_t>(static_cast<std::intptr_t>(reinterpret_cast<Function>(imp)(receiver, selector)));
+	}
+	if (types == "q@:") {
+		if (method.guest_abi) {
+			using Function = std::int64_t (__attribute__((sysv_abi)) *)(id, SEL);
+			return static_cast<std::uintptr_t>(reinterpret_cast<Function>(imp)(receiver, selector));
+		}
+		using Function = std::int64_t (*)(id, SEL);
+		return static_cast<std::uintptr_t>(reinterpret_cast<Function>(imp)(receiver, selector));
+	}
+	if (types == "Q@:") {
+		return static_cast<std::uintptr_t>(
+			InvokeObjcImplementation<std::uint64_t>(imp, method.guest_abi,
+				receiver, selector));
+	}
+	if (types == "B@:") {
+		if (method.guest_abi) {
+			using Function = bool (__attribute__((sysv_abi)) *)(id, SEL);
+			return reinterpret_cast<Function>(imp)(receiver, selector) ? 1 : 0;
+		}
+		using Function = bool (*)(id, SEL);
+		return reinterpret_cast<Function>(imp)(receiver, selector) ? 1 : 0;
+	}
+	if (types == "@@:@") {
+		const id argument = reinterpret_cast<id>(frame->gp[argument_index]);
+		if (method.guest_abi) {
+			using Function = id (__attribute__((sysv_abi)) *)(id, SEL, id);
+			return reinterpret_cast<std::uintptr_t>(reinterpret_cast<Function>(imp)(receiver, selector, argument));
+		}
+		using Function = id (*)(id, SEL, id);
+		return reinterpret_cast<std::uintptr_t>(reinterpret_cast<Function>(imp)(receiver, selector, argument));
+	}
+	if (types == "B@:@") {
+		const id argument = reinterpret_cast<id>(frame->gp[argument_index]);
+		return InvokeObjcImplementation<bool, id>(imp, method.guest_abi,
+			receiver, selector, argument) ? 1 : 0;
+	}
+	if (types == "B@:#") {
+		const Class argument = reinterpret_cast<Class>(frame->gp[argument_index]);
+		return InvokeObjcImplementation<bool, Class>(imp, method.guest_abi,
+			receiver, selector, argument) ? 1 : 0;
+	}
+	if (types == "B@::") {
+		const SEL argument = reinterpret_cast<SEL>(frame->gp[argument_index]);
+		return InvokeObjcImplementation<bool, SEL>(imp, method.guest_abi,
+			receiver, selector, argument) ? 1 : 0;
+	}
+	if (types == "B@:^v") {
+		void* argument = reinterpret_cast<void*>(frame->gp[argument_index]);
+		return InvokeObjcImplementation<bool, void*>(imp, method.guest_abi,
+			receiver, selector, argument) ? 1 : 0;
+	}
+	if (types == "@@:^v") {
+		void* argument = reinterpret_cast<void*>(frame->gp[argument_index]);
+		return reinterpret_cast<std::uintptr_t>(
+			InvokeObjcImplementation<id, void*>(imp, method.guest_abi,
+				receiver, selector, argument));
+	}
+	if (types == "@@:^vQ") {
+		const auto* values = reinterpret_cast<const id*>(
+			frame->gp[argument_index]);
+		const std::uint64_t count = frame->gp[argument_index + 1];
+		return reinterpret_cast<std::uintptr_t>(
+			InvokeObjcImplementation<id, const id*, std::uint64_t>(imp,
+				method.guest_abi, receiver, selector, values, count));
+	}
+	if (types == "@@:^v^vQ") {
+		const auto* values = reinterpret_cast<const id*>(
+			frame->gp[argument_index]);
+		const auto* keys = reinterpret_cast<const id*>(
+			frame->gp[argument_index + 1]);
+		const std::uint64_t count = frame->gp[argument_index + 2];
+		return reinterpret_cast<std::uintptr_t>(
+			InvokeObjcImplementation<id, const id*, const id*, std::uint64_t>(imp,
+				method.guest_abi, receiver, selector, values, keys, count));
+	}
+	if (types == "@@:*") {
+		const char* argument = reinterpret_cast<const char*>(
+			frame->gp[argument_index]);
+		return reinterpret_cast<std::uintptr_t>(
+			InvokeObjcImplementation<id, const char*>(imp, method.guest_abi,
+				receiver, selector, argument));
+	}
+	if (types == "v@:@") {
+		const id argument = reinterpret_cast<id>(frame->gp[argument_index]);
+		if (method.guest_abi) {
+			using Function = void (__attribute__((sysv_abi)) *)(id, SEL, id);
+			reinterpret_cast<Function>(imp)(receiver, selector, argument);
+		} else {
+			using Function = void (*)(id, SEL, id);
+			reinterpret_cast<Function>(imp)(receiver, selector, argument);
+		}
+		return 0;
+	}
+	if (types == "v@:@:@@") {
+		const id observer = reinterpret_cast<id>(frame->gp[argument_index]);
+		const SEL callback = reinterpret_cast<SEL>(frame->gp[argument_index + 1]);
+		const id name = reinterpret_cast<id>(frame->gp[argument_index + 2]);
+		const id object = reinterpret_cast<id>(frame->gp[argument_index + 3]);
+		InvokeObjcImplementation<void, id, SEL, id, id>(imp, method.guest_abi,
+			receiver, selector, observer, callback, name, object);
+		return 0;
+	}
+	if (types == "v@::") {
+		const SEL argument = reinterpret_cast<SEL>(frame->gp[argument_index]);
+		InvokeObjcImplementation<void, SEL>(imp, method.guest_abi, receiver,
+			selector, argument);
+		return 0;
+	}
+	if (types == "v@:i") {
+		const int argument = static_cast<int>(frame->gp[argument_index]);
+		if (method.guest_abi) {
+			using Function = void (__attribute__((sysv_abi)) *)(id, SEL, int);
+			reinterpret_cast<Function>(imp)(receiver, selector, argument);
+		} else {
+			using Function = void (*)(id, SEL, int);
+			reinterpret_cast<Function>(imp)(receiver, selector, argument);
+		}
+		return 0;
+	}
+	if (types == "v@:B" || types == "v@:c") {
+		const bool argument = (frame->gp[argument_index] & 0xffu) != 0;
+		InvokeObjcImplementation<void, bool>(imp, method.guest_abi, receiver,
+			selector, argument);
+		return 0;
+	}
+	if (types == "q@:q") {
+		const auto argument = static_cast<std::int64_t>(frame->gp[argument_index]);
+		if (method.guest_abi) {
+			using Function = std::int64_t (__attribute__((sysv_abi)) *)(id, SEL, std::int64_t);
+			return static_cast<std::uintptr_t>(reinterpret_cast<Function>(imp)(receiver, selector, argument));
+		}
+		using Function = std::int64_t (*)(id, SEL, std::int64_t);
+		return static_cast<std::uintptr_t>(reinterpret_cast<Function>(imp)(receiver, selector, argument));
+	}
+	if (types == "q@:@") {
+		const id argument = reinterpret_cast<id>(frame->gp[argument_index]);
+		return static_cast<std::uintptr_t>(InvokeObjcImplementation<std::int64_t, id>(
+			imp, method.guest_abi, receiver, selector, argument));
+	}
+	if (types == "v@:q") {
+		const auto argument = static_cast<std::int64_t>(frame->gp[argument_index]);
+		if (method.guest_abi) {
+			using Function = void (__attribute__((sysv_abi)) *)(id, SEL, std::int64_t);
+			reinterpret_cast<Function>(imp)(receiver, selector, argument);
+		} else {
+			using Function = void (*)(id, SEL, std::int64_t);
+			reinterpret_cast<Function>(imp)(receiver, selector, argument);
+		}
+		return 0;
+	}
+	if (types == "v@:q@") {
+		const auto integer_argument = static_cast<std::int64_t>(
+			frame->gp[argument_index]);
+		const id object_argument = reinterpret_cast<id>(
+			frame->gp[argument_index + 1]);
+		InvokeObjcImplementation<void, std::int64_t, id>(imp,
+			method.guest_abi, receiver, selector, integer_argument,
+			object_argument);
+		return 0;
+	}
+	if (types == "v@:B@") {
+		const bool boolean_argument =
+			(frame->gp[argument_index] & 0xffu) != 0;
+		const id object_argument = reinterpret_cast<id>(
+			frame->gp[argument_index + 1]);
+		InvokeObjcImplementation<void, bool, id>(imp, method.guest_abi,
+			receiver, selector, boolean_argument, object_argument);
+		return 0;
+	}
+	if (types == "v@:@Q") {
+		const id object_argument = reinterpret_cast<id>(frame->gp[argument_index]);
+		const std::uint64_t integer_argument = frame->gp[argument_index + 1];
+		InvokeObjcImplementation<void, id, std::uint64_t>(imp,
+			method.guest_abi, receiver, selector, object_argument,
+			integer_argument);
+		return 0;
+	}
+	if (types == "v@:Q") {
+		InvokeObjcImplementation<void, std::uint64_t>(imp, method.guest_abi,
+			receiver, selector, frame->gp[argument_index]);
+		return 0;
+	}
+	if (types == "v@:Q@") {
+		const std::uint64_t index = frame->gp[argument_index];
+		const id value = reinterpret_cast<id>(frame->gp[argument_index + 1]);
+		InvokeObjcImplementation<void, std::uint64_t, id>(imp,
+			method.guest_abi, receiver, selector, index, value);
+		return 0;
+	}
+	if (types == "v@:^vQ") {
+		const void* bytes = reinterpret_cast<const void*>(
+			frame->gp[argument_index]);
+		const std::uint64_t length = frame->gp[argument_index + 1];
+		InvokeObjcImplementation<void, const void*, std::uint64_t>(imp,
+			method.guest_abi, receiver, selector, bytes, length);
+		return 0;
+	}
+	if (types == "B@:@") {
+		const id argument = reinterpret_cast<id>(frame->gp[argument_index]);
+		return InvokeObjcImplementation<bool>(imp, method.guest_abi, receiver,
+			selector, argument) ? 1 : 0;
+	}
+	if (types == "B@:@@") {
+		const id first = reinterpret_cast<id>(frame->gp[argument_index]);
+		const id second = reinterpret_cast<id>(frame->gp[argument_index + 1]);
+		return InvokeObjcImplementation<bool>(imp, method.guest_abi, receiver,
+			selector, first, second) ? 1 : 0;
+	}
+	if (types == "@@:@@") {
+		const id first = reinterpret_cast<id>(frame->gp[argument_index]);
+		const id second = reinterpret_cast<id>(frame->gp[argument_index + 1]);
+		return reinterpret_cast<std::uintptr_t>(InvokeObjcImplementation<id>(imp,
+			method.guest_abi, receiver, selector, first, second));
+	}
+	if (types == "@@:@@@") {
+		const id first = reinterpret_cast<id>(frame->gp[argument_index]);
+		const id second = reinterpret_cast<id>(frame->gp[argument_index + 1]);
+		const id third = reinterpret_cast<id>(frame->gp[argument_index + 2]);
+		return reinterpret_cast<std::uintptr_t>(InvokeObjcImplementation<id>(imp,
+			method.guest_abi, receiver, selector, first, second, third));
+	}
+	if (types == "@@:@@:") {
+		const id title = reinterpret_cast<id>(frame->gp[argument_index]);
+		const id target = reinterpret_cast<id>(frame->gp[argument_index + 1]);
+		const SEL action = reinterpret_cast<SEL>(frame->gp[argument_index + 2]);
+		return reinterpret_cast<std::uintptr_t>(InvokeObjcImplementation<id,
+			id, id, SEL>(imp, method.guest_abi, receiver, selector, title, target,
+			action));
+	}
+	if (types == "@@:dddd") {
+		double values[4]{};
+		for (std::size_t index = 0; index < 4; ++index)
+			std::memcpy(&values[index], frame->xmm[index], sizeof(double));
+		return reinterpret_cast<std::uintptr_t>(
+			InvokeObjcImplementation<id, double, double, double, double>(
+				imp, method.guest_abi, receiver, selector, values[0], values[1],
+				values[2], values[3]));
+	}
+	if (types == "@@:ddddd") {
+		double values[5]{};
+		for (std::size_t index = 0; index < 5; ++index)
+			std::memcpy(&values[index], frame->xmm[index], sizeof(double));
+		return reinterpret_cast<std::uintptr_t>(
+			InvokeObjcImplementation<id, double, double, double, double, double>(
+				imp, method.guest_abi, receiver, selector, values[0], values[1],
+				values[2], values[3], values[4]));
+	}
+	if (types == "@@:dd") {
+		double values[2]{};
+		std::memcpy(&values[0], frame->xmm[0], sizeof(double));
+		std::memcpy(&values[1], frame->xmm[1], sizeof(double));
+		return reinterpret_cast<std::uintptr_t>(
+			InvokeObjcImplementation<id, double, double>(imp, method.guest_abi,
+				receiver, selector, values[0], values[1]));
+	}
+	if (types == "v@:@@") {
+		const id first = reinterpret_cast<id>(frame->gp[argument_index]);
+		const id second = reinterpret_cast<id>(frame->gp[argument_index + 1]);
+		InvokeObjcImplementation<void>(imp, method.guest_abi, receiver, selector,
+			first, second);
+		return 0;
+	}
+	if (types == "v@:@@@") {
+		const id first = reinterpret_cast<id>(frame->gp[argument_index]);
+		const id second = reinterpret_cast<id>(frame->gp[argument_index + 1]);
+		const id third = reinterpret_cast<id>(frame->gp[argument_index + 2]);
+		InvokeObjcImplementation<void, id, id, id>(imp, method.guest_abi,
+			receiver, selector, first, second, third);
+		return 0;
+	}
+	if (types == "q@:qq") {
+		const auto first = static_cast<std::int64_t>(frame->gp[argument_index]);
+		const auto second = static_cast<std::int64_t>(frame->gp[argument_index + 1]);
+		return static_cast<std::uintptr_t>(InvokeObjcImplementation<std::int64_t>(
+			imp, method.guest_abi, receiver, selector, first, second));
+	}
+	if (types == "i@:i") {
+		const int argument = static_cast<int>(frame->gp[argument_index]);
+		return static_cast<std::uintptr_t>(static_cast<std::intptr_t>(
+			InvokeObjcImplementation<int>(imp, method.guest_abi, receiver,
+				selector, argument)));
+	}
+	if (types == "d@:") {
+		const double result = InvokeObjcImplementation<double>(imp, method.guest_abi,
+			receiver, selector);
+		std::memcpy(frame->xmm_return, &result, sizeof(result));
+		return 0;
+	}
+	if (types == "d@:@") {
+		const id argument = reinterpret_cast<id>(frame->gp[argument_index]);
+		const double result = InvokeObjcImplementation<double, id>(imp,
+			method.guest_abi, receiver, selector, argument);
+		std::memcpy(frame->xmm_return, &result, sizeof(result));
+		return 0;
+	}
+	if (types == "B@:N^dN^dN^dN^d" ||
+		types == "B@:^d^d^d^d" ||
+		types == "B@:o^do^do^do^d" ||
+		types == "c@:N^dN^dN^dN^d" ||
+		types == "c@:^d^d^d^d" ||
+		types == "c@:o^do^do^do^d") {
+		double* components[4]{};
+		for (std::size_t index = 0; index < 4; ++index)
+			components[index] = reinterpret_cast<double*>(
+				frame->gp[argument_index + index]);
+		return static_cast<std::uintptr_t>(
+			InvokeObjcImplementation<bool, double*, double*, double*, double*>(
+				imp, method.guest_abi, receiver, selector, components[0],
+				components[1], components[2], components[3]));
+	}
+	if (types == "B@:o^do^do^do^do^d") {
+		if (frame->stack_arguments == nullptr) return 0;
+		double* components[5]{};
+		for (std::size_t index = 0; index < 4; ++index)
+			components[index] = reinterpret_cast<double*>(
+				frame->gp[argument_index + index]);
+		components[4] = reinterpret_cast<double*>(frame->stack_arguments[0]);
+		return static_cast<std::uintptr_t>(
+			InvokeObjcImplementation<bool, double*, double*, double*, double*, double*>(
+				imp, method.guest_abi, receiver, selector, components[0],
+				components[1], components[2], components[3], components[4]));
+	}
+	if (types == "B@:o^do^d" || types == "B@:N^dN^d" ||
+		types == "B@:^d^d") {
+		double* white = reinterpret_cast<double*>(frame->gp[argument_index]);
+		double* alpha = reinterpret_cast<double*>(frame->gp[argument_index + 1]);
+		return static_cast<std::uintptr_t>(
+			InvokeObjcImplementation<bool, double*, double*>(imp,
+				method.guest_abi, receiver, selector, white, alpha));
+	}
+	if (types == "f@:") {
+		const float result = InvokeObjcImplementation<float>(imp, method.guest_abi,
+			receiver, selector);
+		std::memcpy(frame->xmm_return, &result, sizeof(result));
+		return 0;
+	}
+	if (types == "d@:d") {
+		double argument = 0;
+		std::memcpy(&argument, frame->xmm[0], sizeof(argument));
+		const double result = InvokeObjcImplementation<double>(imp, method.guest_abi,
+			receiver, selector, argument);
+		std::memcpy(frame->xmm_return, &result, sizeof(result));
+		return 0;
+	}
+	if (types == "v@:d") {
+		double argument = 0;
+		std::memcpy(&argument, frame->xmm[0], sizeof(argument));
+		InvokeObjcImplementation<void>(imp, method.guest_abi, receiver, selector,
+			argument);
+		return 0;
+	}
+	if (types == "d@:dd") {
+		double first = 0, second = 0;
+		std::memcpy(&first, frame->xmm[0], sizeof(first));
+		std::memcpy(&second, frame->xmm[1], sizeof(second));
+		const double result = InvokeObjcImplementation<double>(imp, method.guest_abi,
+			receiver, selector, first, second);
+		std::memcpy(frame->xmm_return, &result, sizeof(result));
+		return 0;
+	}
+	if (types == "v@:dd") {
+		double first = 0, second = 0;
+		std::memcpy(&first, frame->xmm[0], sizeof(first));
+		std::memcpy(&second, frame->xmm[1], sizeof(second));
+		InvokeObjcImplementation<void>(imp, method.guest_abi, receiver, selector,
+			first, second);
+		return 0;
+	}
+	if (types == "v@:d@") {
+		double value = 0.0;
+		std::memcpy(&value, frame->xmm[0], sizeof(value));
+		const id key = reinterpret_cast<id>(frame->gp[argument_index]);
+		InvokeObjcImplementation<void, double, id>(imp, method.guest_abi,
+			receiver, selector, value, key);
+		return 0;
+	}
+	if (types == "f@:f") {
+		float argument = 0;
+		std::memcpy(&argument, frame->xmm[0], sizeof(argument));
+		const float result = InvokeObjcImplementation<float>(imp, method.guest_abi,
+			receiver, selector, argument);
+		std::memcpy(frame->xmm_return, &result, sizeof(result));
+		return 0;
+	}
+	if (types == "v@:f") {
+		float argument = 0;
+		std::memcpy(&argument, frame->xmm[0], sizeof(argument));
+		InvokeObjcImplementation<void>(imp, method.guest_abi, receiver, selector,
+			argument);
+		return 0;
+	}
+	if (types == "f@:ff") {
+		float first = 0, second = 0;
+		std::memcpy(&first, frame->xmm[0], sizeof(first));
+		std::memcpy(&second, frame->xmm[1], sizeof(second));
+		const float result = InvokeObjcImplementation<float>(imp, method.guest_abi,
+			receiver, selector, first, second);
+		std::memcpy(frame->xmm_return, &result, sizeof(result));
+		return 0;
+	}
+	if (types == "v@:ff") {
+		float first = 0, second = 0;
+		std::memcpy(&first, frame->xmm[0], sizeof(first));
+		std::memcpy(&second, frame->xmm[1], sizeof(second));
+		InvokeObjcImplementation<void>(imp, method.guest_abi, receiver, selector,
+			first, second);
+		return 0;
+	}
+	if (method.guest_abi) {
+		ObjcScalarKind return_kind = ObjcScalarKind::Unsupported;
+		const auto stack_bytes = GenericGuestStackArgumentBytes(types,
+			return_kind);
+		if (stack_bytes && *stack_bytes <= 512 &&
+			(*stack_bytes == 0 || frame->stack_arguments != nullptr)) {
+			const auto result = darling_windows_objc_invoke_sysv_raw(frame, imp,
+				*stack_bytes);
+			if (return_kind == ObjcScalarKind::Floating) return 0;
+			return return_kind == ObjcScalarKind::Void ? 0 : result;
+		}
+	}
+	return 0;
+}
+}
+
+extern "C" std::uintptr_t darling_windows_objc_msgSend_sysv_dispatch(
+	DarlingSysVObjcCallFrame* frame)
+{
+	return DispatchSysVObjcCall(frame, 0);
+}
+
+extern "C" std::uintptr_t darling_windows_objc_msgSendSuper_sysv_dispatch(
+	DarlingSysVObjcCallFrame* frame)
+{
+	return DispatchSysVObjcCall(frame, 1);
+}
+
+extern "C" std::uintptr_t darling_windows_objc_msgSendSuper2_sysv_dispatch(
+	DarlingSysVObjcCallFrame* frame)
+{
+	return DispatchSysVObjcCall(frame, 2);
+}
+#endif
+
 void RegisterMethodList(Class cls, std::uintptr_t method_list_address,
 	bool class_method = false)
 {
@@ -550,12 +1547,20 @@ void RegisterMethodList(Class cls, std::uintptr_t method_list_address,
 		if (!name || !types || !implementation || strnlen_s(name, 1024) == 1024 ||
 			strnlen_s(types, 1024) == 1024)
 			continue;
-		if (class_method)
-			class_addClassMethod(cls, sel_registerName(name),
-				reinterpret_cast<IMP>(implementation), types);
-		else
-			class_addMethod(cls, sel_registerName(name),
-				reinterpret_cast<IMP>(implementation), types);
+		const SEL selector = sel_registerName(name);
+		const bool added = class_method ?
+			class_addClassMethod(cls, selector, reinterpret_cast<IMP>(implementation), types) :
+			class_addMethod(cls, selector, reinterpret_cast<IMP>(implementation), types);
+		if (added) {
+			std::lock_guard lock(RuntimeMutex());
+			auto& methods = class_method ? cls->class_methods : cls->methods;
+			const auto method = methods.find(selector);
+			if (method != methods.end()) {
+				method->second.guest_abi = true;
+				if (class_method && cls->metaclass)
+					cls->metaclass->methods[selector] = method->second;
+			}
+		}
 	}
 }
 
@@ -871,6 +1876,44 @@ extern "C" std::size_t darling_objc_register_macho_selrefs(
 	return registered;
 }
 
+extern "C" std::size_t darling_objc_register_macho_constant_strings(
+	const void* strings, std::size_t bytes)
+{
+	// Clang emits each x86_64 Darwin __cfstring record as
+	// { isa, uint32 flags, padding, bytes pointer, uint64 length }.
+	constexpr std::size_t record_size = 32;
+	if (strings == nullptr || sizeof(std::uintptr_t) != 8 ||
+		bytes < record_size || bytes % record_size != 0 || active_image_token == nullptr)
+		return 0;
+	const auto count = bytes / record_size;
+	std::lock_guard lock(RuntimeMutex());
+	for (std::size_t index = 0; index < count; ++index) {
+		auto* object = reinterpret_cast<id>(
+			const_cast<std::uint8_t*>(static_cast<const std::uint8_t*>(strings)) +
+				index * record_size);
+		ConstantStrings().insert(object);
+		active_image_token->constant_strings.push_back(object);
+	}
+	return count;
+}
+
+extern "C" bool darling_objc_is_constant_string(id object)
+{
+	if (object == nullptr) return false;
+	std::lock_guard lock(RuntimeMutex());
+	return ConstantStrings().contains(object);
+}
+
+extern "C" bool darling_objc_register_object_finalizer(id object,
+	darling_objc_object_finalizer finalizer)
+{
+	if (object == nullptr || finalizer == nullptr ||
+		darling_objc_is_constant_string(object))
+		return false;
+	std::lock_guard lock(RuntimeMutex());
+	return ObjectFinalizers.emplace(object, finalizer).second;
+}
+
 extern "C" std::size_t darling_objc_register_macho_categories(
 	const void* categories, std::size_t bytes)
 {
@@ -1108,6 +2151,8 @@ extern "C" void darling_objc_unregister_image(darling_objc_image_token* token)
 	if (token == nullptr)
 		return;
 	std::lock_guard lock(RuntimeMutex());
+	for (id object : token->constant_strings)
+		ConstantStrings().erase(object);
 	for (Class cls : token->classes) {
 		if (cls == nullptr) continue;
 		bool referenced = false;
@@ -1653,6 +2698,8 @@ extern "C" bool object_isClass(id object)
 
 extern "C" id objc_retain(id object)
 {
+	if (darling_objc_is_constant_string(object))
+		return object;
 	if (object)
 		object->retain_count.fetch_add(1, std::memory_order_relaxed);
 	return object;
@@ -1660,9 +2707,10 @@ extern "C" id objc_retain(id object)
 
 extern "C" void objc_release(id object)
 {
-	if (!object)
+	if (!object || darling_objc_is_constant_string(object))
 		return;
 	std::vector<id> associated;
+	darling_objc_object_finalizer finalizer = nullptr;
 	{
 		std::lock_guard lock(RuntimeMutex());
 		if (object->retain_count.fetch_sub(1, std::memory_order_acq_rel) != 1)
@@ -1681,9 +2729,16 @@ extern "C" void objc_release(id object)
 					associated.push_back(entry.second.value);
 			AssociatedObjects.erase(associations);
 		}
+		const auto finalizer_entry = ObjectFinalizers.find(object);
+		if (finalizer_entry != ObjectFinalizers.end()) {
+			finalizer = finalizer_entry->second;
+			ObjectFinalizers.erase(finalizer_entry);
+		}
 	}
 	for (id value : associated)
 		objc_release(value);
+	if (finalizer != nullptr)
+		finalizer(object);
 	delete[] reinterpret_cast<unsigned char*>(object);
 }
 
@@ -1710,6 +2765,56 @@ extern "C" id objc_autorelease(id object)
 extern "C" id objc_retainAutoreleasedReturnValue(id object)
 {
 	return objc_retain(object);
+}
+
+extern "C" id objc_autoreleaseReturnValue(id object)
+{
+	return objc_autorelease(object);
+}
+
+extern "C" id objc_retainAutorelease(id object)
+{
+	if (object)
+		objc_retain(object);
+	return objc_autorelease(object);
+}
+
+extern "C" id objc_retainAutoreleaseReturnValue(id object)
+{
+	return objc_retainAutorelease(object);
+}
+
+extern "C" id objc_unsafeClaimAutoreleasedReturnValue(id object)
+{
+	return object;
+}
+
+extern "C" id objc_opt_self(id object)
+{
+	return object;
+}
+
+extern "C" Class objc_opt_class(id object)
+{
+	return object_getClass(object);
+}
+
+extern "C" bool objc_opt_respondsToSelector(id object, SEL selector)
+{
+	return object != nullptr && selector != nullptr &&
+		class_respondsToSelector(object_getClass(object), selector);
+}
+
+extern "C" bool objc_opt_isKindOfClass(id object, Class cls)
+{
+	if (object == nullptr || cls == nullptr)
+		return false;
+	for (Class current = object_getClass(object); current != nullptr;
+		current = class_getSuperclass(current)) {
+		if (current == cls)
+			return true;
+	}
+	return false;
 }
 
 extern "C" id objc_getAssociatedObject(id object, const void* key)
@@ -1906,13 +3011,159 @@ extern "C" id objc_moveWeak(id* destination, id* source)
 	return *destination;
 }
 
-extern "C" id objc_msgSend(id receiver, SEL selector, ...)
+namespace {
+struct DarlingWindowsVarargs {
+	va_list* cursor = nullptr;
+	template<typename T> T Next() { return va_arg(*cursor, T); }
+};
+
+struct DarlingArm64GuestVarargs {
+	const std::uint8_t* cursor = nullptr;
+
+	template<typename T>
+	T Next()
+	{
+		const auto address = reinterpret_cast<std::uintptr_t>(cursor);
+		const auto alignment = std::max<std::uintptr_t>(8, alignof(T));
+		const auto aligned = (address + alignment - 1) & ~(alignment - 1);
+		T value{};
+		std::memcpy(&value, reinterpret_cast<const void*>(aligned), sizeof(T));
+		cursor = reinterpret_cast<const std::uint8_t*>(aligned +
+			((sizeof(T) + 7) & ~std::size_t{7}));
+		return value;
+	}
+};
+
+std::string CanonicalObjcDispatchEncoding(const char* encoding)
+{
+	std::string result;
+	if (!encoding) return result;
+	bool quoted = false;
+	for (const unsigned char value : std::string_view(encoding)) {
+		if (value == '"') quoted = !quoted;
+		if (!quoted && value >= '0' && value <= '9') continue;
+		result.push_back(static_cast<char>(value));
+	}
+	return result;
+}
+}
+#define DARLING_OBJC_VA_LIST(name, stack) auto name = varargs
+#define DARLING_OBJC_VA_ARG(list, type) (list).template Next<type>()
+#define DARLING_OBJC_VA_END(list) ((void)0)
+template<typename VarargsReader>
+id DarlingObjcMsgSendDispatch(id receiver, SEL selector,
+	VarargsReader& varargs)
 {
 	if (!receiver || !selector)
 		return nullptr;
-	const char* types = class_getMethodTypeEncoding(receiver->isa, selector);
-	if (!types)
+	// Class objects are represented by the runtime's Class storage, not by an
+	// objc_object header. Resolve their class-method encoding before reading
+	// receiver->isa, then dispatch the no-argument forms used by +alloc and
+	// singleton accessors through the dedicated class-method table.
+	if (object_isClass(receiver)) {
+		const Class cls = reinterpret_cast<Class>(receiver);
+		const Method method = class_getClassMethod(cls, selector);
+		const std::string class_encoding = CanonicalObjcDispatchEncoding(
+			method_getTypeEncoding(method));
+		const char* class_types = class_encoding.c_str();
+		const IMP implementation = method_getImplementation(method);
+		if (!class_types || !implementation) return nullptr;
+		if (std::strcmp(class_types, "@@:") == 0)
+			return darling_objc_msgSend_class0(cls, selector);
+		if (std::strcmp(class_types, "@@:@@:") == 0) {
+			DARLING_OBJC_VA_LIST(class_arguments, darwin_arguments);
+			const id title = DARLING_OBJC_VA_ARG(class_arguments, id);
+			const id target = DARLING_OBJC_VA_ARG(class_arguments, id);
+			const SEL action = DARLING_OBJC_VA_ARG(class_arguments, SEL);
+			DARLING_OBJC_VA_END(class_arguments);
+			using ClassFactory = id (*)(Class, SEL, id, id, SEL);
+			return reinterpret_cast<ClassFactory>(implementation)(cls, selector,
+				title, target, action);
+		}
+		if (std::strcmp(class_types, "@@:d") == 0) {
+			DARLING_OBJC_VA_LIST(class_arguments, darwin_arguments);
+			const double point_size = DARLING_OBJC_VA_ARG(class_arguments, double);
+			DARLING_OBJC_VA_END(class_arguments);
+			using ClassFontFactory = id (*)(Class, SEL, double);
+			return reinterpret_cast<ClassFontFactory>(implementation)(cls,
+				selector, point_size);
+		}
+		if (std::strcmp(class_types, "@@:dddd") == 0) {
+			DARLING_OBJC_VA_LIST(class_arguments, darwin_arguments);
+			const double first = DARLING_OBJC_VA_ARG(class_arguments, double);
+			const double second = DARLING_OBJC_VA_ARG(class_arguments, double);
+			const double third = DARLING_OBJC_VA_ARG(class_arguments, double);
+			const double fourth = DARLING_OBJC_VA_ARG(class_arguments, double);
+			DARLING_OBJC_VA_END(class_arguments);
+			using ClassColorFactory = id (*)(Class, SEL, double, double,
+				double, double);
+			return reinterpret_cast<ClassColorFactory>(implementation)(cls,
+				selector, first, second, third, fourth);
+		}
+		if (std::strcmp(class_types, "@@:@d") == 0) {
+			DARLING_OBJC_VA_LIST(class_arguments, darwin_arguments);
+			const id name = DARLING_OBJC_VA_ARG(class_arguments, id);
+			const double point_size = DARLING_OBJC_VA_ARG(class_arguments, double);
+			DARLING_OBJC_VA_END(class_arguments);
+			using ClassFontFactory = id (*)(Class, SEL, id, double);
+			return reinterpret_cast<ClassFontFactory>(implementation)(cls,
+				selector, name, point_size);
+		}
+		if (std::strcmp(class_types, "@@:d@::@B") == 0) {
+			DARLING_OBJC_VA_LIST(class_arguments, darwin_arguments);
+			const double interval = DARLING_OBJC_VA_ARG(class_arguments, double);
+			const id target = DARLING_OBJC_VA_ARG(class_arguments, id);
+			const SEL timer_selector = DARLING_OBJC_VA_ARG(class_arguments, SEL);
+			const id user_info = DARLING_OBJC_VA_ARG(class_arguments, id);
+			const bool repeats = DARLING_OBJC_VA_ARG(class_arguments, int) != 0;
+			DARLING_OBJC_VA_END(class_arguments);
+			using ClassTimerFactory = id (*)(Class, SEL, double, id, SEL, id, bool);
+			return reinterpret_cast<ClassTimerFactory>(implementation)(cls,
+				selector, interval, target, timer_selector, user_info, repeats);
+		}
+		if (std::strcmp(class_types, "@@:ddddd") == 0) {
+			DARLING_OBJC_VA_LIST(class_arguments, darwin_arguments);
+			const double cyan = DARLING_OBJC_VA_ARG(class_arguments, double);
+			const double magenta = DARLING_OBJC_VA_ARG(class_arguments, double);
+			const double yellow = DARLING_OBJC_VA_ARG(class_arguments, double);
+			const double black = DARLING_OBJC_VA_ARG(class_arguments, double);
+			const double alpha = DARLING_OBJC_VA_ARG(class_arguments, double);
+			DARLING_OBJC_VA_END(class_arguments);
+			using ClassColorFactory = id (*)(Class, SEL, double, double, double,
+				double, double);
+			return reinterpret_cast<ClassColorFactory>(implementation)(cls,
+				selector, cyan, magenta, yellow, black, alpha);
+		}
+		if (std::strcmp(class_types, "v@:") == 0) {
+			reinterpret_cast<void (*)(Class, SEL)>(implementation)(cls, selector);
+			return nullptr;
+		}
+		if (std::strcmp(class_types, "i@:") == 0)
+			return reinterpret_cast<id>(static_cast<std::intptr_t>(
+				reinterpret_cast<int (*)(Class, SEL)>(implementation)(cls, selector)));
+		if (std::strcmp(class_types, "q@:") == 0)
+			return reinterpret_cast<id>(static_cast<std::uintptr_t>(
+				reinterpret_cast<std::int64_t (*)(Class, SEL)>(implementation)(cls, selector)));
+		if (std::strcmp(class_types, "B@:") == 0)
+			return reinterpret_cast<id>(static_cast<std::uintptr_t>(
+				reinterpret_cast<bool (*)(Class, SEL)>(implementation)(cls, selector)));
+		if (std::strcmp(class_types, "S@:") == 0)
+			return reinterpret_cast<id>(static_cast<std::uintptr_t>(
+				reinterpret_cast<std::uint16_t (*)(Class, SEL)>(implementation)(cls, selector)));
+		if (std::strcmp(class_types, "s@:") == 0)
+			return reinterpret_cast<id>(static_cast<std::intptr_t>(
+				reinterpret_cast<std::int16_t (*)(Class, SEL)>(implementation)(cls, selector)));
+		if (std::strcmp(class_types, "^v@:") == 0 ||
+			std::strcmp(class_types, "*@:") == 0)
+			return reinterpret_cast<id>(reinterpret_cast<void* (*)(Class, SEL)>(
+				implementation)(cls, selector));
 		return nullptr;
+	}
+	const char* raw_types = class_getMethodTypeEncoding(receiver->isa, selector);
+	if (!raw_types)
+		return nullptr;
+	const std::string encoding = CanonicalObjcDispatchEncoding(raw_types);
+	const char* types = encoding.c_str();
 	if (std::strcmp(types, "@@:") == 0)
 		return Dispatch(receiver, receiver->isa, selector);
 	if (std::strcmp(types, "v@:") == 0) {
@@ -1920,7 +3171,9 @@ extern "C" id objc_msgSend(id receiver, SEL selector, ...)
 		return nullptr;
 	}
 	if (std::strcmp(types, "i@:") == 0 || std::strcmp(types, "q@:") == 0 ||
-		std::strcmp(types, "B@:") == 0 || std::strcmp(types, "^v@:") == 0) {
+		std::strcmp(types, "B@:") == 0 || std::strcmp(types, "S@:") == 0 ||
+		std::strcmp(types, "s@:") == 0 || std::strcmp(types, "^v@:") == 0 ||
+		std::strcmp(types, "*@:") == 0) {
 		const IMP implementation = FindMethod(receiver, selector);
 		if (!implementation)
 			return nullptr;
@@ -1933,32 +3186,48 @@ extern "C" id objc_msgSend(id receiver, SEL selector, ...)
 		if (std::strcmp(types, "B@:") == 0)
 			return reinterpret_cast<id>(static_cast<std::uintptr_t>(
 				reinterpret_cast<bool (*)(id, SEL)>(implementation)(receiver, selector)));
+		if (std::strcmp(types, "S@:") == 0)
+			return reinterpret_cast<id>(static_cast<std::uintptr_t>(
+				reinterpret_cast<std::uint16_t (*)(id, SEL)>(implementation)(receiver, selector)));
+		if (std::strcmp(types, "s@:") == 0)
+			return reinterpret_cast<id>(static_cast<std::intptr_t>(
+				reinterpret_cast<std::int16_t (*)(id, SEL)>(implementation)(receiver, selector)));
+		if (std::strcmp(types, "*@:") == 0)
+			return reinterpret_cast<id>(const_cast<char*>(
+				reinterpret_cast<const char* (*)(id, SEL)>(implementation)(
+					receiver, selector)));
 		return reinterpret_cast<id>(reinterpret_cast<void* (*)(id, SEL)>(implementation)(
 			receiver, selector));
 	}
-	va_list arguments;
-	va_start(arguments, selector);
+	DARLING_OBJC_VA_LIST(arguments, darwin_arguments);
 	id result = nullptr;
 	if (std::strcmp(types, "@@:@") == 0) {
 		result = darling_objc_msgSend_object1(receiver, selector,
-			va_arg(arguments, id));
+			DARLING_OBJC_VA_ARG(arguments, id));
+	} else if (std::strcmp(types,
+		"@@:{CGRect={CGPoint=dd}{CGSize=dd}}") == 0) {
+		const IMP implementation = FindMethod(receiver, selector);
+		using RectMethod = id (*)(id, SEL, DarlingObjcRect);
+		const auto rect = DARLING_OBJC_VA_ARG(arguments, DarlingObjcRect);
+		result = implementation ? reinterpret_cast<RectMethod>(implementation)(
+			receiver, selector, rect) : nullptr;
 	} else if (std::strcmp(types, "@@:@@") == 0) {
 		const IMP implementation = FindMethod(receiver, selector);
 		using ObjectMethod = id (*)(id, SEL, id, id);
-		const auto first = va_arg(arguments, id);
-		const auto second = va_arg(arguments, id);
+		const auto first = DARLING_OBJC_VA_ARG(arguments, id);
+		const auto second = DARLING_OBJC_VA_ARG(arguments, id);
 		result = implementation ? reinterpret_cast<ObjectMethod>(implementation)(
 			receiver, selector, first, second) : nullptr;
 	} else if (std::strcmp(types, "q@:q") == 0) {
 		const auto value = darling_objc_msgSend_int64_1(receiver, selector,
-			va_arg(arguments, std::int64_t));
+			DARLING_OBJC_VA_ARG(arguments, std::int64_t));
 		result = reinterpret_cast<id>(static_cast<std::uintptr_t>(value));
 	} else if (std::strcmp(types, "q@:qq") == 0) {
 		const IMP implementation = FindMethod(receiver, selector);
 		using IntegerMethod = std::int64_t (*)(id, SEL, std::int64_t,
 			std::int64_t);
-		const auto first = va_arg(arguments, std::int64_t);
-		const auto second = va_arg(arguments, std::int64_t);
+		const auto first = DARLING_OBJC_VA_ARG(arguments, std::int64_t);
+		const auto second = DARLING_OBJC_VA_ARG(arguments, std::int64_t);
 		const auto value = implementation ?
 			reinterpret_cast<IntegerMethod>(implementation)(receiver, selector,
 				first, second) : 0;
@@ -1968,60 +3237,235 @@ extern "C" id objc_msgSend(id receiver, SEL selector, ...)
 		using IntegerMethod = int (*)(id, SEL, int);
 		const auto value = implementation ?
 			reinterpret_cast<IntegerMethod>(implementation)(receiver, selector,
-				va_arg(arguments, int)) : 0;
+				DARLING_OBJC_VA_ARG(arguments, int)) : 0;
 		result = reinterpret_cast<id>(static_cast<std::intptr_t>(value));
 	} else if (std::strcmp(types, "q@:i") == 0) {
 		const IMP implementation = FindMethod(receiver, selector);
 		using IntegerMethod = std::int64_t (*)(id, SEL, int);
 		const auto value = implementation ?
 			reinterpret_cast<IntegerMethod>(implementation)(receiver, selector,
-				va_arg(arguments, int)) : 0;
+				DARLING_OBJC_VA_ARG(arguments, int)) : 0;
 		result = reinterpret_cast<id>(static_cast<std::uintptr_t>(value));
 	} else if (std::strcmp(types, "i@:q") == 0) {
 		const IMP implementation = FindMethod(receiver, selector);
 		using IntegerMethod = int (*)(id, SEL, std::int64_t);
 		const auto value = implementation ?
 			reinterpret_cast<IntegerMethod>(implementation)(receiver, selector,
-				va_arg(arguments, std::int64_t)) : 0;
+				DARLING_OBJC_VA_ARG(arguments, std::int64_t)) : 0;
 		result = reinterpret_cast<id>(static_cast<std::intptr_t>(value));
 	} else if (std::strcmp(types, "v@:i") == 0) {
 		const IMP implementation = FindMethod(receiver, selector);
 		using VoidMethod = void (*)(id, SEL, int);
 		if (implementation)
 			reinterpret_cast<VoidMethod>(implementation)(receiver, selector,
-				va_arg(arguments, int));
+				DARLING_OBJC_VA_ARG(arguments, int));
 	} else if (std::strcmp(types, "v@:q") == 0) {
 		const IMP implementation = FindMethod(receiver, selector);
 		using VoidMethod = void (*)(id, SEL, std::int64_t);
 		if (implementation)
 			reinterpret_cast<VoidMethod>(implementation)(receiver, selector,
-				va_arg(arguments, std::int64_t));
+				DARLING_OBJC_VA_ARG(arguments, std::int64_t));
+	} else if (std::strcmp(types, "v@:@") == 0) {
+		darling_objc_msgSend_void1_object(receiver, selector,
+			DARLING_OBJC_VA_ARG(arguments, id));
+	} else if (std::strcmp(types,
+		"v@:{CGRect={CGPoint=dd}{CGSize=dd}}") == 0) {
+		const IMP implementation = FindMethod(receiver, selector);
+		using RectMethod = void (*)(id, SEL, DarlingObjcRect);
+		const auto rect = DARLING_OBJC_VA_ARG(arguments, DarlingObjcRect);
+		if (implementation)
+			reinterpret_cast<RectMethod>(implementation)(receiver, selector, rect);
+	} else if (std::strcmp(types, "v@::") == 0) {
+		const IMP implementation = FindMethod(receiver, selector);
+		using SelectorMethod = void (*)(id, SEL, SEL);
+		const auto argument = DARLING_OBJC_VA_ARG(arguments, SEL);
+		if (implementation)
+			reinterpret_cast<SelectorMethod>(implementation)(receiver, selector,
+				argument);
+	} else if (std::strcmp(types, "v@:B") == 0 ||
+		std::strcmp(types, "v@:c") == 0) {
+		const IMP implementation = FindMethod(receiver, selector);
+		using BoolMethod = void (*)(id, SEL, bool);
+		const bool argument = DARLING_OBJC_VA_ARG(arguments, int) != 0;
+		if (implementation)
+			reinterpret_cast<BoolMethod>(implementation)(receiver, selector,
+				argument);
 	} else if (std::strcmp(types, "B@:B") == 0) {
-		const bool value = va_arg(arguments, int) != 0;
+		const bool value = DARLING_OBJC_VA_ARG(arguments, int) != 0;
 		result = reinterpret_cast<id>(static_cast<std::uintptr_t>(
 			darling_objc_invoke1(receiver, selector,
 				DarlingObjcValue{DARLING_OBJC_BOOL, {.boolean = value}}).boolean));
 	} else if (std::strcmp(types, "^v@:^v") == 0) {
 		const auto value = darling_objc_invoke1(receiver, selector,
 			DarlingObjcValue{DARLING_OBJC_POINTER,
-				{.pointer = va_arg(arguments, void*)}});
+				{.pointer = DARLING_OBJC_VA_ARG(arguments, void*)}});
 		result = reinterpret_cast<id>(value.pointer);
 	} else if (std::strcmp(types, "@@:@?") == 0) {
 		result = darling_objc_invoke1(receiver, selector,
 			DarlingObjcValue{DARLING_OBJC_BLOCK,
-				{.block = va_arg(arguments, DarlingObjcCallbackBlock*)}}).object;
+				{.block = DARLING_OBJC_VA_ARG(arguments, DarlingObjcCallbackBlock*)}}).object;
 	}
+	DARLING_OBJC_VA_END(arguments);
+	return result;
+}
+
+extern "C" id objc_msgSend(id receiver, SEL selector, ...)
+{
+	va_list arguments;
+	va_start(arguments, selector);
+	DarlingWindowsVarargs reader{&arguments};
+	const id result = DarlingObjcMsgSendDispatch(receiver, selector, reader);
 	va_end(arguments);
 	return result;
 }
 
-extern "C" id objc_msgSendSuper(id receiver, Class superclass, SEL selector, ...)
+#undef DARLING_OBJC_VA_LIST
+#undef DARLING_OBJC_VA_ARG
+#undef DARLING_OBJC_VA_END
+
+extern "C" void darling_objc_msgSend_stret(
+	void* return_storage, id receiver, SEL selector, ...)
+{
+	if (return_storage == nullptr) return;
+	if (receiver == nullptr || selector == nullptr) return;
+	DarlingObjcOperatingSystemVersion version{};
+	constexpr const char* version_encoding =
+		"{NSOperatingSystemVersion=qqq}@:";
+#if defined(__clang__) && defined(_WIN64) && !defined(_M_ARM64) && !defined(__aarch64__)
+	{
+		const bool class_method = object_isClass(receiver);
+		const Class start = class_method ? reinterpret_cast<Class>(receiver) : receiver->isa;
+		const ObjcMethodSnapshot method = LookupMethodSnapshot(start, selector,
+			class_method);
+		if (method.implementation != nullptr &&
+			CanonicalObjcEncoding(method.types) == version_encoding) {
+			version = InvokeObjcImplementation<DarlingObjcOperatingSystemVersion>(
+				method.implementation, method.guest_abi, receiver, selector);
+			std::memcpy(return_storage, &version, sizeof(version));
+			return;
+		}
+	}
+#else
+	{
+		const char* types = class_getMethodTypeEncoding(object_getClass(receiver), selector);
+		const IMP implementation = FindMethod(receiver, selector);
+		if (implementation != nullptr && types != nullptr &&
+			std::strcmp(types, version_encoding) == 0) {
+			using VersionMethod = DarlingObjcOperatingSystemVersion (*)(id, SEL);
+			version = reinterpret_cast<VersionMethod>(implementation)(receiver, selector);
+			std::memcpy(return_storage, &version, sizeof(version));
+			return;
+		}
+	}
+#endif
+	DarlingObjcRect result{};
+#if defined(__clang__) && defined(_WIN64) && !defined(_M_ARM64) && !defined(__aarch64__)
+	const bool class_method = object_isClass(receiver);
+	const Class start = class_method ? reinterpret_cast<Class>(receiver) :
+		receiver->isa;
+	const ObjcMethodSnapshot method = LookupMethodSnapshot(start, selector,
+		class_method);
+	if (method.implementation == nullptr || CanonicalObjcEncoding(method.types) !=
+		"{CGRect={CGPoint=dd}{CGSize=dd}}@:") return;
+	result = InvokeObjcImplementation<DarlingObjcRect>(
+		method.implementation, method.guest_abi, receiver, selector);
+#else
+	const char* types = class_getMethodTypeEncoding(object_getClass(receiver),
+		selector);
+	const IMP implementation = FindMethod(receiver, selector);
+	if (implementation == nullptr || types == nullptr || std::strcmp(types,
+		"{CGRect={CGPoint=dd}{CGSize=dd}}@:") != 0) return;
+	using RectMethod = DarlingObjcRect (*)(id, SEL);
+	result = reinterpret_cast<RectMethod>(implementation)(receiver, selector);
+#endif
+	std::memcpy(return_storage, &result, sizeof(result));
+}
+
+namespace {
+void DispatchSuperRectStret(void* return_storage, const void* super_info,
+	SEL selector, bool super2)
+{
+	if (return_storage == nullptr || super_info == nullptr || selector == nullptr)
+		return;
+	const auto* super = static_cast<const DarlingObjcSuper*>(super_info);
+	if (super->receiver == nullptr || super->super_class == nullptr) return;
+	Class start = super2 ? super->super_class->superclass : super->super_class;
+	if (start == nullptr) return;
+	const bool class_method = object_isClass(super->receiver);
+	constexpr const char* version_encoding =
+		"{NSOperatingSystemVersion=qqq}@:";
+#if defined(__clang__) && defined(_WIN64) && !defined(_M_ARM64) && !defined(__aarch64__)
+	{
+		const ObjcMethodSnapshot method = LookupMethodSnapshot(start, selector,
+			class_method);
+		if (method.implementation != nullptr &&
+			CanonicalObjcEncoding(method.types) == version_encoding) {
+			const auto version = InvokeObjcImplementation<
+				DarlingObjcOperatingSystemVersion>(method.implementation,
+				method.guest_abi, super->receiver, selector);
+			std::memcpy(return_storage, &version, sizeof(version));
+			return;
+		}
+	}
+#else
+	{
+		const Method method = class_method ? class_getClassMethod(start, selector) :
+			class_getInstanceMethod(start, selector);
+		if (method != nullptr && method_getTypeEncoding(method) != nullptr &&
+			std::strcmp(method_getTypeEncoding(method), version_encoding) == 0) {
+			using VersionMethod = DarlingObjcOperatingSystemVersion (*)(id, SEL);
+			const auto version = reinterpret_cast<VersionMethod>(
+				method_getImplementation(method))(super->receiver, selector);
+			std::memcpy(return_storage, &version, sizeof(version));
+			return;
+		}
+	}
+#endif
+	DarlingObjcRect result{};
+#if defined(__clang__) && defined(_WIN64) && !defined(_M_ARM64) && !defined(__aarch64__)
+	const ObjcMethodSnapshot method = LookupMethodSnapshot(start, selector,
+		class_method);
+	if (method.implementation == nullptr || CanonicalObjcEncoding(method.types) !=
+		"{CGRect={CGPoint=dd}{CGSize=dd}}@:") return;
+	result = InvokeObjcImplementation<DarlingObjcRect>(method.implementation,
+		method.guest_abi, super->receiver, selector);
+#else
+	const Method method = class_method ? class_getClassMethod(start, selector) :
+		class_getInstanceMethod(start, selector);
+	if (method == nullptr || method_getTypeEncoding(method) == nullptr ||
+		std::strcmp(method_getTypeEncoding(method),
+			"{CGRect={CGPoint=dd}{CGSize=dd}}@:") != 0) return;
+	using RectMethod = DarlingObjcRect (*)(id, SEL);
+	result = reinterpret_cast<RectMethod>(method_getImplementation(method))(
+		super->receiver, selector);
+#endif
+	std::memcpy(return_storage, &result, sizeof(result));
+}
+}
+
+extern "C" void darling_objc_msgSendSuper_stret(void* return_storage,
+	void* super_info, SEL selector, ...)
+{
+	DispatchSuperRectStret(return_storage, super_info, selector, false);
+}
+
+extern "C" void darling_objc_msgSendSuper2_stret(void* return_storage,
+	void* super_info, SEL selector, ...)
+{
+	DispatchSuperRectStret(return_storage, super_info, selector, true);
+}
+
+template<typename VarargsReader>
+id DarlingObjcMsgSendSuperDispatch(id receiver, Class superclass, SEL selector,
+	VarargsReader& varargs)
 {
 	if (!receiver || !superclass || !selector)
 		return nullptr;
-	const char* types = class_getMethodTypeEncoding(superclass, selector);
-	if (!types)
+	const char* raw_types = class_getMethodTypeEncoding(superclass, selector);
+	if (!raw_types)
 		return nullptr;
+	const std::string encoding = CanonicalObjcDispatchEncoding(raw_types);
+	const char* types = encoding.c_str();
 	if (std::strcmp(types, "@@:") == 0)
 		return Dispatch(receiver, superclass, selector);
 	if (std::strcmp(types, "v@:") == 0) {
@@ -2031,7 +3475,8 @@ extern "C" id objc_msgSendSuper(id receiver, Class superclass, SEL selector, ...
 		return nullptr;
 	}
 	if (std::strcmp(types, "i@:") == 0 || std::strcmp(types, "q@:") == 0 ||
-		std::strcmp(types, "B@:") == 0 || std::strcmp(types, "^v@:") == 0) {
+		std::strcmp(types, "B@:") == 0 || std::strcmp(types, "S@:") == 0 ||
+		std::strcmp(types, "s@:") == 0 || std::strcmp(types, "^v@:") == 0) {
 		const IMP implementation = class_getMethodImplementation(superclass, selector);
 		if (!implementation)
 			return nullptr;
@@ -2044,17 +3489,21 @@ extern "C" id objc_msgSendSuper(id receiver, Class superclass, SEL selector, ...
 		if (std::strcmp(types, "B@:") == 0)
 			return reinterpret_cast<id>(static_cast<std::uintptr_t>(
 				reinterpret_cast<bool (*)(id, SEL)>(implementation)(receiver, selector)));
+		if (std::strcmp(types, "S@:") == 0)
+			return reinterpret_cast<id>(static_cast<std::uintptr_t>(
+				reinterpret_cast<std::uint16_t (*)(id, SEL)>(implementation)(receiver, selector)));
+		if (std::strcmp(types, "s@:") == 0)
+			return reinterpret_cast<id>(static_cast<std::intptr_t>(
+				reinterpret_cast<std::int16_t (*)(id, SEL)>(implementation)(receiver, selector)));
 		return reinterpret_cast<id>(reinterpret_cast<void* (*)(id, SEL)>(implementation)(
 			receiver, selector));
 	}
-	va_list arguments;
-	va_start(arguments, selector);
 	id result = nullptr;
 	if (std::strcmp(types, "@@:@@") == 0) {
 		const IMP implementation = class_getMethodImplementation(superclass, selector);
 		using ObjectMethod = id (*)(id, SEL, id, id);
-		const auto first = va_arg(arguments, id);
-		const auto second = va_arg(arguments, id);
+		const auto first = varargs.template Next<id>();
+		const auto second = varargs.template Next<id>();
 		if (implementation)
 			result = reinterpret_cast<ObjectMethod>(implementation)(receiver, selector,
 				first, second);
@@ -2064,13 +3513,13 @@ extern "C" id objc_msgSendSuper(id receiver, Class superclass, SEL selector, ...
 		if (implementation)
 			result = reinterpret_cast<id>(static_cast<std::uintptr_t>(
 				reinterpret_cast<IntegerMethod>(implementation)(receiver, selector,
-					va_arg(arguments, std::int64_t))));
+					varargs.template Next<std::int64_t>())));
 	} else if (std::strcmp(types, "q@:qq") == 0) {
 		const IMP implementation = class_getMethodImplementation(superclass, selector);
 		using IntegerMethod = std::int64_t (*)(id, SEL, std::int64_t,
 			std::int64_t);
-		const auto first = va_arg(arguments, std::int64_t);
-		const auto second = va_arg(arguments, std::int64_t);
+		const auto first = varargs.template Next<std::int64_t>();
+		const auto second = varargs.template Next<std::int64_t>();
 		if (implementation)
 			result = reinterpret_cast<id>(static_cast<std::uintptr_t>(
 				reinterpret_cast<IntegerMethod>(implementation)(receiver, selector,
@@ -2078,7 +3527,7 @@ extern "C" id objc_msgSendSuper(id receiver, Class superclass, SEL selector, ...
 	} else if (std::strcmp(types, "B@:B") == 0) {
 		const IMP implementation = class_getMethodImplementation(superclass, selector);
 		using BoolMethod = bool (*)(id, SEL, bool);
-		const bool value = va_arg(arguments, int) != 0;
+		const bool value = varargs.template Next<int>() != 0;
 		if (implementation)
 			result = reinterpret_cast<id>(static_cast<std::uintptr_t>(
 				reinterpret_cast<BoolMethod>(implementation)(receiver, selector, value)));
@@ -2086,32 +3535,233 @@ extern "C" id objc_msgSendSuper(id receiver, Class superclass, SEL selector, ...
 		const IMP implementation = class_getMethodImplementation(superclass, selector);
 		if (implementation)
 			reinterpret_cast<void (*)(id, SEL, int)>(implementation)(receiver, selector,
-				va_arg(arguments, int));
+				varargs.template Next<int>());
 	} else if (std::strcmp(types, "v@:q") == 0) {
 		const IMP implementation = class_getMethodImplementation(superclass, selector);
 		if (implementation)
 			reinterpret_cast<void (*)(id, SEL, std::int64_t)>(implementation)(receiver, selector,
-				va_arg(arguments, std::int64_t));
+				varargs.template Next<std::int64_t>());
 	} else if (std::strcmp(types, "^v@:^v") == 0) {
 		const IMP implementation = class_getMethodImplementation(superclass, selector);
 		using PointerMethod = void* (*)(id, SEL, void*);
 		if (implementation)
 			result = reinterpret_cast<id>(reinterpret_cast<PointerMethod>(implementation)(
-				receiver, selector, va_arg(arguments, void*)));
+				receiver, selector, varargs.template Next<void*>()));
 	} else if (std::strcmp(types, "@@:@?") == 0) {
 		const IMP implementation = class_getMethodImplementation(superclass, selector);
 		using BlockMethod = id (*)(id, SEL, DarlingObjcCallbackBlock*);
 		if (implementation)
 			result = reinterpret_cast<BlockMethod>(implementation)(receiver, selector,
-				va_arg(arguments, DarlingObjcCallbackBlock*));
+				varargs.template Next<DarlingObjcCallbackBlock*>());
 	} else if (std::strcmp(types, "@@:@") == 0) {
 		const IMP implementation = class_getMethodImplementation(superclass, selector);
 		if (implementation) {
 			using Method = id (*)(id, SEL, id);
 			result = reinterpret_cast<Method>(implementation)(receiver, selector,
-				va_arg(arguments, id));
+				varargs.template Next<id>());
 		}
 	}
+	return result;
+}
+
+#if defined(DARLING_ARM64_GUEST_BRIDGE)
+namespace {
+struct alignas(16) DarlingArm64ObjcReturnRegisters final {
+	std::uint64_t gp[2]{};
+	double fp[4]{};
+};
+static_assert(offsetof(DarlingArm64ObjcReturnRegisters, fp) == 16);
+static_assert(sizeof(DarlingArm64ObjcReturnRegisters) == 48);
+
+template<typename Reader>
+bool DispatchArm64NonIntegerReturn(id receiver, SEL selector, IMP implementation,
+	const std::string& encoding, Reader& arguments,
+	DarlingArm64ObjcReturnRegisters& result)
+{
+	if (!implementation) return false;
+	if (encoding == "d@:") {
+		result.fp[0] = reinterpret_cast<double (*)(id, SEL)>(implementation)(
+			receiver, selector);
+		return true;
+	}
+	if (encoding == "f@:") {
+		const float value = reinterpret_cast<float (*)(id, SEL)>(implementation)(
+			receiver, selector);
+		std::memcpy(&result.fp[0], &value, sizeof(value));
+		return true;
+	}
+	if (encoding == "d@:d") {
+		const double value = arguments.template Next<double>();
+		result.fp[0] = reinterpret_cast<double (*)(id, SEL, double)>(implementation)(
+			receiver, selector, value);
+		return true;
+	}
+	if (encoding == "f@:f") {
+		const float value = static_cast<float>(arguments.template Next<double>());
+		const float returned = reinterpret_cast<float (*)(id, SEL, float)>(
+			implementation)(receiver, selector, value);
+		std::memcpy(&result.fp[0], &returned, sizeof(returned));
+		return true;
+	}
+	if (encoding == "{CGRect={CGPoint=dd}{CGSize=dd}}@:") {
+		const auto value = reinterpret_cast<DarlingObjcRect (*)(id, SEL)>(
+			implementation)(receiver, selector);
+		std::memcpy(result.fp, &value, sizeof(value));
+		return true;
+	}
+	if (encoding == "{CGPoint=dd}@:") {
+		const auto value = reinterpret_cast<DarlingObjcPoint (*)(id, SEL)>(
+			implementation)(receiver, selector);
+		std::memcpy(result.fp, &value, sizeof(value));
+		return true;
+	}
+	if (encoding == "{CGSize=dd}@:") {
+		const auto value = reinterpret_cast<DarlingObjcPoint (*)(id, SEL)>(
+			implementation)(receiver, selector);
+		std::memcpy(result.fp, &value, sizeof(value));
+		return true;
+	}
+	if (encoding == "{_NSRange=QQ}@:") {
+		const auto value = reinterpret_cast<DarlingObjcRange (*)(id, SEL)>(
+			implementation)(receiver, selector);
+		std::memcpy(result.gp, &value, sizeof(value));
+		return true;
+	}
+	if (encoding == "{_NSRange=QQ}@:@") {
+		const auto argument = arguments.template Next<id>();
+		const auto value = reinterpret_cast<DarlingObjcRange (*)(id, SEL, id)>(
+			implementation)(receiver, selector, argument);
+		std::memcpy(result.gp, &value, sizeof(value));
+		return true;
+	}
+	if (encoding == "{_NSRange=QQ}@:@@Q") {
+		const auto string = arguments.template Next<id>();
+		const auto options = arguments.template Next<std::uint64_t>();
+		const auto value = reinterpret_cast<DarlingObjcRange (*)(id, SEL, id,
+			std::uint64_t)>(implementation)(receiver, selector, string, options);
+		std::memcpy(result.gp, &value, sizeof(value));
+		return true;
+	}
+	if (encoding == "{_NSRange=QQ}@:@@Q{_NSRange=QQ}") {
+		const auto string = arguments.template Next<id>();
+		const auto options = arguments.template Next<std::uint64_t>();
+		const auto range = arguments.template Next<DarlingObjcRange>();
+		const auto value = reinterpret_cast<DarlingObjcRange (*)(id, SEL,
+			id, std::uint64_t, DarlingObjcRange)>(implementation)(receiver,
+			selector, string, options, range);
+		std::memcpy(result.gp, &value, sizeof(value));
+		return true;
+	}
+	return false;
+}
+
+template<typename Reader>
+bool DispatchArm64StructArgument(id receiver, SEL selector, IMP implementation,
+	const std::string& encoding, Reader& arguments,
+	DarlingArm64ObjcReturnRegisters& result)
+{
+	if (!implementation) return false;
+	constexpr std::string_view range = "{_NSRange=QQ}";
+	constexpr std::string_view point = "{CGPoint=dd}";
+	constexpr std::string_view size = "{CGSize=dd}";
+	constexpr std::string_view rect = "{CGRect={CGPoint=dd}{CGSize=dd}}";
+	if (encoding == "@@:" + std::string(range)) {
+		const auto value = arguments.template Next<DarlingObjcRange>();
+		result.gp[0] = reinterpret_cast<std::uintptr_t>(
+			reinterpret_cast<id (*)(id, SEL, DarlingObjcRange)>(implementation)(
+				receiver, selector, value));
+		return true;
+	}
+	if (encoding == "v@:" + std::string(range)) {
+		const auto value = arguments.template Next<DarlingObjcRange>();
+		reinterpret_cast<void (*)(id, SEL, DarlingObjcRange)>(implementation)(
+			receiver, selector, value);
+		return true;
+	}
+	if (encoding == "@@:" + std::string(point) ||
+		encoding == "@@:" + std::string(size)) {
+		const auto value = arguments.template Next<DarlingObjcPoint>();
+		result.gp[0] = reinterpret_cast<std::uintptr_t>(
+			reinterpret_cast<id (*)(id, SEL, DarlingObjcPoint)>(implementation)(
+				receiver, selector, value));
+		return true;
+	}
+	if (encoding == "v@:" + std::string(point) ||
+		encoding == "v@:" + std::string(size)) {
+		const auto value = arguments.template Next<DarlingObjcPoint>();
+		reinterpret_cast<void (*)(id, SEL, DarlingObjcPoint)>(implementation)(
+			receiver, selector, value);
+		return true;
+	}
+	if (encoding == "@@:" + std::string(rect)) {
+		const auto value = arguments.template Next<DarlingObjcRect>();
+		result.gp[0] = reinterpret_cast<std::uintptr_t>(
+			reinterpret_cast<id (*)(id, SEL, DarlingObjcRect)>(implementation)(
+				receiver, selector, value));
+		return true;
+	}
+	if (encoding == "v@:" + std::string(rect)) {
+		const auto value = arguments.template Next<DarlingObjcRect>();
+		reinterpret_cast<void (*)(id, SEL, DarlingObjcRect)>(implementation)(
+			receiver, selector, value);
+		return true;
+	}
+	return false;
+}
+}
+
+extern "C" void darling_windows_objc_arm64_message_dispatch(
+	const void* receiver_or_super, SEL selector, const void* argument_stack,
+	DarlingArm64ObjcReturnRegisters* output, unsigned dispatch_kind,
+	void* indirect_result)
+{
+	if (!output) return;
+	*output = {};
+	(void)indirect_result;
+	if (!receiver_or_super || !selector || dispatch_kind > 2) return;
+	const auto* super = dispatch_kind == 0 ? nullptr :
+		static_cast<const DarlingObjcSuper*>(receiver_or_super);
+	id receiver = super ? super->receiver :
+		const_cast<id>(static_cast<const objc_object*>(receiver_or_super));
+	if (!receiver) return;
+	Class lookup = nullptr;
+	if (super) {
+		lookup = super->super_class;
+		if (dispatch_kind == 2 && lookup) lookup = lookup->superclass;
+	} else {
+		lookup = object_isClass(receiver) ? reinterpret_cast<Class>(receiver) :
+			receiver->isa;
+	}
+	if (!lookup) return;
+	const bool class_method = object_isClass(receiver);
+	const Method method = class_method ? class_getClassMethod(lookup, selector) :
+		class_getInstanceMethod(lookup, selector);
+	const IMP implementation = method ? method_getImplementation(method) : nullptr;
+	const std::string encoding = CanonicalObjcDispatchEncoding(
+		method ? method_getTypeEncoding(method) : nullptr);
+	DarlingArm64GuestVarargs reader{
+		static_cast<const std::uint8_t*>(argument_stack)};
+	if (DispatchArm64NonIntegerReturn(receiver, selector, implementation,
+		encoding, reader, *output)) return;
+	if (DispatchArm64StructArgument(receiver, selector, implementation,
+		encoding, reader, *output)) return;
+	if (super) {
+		output->gp[0] = reinterpret_cast<std::uintptr_t>(
+			DarlingObjcMsgSendSuperDispatch(receiver, lookup, selector, reader));
+	} else {
+		output->gp[0] = reinterpret_cast<std::uintptr_t>(
+			DarlingObjcMsgSendDispatch(receiver, selector, reader));
+	}
+}
+#endif
+
+extern "C" id objc_msgSendSuper(id receiver, Class superclass, SEL selector, ...)
+{
+	va_list arguments;
+	va_start(arguments, selector);
+	DarlingWindowsVarargs reader{&arguments};
+	const id result = DarlingObjcMsgSendSuperDispatch(receiver, superclass,
+		selector, reader);
 	va_end(arguments);
 	return result;
 }
@@ -2454,33 +4104,47 @@ extern "C" id darling_objc_msgSend_class0(Class cls, SEL selector)
 {
 	if (!cls || !selector)
 		return nullptr;
-	std::lock_guard lock(RuntimeMutex());
-	for (Class current = cls; current; current = current->superclass) {
-		const auto& method_map = current->is_metaclass ? current->methods : current->class_methods;
-		const auto method = method_map.find(selector);
-		if (method == method_map.end())
-			continue;
-		if (method->second.types != "@@:")
-			return nullptr;
-		using ClassMethod = id (*)(Class, SEL);
-		return reinterpret_cast<ClassMethod>(method->second.implementation)(
-			cls->is_metaclass && cls->owner_class ? cls->owner_class : cls,
-			selector);
+	IMP implementation = nullptr;
+	Class method_receiver = cls->is_metaclass && cls->owner_class ?
+		cls->owner_class : cls;
+	{
+		std::lock_guard lock(RuntimeMutex());
+		for (Class current = cls; current; current = current->superclass) {
+			const auto& method_map = current->is_metaclass ? current->methods :
+				current->class_methods;
+			const auto method = method_map.find(selector);
+			if (method == method_map.end()) continue;
+			if (method->second.types != "@@:") return nullptr;
+			implementation = method->second.implementation;
+			break;
+		}
 	}
-	return nullptr;
+	if (!implementation) return nullptr;
+	using ClassMethod = id (*)(Class, SEL);
+	return reinterpret_cast<ClassMethod>(implementation)(method_receiver, selector);
 }
 
 extern "C" id darling_objc_msgSend_object1(id receiver, SEL selector,
 	id argument)
 {
+	if (receiver == nullptr) return nullptr;
+#if defined(__clang__) && defined(_WIN64) && !defined(_M_ARM64) && !defined(__aarch64__)
+	const auto method = LookupMethodSnapshot(object_getClass(receiver), selector,
+		false);
+	if (method.implementation == nullptr ||
+		CanonicalObjcEncoding(method.types) != "@@:@")
+		return nullptr;
+	return InvokeObjcImplementation<id>(method.implementation, method.guest_abi,
+		receiver, selector, argument);
+#else
 	const IMP implementation = FindMethod(receiver, selector);
 	const char* types = class_getMethodTypeEncoding(object_getClass(receiver),
 		selector);
-	if (!implementation || !types || std::strcmp(types, "@@:@") != 0)
-		return nullptr;
-	using ObjectMethod = id (*)(id, SEL, id);
-	return reinterpret_cast<ObjectMethod>(implementation)(receiver, selector,
-		argument);
+	if (implementation == nullptr || types == nullptr ||
+		std::strcmp(types, "@@:@") != 0) return nullptr;
+	return reinterpret_cast<id (*)(id, SEL, id)>(implementation)(receiver,
+		selector, argument);
+#endif
 }
 
 extern "C" id darling_objc_msgSend_object0(id receiver, SEL selector)
@@ -2507,12 +4171,39 @@ extern "C" id darling_objc_msgSend_object2(id receiver, SEL selector,
 		first, second);
 }
 
+extern "C" id darling_objc_msgSend_object_rect1(id receiver, SEL selector,
+	DarlingObjcRect argument)
+{
+	if (receiver == nullptr || selector == nullptr) return nullptr;
+	constexpr const char* encoding =
+		"@@:{CGRect={CGPoint=dd}{CGSize=dd}}";
+#if defined(__clang__) && defined(_WIN64) && !defined(_M_ARM64) && !defined(__aarch64__)
+	const auto method = LookupMethodSnapshot(object_getClass(receiver), selector,
+		false);
+	if (method.implementation == nullptr ||
+		CanonicalObjcEncoding(method.types) != encoding) return nullptr;
+	return InvokeObjcImplementation<id, DarlingObjcRect>(method.implementation,
+		method.guest_abi, receiver, selector, argument);
+#else
+	const IMP implementation = FindMethod(receiver, selector);
+	const char* types = class_getMethodTypeEncoding(object_getClass(receiver),
+		selector);
+	if (implementation == nullptr || types == nullptr ||
+		std::strcmp(types, encoding) != 0) return nullptr;
+	using ObjectRectMethod = id (*)(id, SEL, DarlingObjcRect);
+	return reinterpret_cast<ObjectRectMethod>(implementation)(receiver,
+		selector, argument);
+#endif
+}
+
 extern "C" id darling_objc_msgSend_object_pointer1(id receiver, SEL selector,
 	void* argument)
 {
 	const IMP implementation = FindMethod(receiver, selector);
 	const char* types = class_getMethodTypeEncoding(object_getClass(receiver), selector);
-	if (!implementation || !types || std::strcmp(types, "@@:^v") != 0) return nullptr;
+	if (!implementation || !types ||
+		(std::strcmp(types, "@@:^v") != 0 && std::strcmp(types, "@@:*") != 0))
+		return nullptr;
 	using ObjectMethod = id (*)(id, SEL, void*);
 	return reinterpret_cast<ObjectMethod>(implementation)(receiver, selector, argument);
 }
@@ -2561,6 +4252,30 @@ extern "C" std::int64_t darling_objc_msgSend_int64_0(id receiver, SEL selector)
 	if (!implementation || !types || std::strcmp(types, "q@:") != 0) return 0;
 	using IntegerMethod = std::int64_t (*)(id, SEL);
 	return reinterpret_cast<IntegerMethod>(implementation)(receiver, selector);
+}
+
+extern "C" std::int64_t darling_objc_msgSend_int64_object1(
+	id receiver, SEL selector, id argument)
+{
+	if (receiver == nullptr) return 0;
+#if defined(__clang__) && defined(_WIN64) && !defined(_M_ARM64) && !defined(__aarch64__)
+	const auto method = LookupMethodSnapshot(object_getClass(receiver), selector,
+		false);
+	const auto encoding = CanonicalObjcEncoding(method.types);
+	if (method.implementation == nullptr ||
+		(encoding != "q@:@" && encoding != "i@:@")) return 0;
+	return InvokeObjcImplementation<std::int64_t, id>(method.implementation,
+		method.guest_abi, receiver, selector, argument);
+#else
+	const IMP implementation = FindMethod(receiver, selector);
+	const char* types = class_getMethodTypeEncoding(object_getClass(receiver),
+		selector);
+	if (implementation == nullptr || types == nullptr ||
+		(std::strcmp(types, "q@:@") != 0 && std::strcmp(types, "i@:@") != 0))
+		return 0;
+	return reinterpret_cast<std::int64_t (*)(id, SEL, id)>(implementation)(
+		receiver, selector, argument);
+#endif
 }
 
 extern "C" std::uint64_t darling_objc_msgSend_uint64_0(id receiver, SEL selector)
@@ -2645,6 +4360,30 @@ extern "C" bool darling_objc_msgSend_bool1(id receiver, SEL selector,
 		argument);
 }
 
+extern "C" bool darling_objc_msgSend_bool_object1(id receiver, SEL selector,
+	id argument)
+{
+	if (receiver == nullptr) return false;
+#if defined(__clang__) && defined(_WIN64) && !defined(_M_ARM64) && !defined(__aarch64__)
+	const auto method = LookupMethodSnapshot(object_getClass(receiver), selector,
+		false);
+	const auto encoding = CanonicalObjcEncoding(method.types);
+	if (method.implementation == nullptr ||
+		(encoding != "B@:@" && encoding != "c@:@")) return false;
+	return InvokeObjcImplementation<bool, id>(method.implementation,
+		method.guest_abi, receiver, selector, argument);
+#else
+	const IMP implementation = FindMethod(receiver, selector);
+	const char* types = class_getMethodTypeEncoding(object_getClass(receiver),
+		selector);
+	if (implementation == nullptr || types == nullptr ||
+		(std::strcmp(types, "B@:@") != 0 &&
+			std::strcmp(types, "c@:@") != 0)) return false;
+	return reinterpret_cast<bool (*)(id, SEL, id)>(implementation)(receiver,
+		selector, argument);
+#endif
+}
+
 extern "C" bool darling_objc_msgSend_bool0(id receiver, SEL selector)
 {
 	const IMP implementation = FindMethod(receiver, selector);
@@ -2669,11 +4408,25 @@ extern "C" void* darling_objc_msgSend_pointer1(id receiver, SEL selector,
 
 extern "C" void* darling_objc_msgSend_pointer0(id receiver, SEL selector)
 {
+	if (receiver == nullptr) return nullptr;
+#if defined(__clang__) && defined(_WIN64) && !defined(_M_ARM64) && !defined(__aarch64__)
+	const auto method = LookupMethodSnapshot(object_getClass(receiver), selector,
+		false);
+	if (method.implementation == nullptr ||
+		(CanonicalObjcEncoding(method.types) != "^v@:" &&
+		CanonicalObjcEncoding(method.types) != "*@:")) return nullptr;
+	return InvokeObjcImplementation<void*>(method.implementation,
+		method.guest_abi, receiver, selector);
+#else
 	const IMP implementation = FindMethod(receiver, selector);
-	const char* types = class_getMethodTypeEncoding(object_getClass(receiver), selector);
-	if (!implementation || !types || std::strcmp(types, "^v@:") != 0) return nullptr;
-	using PointerMethod = void* (*)(id, SEL);
-	return reinterpret_cast<PointerMethod>(implementation)(receiver, selector);
+	const char* types = class_getMethodTypeEncoding(object_getClass(receiver),
+		selector);
+	if (implementation == nullptr || types == nullptr ||
+		(std::strcmp(types, "^v@:") != 0 && std::strcmp(types, "*@:") != 0))
+		return nullptr;
+	return reinterpret_cast<void* (*)(id, SEL)>(implementation)(receiver,
+		selector);
+#endif
 }
 
 extern "C" void darling_objc_msgSend_void1_pointer(id receiver, SEL selector,
@@ -2792,6 +4545,28 @@ extern "C" void darling_objc_msgSend_void1_double(id receiver, SEL selector, dou
 	reinterpret_cast<void (*)(id, SEL, double)>(implementation)(receiver, selector, argument);
 }
 
+extern "C" void darling_objc_msgSend_void1_size(id receiver, SEL selector,
+	DarlingObjcPoint argument)
+{
+	if (receiver == nullptr || selector == nullptr) return;
+	#if defined(__clang__) && defined(_WIN64) && !defined(_M_ARM64) && !defined(__aarch64__)
+	const ObjcMethodSnapshot method = LookupMethodSnapshot(
+		object_getClass(receiver), selector, false);
+	if (method.implementation == nullptr ||
+		CanonicalObjcEncoding(method.types) != "v@:{CGSize=dd}") return;
+	InvokeObjcImplementation<void, DarlingObjcPoint>(method.implementation,
+		method.guest_abi, receiver, selector, argument);
+	#else
+	const IMP implementation = FindMethod(receiver, selector);
+	const char* types = class_getMethodTypeEncoding(object_getClass(receiver),
+		selector);
+	if (implementation == nullptr || types == nullptr ||
+		std::strcmp(types, "v@:{CGSize=dd}") != 0) return;
+	reinterpret_cast<void (*)(id, SEL, DarlingObjcPoint)>(implementation)(
+		receiver, selector, argument);
+	#endif
+}
+
 extern "C" void darling_objc_msgSend_void1_float(id receiver, SEL selector, float argument)
 {
 	const IMP implementation = FindMethod(receiver, selector);
@@ -2820,10 +4595,23 @@ extern "C" void darling_objc_msgSend_void2_float(id receiver, SEL selector,
 
 extern "C" void darling_objc_msgSend_void1_object(id receiver, SEL selector, id argument)
 {
+	if (receiver == nullptr) return;
+#if defined(__clang__) && defined(_WIN64) && !defined(_M_ARM64) && !defined(__aarch64__)
+	const auto method = LookupMethodSnapshot(object_getClass(receiver), selector,
+		false);
+	if (method.implementation == nullptr ||
+		CanonicalObjcEncoding(method.types) != "v@:@") return;
+	InvokeObjcImplementation<void>(method.implementation, method.guest_abi,
+		receiver, selector, argument);
+#else
 	const IMP implementation = FindMethod(receiver, selector);
-	const char* types = class_getMethodTypeEncoding(object_getClass(receiver), selector);
-	if (!implementation || !types || std::strcmp(types, "v@:@") != 0) return;
-	reinterpret_cast<void (*)(id, SEL, id)>(implementation)(receiver, selector, argument);
+	const char* types = class_getMethodTypeEncoding(object_getClass(receiver),
+		selector);
+	if (implementation == nullptr || types == nullptr ||
+		std::strcmp(types, "v@:@") != 0) return;
+	reinterpret_cast<void (*)(id, SEL, id)>(implementation)(receiver, selector,
+		argument);
+#endif
 }
 
 extern "C" void darling_objc_msgSend_void2_object(id receiver, SEL selector,
@@ -2881,6 +4669,29 @@ extern "C" DarlingObjcRect darling_objc_msgSend_rect1(id receiver, SEL selector,
 		return empty;
 	using RectMethod = DarlingObjcRect (*)(id, SEL, DarlingObjcRect);
 	return reinterpret_cast<RectMethod>(implementation)(receiver, selector, argument);
+}
+
+extern "C" void darling_objc_msgSend_void_rect1(id receiver, SEL selector,
+	DarlingObjcRect argument)
+{
+	constexpr const char* encoding = "v@:{CGRect={CGPoint=dd}{CGSize=dd}}";
+	if (receiver == nullptr || selector == nullptr) return;
+#if defined(__clang__) && defined(_WIN64) && !defined(_M_ARM64) && !defined(__aarch64__)
+	const auto method = LookupMethodSnapshot(object_getClass(receiver), selector,
+		false);
+	if (method.implementation == nullptr ||
+		CanonicalObjcEncoding(method.types) != encoding) return;
+	InvokeObjcImplementation<void, DarlingObjcRect>(method.implementation,
+		method.guest_abi, receiver, selector, argument);
+#else
+	const IMP implementation = FindMethod(receiver, selector);
+	const char* types = class_getMethodTypeEncoding(object_getClass(receiver),
+		selector);
+	if (implementation == nullptr || types == nullptr ||
+		std::strcmp(types, encoding) != 0) return;
+	using RectMethod = void (*)(id, SEL, DarlingObjcRect);
+	reinterpret_cast<RectMethod>(implementation)(receiver, selector, argument);
+#endif
 }
 
 extern "C" DarlingObjcRect darling_objc_msgSendSuper_rect0(id receiver,

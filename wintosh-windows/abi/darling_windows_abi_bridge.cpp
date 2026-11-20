@@ -10,14 +10,16 @@
 #include "darling_windows_macho.h"
 #include "darling_windows_stdio.h"
 #include "darling_windows_errno.h"
+#include "darling_windows_tlv.h"
 
 #include <cstdio>
 #include <cstdint>
 #include <cstring>
 #include <cinttypes>
+#include <stdexcept>
 
 
-#if defined(__clang__) && defined(_WIN64)
+#if defined(__clang__) && defined(_WIN64) && !defined(_M_ARM64) && !defined(__aarch64__)
 #define DARLING_SYSV __attribute__((sysv_abi))
 #else
 #define DARLING_SYSV
@@ -54,7 +56,32 @@ extern "C" DARLING_SYSV int darling_windows_abi_lazy_binding_session_active()
 	return darling::windows_host::MachOLazyBindingSession::Current() != nullptr ? 1 : 0;
 }
 
-#if defined(__clang__) && defined(_WIN64)
+extern "C" DARLING_SYSV void* darling_windows_abi_tlv_get_addr(
+	darling::windows_host::DarwinTLVDescriptor* descriptor)
+{
+	return darling::windows_host::ResolveDarwinTLV(descriptor);
+}
+
+extern "C" std::uintptr_t darling_windows_abi_call_export_resolver(
+	std::uintptr_t resolver_address) noexcept
+{
+	if (resolver_address == 0) return 0;
+	try {
+#if defined(__clang__) && defined(_WIN64) && !defined(_M_ARM64) && !defined(__aarch64__)
+		using Resolver = darling::windows_host::abi::GuestFn<std::uintptr_t>;
+		return reinterpret_cast<Resolver>(resolver_address)();
+#elif defined(_M_ARM64) || defined(__aarch64__)
+		using Resolver = std::uintptr_t (*)();
+		return reinterpret_cast<Resolver>(resolver_address)();
+#else
+		return 0;
+#endif
+	} catch (...) {
+		return 0;
+	}
+}
+
+#if defined(__clang__) && defined(_WIN64) && !defined(_M_ARM64) && !defined(__aarch64__)
 namespace {
 struct SysVVaList final { std::uint32_t gp_offset, fp_offset; const std::uint8_t* overflow; const std::uint8_t* save; };
 template <typename T> bool ReadGp(SysVVaList& state, T& value) {
@@ -144,7 +171,7 @@ extern "C" [[noreturn]] void darling_windows_abi_dyld_stub_binder_fail_closed()
 	std::abort();
 }
 
-#if !(defined(__clang__) && defined(_WIN64))
+#if !(defined(__clang__) && defined(_WIN64) && !defined(_M_ARM64) && !defined(__aarch64__))
 extern "C" DARLING_SYSV void darling_windows_abi_dyld_stub_binder()
 {
 	darling_windows_abi_dyld_stub_binder_fail_closed();
@@ -157,7 +184,7 @@ extern "C" DARLING_SYSV int darling_windows_darwin_stub_probe_target(
 	return (first == 0x1122334455667788ULL && second == 0x8877665544332211ULL) ? 73 : 74;
 }
 
-#if !defined(__clang__) && defined(_WIN64)
+#if defined(_WIN64) && (!defined(__clang__) || defined(_M_ARM64) || defined(__aarch64__))
 // MSVC cannot assemble the SysV trampoline. Keep the synthetic fixture
 // executable and explicit; real foreign-ABI entry transfer remains Clang-only.
 extern "C" int darling_windows_darwin_stub_trampoline_fixture(

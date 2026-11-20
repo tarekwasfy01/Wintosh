@@ -88,7 +88,7 @@ void WriteInitializerMachO(const std::filesystem::path& path)
 void WriteTLVProviderMachO(const std::filesystem::path& path, bool executable = false)
 {
 	using namespace darling::windows_host;
-	constexpr std::size_t section_count = 4;
+	constexpr std::size_t section_count = 5;
 	const MachHeader64 header{MH_MAGIC_64, CPU_TYPE_X86_64, 3,
 		executable ? MH_EXECUTE : MH_DYLIB, executable ? 2u : 1u,
 		static_cast<std::uint32_t>(sizeof(SegmentCommand64) +
@@ -99,8 +99,8 @@ void WriteTLVProviderMachO(const std::filesystem::path& path, bool executable = 
 	std::memcpy(segment.segment_name, "__DATA", 6);
 	segment.vm_address = 0x1000;
 	segment.vm_size = 0x1000;
-	segment.file_offset = 0;
-	segment.file_size = 0x1000;
+	segment.file_offset = 0x300;
+	segment.file_size = 0x700;
 	segment.max_protection = executable ? 7 : 3;
 	segment.initial_protection = executable ? 7 : 3;
 	segment.section_count = static_cast<std::uint32_t>(section_count);
@@ -117,14 +117,20 @@ void WriteTLVProviderMachO(const std::filesystem::path& path, bool executable = 
 		return section;
 	};
 	const Section64 sections[] = {
-		make_section("__thread_data", 0x1100, 1, 0x100, 0x11),
-		make_section("__thread_bss", 0x1108, 1, 0, 0x12),
-		make_section("__thread_vars", 0x1200, sizeof(DarwinTLVDescriptor),
-			0x200, 0x13),
-		make_section("__thread_ptrs", 0x1210, sizeof(std::uintptr_t), 0x210, 0x14),
+		make_section("__thread_data", 0x1100, 1, 0x400, 0x11),
+		make_section("__thread_data", 0x1110, 1, 0x410, 0x11),
+		make_section("__thread_bss", 0x1120, 1, 0, 0x12),
+		make_section("__thread_vars", 0x1200, 2 * sizeof(DarwinTLVDescriptor),
+			0x500, 0x13),
+		make_section("__thread_ptrs", 0x1240, 2 * sizeof(std::uintptr_t), 0x540, 0x14),
 	};
 	std::vector<std::uint8_t> bytes(0x1000, 0);
-	bytes[0x100] = 0x5a;
+	bytes[0x400] = 0x5a;
+	bytes[0x410] = 0xa5;
+	DarwinTLVDescriptor descriptors[2]{};
+	descriptors[0].offset = 0;
+	descriptors[1].offset = 0x10;
+	std::memcpy(bytes.data() + 0x500, descriptors, sizeof(descriptors));
 	std::memcpy(bytes.data(), &header, sizeof(header));
 	std::memcpy(bytes.data() + sizeof(header), &segment, sizeof(segment));
 	std::memcpy(bytes.data() + sizeof(header) + sizeof(segment), sections,
@@ -517,6 +523,35 @@ int wmain(int argc, wchar_t** argv)
 		std::filesystem::create_directories(app);
 		std::filesystem::create_directories(library.parent_path());
 		std::filesystem::create_directories((root / "PlugIns").string());
+		const auto tlv_fixture = root / "libwintosh_tlv.dylib";
+		WriteTLVProviderMachO(tlv_fixture);
+		auto* tlv_image = darling::windows_host::OpenDynamicImage(tlv_fixture);
+		if (tlv_image == nullptr)
+			throw std::runtime_error("dynamic TLV fixture failed to load");
+		std::size_t vars_bytes = 0, ptrs_bytes = 0;
+		auto* vars = static_cast<darling::windows_host::DarwinTLVDescriptor*>(
+			darling::windows_host::DynamicImageSectionData(*tlv_image, "__DATA",
+				"__thread_vars", vars_bytes));
+		auto* ptrs = static_cast<std::uintptr_t*>(
+			darling::windows_host::DynamicImageSectionData(*tlv_image, "__DATA",
+				"__thread_ptrs", ptrs_bytes));
+		if (vars == nullptr || ptrs == nullptr || vars_bytes != 2 * sizeof(*vars) ||
+			ptrs_bytes != 2 * sizeof(*ptrs) || ptrs[0] != reinterpret_cast<std::uintptr_t>(&vars[0]) ||
+			ptrs[1] != reinterpret_cast<std::uintptr_t>(&vars[1]) ||
+			vars[0].thunk != &darling::windows_host::ResolveDarwinTLV ||
+			vars[1].thunk != &darling::windows_host::ResolveDarwinTLV) {
+			darling::windows_host::CloseDynamicImage(tlv_image);
+			throw std::runtime_error("dynamic multi-section TLV pointer fixup failed");
+		}
+		const auto* first_tls = static_cast<const std::uint8_t*>(vars[0].thunk(&vars[0]));
+		const auto* second_tls = static_cast<const std::uint8_t*>(vars[1].thunk(&vars[1]));
+		if (first_tls == nullptr || second_tls == nullptr || *first_tls != 0x5a ||
+			*second_tls != 0xa5) {
+			darling::windows_host::CloseDynamicImage(tlv_image);
+			throw std::runtime_error("dynamic multi-section TLV template reconstruction failed");
+		}
+		darling::windows_host::CloseDynamicImage(tlv_image);
+		std::cout << "DYLD_MULTI_SECTION_TLV=PASS\n";
 		WriteMachO(library, nullptr, true, false, false, true);
 		WriteMachO(no_main_library, nullptr, true, false, false, false, false, false);
 		const auto initializer_image = root / "usr" / "lib" / "libInitializer.dylib";

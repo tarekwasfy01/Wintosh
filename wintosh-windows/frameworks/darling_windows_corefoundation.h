@@ -4,6 +4,12 @@
 #include <cstddef>
 #include <cstdint>
 
+#if defined(__clang__) && defined(_WIN64) && !defined(_M_ARM64) && !defined(__aarch64__)
+#define DARLING_CF_GUEST_ABI __attribute__((sysv_abi))
+#else
+#define DARLING_CF_GUEST_ABI
+#endif
+
 using darling_windows_CFIndex = std::ptrdiff_t;
 struct darling_windows_CFRange { darling_windows_CFIndex location; darling_windows_CFIndex length; };
 enum darling_windows_CFStringCompareFlags {
@@ -12,13 +18,30 @@ enum darling_windows_CFStringCompareFlags {
 	darling_windows_CFCompareNumerically = 1 << 2
 };
 using darling_windows_CFTypeRef = const void*;
+using darling_windows_CFOpaqueDestroyCallback = void (*)(void* payload);
+using darling_windows_CFBundleReleaseExecutableCallback = void (*)(void* handle);
+using darling_windows_CFDataProviderReleaseCallback = void (DARLING_CF_GUEST_ABI *)(
+	void* info, const void* data, std::size_t size);
+using darling_windows_CFDataProviderGetBytesCallback = std::size_t (DARLING_CF_GUEST_ABI *)(
+	void* info, void* buffer, std::size_t count);
+using darling_windows_CFDataProviderSkipForwardCallback = std::int64_t (DARLING_CF_GUEST_ABI *)(
+	void* info, std::int64_t count);
+using darling_windows_CFDataProviderRewindCallback = void (DARLING_CF_GUEST_ABI *)(void* info);
+using darling_windows_CFDataProviderReleaseInfoCallback = void (DARLING_CF_GUEST_ABI *)(void* info);
+using darling_windows_CFDataProviderGetBytePointerCallback = const void* (DARLING_CF_GUEST_ABI *)(void* info);
+using darling_windows_CFDataProviderReleaseBytePointerCallback = void (DARLING_CF_GUEST_ABI *)(
+	void* info, const void* pointer);
+using darling_windows_CFDataProviderGetBytesAtPositionCallback = std::size_t (DARLING_CF_GUEST_ABI *)(
+	void* info, std::int64_t position, void* buffer, std::size_t count);
 using darling_windows_CFStringRef = const void*;
 using darling_windows_CFDataRef = const void*;
+using darling_windows_CFMutableDataRef = void*;
 using darling_windows_CFArrayRef = const void*;
 using darling_windows_CFDictionaryRef = const void*;
 using darling_windows_CFSetRef = const void*;
 using darling_windows_CFDateRef = const void*;
 using darling_windows_CFURLRef = const void*;
+using darling_windows_CFBundleRef = const void*;
 using darling_windows_CFBooleanRef = const void*;
 using darling_windows_CFRunLoopRef = void*;
 using darling_windows_CFRunLoopBlock = void (*)(void* context);
@@ -39,6 +62,41 @@ extern "C" darling_windows_CFIndex darling_windows_CFRangeGetMax(
 extern "C" void* darling_windows_CFRetain(const void* value);
 extern "C" void darling_windows_CFRelease(const void* value);
 extern "C" darling_windows_CFTypeID darling_windows_CFGetTypeID(const void* value);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeRef CFRetain(const void* value);
+extern "C" DARLING_CF_GUEST_ABI void CFRelease(const void* value);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeID CFGetTypeID(const void* value);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFDataRef CFDataCreate(
+	const void* allocator, const unsigned char* bytes, darling_windows_CFIndex length);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFMutableDataRef CFDataCreateMutable(
+	const void* allocator, darling_windows_CFIndex capacity);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFDataRef CFDataCreateCopy(
+	const void* allocator, darling_windows_CFDataRef data);
+extern "C" DARLING_CF_GUEST_ABI const unsigned char* CFDataGetBytePtr(
+	darling_windows_CFDataRef data);
+extern "C" DARLING_CF_GUEST_ABI unsigned char* CFDataGetMutableBytePtr(
+	darling_windows_CFDataRef data);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFIndex CFDataGetLength(
+	darling_windows_CFDataRef data);
+extern "C" DARLING_CF_GUEST_ABI void CFDataGetBytes(darling_windows_CFDataRef data,
+	darling_windows_CFRange range, unsigned char* buffer);
+extern "C" DARLING_CF_GUEST_ABI void CFDataAppendBytes(darling_windows_CFDataRef data,
+	const unsigned char* bytes, darling_windows_CFIndex length);
+extern "C" DARLING_CF_GUEST_ABI void CFDataReplaceBytes(darling_windows_CFDataRef data,
+	darling_windows_CFRange range, const unsigned char* bytes,
+	darling_windows_CFIndex length);
+extern "C" DARLING_CF_GUEST_ABI void CFDataSetLength(darling_windows_CFDataRef data,
+	darling_windows_CFIndex length);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeID CFDataGetTypeID();
+extern "C" darling_windows_CFTypeRef darling_windows_CFImageDestinationCreateOpaque(
+	void* payload, darling_windows_CFOpaqueDestroyCallback destroy_payload);
+extern "C" void* darling_windows_CFImageDestinationGetOpaque(
+	darling_windows_CFTypeRef value);
+extern "C" darling_windows_CFTypeID darling_windows_CFImageDestinationGetTypeID();
+extern "C" darling_windows_CFTypeRef darling_windows_CFDataConsumerCreateOpaque(
+	void* payload, darling_windows_CFOpaqueDestroyCallback destroy_payload);
+extern "C" void* darling_windows_CFDataConsumerGetOpaque(
+	darling_windows_CFTypeRef value);
+extern "C" darling_windows_CFTypeID darling_windows_CFDataConsumerGetTypeID();
 extern "C" std::uint64_t darling_windows_CFHash(const void* value);
 extern "C" bool darling_windows_CFEqual(const void* left, const void* right);
 extern "C" darling_windows_CFStringRef darling_windows_CFStringCreateWithCString(
@@ -128,6 +186,8 @@ extern "C" bool darling_windows_CFStringCapitalize(darling_windows_CFStringRef v
 	const void* locale);
 extern "C" darling_windows_CFDataRef darling_windows_CFDataCreate(
 	const void* bytes, darling_windows_CFIndex length);
+extern "C" darling_windows_CFDataRef darling_windows_CFDataCreateMutable(
+	darling_windows_CFIndex capacity);
 extern "C" darling_windows_CFDataRef darling_windows_CFDataCreateCopy(
 	darling_windows_CFDataRef value);
 extern "C" const unsigned char* darling_windows_CFDataGetBytePtr(
@@ -137,6 +197,45 @@ extern "C" unsigned char* darling_windows_CFDataGetMutableBytePtr(
 extern "C" darling_windows_CFIndex darling_windows_CFDataGetLength(
 	darling_windows_CFDataRef value);
 extern "C" darling_windows_CFTypeID darling_windows_CFDataGetTypeID();
+// WIC/ImageIO bridge object: a CoreFoundation-owned, typed encoded-image source.
+extern "C" darling_windows_CFTypeRef darling_windows_CFImageSourceCreate(
+	const void* bytes, darling_windows_CFIndex length, bool is_final);
+extern "C" const unsigned char* darling_windows_CFImageSourceGetBytePtr(
+	darling_windows_CFTypeRef value);
+extern "C" darling_windows_CFIndex darling_windows_CFImageSourceGetLength(
+	darling_windows_CFTypeRef value);
+extern "C" darling_windows_CFTypeID darling_windows_CFImageSourceGetTypeID();
+extern "C" bool darling_windows_CFImageSourceSetData(darling_windows_CFTypeRef value,
+	const void* bytes, darling_windows_CFIndex length, bool is_final);
+extern "C" bool darling_windows_CFImageSourceIsFinal(darling_windows_CFTypeRef value);
+extern "C" darling_windows_CFTypeRef darling_windows_CFDataProviderCreate(
+	const void* bytes, darling_windows_CFIndex length);
+extern "C" darling_windows_CFTypeRef darling_windows_CFDataProviderCreateExternal(
+	void* info, const void* bytes, darling_windows_CFIndex length,
+	darling_windows_CFDataProviderReleaseCallback release_callback);
+extern "C" darling_windows_CFTypeRef darling_windows_CFDataProviderCreateSequential(
+	void* info, darling_windows_CFDataProviderGetBytesCallback get_bytes,
+	darling_windows_CFDataProviderSkipForwardCallback skip_forward,
+	darling_windows_CFDataProviderRewindCallback rewind,
+	darling_windows_CFDataProviderReleaseInfoCallback release_info);
+extern "C" darling_windows_CFTypeRef darling_windows_CFDataProviderCreateDirect(
+	void* info, darling_windows_CFIndex length,
+	darling_windows_CFDataProviderGetBytePointerCallback get_byte_pointer,
+	darling_windows_CFDataProviderReleaseBytePointerCallback release_byte_pointer,
+	darling_windows_CFDataProviderGetBytesAtPositionCallback get_bytes_at_position,
+	darling_windows_CFDataProviderReleaseInfoCallback release_info);
+extern "C" void darling_windows_CFDataProviderReleaseBytePointer(
+	darling_windows_CFTypeRef value, const void* pointer);
+extern "C" std::size_t darling_windows_CFDataProviderReadAtPosition(
+	darling_windows_CFTypeRef value, void* buffer, std::int64_t position,
+	std::size_t count);
+extern "C" const unsigned char* darling_windows_CFDataProviderGetBytePtr(
+	darling_windows_CFTypeRef value);
+extern "C" darling_windows_CFIndex darling_windows_CFDataProviderGetLength(
+	darling_windows_CFTypeRef value);
+extern "C" bool darling_windows_CFDataProviderIsSequential(
+	darling_windows_CFTypeRef value);
+extern "C" darling_windows_CFTypeID darling_windows_CFDataProviderGetTypeID();
 extern "C" bool darling_windows_CFDataGetBytes(darling_windows_CFDataRef value,
 	darling_windows_CFIndex range_start, darling_windows_CFIndex range_count,
 	unsigned char* output);
@@ -315,6 +414,108 @@ extern "C" darling_windows_CFTypeID darling_windows_CFURLGetTypeID();
 extern "C" bool darling_windows_CFURLGetFileSystemRepresentation(
 	darling_windows_CFURLRef value, bool resolve_against_base, unsigned char* buffer,
 	darling_windows_CFIndex buffer_capacity);
+extern "C" darling_windows_CFBundleRef darling_windows_CFBundleCreate(
+	const void* allocator, darling_windows_CFURLRef bundle_url);
+extern "C" darling_windows_CFBundleRef darling_windows_CFBundleGetMainBundle();
+extern "C" darling_windows_CFURLRef darling_windows_CFBundleCopyBundleURL(
+	darling_windows_CFBundleRef bundle);
+extern "C" darling_windows_CFURLRef darling_windows_CFBundleCopyExecutableURL(
+	darling_windows_CFBundleRef bundle);
+extern "C" darling_windows_CFArrayRef darling_windows_CFBundleCopyExecutableArchitectures(
+	darling_windows_CFBundleRef bundle);
+extern "C" darling_windows_CFArrayRef darling_windows_CFBundleCopyExecutableArchitecturesForURL(
+	darling_windows_CFURLRef url);
+extern "C" darling_windows_CFURLRef darling_windows_CFBundleCopyResourcesDirectoryURL(
+	darling_windows_CFBundleRef bundle);
+extern "C" darling_windows_CFURLRef darling_windows_CFBundleCopyBuiltInPlugInsURL(
+	darling_windows_CFBundleRef bundle);
+extern "C" darling_windows_CFURLRef darling_windows_CFBundleCopyPrivateFrameworksURL(
+	darling_windows_CFBundleRef bundle);
+extern "C" darling_windows_CFURLRef darling_windows_CFBundleCopySharedFrameworksURL(
+	darling_windows_CFBundleRef bundle);
+extern "C" darling_windows_CFURLRef darling_windows_CFBundleCopySharedSupportURL(
+	darling_windows_CFBundleRef bundle);
+extern "C" darling_windows_CFURLRef darling_windows_CFBundleCopyResourceURL(
+	darling_windows_CFBundleRef bundle, darling_windows_CFStringRef resource_name,
+	darling_windows_CFStringRef resource_type, darling_windows_CFStringRef subdirectory);
+extern "C" darling_windows_CFArrayRef darling_windows_CFBundleCreateBundlesFromDirectory(
+	const void* allocator, darling_windows_CFURLRef directory_url,
+	darling_windows_CFStringRef bundle_type);
+extern "C" darling_windows_CFBundleRef darling_windows_CFBundleGetBundleWithIdentifier(
+	darling_windows_CFStringRef bundle_identifier);
+extern "C" darling_windows_CFArrayRef darling_windows_CFBundleGetAllBundles();
+extern "C" darling_windows_CFDictionaryRef darling_windows_CFBundleGetInfoDictionary(
+	darling_windows_CFBundleRef bundle);
+extern "C" darling_windows_CFTypeRef darling_windows_CFBundleGetValueForInfoDictionaryKey(
+	darling_windows_CFBundleRef bundle, darling_windows_CFStringRef key);
+extern "C" darling_windows_CFStringRef darling_windows_CFBundleGetIdentifier(
+	darling_windows_CFBundleRef bundle);
+extern "C" darling_windows_CFStringRef darling_windows_CFBundleCopyLocalizedString(
+	darling_windows_CFBundleRef bundle, darling_windows_CFStringRef key,
+	darling_windows_CFStringRef value, darling_windows_CFStringRef table_name);
+extern "C" darling_windows_CFTypeID darling_windows_CFBundleGetTypeID();
+extern "C" void darling_windows_CFBundleSetMainExecutablePath(const char* utf8_path);
+extern "C" bool darling_windows_CFBundleIsMainExecutable(
+	darling_windows_CFBundleRef bundle);
+extern "C" void* darling_windows_CFBundleGetExecutableHandle(
+	darling_windows_CFBundleRef bundle);
+extern "C" bool darling_windows_CFBundleSetExecutableHandle(
+	darling_windows_CFBundleRef bundle, void* handle,
+	darling_windows_CFBundleReleaseExecutableCallback release_handle);
+extern "C" void darling_windows_CFBundleReleaseExecutable(
+	darling_windows_CFBundleRef bundle);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFBundleRef CFBundleCreate(
+	const void* allocator, darling_windows_CFURLRef bundle_url);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFBundleRef CFBundleGetMainBundle();
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFURLRef CFBundleCopyBundleURL(
+	darling_windows_CFBundleRef bundle);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFURLRef CFBundleCopyExecutableURL(
+	darling_windows_CFBundleRef bundle);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFArrayRef
+CFBundleCopyExecutableArchitectures(darling_windows_CFBundleRef bundle);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFArrayRef
+CFBundleCopyExecutableArchitecturesForURL(darling_windows_CFURLRef url);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFURLRef CFBundleCopyResourcesDirectoryURL(
+	darling_windows_CFBundleRef bundle);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFURLRef CFBundleCopyBuiltInPlugInsURL(
+	darling_windows_CFBundleRef bundle);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFURLRef CFBundleCopyPrivateFrameworksURL(
+	darling_windows_CFBundleRef bundle);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFURLRef CFBundleCopySharedFrameworksURL(
+	darling_windows_CFBundleRef bundle);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFURLRef CFBundleCopySharedSupportURL(
+	darling_windows_CFBundleRef bundle);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFURLRef CFBundleCopyResourceURL(
+	darling_windows_CFBundleRef bundle, darling_windows_CFStringRef resource_name,
+	darling_windows_CFStringRef resource_type, darling_windows_CFStringRef subdirectory);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFArrayRef
+CFBundleCreateBundlesFromDirectory(const void* allocator,
+	darling_windows_CFURLRef directory_url, darling_windows_CFStringRef bundle_type);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFBundleRef
+CFBundleGetBundleWithIdentifier(darling_windows_CFStringRef bundle_identifier);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFArrayRef CFBundleGetAllBundles();
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFDictionaryRef CFBundleGetInfoDictionary(
+	darling_windows_CFBundleRef bundle);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeRef CFBundleGetValueForInfoDictionaryKey(
+	darling_windows_CFBundleRef bundle, darling_windows_CFStringRef key);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFBundleGetIdentifier(
+	darling_windows_CFBundleRef bundle);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFBundleCopyLocalizedString(
+	darling_windows_CFBundleRef bundle, darling_windows_CFStringRef key,
+	darling_windows_CFStringRef value, darling_windows_CFStringRef table_name);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeID CFBundleGetTypeID();
+extern "C" DARLING_CF_GUEST_ABI bool CFBundleIsExecutableLoaded(
+	darling_windows_CFBundleRef bundle);
+extern "C" DARLING_CF_GUEST_ABI bool CFBundlePreflightExecutable(
+	darling_windows_CFBundleRef bundle, void** error);
+extern "C" DARLING_CF_GUEST_ABI bool CFBundleLoadExecutable(
+	darling_windows_CFBundleRef bundle);
+extern "C" DARLING_CF_GUEST_ABI void CFBundleUnloadExecutable(
+	darling_windows_CFBundleRef bundle);
+extern "C" DARLING_CF_GUEST_ABI void* CFBundleGetFunctionPointerForName(
+	darling_windows_CFBundleRef bundle, darling_windows_CFStringRef function_name);
+extern "C" DARLING_CF_GUEST_ABI void* CFBundleGetDataPointerForName(
+	darling_windows_CFBundleRef bundle, darling_windows_CFStringRef symbol_name);
 extern "C" darling_windows_CFBooleanRef darling_windows_CFBooleanGetValue(bool value);
 extern "C" darling_windows_CFTypeID darling_windows_CFBooleanGetTypeID();
 extern "C" bool darling_windows_CFBooleanIsTrue(darling_windows_CFBooleanRef value);
@@ -326,6 +527,11 @@ extern "C" darling_windows_CFTypeRef darling_windows_CFPropertyListCreateFromXML
 	const char* xml);
 extern "C" darling_windows_CFTypeRef darling_windows_CFPropertyListCreateFromBinary(
 	const void* bytes, darling_windows_CFIndex length);
+// Internal discriminator/accessor for UID markers retained by the binary
+// property-list reader. UIDs are archive references, not CFNumbers.
+extern "C" darling_windows_CFTypeID darling_windows_CFPropertyListUIDGetTypeID();
+extern "C" bool darling_windows_CFPropertyListUIDGetValue(
+	darling_windows_CFTypeRef value, std::uint64_t* uid);
 extern "C" darling_windows_CFRunLoopRef darling_windows_CFRunLoopGetCurrent();
 extern "C" darling_windows_CFRunLoopRef darling_windows_CFRunLoopGetMain();
 extern "C" int darling_windows_CFRunLoopRunInMode(double seconds, bool return_after_source);

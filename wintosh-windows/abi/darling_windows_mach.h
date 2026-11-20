@@ -22,10 +22,18 @@ struct darling_mach_msg_header final {
 	darling_mach_port_name_t msgh_remote_port;
 	darling_mach_port_name_t msgh_local_port;
 	union {
+		std::uint32_t msgh_voucher_port;
 		std::uint32_t msgh_reserved;
+	};
+	union {
 		darling_mach_msg_id_t msgh_id;
+		std::uint32_t msgh_reserved2;
 	};
 };
+static_assert(sizeof(darling_mach_msg_header) == 24,
+	"Darwin 64-bit mach_msg_header_t is six 32-bit words");
+static_assert(offsetof(darling_mach_msg_header, msgh_voucher_port) == 16);
+static_assert(offsetof(darling_mach_msg_header, msgh_id) == 20);
 
 // Darwin 64-bit mach_msg descriptor/trailer layouts. These are ABI data
 // structures only; descriptor ownership transfer is implemented separately.
@@ -433,6 +441,8 @@ extern "C" darling_kern_return_t darling_windows_mach_port_mod_refs(
 extern "C" darling_kern_return_t darling_windows_mach_port_get_refs(
 	darling_mach_port_name_t task, darling_mach_port_name_t name,
 	std::uint32_t right, std::uint32_t* refs);
+extern "C" darling_kern_return_t darling_windows_mach_port_pending_messages(
+	darling_mach_port_name_t name, std::uint32_t* count);
 extern "C" darling_kern_return_t darling_windows_mach_port_type(
 	darling_mach_port_name_t task, darling_mach_port_name_t name,
 	std::uint32_t* type);

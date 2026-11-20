@@ -9,6 +9,7 @@
 #include <atomic>
 #include <cstdint>
 #include <iostream>
+#include <stdexcept>
 
 using namespace darling::windows_host;
 
@@ -19,6 +20,55 @@ void CountDestructor(void* argument)
 
 int wmain()
 {
+	DarwinTLVDescriptor variables[3]{};
+	variables[1].offset = 4;
+	variables[2].offset = 4; // Two descriptors may name the same variable.
+	const std::uint8_t template_data[8] = {0x42, 0, 0, 0, 0x24, 0, 0, 0};
+	InitializeDarwinTLV(variables, 3, template_data, sizeof(template_data));
+	auto* base = static_cast<std::uint8_t*>(variables[0].thunk(&variables[0]));
+	auto* member = static_cast<std::uint8_t*>(variables[1].thunk(&variables[1]));
+	if (!base || member != base + 4 || *member != 0x24 ||
+		variables[2].thunk(&variables[2]) != member)
+		return 5;
+	*member = 0x99;
+	std::atomic<bool> shared_isolated{false};
+	auto shared_thread = Thread::Start([&] {
+		auto* other_base = static_cast<std::uint8_t*>(variables[0].thunk(&variables[0]));
+		auto* other_member = static_cast<std::uint8_t*>(variables[1].thunk(&variables[1]));
+		shared_isolated = other_base && other_base != base &&
+			other_member == other_base + 4 && *other_member == 0x24;
+	});
+	if (shared_thread.Join() != WAIT_OBJECT_0 || !shared_isolated ||
+		variables[0].thunk(&variables[0]) != base || *member != 0x99)
+		return 6;
+	// Corrupted offsets must not resize the block and invalidate base/member.
+	variables[2].offset = 8;
+	if (ResolveDarwinTLV(&variables[2]) != nullptr || *member != 0x99)
+		return 7;
+	DestroyDarwinTLV(variables, 3);
+	DarwinTLVDescriptor invalid{};
+	invalid.offset = 1024 * 1024;
+	try {
+		InitializeDarwinTLV(&invalid, 1);
+		return 8;
+	} catch (const std::invalid_argument&) {
+		if (invalid.thunk || invalid.key)
+			return 9;
+	}
+	std::cout << "DARWIN_TLV_SHARED_BLOCK=PASS\n";
+	std::cout << "DARWIN_TLV_STABLE_POINTERS=PASS\n";
+	DarwinTLVDescriptor split_a{}, split_b{};
+	split_a.offset = 1;
+	split_b.offset = 5;
+	const DarwinTLVDescriptorRange split_ranges[] = {{&split_a, 1}, {&split_b, 1}};
+	InitializeDarwinTLV(split_ranges, 2, template_data, sizeof(template_data));
+	auto* split_a_ptr = static_cast<std::uint8_t*>(split_a.thunk(&split_a));
+	auto* split_b_ptr = static_cast<std::uint8_t*>(split_b.thunk(&split_b));
+	if (!split_a_ptr || split_b.key != split_a.key || split_b_ptr != split_a_ptr + 4)
+		return 10;
+	DestroyDarwinTLV(&split_a, 1);
+	DestroyDarwinTLV(&split_b, 1);
+	std::cout << "DARWIN_TLV_MULTI_RANGE=PASS\n";
 	DarwinTLVDescriptor descriptor{};
 	const std::uint8_t initial = 0x42u;
 	InitializeDarwinTLV(&descriptor, 1, &initial, sizeof(initial));
@@ -42,7 +92,7 @@ int wmain()
 		isolated.store(other != nullptr && other != first &&
 			(other_value.load(std::memory_order_relaxed) == initial), std::memory_order_release);
 		if (other != nullptr)
-			*static_cast<std::uint32_t*>(other) = 0xabcdef01u;
+			*static_cast<std::uint8_t*>(other) = 0x01u;
 	});
 	const auto wait_result = thread.Join();
 	const auto exit_code = thread.ExitCode();

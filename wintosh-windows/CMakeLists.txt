@@ -2,11 +2,42 @@ cmake_minimum_required(VERSION 3.20)
 
 project(wintosh-windows LANGUAGES CXX)
 
-if (WIN32 AND CMAKE_SIZEOF_VOID_P EQUAL 8 AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+set(WINTOSH_X64_TARGET FALSE)
+set(WINTOSH_ARM64_TARGET FALSE)
+if (WIN32 AND CMAKE_SIZEOF_VOID_P EQUAL 8)
+    # The guest ABI shims and startup trampolines below are specifically
+    # x86_64. Do not infer x64 from pointer width: Windows ARM64 is also 64-bit.
+    set(WINTOSH_X64_TARGET TRUE)
+    foreach(arch_hint IN ITEMS CMAKE_SYSTEM_PROCESSOR CMAKE_GENERATOR_PLATFORM
+            CMAKE_CXX_COMPILER_TARGET CMAKE_CXX_COMPILER_ARCHITECTURE_ID)
+        if ("${${arch_hint}}" MATCHES "[Aa][Rr][Mm]64|[Aa][Aa]64|[Aa]arch64")
+            set(WINTOSH_X64_TARGET FALSE)
+            set(WINTOSH_ARM64_TARGET TRUE)
+        endif()
+    endforeach()
+endif()
+
+if (WINTOSH_X64_TARGET AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     enable_language(ASM)
-    set(WINTOSH_STARTUP_OBJ
-        "${CMAKE_CURRENT_SOURCE_DIR}/runtime/darling_windows_startup_x64.S")
-elseif (WIN32 AND CMAKE_SIZEOF_VOID_P EQUAL 8)
+    set(WINTOSH_CLANG_ASM_SOURCES
+        "${CMAKE_CURRENT_SOURCE_DIR}/runtime/darling_windows_startup_x64.S"
+        "${CMAKE_CURRENT_SOURCE_DIR}/abi/darling_windows_variadic_x64.S"
+        "${CMAKE_CURRENT_SOURCE_DIR}/abi/darling_windows_stub_trampoline_x64.S"
+    )
+    set(WINTOSH_CLANG_ASM_OBJECTS)
+    foreach(asm_source IN LISTS WINTOSH_CLANG_ASM_SOURCES)
+        get_filename_component(asm_name "${asm_source}" NAME_WE)
+        set(asm_object "${CMAKE_CURRENT_BINARY_DIR}/${asm_name}_clang.obj")
+        add_custom_command(
+            OUTPUT "${asm_object}"
+            COMMAND "${CMAKE_ASM_COMPILER}" /c /nologo
+                "/Fo${asm_object}" "${asm_source}"
+            DEPENDS "${asm_source}"
+            VERBATIM
+        )
+        list(APPEND WINTOSH_CLANG_ASM_OBJECTS "${asm_object}")
+    endforeach()
+elseif (WINTOSH_X64_TARGET)
     enable_language(ASM_MASM)
     set(WINTOSH_STARTUP_ASM
         "${CMAKE_CURRENT_SOURCE_DIR}/runtime/darling_windows_startup_x64.asm")
@@ -17,6 +48,33 @@ elseif (WIN32 AND CMAKE_SIZEOF_VOID_P EQUAL 8)
         COMMAND "${CMAKE_ASM_MASM_COMPILER}" /c /nologo
             "/Fo${WINTOSH_STARTUP_OBJ}" "${WINTOSH_STARTUP_ASM}"
         DEPENDS "${WINTOSH_STARTUP_ASM}"
+        VERBATIM)
+endif()
+
+if (WINTOSH_ARM64_TARGET AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    set(WINTOSH_ARM64_ASSEMBLER_TARGET "${CMAKE_CXX_COMPILER_TARGET}")
+    if (NOT WINTOSH_ARM64_ASSEMBLER_TARGET)
+        set(WINTOSH_ARM64_ASSEMBLER_TARGET "aarch64-pc-windows-msvc")
+    endif()
+    set(WINTOSH_ARM64_STARTUP_ASM
+        "${CMAKE_CURRENT_SOURCE_DIR}/runtime/darling_windows_startup_arm64.S")
+    set(WINTOSH_ARM64_OBJC_ASM
+        "${CMAKE_CURRENT_SOURCE_DIR}/abi/darling_windows_objc_variadic_arm64.S")
+    set(WINTOSH_ARM64_STARTUP_OBJ
+        "${CMAKE_CURRENT_BINARY_DIR}/darling_windows_startup_arm64.obj")
+    set(WINTOSH_ARM64_OBJC_OBJ
+        "${CMAKE_CURRENT_BINARY_DIR}/darling_windows_objc_variadic_arm64.obj")
+    add_custom_command(
+        OUTPUT "${WINTOSH_ARM64_STARTUP_OBJ}"
+        COMMAND "${CMAKE_CXX_COMPILER}" "--target=${WINTOSH_ARM64_ASSEMBLER_TARGET}" /c /nologo
+            "/Fo${WINTOSH_ARM64_STARTUP_OBJ}" "${WINTOSH_ARM64_STARTUP_ASM}"
+        DEPENDS "${WINTOSH_ARM64_STARTUP_ASM}"
+        VERBATIM)
+    add_custom_command(
+        OUTPUT "${WINTOSH_ARM64_OBJC_OBJ}"
+        COMMAND "${CMAKE_CXX_COMPILER}" "--target=${WINTOSH_ARM64_ASSEMBLER_TARGET}" /c /nologo
+            "/Fo${WINTOSH_ARM64_OBJC_OBJ}" "${WINTOSH_ARM64_OBJC_ASM}"
+        DEPENDS "${WINTOSH_ARM64_OBJC_ASM}"
         VERBATIM)
 endif()
 
@@ -33,17 +91,18 @@ set(CPACK_GENERATOR "ZIP")
 
 # Wintosh's native implementation is independent from the local Darling
 # checkout. Darling remains the upstream behavior and license reference.
-file(GLOB_RECURSE WINTOSH_HOST_SOURCES
+file(GLOB_RECURSE WINTOSH_HOST_SOURCES CONFIGURE_DEPENDS
     core/*.cpp platform/*.cpp abi/*.cpp loader/*.cpp runtime/*.cpp
     frameworks/*.cpp process/*.cpp
 )
-if (WIN32 AND CMAKE_SIZEOF_VOID_P EQUAL 8 AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    list(APPEND WINTOSH_HOST_SOURCES
-        "${CMAKE_CURRENT_SOURCE_DIR}/abi/darling_windows_variadic_x64.S"
-        "${CMAKE_CURRENT_SOURCE_DIR}/abi/darling_windows_stub_trampoline_x64.S")
-endif()
-if (WIN32 AND CMAKE_SIZEOF_VOID_P EQUAL 8)
+if (WINTOSH_X64_TARGET AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    list(APPEND WINTOSH_HOST_SOURCES ${WINTOSH_CLANG_ASM_OBJECTS})
+elseif (WINTOSH_X64_TARGET)
     list(APPEND WINTOSH_HOST_SOURCES "${WINTOSH_STARTUP_OBJ}")
+elseif (WINTOSH_ARM64_TARGET AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    list(APPEND WINTOSH_HOST_SOURCES
+        "${WINTOSH_ARM64_STARTUP_OBJ}"
+        "${WINTOSH_ARM64_OBJC_OBJ}")
 endif()
 list(REMOVE_ITEM WINTOSH_HOST_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/core/darling_windows_broker.cpp"
@@ -57,13 +116,17 @@ target_include_directories(wintosh_windows_host PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/process
 )
 target_compile_features(wintosh_windows_host PUBLIC cxx_std_20)
+if (WINTOSH_ARM64_TARGET AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    target_compile_definitions(wintosh_windows_host PRIVATE
+        DARLING_ARM64_GUEST_BRIDGE=1)
+endif()
 
 if (WIN32)
     target_compile_definitions(wintosh_windows_host PUBLIC
         UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN
     )
     target_link_libraries(wintosh_windows_host PUBLIC
-        kernel32 advapi32 psapi ws2_32
+        kernel32 advapi32 psapi ws2_32 ole32 shell32 uuid windowscodecs user32 gdi32 comctl32 comdlg32
     )
 
     file(GLOB WINTOSH_SMOKE_SOURCES tests/*_smoke.cpp)
@@ -99,8 +162,10 @@ if (WIN32)
     # smoke targets remain separate verification programs.
     add_executable(wintosh runtime/darling_windows_runner.cpp)
     target_link_libraries(wintosh PRIVATE wintosh_windows_host)
+    # The dyld smoke launches the CLI from its own output directory.
+    add_dependencies(wintosh_dyld_smoke wintosh)
 
-    if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    if (WINTOSH_X64_TARGET AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
         get_filename_component(WINTOSH_LLVM_BIN "${CMAKE_CXX_COMPILER}" DIRECTORY)
         set(WINTOSH_LD64_LLD "${WINTOSH_LLVM_BIN}/ld64.lld.exe")
         add_test(NAME wintosh_macho_printf_e2e
@@ -184,7 +249,7 @@ if (WIN32)
                 -ExpectedExit 139)
         set_tests_properties(wintosh_crash_fixture_e2e PROPERTIES RUN_SERIAL TRUE)
     endif()
-    if (NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND CMAKE_SIZEOF_VOID_P EQUAL 8)
+    if (WINTOSH_X64_TARGET AND NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
         add_test(NAME wintosh_darwin_start_msvc_fail_closed
             COMMAND powershell.exe -NoProfile -ExecutionPolicy Bypass -File
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/macho_darwin_start_msvc_fail_closed.ps1"

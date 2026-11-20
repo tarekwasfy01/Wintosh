@@ -40,7 +40,7 @@ namespace {
 thread_local const MachOLazyBindingSession* active_lazy_binding_session = nullptr;
 }
 
-#if defined(_WIN64)
+#if defined(_WIN64) && defined(__clang__)
 extern "C" void darling_windows_enter_darwin_start(void* entry, void* darwin_stack);
 #endif
 
@@ -80,12 +80,12 @@ void Require(bool condition, const char* message)
 	}
 }
 
-void RequireX86Execution(const MachOImage& image)
+void RequireNativeExecution(const MachOImage& image)
 {
-#if defined(_M_ARM64)
+#if defined(_M_ARM64) || defined(__aarch64__)
 	if (!image.IsArm64()) {
 		throw std::runtime_error(
-			"x86 Mach-O execution is not implemented on this ARM64 Windows host");
+			"non-ARM64 Mach-O execution requires a CPU translation engine on this ARM64 Windows host");
 	}
 #elif defined(_WIN64)
 	if (image.Is32Bit()) {
@@ -96,7 +96,7 @@ void RequireX86Execution(const MachOImage& image)
 		throw std::runtime_error(
 			"ARM64 Mach-O execution is not implemented on this x86_64 Windows host");
 	}
-	#else
+#else
 	if (!image.Is32Bit()) {
 		throw std::runtime_error(
 			"64-bit Mach-O execution is not implemented on this Win32 host");
@@ -155,13 +155,16 @@ void ParseSimpleBindStream(const std::uint8_t* bytes, std::size_t size,
 	std::vector<DyldBindAction>& actions, bool weak, bool lazy)
 {
 	std::size_t cursor = 0;
-	std::int32_t ordinal = 0;
+	// Weak-bind streams coalesce definitions across loaded images instead of
+	// naming one LC_LOAD_*_DYLIB dependency.
+	std::int32_t ordinal = weak ? -2 : 0;
 	std::string symbol;
 	std::uint8_t type = 1;
 	std::int64_t addend = 0;
 	std::uint32_t segment_index = 0;
 	std::uint64_t segment_offset = 0;
 	bool weak_import = false;
+	std::size_t lazy_sequence_offset = 0;
 	while (cursor < size) {
 		const auto opcode = bytes[cursor++];
 		const auto action_offset = cursor - 1;
@@ -170,7 +173,11 @@ void ParseSimpleBindStream(const std::uint8_t* bytes, std::size_t size,
 		switch (operation) {
 		case 0x00:
 			Require(opcode == 0, "invalid Mach-O weak/lazy bind terminator");
-			cursor = size;
+			// A lazy-bind stream concatenates one DONE-terminated opcode
+			// sequence per symbol. DONE terminates only the current symbol;
+			// dyld continues until it reaches the end of the whole stream.
+			if (lazy) lazy_sequence_offset = cursor;
+			else cursor = size;
 			break;
 		case 0x10:
 			ordinal = immediate;
@@ -207,17 +214,20 @@ void ParseSimpleBindStream(const std::uint8_t* bytes, std::size_t size,
 			break;
 		case 0x90:
 			actions.push_back({symbol, segment_index, segment_offset, type, addend,
-				ordinal, weak || weak_import, lazy, false, 0, action_offset});
+				ordinal, weak || weak_import, lazy, false, 0,
+				lazy ? lazy_sequence_offset : action_offset, weak});
 			segment_offset += 8;
 			break;
 		case 0xa0:
 			actions.push_back({symbol, segment_index, segment_offset, type, addend,
-				ordinal, weak || weak_import, lazy, false, 0, action_offset});
+				ordinal, weak || weak_import, lazy, false, 0,
+				lazy ? lazy_sequence_offset : action_offset, weak});
 			segment_offset += ReadULEB(bytes, size, cursor) + 8;
 			break;
 		case 0xb0:
 			actions.push_back({symbol, segment_index, segment_offset, type, addend,
-				ordinal, weak || weak_import, lazy, false, 0, action_offset});
+				ordinal, weak || weak_import, lazy, false, 0,
+				lazy ? lazy_sequence_offset : action_offset, weak});
 			segment_offset += static_cast<std::uint64_t>(immediate) * 8 + 8;
 			break;
 		case 0xc0: {
@@ -227,7 +237,8 @@ void ParseSimpleBindStream(const std::uint8_t* bytes, std::size_t size,
 				"Mach-O weak/lazy bind repeat count is unreasonable");
 			for (std::uint64_t index = 0; index < repeat; ++index) {
 				actions.push_back({symbol, segment_index, segment_offset, type, addend,
-					ordinal, weak || weak_import, lazy, false, 0, action_offset});
+					ordinal, weak || weak_import, lazy, false, 0,
+					lazy ? lazy_sequence_offset : action_offset, weak});
 				segment_offset += skip + 8;
 			}
 			break;
@@ -241,6 +252,12 @@ void ParseSimpleBindStream(const std::uint8_t* bytes, std::size_t size,
 constexpr std::uint64_t kPageSize = 0x1000;
 constexpr std::uint8_t N_TYPE = 0x0e;
 constexpr std::uint8_t N_UNDF = 0x00;
+constexpr std::uint8_t N_ABS = 0x02;
+constexpr std::uint8_t N_INDR = 0x0a;
+constexpr std::uint64_t EXPORT_SYMBOL_FLAGS_KIND_MASK = 0x03;
+constexpr std::uint64_t EXPORT_SYMBOL_FLAGS_KIND_ABSOLUTE = 0x02;
+constexpr std::uint64_t EXPORT_SYMBOL_FLAGS_WEAK_DEFINITION = 0x04;
+constexpr std::uint64_t EXPORT_SYMBOL_FLAGS_STUB_AND_RESOLVER = 0x10;
 constexpr std::uint32_t R_SYMBOL_MASK = 0x00ffffff;
 constexpr std::uint32_t R_PCREL = 0x01000000;
 constexpr std::uint32_t R_LENGTH = 0x06000000;
@@ -337,6 +354,8 @@ MachOImage MachOImage::Open(const std::wstring& path)
 			bool found_x86_64 = false;
 			bool found_x86 = false;
 			bool found_arm64 = false;
+			std::size_t x86_64_offset = 0;
+			std::size_t x86_64_bytes = 0;
 			std::size_t x86_offset = 0;
 			std::size_t x86_bytes = 0;
 			std::size_t arm64_offset = 0;
@@ -358,10 +377,10 @@ MachOImage MachOImage::Open(const std::wstring& path)
 				Require(RangeFits(mapped_file_bytes, candidate_offset, candidate_bytes),
 					"Fat Mach-O slice is outside the file");
 				if (cpu_type == CPU_TYPE_X86_64) {
-					image_offset = candidate_offset;
-					image_bytes = candidate_bytes;
 					found_x86_64 = true;
-					break;
+					x86_64_offset = candidate_offset;
+					x86_64_bytes = candidate_bytes;
+					continue;
 				}
 				if (cpu_type == CPU_TYPE_X86) {
 					if (!found_x86) {
@@ -375,16 +394,31 @@ MachOImage MachOImage::Open(const std::wstring& path)
 				arm64_offset = candidate_offset;
 				arm64_bytes = candidate_bytes;
 			}
-			if (!found_x86_64) {
-				if (found_arm64) {
-					image_offset = arm64_offset;
-					image_bytes = arm64_bytes;
-				} else {
-					Require(found_x86, "Fat Mach-O has no supported slice");
-					image_offset = x86_offset;
-					image_bytes = x86_bytes;
-				}
+#if defined(_M_ARM64) || defined(__aarch64__)
+			if (found_arm64) {
+				image_offset = arm64_offset;
+				image_bytes = arm64_bytes;
+			} else if (found_x86_64) {
+				image_offset = x86_64_offset;
+				image_bytes = x86_64_bytes;
+			} else {
+				Require(found_x86, "Fat Mach-O has no supported slice");
+				image_offset = x86_offset;
+				image_bytes = x86_bytes;
 			}
+#else
+			if (found_x86_64) {
+				image_offset = x86_64_offset;
+				image_bytes = x86_64_bytes;
+			} else if (found_arm64) {
+				image_offset = arm64_offset;
+				image_bytes = arm64_bytes;
+			} else {
+				Require(found_x86, "Fat Mach-O has no supported slice");
+				image_offset = x86_offset;
+				image_bytes = x86_bytes;
+			}
+#endif
 		}
 		const auto file_bytes = image_bytes;
 		const auto slice_magic = image_bytes >= sizeof(std::uint32_t) ?
@@ -630,6 +664,24 @@ MachOImage MachOImage::Open(const std::wstring& path)
 			Require(RangeFits(file_bytes, symtab->string_offset, symtab->string_bytes),
 				"Mach-O string table is outside the file");
 			const auto* strings = reinterpret_cast<const char*>(view + symtab->string_offset);
+			const auto make_symbol = [&](std::string name, std::uint8_t type,
+				std::uint8_t section, std::uint16_t description,
+				std::uint64_t value) {
+				MachOSymbol symbol{std::move(name), type, section, description, value};
+				if ((type & N_TYPE) == N_INDR) {
+					Require(value < symtab->string_bytes,
+						"Mach-O indirect symbol target is outside the string table");
+					const auto* target = strings + value;
+					const auto remaining = symtab->string_bytes -
+						static_cast<std::uint32_t>(value);
+					const auto* terminator = static_cast<const char*>(
+						std::memchr(target, '\0', remaining));
+					Require(terminator != nullptr,
+						"Mach-O indirect symbol target is not terminated");
+					symbol.indirect_target.assign(target, terminator);
+				}
+				return symbol;
+			};
 			if (is_32_bit) {
 				Require(RangeFits(file_bytes, symtab->symbol_offset,
 					static_cast<std::uint64_t>(symtab->symbol_count) * sizeof(NList32)),
@@ -643,8 +695,8 @@ MachOImage MachOImage::Open(const std::wstring& path)
 					const auto remaining = symtab->string_bytes - entry.name_offset;
 					const auto* terminator = static_cast<const char*>(std::memchr(name, '\0', remaining));
 					Require(terminator != nullptr, "Mach-O symbol name is not terminated");
-					symbols.push_back({std::string(name, terminator), entry.type, entry.section,
-						entry.description, entry.value});
+					symbols.push_back(make_symbol(std::string(name, terminator),
+						entry.type, entry.section, entry.description, entry.value));
 				}
 			} else {
 				Require(RangeFits(file_bytes, symtab->symbol_offset,
@@ -659,8 +711,8 @@ MachOImage MachOImage::Open(const std::wstring& path)
 					const auto remaining = symtab->string_bytes - entry.name_offset;
 					const auto* terminator = static_cast<const char*>(std::memchr(name, '\0', remaining));
 					Require(terminator != nullptr, "Mach-O symbol name is not terminated");
-					symbols.push_back({std::string(name, terminator), entry.type, entry.section,
-						entry.description, entry.value});
+					symbols.push_back(make_symbol(std::string(name, terminator),
+						entry.type, entry.section, entry.description, entry.value));
 				}
 			}
 		}
@@ -942,19 +994,32 @@ MachOImage MachOImage::Open(const std::wstring& path)
 			Require(chained_command->data_size >= sizeof(ChainedFixupsHeader),
 				"Mach-O chained-fixups header is truncated");
 			const auto* payload = view + chained_command->data_offset;
-		const auto* header = reinterpret_cast<const ChainedFixupsHeader*>(payload);
+			const auto* header = reinterpret_cast<const ChainedFixupsHeader*>(payload);
 			Require(header->version == 0, "unsupported Mach-O chained-fixups version");
-			Require(header->imports_format == 1 || header->imports_format == 2,
+			Require(header->imports_format >= 1 && header->imports_format <= 3,
 				"unsupported Mach-O chained import format");
+			const std::uint64_t chained_import_size =
+				header->imports_format == 1 ? 4u :
+				header->imports_format == 2 ? 8u : 16u;
 			Require(header->imports_offset <= chained_command->data_size &&
 				chained_command->data_size - header->imports_offset >=
 				static_cast<std::uint64_t>(header->imports_count) *
-					(header->imports_format == 1 ? 4u : 8u),
+					chained_import_size,
 				"Mach-O chained import table is outside the payload");
 			Require(header->symbols_offset < chained_command->data_size,
 				"Mach-O chained symbol pool is outside the payload");
 			const auto* import_bytes = payload + header->imports_offset;
 			const auto* symbol_bytes = reinterpret_cast<const char*>(payload + header->symbols_offset);
+			const auto decode_ordinal8 = [](std::uint32_t raw_ordinal) {
+				const auto ordinal = static_cast<std::uint8_t>(raw_ordinal & 0xffu);
+				return ordinal > 0xf0u ? static_cast<std::int32_t>(ordinal) - 0x100 :
+					static_cast<std::int32_t>(ordinal);
+			};
+			const auto decode_ordinal16 = [](std::uint64_t raw_ordinal) {
+				const auto ordinal = static_cast<std::uint16_t>(raw_ordinal & 0xffffu);
+				return ordinal > 0xfff0u ? static_cast<std::int32_t>(ordinal) - 0x10000 :
+					static_cast<std::int32_t>(ordinal);
+			};
 			for (std::uint32_t index = 0; index < header->imports_count; ++index) {
 				std::uint32_t name_offset = 0;
 				std::int32_t dylib_ordinal = 0;
@@ -963,16 +1028,27 @@ MachOImage MachOImage::Open(const std::wstring& path)
 				if (header->imports_format == 1) {
 					std::uint32_t raw = 0;
 					std::memcpy(&raw, import_bytes + index * 4, sizeof(raw));
-					dylib_ordinal = static_cast<std::int8_t>(raw & 0xff);
+					dylib_ordinal = decode_ordinal8(raw);
 					weak = (raw & 0x100) != 0;
 					name_offset = raw >> 9;
-				} else {
+				} else if (header->imports_format == 2) {
 					std::uint32_t raw = 0;
 					std::memcpy(&raw, import_bytes + index * 8, sizeof(raw));
-					std::memcpy(&addend, import_bytes + index * 8 + 4, sizeof(std::int32_t));
-					dylib_ordinal = static_cast<std::int8_t>(raw & 0xff);
+					std::int32_t addend32 = 0;
+					std::memcpy(&addend32, import_bytes + index * 8 + 4,
+						sizeof(addend32));
+					dylib_ordinal = decode_ordinal8(raw);
 					weak = (raw & 0x100) != 0;
 					name_offset = raw >> 9;
+					addend = addend32;
+				} else {
+					std::uint64_t raw = 0;
+					std::memcpy(&raw, import_bytes + index * 16, sizeof(raw));
+					std::memcpy(&addend, import_bytes + index * 16 + 8,
+						sizeof(addend));
+					dylib_ordinal = decode_ordinal16(raw);
+					weak = (raw & (std::uint64_t{1} << 16)) != 0;
+					name_offset = static_cast<std::uint32_t>(raw >> 32);
 				}
 			Require(name_offset < chained_command->data_size - header->symbols_offset,
 				"Mach-O chained import name offset is outside the symbol pool");
@@ -1012,8 +1088,52 @@ MachOImage MachOImage::Open(const std::wstring& path)
 								static_cast<std::uint32_t>(ordinal)});
 						} else {
 							const auto address = ReadULEB(trie, terminal_end, cursor);
+							const bool has_resolver = (flags &
+								EXPORT_SYMBOL_FLAGS_STUB_AND_RESOLVER) != 0;
+							const auto resolver = has_resolver ?
+								ReadULEB(trie, terminal_end, cursor) : 0;
 							if (!prefix.empty()) {
-								symbols.push_back({prefix, 0x0f, 1, 0, address});
+								const bool absolute = (flags &
+									EXPORT_SYMBOL_FLAGS_KIND_MASK) ==
+									EXPORT_SYMBOL_FLAGS_KIND_ABSOLUTE;
+								const auto type = absolute ? 0x03u : 0x0fu;
+								const auto description = (flags &
+									EXPORT_SYMBOL_FLAGS_WEAK_DEFINITION) != 0 ? 0x0080u : 0u;
+								std::uint64_t image_base = 0;
+								if (!absolute || has_resolver) {
+									const auto text_segment = std::find_if(segments.begin(),
+										segments.end(), [](const MachOSegment& segment) {
+											return segment.name == "__TEXT";
+										});
+									Require(text_segment != segments.end(),
+										"Mach-O export trie requires an __TEXT image base");
+									image_base = text_segment->vm_address;
+								}
+								const auto preferred_address = absolute ? address :
+									image_base + address;
+								Require(absolute || preferred_address >= image_base,
+									"Mach-O export address overflows its image base");
+								const auto preferred_resolver = has_resolver ?
+									image_base + resolver : 0;
+								Require(!has_resolver || preferred_resolver >= image_base,
+									"Mach-O resolver address overflows its image base");
+								auto existing = std::find_if(symbols.begin(), symbols.end(),
+									[&prefix](const MachOSymbol& symbol) {
+										return symbol.name == prefix &&
+											(symbol.type & N_TYPE) != N_UNDF;
+									});
+								if (existing == symbols.end()) {
+									symbols.push_back({prefix,
+										static_cast<std::uint8_t>(type), 1,
+										static_cast<std::uint16_t>(description), preferred_address});
+									existing = std::prev(symbols.end());
+								} else {
+									existing->type = static_cast<std::uint8_t>(type);
+									existing->description = static_cast<std::uint16_t>(
+										(existing->description & ~0x0080u) | description);
+								}
+								existing->has_resolver = has_resolver;
+								existing->resolver_value = preferred_resolver;
 							}
 						}
 						cursor = terminal_end;
@@ -1175,6 +1295,13 @@ bool MachOImage::IsWeakUndefined(const MachOSymbol& symbol) noexcept
 	return (symbol.description & 0x0040u) != 0;
 }
 
+bool MachOImage::IsFlatLookupUndefined(const MachOSymbol& symbol) noexcept
+{
+	// N_REF_TO_WEAK requests flat namespace lookup; it is distinct from
+	// N_WEAK_REF, which only makes a missing symbol resolve to NULL.
+	return (symbol.description & 0x0080u) != 0;
+}
+
 std::vector<MachOImage::IndirectImportSlot> MachOImage::IndirectImportSlots() const
 {
 	std::vector<IndirectImportSlot> slots;
@@ -1225,7 +1352,12 @@ void MachOImage::ApplyIndirectImportBindings(const Mapping& mapping,
 			throw std::out_of_range("Mach-O indirect symbol index is invalid");
 		const auto& symbol = m_symbols[symbol_index];
 		const auto match = std::find_if(bindings.begin(), bindings.end(),
-			[&symbol](const auto& binding) { return binding.symbol == symbol.name; });
+			[&symbol](const auto& binding) {
+				return binding.symbol == symbol.name &&
+					(!binding.has_dylib_ordinal || binding.dylib_ordinal ==
+						MachOLibraryOrdinalFromSymbolDescription(
+							symbol.description));
+			});
 		if (match == bindings.end()) {
 			if (IsWeakUndefined(symbol)) {
 				if (Is32Bit()) ApplyAbsolute32(mapping, slot.address, 0);
@@ -1315,8 +1447,29 @@ bool MachOImage::IsWeakDependency(const std::string& name) const noexcept
 std::uintptr_t MachOImage::SymbolAddress(
 	const Mapping& mapping, const std::string& name) const
 {
-	for (const auto& symbol : m_symbols) {
-		if (symbol.name == name && (symbol.type & N_TYPE) != N_UNDF) {
+	std::string resolved_name = name;
+	std::set<std::string> visited_indirect_symbols;
+	for (;;) {
+		if (!visited_indirect_symbols.insert(resolved_name).second)
+			throw std::runtime_error("Mach-O indirect symbol cycle: " + name);
+		bool followed_indirect = false;
+		for (const auto& symbol : m_symbols) {
+			if (symbol.name != resolved_name ||
+				(symbol.type & N_TYPE) == N_UNDF)
+				continue;
+			if ((symbol.type & N_TYPE) == N_INDR) {
+				if (symbol.indirect_target.empty())
+					throw std::runtime_error("Mach-O indirect symbol has no target: " +
+						resolved_name);
+				resolved_name = symbol.indirect_target;
+				followed_indirect = true;
+				break;
+			}
+			if ((symbol.type & N_TYPE) == N_ABS) {
+				if (symbol.value > std::numeric_limits<std::uintptr_t>::max())
+					throw std::overflow_error("Mach-O absolute symbol exceeds host address width");
+				return static_cast<std::uintptr_t>(symbol.value);
+			}
 			if (symbol.value > static_cast<std::uint64_t>(
 				std::numeric_limits<std::intptr_t>::max())) {
 				throw std::overflow_error("Mach-O symbol value cannot be slid safely");
@@ -1327,8 +1480,50 @@ std::uintptr_t MachOImage::SymbolAddress(
 			}
 			return static_cast<std::uintptr_t>(address);
 		}
+		if (!followed_indirect)
+			break;
 	}
-	throw std::runtime_error("Mach-O defined symbol not found: " + name);
+	throw std::runtime_error("Mach-O defined symbol not found: " + resolved_name);
+}
+
+std::uintptr_t MachOImage::SymbolResolverAddress(
+	const Mapping& mapping, const std::string& name) const
+{
+	const auto symbol = std::find_if(m_symbols.begin(), m_symbols.end(),
+		[&name](const MachOSymbol& candidate) {
+			return candidate.name == name && candidate.has_resolver;
+		});
+	if (symbol == m_symbols.end())
+		throw std::runtime_error("Mach-O export resolver not found: " + name);
+	const auto segment = std::find_if(m_segments.begin(), m_segments.end(),
+		[&symbol](const MachOSegment& candidate) {
+			return symbol->resolver_value >= candidate.vm_address &&
+				symbol->resolver_value - candidate.vm_address < candidate.vm_size &&
+				(candidate.initial_protection & 4) != 0;
+		});
+	if (segment == m_segments.end())
+		throw std::runtime_error(
+			"Mach-O export resolver is outside executable image segments");
+	if (symbol->resolver_value > std::numeric_limits<std::uintptr_t>::max())
+		throw std::overflow_error("Mach-O export resolver exceeds host address width");
+	const auto preferred = static_cast<std::uintptr_t>(symbol->resolver_value);
+	const auto slide = mapping.Slide();
+	if (slide >= 0) {
+		const auto amount = static_cast<std::uintptr_t>(slide);
+		if (preferred > std::numeric_limits<std::uintptr_t>::max() - amount)
+			throw std::overflow_error("Mach-O export resolver cannot be slid safely");
+		const auto address = preferred + amount;
+		if (address == 0)
+			throw std::runtime_error("Mach-O export resolver address is null");
+		return address;
+	}
+	const auto amount = static_cast<std::uintptr_t>(-(slide + 1)) + 1;
+	if (preferred < amount)
+		throw std::runtime_error("Mach-O export resolver address is invalid after sliding");
+	const auto address = preferred - amount;
+	if (address == 0)
+		throw std::runtime_error("Mach-O export resolver address is null");
+	return address;
 }
 
 std::uintptr_t MachOImage::SectionAddress(const Mapping& mapping,
@@ -1412,6 +1607,32 @@ void MachOImage::ApplyRelocations(const Mapping& mapping,
 	const std::vector<std::uintptr_t>& symbol_addresses,
 	bool defer_unreachable_external) const
 {
+	if (mapping.m_relocation_original_widths.empty()) {
+		mapping.m_relocation_original_values.resize(m_relocations.size());
+		mapping.m_relocation_original_sites.resize(m_relocations.size());
+		mapping.m_relocation_original_widths.resize(m_relocations.size());
+	} else if (mapping.m_relocation_original_widths.size() != m_relocations.size() ||
+		mapping.m_relocation_original_values.size() != m_relocations.size() ||
+		mapping.m_relocation_original_sites.size() != m_relocations.size()) {
+		throw std::logic_error("Mach-O relocation snapshot does not match image");
+	}
+	const auto original_relocation_value = [&mapping](std::size_t index,
+		std::uintptr_t site, std::size_t width) {
+		if (index >= mapping.m_relocation_original_widths.size() || width == 0 ||
+			width > sizeof(std::uint64_t))
+			throw std::logic_error("invalid Mach-O relocation snapshot request");
+		auto& saved_width = mapping.m_relocation_original_widths[index];
+		if (saved_width == 0) {
+			std::uint64_t value = 0;
+			std::memcpy(&value, reinterpret_cast<const void*>(site), width);
+			mapping.m_relocation_original_values[index] = value;
+			mapping.m_relocation_original_sites[index] = site;
+			saved_width = static_cast<std::uint8_t>(width);
+		} else if (saved_width != width || mapping.m_relocation_original_sites[index] != site) {
+			throw std::logic_error("Mach-O relocation site changed after snapshot");
+		}
+		return mapping.m_relocation_original_values[index];
+	};
 	if (Is32Bit()) {
 		for (std::size_t index = 0; index < m_relocations.size(); ++index) {
 			const auto& relocation = m_relocations[index];
@@ -1449,11 +1670,10 @@ void MachOImage::ApplyRelocations(const Mapping& mapping,
 					throw std::runtime_error("invalid 32-bit i386 SECTDIFF relocation pair");
 				}
 				const auto vm_address = static_cast<std::uint32_t>(relocation.address);
-				std::uint32_t addend_bits = 0;
 				const auto site = static_cast<std::uintptr_t>(
 					static_cast<std::intptr_t>(vm_address) + mapping.Slide());
-				std::memcpy(&addend_bits, reinterpret_cast<const void*>(site),
-					sizeof(addend_bits));
+				const auto addend_bits = static_cast<std::uint32_t>(
+					original_relocation_value(index, site, sizeof(std::uint32_t)));
 				const auto value = static_cast<std::uintptr_t>(
 					static_cast<std::int64_t>(relocation.scattered_value) -
 					static_cast<std::int64_t>(pair.scattered_value) +
@@ -1475,9 +1695,8 @@ void MachOImage::ApplyRelocations(const Mapping& mapping,
 			const auto vm_address = static_cast<std::uint32_t>(relocation.address);
 			const auto site = static_cast<std::uintptr_t>(
 				static_cast<std::intptr_t>(vm_address) + mapping.Slide());
-			std::uint32_t addend_bits = 0;
-			std::memcpy(&addend_bits, reinterpret_cast<const void*>(site),
-				sizeof(addend_bits));
+			const auto addend_bits = static_cast<std::uint32_t>(
+				original_relocation_value(index, site, sizeof(std::uint32_t)));
 			const auto addend = static_cast<std::int32_t>(addend_bits);
 			std::uintptr_t target = 0;
 			if (relocation.external) {
@@ -1526,22 +1745,23 @@ void MachOImage::ApplyRelocations(const Mapping& mapping,
 			}
 			throw std::out_of_range("ARM64 Mach-O relocation is outside a segment");
 		};
-		const auto read32 = [&](std::uint64_t vm_address) {
+		const auto read32 = [&](std::size_t relocation_index,
+			std::uint64_t vm_address) {
 			const auto [address, segment] = find_address(vm_address, sizeof(std::uint32_t));
 			(void)segment;
-			std::uint32_t value = 0;
-			std::memcpy(&value, reinterpret_cast<const void*>(address), sizeof(value));
-			return value;
+			return static_cast<std::uint32_t>(original_relocation_value(
+				relocation_index, address, sizeof(std::uint32_t)));
 		};
-		const auto read64 = [&](std::uint64_t vm_address) {
+		const auto read64 = [&](std::size_t relocation_index,
+			std::uint64_t vm_address) {
 			const auto [address, segment] = find_address(vm_address, sizeof(std::uint64_t));
 			(void)segment;
-			std::uint64_t value = 0;
-			std::memcpy(&value, reinterpret_cast<const void*>(address), sizeof(value));
-			return value;
+			return original_relocation_value(relocation_index, address,
+				sizeof(std::uint64_t));
 		};
-		const auto reject_authenticated_pointer = [&](std::uint64_t vm_address) {
-			const auto encoded = read64(vm_address);
+		const auto reject_authenticated_pointer = [&](std::size_t relocation_index,
+			std::uint64_t vm_address) {
+			const auto encoded = read64(relocation_index, vm_address);
 			if ((encoded >> 63) == 0 || ((encoded >> 62) & 1) != 0 ||
 				((encoded >> 51) & 0x7ff) != 0) {
 				throw std::runtime_error("invalid ARM64 authenticated-pointer metadata");
@@ -1580,7 +1800,7 @@ void MachOImage::ApplyRelocations(const Mapping& mapping,
 					if (relocation.pc_relative || relocation.length != 3 || relocation.address < 0) {
 						throw std::runtime_error("invalid ARM64 authenticated-pointer relocation");
 					}
-					reject_authenticated_pointer(resolve_vm_address(
+					reject_authenticated_pointer(index, resolve_vm_address(
 						static_cast<std::uint32_t>(relocation.address)));
 				}
 				if (relocation.type != 0 || relocation.pc_relative || relocation.length != 3 ||
@@ -1590,7 +1810,7 @@ void MachOImage::ApplyRelocations(const Mapping& mapping,
 				const auto vm_address = resolve_vm_address(
 					static_cast<std::uint32_t>(relocation.address));
 				const auto rebased = static_cast<std::uintptr_t>(
-					static_cast<std::intptr_t>(read64(vm_address)) + mapping.Slide() +
+					static_cast<std::intptr_t>(read64(index, vm_address)) + mapping.Slide() +
 					(relocation.has_explicit_addend ? relocation.explicit_addend : 0));
 				ApplyAbsolute64(mapping, vm_address, rebased);
 				continue;
@@ -1604,7 +1824,7 @@ void MachOImage::ApplyRelocations(const Mapping& mapping,
 				if (relocation.pc_relative || relocation.length != 3) {
 					throw std::runtime_error("invalid ARM64 authenticated-pointer relocation");
 				}
-				reject_authenticated_pointer(vm_address);
+				reject_authenticated_pointer(index, vm_address);
 			}
 			const auto target = symbol_addresses[relocation.symbol_index];
 			const auto target_with_addend = static_cast<std::uintptr_t>(
@@ -1638,7 +1858,7 @@ void MachOImage::ApplyRelocations(const Mapping& mapping,
 					delta >= (std::int64_t(1) << 27)) {
 					throw std::overflow_error("ARM64 BRANCH26 relocation is out of range");
 				}
-				const auto instruction = read32(vm_address);
+				const auto instruction = read32(index, vm_address);
 				const auto immediate = static_cast<std::uint32_t>((delta >> 2) & 0x03ffffff);
 				write32(vm_address, (instruction & 0xfc000000u) | immediate);
 			} else if ((relocation.type == 3 || relocation.type == 5 || relocation.type == 8) &&
@@ -1652,14 +1872,14 @@ void MachOImage::ApplyRelocations(const Mapping& mapping,
 					page_delta_units >= (std::int64_t(1) << 20)) {
 					throw std::overflow_error("ARM64 PAGE21 relocation is out of range");
 				}
-				const auto instruction = read32(vm_address);
+				const auto instruction = read32(index, vm_address);
 				const auto encoded = static_cast<std::uint32_t>(page_delta_units);
 				const auto immlo = (encoded & 3u) << 29;
 				const auto immhi = ((encoded >> 2) & 0x7ffffu) << 5;
 				write32(vm_address, (instruction & 0x9f00001fu) | immlo | immhi);
 			} else if ((relocation.type == 4 || relocation.type == 6 || relocation.type == 9) &&
 				!relocation.pc_relative && relocation.length == 2) {
-				const auto instruction = read32(vm_address);
+				const auto instruction = read32(index, vm_address);
 				const auto offset = static_cast<std::uint32_t>(target_with_addend & 0xfff);
 				std::uint32_t encoded = offset;
 				if ((instruction & 0x1f000000u) == 0x11000000u) {
@@ -1683,7 +1903,7 @@ void MachOImage::ApplyRelocations(const Mapping& mapping,
 		}
 		return;
 	}
-	RequireX86Execution(*this);
+	RequireNativeExecution(*this);
 	for (std::size_t index = 0; index < m_relocations.size(); ++index) {
 		const auto& relocation = m_relocations[index];
 		if (!relocation.external) {
@@ -1803,7 +2023,7 @@ bool MachOImage::IsOptimizedTLVLEA(const Mapping& mapping,
 void MachOImage::ApplyBindActions(const Mapping& mapping,
 	const std::vector<DyldResolvedBinding>& bindings) const
 {
-	RequireX86Execution(*this);
+	RequireNativeExecution(*this);
 	for (const auto& action : m_bind_actions) {
 		if (action.lazy) {
 			continue;
@@ -1836,7 +2056,9 @@ void MachOImage::ApplyBindActions(const Mapping& mapping,
 				const auto& target_action = m_threaded_bind_targets[ordinal];
 				const auto match = std::find_if(bindings.begin(), bindings.end(),
 					[&target_action](const auto& binding) {
-						return binding.symbol == target_action.symbol;
+						return binding.symbol == target_action.symbol &&
+							(!binding.has_dylib_ordinal || binding.dylib_ordinal ==
+								target_action.dylib_ordinal);
 					});
 				if (match == bindings.end()) {
 					if (target_action.weak) {
@@ -1867,7 +2089,11 @@ void MachOImage::ApplyBindActions(const Mapping& mapping,
 			throw std::runtime_error("unsupported Mach-O dyld bind action");
 		}
 		const auto match = std::find_if(bindings.begin(), bindings.end(),
-			[&action](const auto& binding) { return binding.symbol == action.symbol; });
+			[&action](const auto& binding) {
+				return binding.symbol == action.symbol &&
+					(!binding.has_dylib_ordinal || binding.dylib_ordinal ==
+						action.dylib_ordinal);
+			});
 		if (match == bindings.end()) {
 			if (!action.weak) {
 				throw std::runtime_error("unresolved Mach-O dyld bind action: " + action.symbol);
@@ -1912,7 +2138,9 @@ void MachOImage::ApplyLazyBindAction(std::size_t action_index, const Mapping& ma
 	};
 	const auto match = std::find_if(bindings.begin(), bindings.end(),
 		[&action, &same_binding_symbol](const auto& binding) {
-			return same_binding_symbol(action.symbol, binding.symbol);
+			return same_binding_symbol(action.symbol, binding.symbol) &&
+				(!binding.has_dylib_ordinal || binding.dylib_ordinal ==
+					action.dylib_ordinal);
 		});
 	if (match == bindings.end()) {
 		if (!action.weak) {
@@ -1953,7 +2181,7 @@ void MachOImage::ApplyChainedFixups(const Mapping& mapping,
 	const std::vector<std::uintptr_t>& bind_addresses) const
 {
 	if (!IsArm64()) {
-		RequireX86Execution(*this);
+		RequireNativeExecution(*this);
 	}
 	for (const auto& fixup : m_chained_fixups) {
 		if (fixup.authenticated) {
@@ -1989,13 +2217,17 @@ void MachOImage::ApplyChainedFixups(const Mapping& mapping,
 	const std::vector<DyldResolvedBinding>& bindings) const
 {
 	if (!IsArm64()) {
-		RequireX86Execution(*this);
+		RequireNativeExecution(*this);
 	}
 	std::vector<std::uintptr_t> addresses;
 	addresses.reserve(m_chained_imports.size());
 	for (const auto& import : m_chained_imports) {
 		const auto match = std::find_if(bindings.begin(), bindings.end(),
-			[&import](const auto& binding) { return binding.symbol == import.symbol; });
+			[&import](const auto& binding) {
+				return binding.symbol == import.symbol &&
+					(!binding.has_dylib_ordinal || binding.dylib_ordinal ==
+						import.dylib_ordinal);
+			});
 		if (match == bindings.end()) {
 			if (import.weak) {
 				addresses.push_back(0);
@@ -2011,7 +2243,7 @@ void MachOImage::ApplyChainedFixups(const Mapping& mapping,
 
 void MachOImage::ApplyRebaseActions(const Mapping& mapping) const
 {
-	RequireX86Execution(*this);
+	RequireNativeExecution(*this);
 	for (const auto& action : m_rebase_actions) {
 		if (action.type != 1 || action.segment_index >= m_segments.size()) {
 			throw std::runtime_error("unsupported Mach-O dyld rebase action");
@@ -2199,7 +2431,7 @@ MachOImage::Mapping MachOImage::MapSegments(std::uintptr_t near_address) const
 
 void MachOImage::ExecuteEntryNoArgs(const Mapping& mapping) const
 {
-	RequireX86Execution(*this);
+	RequireNativeExecution(*this);
 	if (mapping.EntryAddress() == 0) {
 		throw std::runtime_error("Mach-O mapping has no executable entry address");
 	}
@@ -2212,7 +2444,7 @@ void MachOImage::ExecuteEntryNoArgs(const Mapping& mapping) const
 
 void MachOImage::ExecuteInitializers(const Mapping& mapping) const
 {
-	RequireX86Execution(*this);
+	RequireNativeExecution(*this);
 	for (const auto& section : m_sections) {
 		if (section.section_name != "__mod_init_func")
 			continue;
@@ -2237,7 +2469,7 @@ void MachOImage::ExecuteInitializers(const Mapping& mapping) const
 
 void MachOImage::ExecuteTerminators(const Mapping& mapping) const
 {
-	RequireX86Execution(*this);
+	RequireNativeExecution(*this);
 	for (const auto& section : m_sections) {
 		if (section.section_name != "__mod_term_func")
 			continue;
@@ -2266,7 +2498,7 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 	const std::vector<std::string>& apple_parameters,
 	DarwinEntryAbi entry_abi) const
 {
-	RequireX86Execution(*this);
+	RequireNativeExecution(*this);
 	if (mapping.EntryAddress() == 0) {
 		throw std::runtime_error("Mach-O mapping has no executable entry address");
 	}
@@ -2301,9 +2533,9 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 	// NSGetEnviron. Bind it before any guest startup code can observe it.
 	darling_windows_set_environ_vector(
 		const_cast<const char* const*>(envp.data()));
-	// Materialize Apple parameters with the same lifetime as argv/envp.  The
-	// compatible entry ABI does not consume them yet; a future dyld trampoline
-	// can use this owned vector without changing the launch contract.
+	// Materialize Apple parameters with the same lifetime as argv/envp. The
+	// DarwinStart path places this vector after the null-terminated envp vector;
+	// compatible-main entry keeps the parameters available to the launch scope.
 	std::vector<std::vector<char>> apple_storage;
 	apple_storage.reserve(apple_parameters.size());
 	std::vector<char*> apple;
@@ -2318,24 +2550,20 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 		throw std::logic_error("Darwin Apple parameter vector must be null terminated");
 	}
 	if (entry_abi == DarwinEntryAbi::DarwinStart) {
-#if defined(_WIN64)
-	#if !defined(__clang__)
-		throw std::runtime_error(
-			"real Mach-O execution requires a Clang build with System-V ABI support");
-	#else
-		// Darwin's crt1 entry receives argc at RSP, followed by argv, envp and
+	#if defined(_WIN64) && defined(__clang__)
+		// Darwin's crt1 entry receives argc at the initial stack pointer, followed by argv, envp and
 		// the Apple parameter vector. Keep all pointed-to storage alive until
 		// the non-returning entry transfer.
 		// Leave committed scratch space below the initial Darwin stack.  The
 		// guest entry may issue a normal call, which pushes its return address
 		// below RSP even though the Darwin ABI starts with argc at [RSP].
-		// Keep substantial native stack below the Darwin initial words.  A guest
+		// Keep substantial native stack below the Darwin initial words. A guest
 		// call into a SysV host bridge still needs return-address space and a
-		// bounded prologue below RSP; the first 32-word guard was enough for the
-		// argc-only fixture but not for extended startup calls.
+		// bounded prologue below RSP. The buffer stays on the native thread stack:
+		// heap-backed alternate stacks faulted while guest code called Windows/SEH.
 		constexpr std::size_t startup_stack_guard_words = 512;
 		constexpr std::size_t startup_stack_capacity = 2048;
-		std::array<std::uintptr_t, startup_stack_capacity> startup_stack{};
+		alignas(16) std::array<std::uintptr_t, startup_stack_capacity> startup_stack{};
 		const auto startup_words = startup_stack_guard_words + 1 + argv.size() +
 			envp.size() + apple.size();
 		if (startup_words > startup_stack.size()) {
@@ -2368,9 +2596,9 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 			reinterpret_cast<void*>(mapping.EntryAddress()),
 			startup_stack.data() + startup_stack_guard_words);
 		throw std::runtime_error("Darwin startup entry returned unexpectedly");
-	#endif
 #else
-		throw std::runtime_error("Darwin startup ABI requires a 64-bit Windows host");
+		throw std::runtime_error(
+			"Darwin startup transfer requires a supported Clang Windows host architecture");
 #endif
 	}
 	if (entry_abi == DarwinEntryAbi::CompatibleMain) {
@@ -2529,7 +2757,10 @@ MachOImage::Mapping::Mapping(void* reservation, std::vector<MappedMachOSegment> 
 MachOImage::Mapping::Mapping(Mapping&& other) noexcept :
 	m_reservation(other.m_reservation), m_segments(std::move(other.m_segments)),
 	m_entry_address(other.m_entry_address), m_slide(other.m_slide),
-	m_reservation_bytes(other.m_reservation_bytes)
+	m_reservation_bytes(other.m_reservation_bytes),
+	m_relocation_original_values(std::move(other.m_relocation_original_values)),
+	m_relocation_original_sites(std::move(other.m_relocation_original_sites)),
+	m_relocation_original_widths(std::move(other.m_relocation_original_widths))
 {
 	other.m_reservation = nullptr;
 	other.m_reservation_bytes = 0;
@@ -2544,6 +2775,9 @@ MachOImage::Mapping& MachOImage::Mapping::operator=(Mapping&& other) noexcept
 		m_entry_address = other.m_entry_address;
 		m_slide = other.m_slide;
 		m_reservation_bytes = other.m_reservation_bytes;
+		m_relocation_original_values = std::move(other.m_relocation_original_values);
+		m_relocation_original_sites = std::move(other.m_relocation_original_sites);
+		m_relocation_original_widths = std::move(other.m_relocation_original_widths);
 		other.m_reservation = nullptr;
 		other.m_reservation_bytes = 0;
 	}
@@ -2562,6 +2796,9 @@ void MachOImage::Mapping::Reset() noexcept
 		m_reservation = nullptr;
 	}
 	m_reservation_bytes = 0;
+	m_relocation_original_values.clear();
+	m_relocation_original_sites.clear();
+	m_relocation_original_widths.clear();
 }
 
 void MachOLazyBindingSession::ApplyOne(std::size_t action_index) const
@@ -2609,7 +2846,9 @@ std::optional<std::uintptr_t> MachOLazyBindingSession::ResolveForLazyInfo(
 	};
 	const auto found = std::find_if(m_bindings.begin(), m_bindings.end(),
 		[&action, &same_binding_symbol](const DyldResolvedBinding& binding) {
-			return same_binding_symbol(action.symbol, binding.symbol);
+			return same_binding_symbol(action.symbol, binding.symbol) &&
+				(!binding.has_dylib_ordinal || binding.dylib_ordinal ==
+					action.dylib_ordinal);
 		});
 	if (found == m_bindings.end())
 		return std::nullopt;

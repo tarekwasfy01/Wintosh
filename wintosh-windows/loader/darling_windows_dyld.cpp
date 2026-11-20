@@ -8,6 +8,7 @@
 
 #include "darling_windows_dyld.h"
 #include "darling_windows_macho.h"
+#include "darling_windows_abi_bridge.h"
 #include "darling_windows_objc.h"
 #include "darling_windows_stdio.h"
 #include "darling_windows_tlv.h"
@@ -15,13 +16,71 @@
 #include <algorithm>
 #include <cstring>
 #include <functional>
+#include <limits>
 #include <set>
 #include <stdexcept>
 #include <utility>
+#include <vector>
+#include <windows.h>
 
 namespace darling::windows_host {
 
 namespace {
+
+DWORD DarwinProtectionToWindows(std::int32_t protection)
+{
+	const bool read = (protection & 1) != 0;
+	const bool write = (protection & 2) != 0;
+	const bool execute = (protection & 4) != 0;
+	if (execute)
+		return write ? PAGE_EXECUTE_READWRITE : (read ? PAGE_EXECUTE_READ : PAGE_EXECUTE);
+	return write ? PAGE_READWRITE : (read ? PAGE_READONLY : PAGE_NOACCESS);
+}
+
+std::uintptr_t MappedTLVSectionAddress(const MachOSection& section,
+	const MachOImage::Mapping& mapping)
+{
+	if (section.address > static_cast<std::uint64_t>(
+		(std::numeric_limits<std::intptr_t>::max)()))
+		throw std::overflow_error("Mach-O dynamic TLV section address cannot be slid safely");
+	const auto address = static_cast<std::intptr_t>(section.address) + mapping.Slide();
+	if (address <= 0)
+		throw std::runtime_error("Mach-O dynamic TLV section address is invalid");
+	return static_cast<std::uintptr_t>(address);
+}
+
+std::vector<std::byte> BuildDynamicTLVTemplate(const MachOImage& image,
+	const MachOImage::Mapping& mapping)
+{
+	std::uint64_t begin = (std::numeric_limits<std::uint64_t>::max)();
+	std::uint64_t end = 0;
+	std::vector<const MachOSection*> data_sections;
+	for (const auto& section : image.Sections()) {
+		if (section.section_name != "__thread_data" &&
+			section.section_name != "__thread_bss")
+			continue;
+		if (section.size > (std::numeric_limits<std::uint64_t>::max)() - section.address)
+			throw std::runtime_error("Mach-O dynamic TLV template extent overflows");
+		begin = (std::min)(begin, section.address);
+		end = (std::max)(end, section.address + section.size);
+		if (section.section_name == "__thread_data")
+			data_sections.push_back(&section);
+	}
+	if (begin == (std::numeric_limits<std::uint64_t>::max)())
+		return {};
+	const auto extent = end - begin;
+	if (extent > (std::numeric_limits<std::size_t>::max)())
+		throw std::runtime_error("Mach-O dynamic TLV template exceeds host address space");
+	std::vector<std::byte> result(static_cast<std::size_t>(extent));
+	for (const auto* section : data_sections) {
+		if (section->size == 0)
+			continue;
+		const auto address = MappedTLVSectionAddress(*section, mapping);
+		std::memcpy(result.data() + static_cast<std::size_t>(section->address - begin),
+			reinterpret_cast<const void*>(address), static_cast<std::size_t>(section->size));
+	}
+	return result;
+}
 
 void AddCandidate(std::vector<std::filesystem::path>& candidates,
 	const std::filesystem::path& candidate)
@@ -85,7 +144,18 @@ bool IsBuiltinDarwinProvider(const std::string& dependency)
 {
 	const auto name = std::filesystem::path(dependency).filename().string();
 	return name == "libSystem.B.dylib" || name == "libSystem.dylib" ||
-		name == "libobjc.A.dylib" || name == "libobjc.dylib";
+		name == "libobjc.A.dylib" || name == "libobjc.dylib" ||
+		// These framework APIs are implemented by Wintosh host providers and
+		// resolved per symbol through darling_windows_host_symbol.  They are
+		// virtual providers: no macOS framework binary is required on Windows.
+		name == "CoreFoundation" || name == "CoreFoundation.framework" ||
+		name == "CoreGraphics" || name == "CoreGraphics.framework" ||
+		name == "ImageIO" || name == "ImageIO.framework" ||
+		name == "Foundation" || name == "Foundation.framework" ||
+		name == "UniformTypeIdentifiers" ||
+		name == "UniformTypeIdentifiers.framework" ||
+		name == "AppKit" || name == "AppKit.dylib" ||
+		name == "AppKit.framework";
 }
 
 darling_objc_image_token* RegisterDynamicObjectiveCSections(const MachOImage& image,
@@ -97,7 +167,8 @@ darling_objc_image_token* RegisterDynamicObjectiveCSections(const MachOImage& im
 		if (section.section_name != "__objc_classlist" &&
 			section.section_name != "__objc_nlclslist" &&
 			section.section_name != "__objc_catlist" &&
-			section.section_name != "__objc_selrefs")
+			section.section_name != "__objc_selrefs" &&
+			section.section_name != "__cfstring")
 			continue;
 		const auto address = image.SectionAddress(mapping, section.segment_name,
 			section.section_name);
@@ -107,6 +178,10 @@ darling_objc_image_token* RegisterDynamicObjectiveCSections(const MachOImage& im
 				static_cast<std::size_t>(section.size));
 		else if (section.section_name == "__objc_selrefs")
 			darling_objc_register_macho_selrefs(
+				reinterpret_cast<const void*>(address),
+				static_cast<std::size_t>(section.size));
+		else if (section.section_name == "__cfstring")
+			darling_objc_register_macho_constant_strings(
 				reinterpret_cast<const void*>(address),
 				static_cast<std::size_t>(section.size));
 		else
@@ -123,58 +198,85 @@ InitializeDynamicTLVSections(const MachOImage& image,
 	const MachOImage::Mapping& mapping)
 {
 	std::vector<std::pair<DarwinTLVDescriptor*, std::size_t>> registrations;
-	const MachOSection* thread_data = nullptr;
-	std::size_t template_bytes = 0;
-	for (const auto& section : image.Sections()) {
-		if (section.section_name == "__thread_data") {
-			thread_data = &section;
-			template_bytes += static_cast<std::size_t>(section.size);
-		} else if (section.section_name == "__thread_bss") {
-			template_bytes += static_cast<std::size_t>(section.size);
-		}
-	}
-	const void* template_data = thread_data == nullptr ? nullptr :
-		reinterpret_cast<const void*>(image.SectionAddress(mapping,
-			thread_data->segment_name, thread_data->section_name));
+	const auto template_storage = BuildDynamicTLVTemplate(image, mapping);
+	const void* template_data = template_storage.empty() ? nullptr : template_storage.data();
+	const auto template_bytes = template_storage.size();
+	std::vector<DarwinTLVDescriptorRange> ranges;
 	for (const auto& section : image.Sections()) {
 		if (section.section_name != "__thread_vars" || section.size == 0)
 			continue;
 		if (section.size % sizeof(DarwinTLVDescriptor) != 0)
 			throw std::runtime_error("Mach-O dynamic __thread_vars section is misaligned");
 		auto* descriptors = reinterpret_cast<DarwinTLVDescriptor*>(
-			image.SectionAddress(mapping, section.segment_name, section.section_name));
-		InitializeDarwinTLV(descriptors,
-			static_cast<std::size_t>(section.size / sizeof(DarwinTLVDescriptor)),
-			template_data, template_bytes);
-		registrations.emplace_back(descriptors,
-			static_cast<std::size_t>(section.size / sizeof(DarwinTLVDescriptor)));
+			MappedTLVSectionAddress(section, mapping));
+		const auto count = static_cast<std::size_t>(section.size / sizeof(DarwinTLVDescriptor));
+		ranges.push_back({descriptors, count});
+		registrations.emplace_back(descriptors, count);
 	}
-	const MachOSection* vars = nullptr;
-	const MachOSection* ptrs = nullptr;
+	if (!ranges.empty())
+		InitializeDarwinTLV(ranges.data(), ranges.size(), template_data, template_bytes);
+	std::vector<std::uintptr_t> descriptor_addresses;
+	std::vector<std::uintptr_t> pointer_slots;
+	struct PointerSectionProtection final {
+		std::uintptr_t address;
+		std::size_t bytes;
+		DWORD original;
+	};
+	std::vector<PointerSectionProtection> pointer_protections;
 	for (const auto& section : image.Sections()) {
-		if (section.section_name == "__thread_vars")
-			vars = &section;
-		else if (section.section_name == "__thread_ptrs")
-			ptrs = &section;
+		if (section.section_name == "__thread_vars") {
+			if (section.size % sizeof(DarwinTLVDescriptor) != 0)
+				throw std::runtime_error("Mach-O dynamic __thread_vars section is misaligned");
+			const auto address = MappedTLVSectionAddress(section, mapping);
+			const auto count = static_cast<std::size_t>(section.size / sizeof(DarwinTLVDescriptor));
+			for (std::size_t index = 0; index < count; ++index)
+				descriptor_addresses.push_back(address + index * sizeof(DarwinTLVDescriptor));
+		} else if (section.section_name == "__thread_ptrs") {
+			if (section.size % sizeof(std::uintptr_t) != 0)
+				throw std::runtime_error("Mach-O dynamic __thread_ptrs section is misaligned");
+			const auto address = MappedTLVSectionAddress(section, mapping);
+			const auto count = static_cast<std::size_t>(section.size / sizeof(std::uintptr_t));
+			for (std::size_t index = 0; index < count; ++index)
+				pointer_slots.push_back(address + index * sizeof(std::uintptr_t));
+			if (section.size != 0) {
+				const auto segment = std::find_if(image.Segments().begin(), image.Segments().end(),
+					[&](const auto& candidate) { return candidate.name == section.segment_name; });
+				if (segment == image.Segments().end())
+					throw std::runtime_error("Mach-O dynamic TLV pointer section has no segment");
+				DWORD ignored = 0;
+				if (!VirtualProtect(reinterpret_cast<void*>(address),
+					static_cast<SIZE_T>(section.size), PAGE_READWRITE, &ignored))
+					throw std::runtime_error("cannot make dynamic Mach-O TLV pointer section writable");
+				pointer_protections.push_back({address,
+					static_cast<std::size_t>(section.size),
+					DarwinProtectionToWindows(segment->initial_protection)});
+			}
+		}
 	}
-	if (vars == nullptr || ptrs == nullptr)
-		return registrations;
-	if (vars->size % sizeof(DarwinTLVDescriptor) != 0 ||
-		ptrs->size % sizeof(std::uintptr_t) != 0)
-		throw std::runtime_error("Mach-O dynamic TLV sections are misaligned");
-	const auto descriptor_address = image.SectionAddress(mapping,
-		vars->segment_name, vars->section_name);
-	const auto pointer_address = image.SectionAddress(mapping,
-		ptrs->segment_name, ptrs->section_name);
-	const auto count = (std::min)(
-		static_cast<std::size_t>(vars->size / sizeof(DarwinTLVDescriptor)),
-		static_cast<std::size_t>(ptrs->size / sizeof(std::uintptr_t)));
-	for (std::size_t index = 0; index < count; ++index) {
-		const auto descriptor = descriptor_address + index * sizeof(DarwinTLVDescriptor);
-		const auto slot = pointer_address + index * sizeof(std::uintptr_t);
-		std::memcpy(reinterpret_cast<void*>(slot), &descriptor, sizeof(descriptor));
+	if (descriptor_addresses.size() != pointer_slots.size())
+		throw std::runtime_error("Mach-O dynamic TLV descriptor and pointer counts do not match");
+	for (std::size_t index = 0; index < descriptor_addresses.size(); ++index)
+		std::memcpy(reinterpret_cast<void*>(pointer_slots[index]),
+			&descriptor_addresses[index], sizeof(std::uintptr_t));
+	for (const auto& protection : pointer_protections) {
+		DWORD ignored = 0;
+		if (!VirtualProtect(reinterpret_cast<void*>(protection.address),
+			static_cast<SIZE_T>(protection.bytes), protection.original, &ignored))
+			throw std::runtime_error("cannot restore dynamic Mach-O TLV pointer protection");
 	}
 	return registrations;
+}
+
+const void* MappedMachOHeader(const MachOImage::Mapping& mapping) noexcept
+{
+	const auto& segments = mapping.Segments();
+	const auto text = std::find_if(segments.begin(), segments.end(),
+		[](const MappedMachOSegment& segment) { return segment.name == "__TEXT"; });
+	if (text != segments.end()) return reinterpret_cast<const void*>(text->address);
+	const auto loadable = std::find_if(segments.begin(), segments.end(),
+		[](const MappedMachOSegment& segment) { return segment.name != "__PAGEZERO"; });
+	return loadable == segments.end() ? nullptr :
+		reinterpret_cast<const void*>(loadable->address);
 }
 
 } // namespace
@@ -274,40 +376,55 @@ std::vector<DylibGraphNode> DylibGraph::Load(
 	const std::filesystem::path& prefix)
 {
 	std::vector<DylibGraphNode> graph;
-	std::vector<std::filesystem::path> pending{image_path.lexically_normal()};
+	struct PendingImage final {
+		std::filesystem::path path;
+		std::vector<std::filesystem::path> inherited_rpaths;
+	};
+	std::vector<PendingImage> pending{{image_path.lexically_normal(), rpaths}};
 	std::set<std::filesystem::path> visited;
 
 	while (!pending.empty()) {
-		const auto current = pending.back();
+		auto work = std::move(pending.back());
 		pending.pop_back();
-		const auto normalized = current.lexically_normal();
+		const auto normalized = work.path.lexically_normal();
 		if (!visited.insert(normalized).second) {
 			continue;
 		}
 
 		const auto image = MachOImage::Open(normalized.wstring());
-		std::vector<std::filesystem::path> image_rpaths = rpaths;
+		auto image_rpaths = std::move(work.inherited_rpaths);
 		for (const auto& rpath : image.RPaths()) {
-			image_rpaths.emplace_back(rpath);
+			const std::filesystem::path candidate(rpath);
+			if (std::find(image_rpaths.begin(), image_rpaths.end(), candidate) ==
+				image_rpaths.end())
+				image_rpaths.push_back(candidate);
 		}
 		DylibGraphNode node;
 		node.path = normalized;
+		std::vector<PendingImage> children;
 		for (const auto& dependency : image.Dependencies()) {
+			std::filesystem::path ordinal_dependency;
 			try {
 				const auto resolved = DylibResolver::Resolve(
 					normalized, dependency, image_rpaths, prefix,
 					image_path.lexically_normal());
+				ordinal_dependency = resolved.lexically_normal();
 				node.dependencies.push_back(resolved);
 				if (visited.find(resolved.lexically_normal()) == visited.end()) {
-					pending.push_back(resolved.lexically_normal());
+					children.push_back({resolved.lexically_normal(), image_rpaths});
 				}
 			} catch (const std::exception&) {
 				if (!image.IsWeakDependency(dependency) && !IsBuiltinDarwinProvider(dependency)) {
 					throw;
 				}
 			}
+			node.ordinal_dependencies.push_back(std::move(ordinal_dependency));
 		}
 		graph.push_back(std::move(node));
+		// The work list is LIFO; reverse insertion preserves load-command order
+		// when selecting the first runpath context for a shared dependency.
+		for (auto child = children.rbegin(); child != children.rend(); ++child)
+			pending.push_back(std::move(*child));
 	}
 
 	std::sort(graph.begin(), graph.end(), [](const auto& left, const auto& right) {
@@ -356,20 +473,15 @@ std::vector<DylibBinding> DylibGraph::BindImports(
 	const std::filesystem::path& prefix)
 {
 	const auto graph = Load(image_path, rpaths, prefix);
+	const auto main_image = MachOImage::Open(image_path.wstring());
+	const bool force_flat_namespace =
+		(main_image.Header().flags & MH_FORCE_FLAT) != 0;
 	struct Definition final {
 		std::string name;
 		std::filesystem::path provider;
 		std::uint64_t value;
+		bool weak = false;
 	};
-	std::vector<Definition> definitions;
-	for (const auto& node : graph) {
-		const auto image = MachOImage::Open(node.path.wstring());
-		for (const auto& symbol : image.Symbols()) {
-			if (!symbol.name.empty() && (symbol.type & 0x0e) != 0) {
-				definitions.push_back({symbol.name, node.path, symbol.value});
-			}
-		}
-	}
 	std::function<bool(const std::filesystem::path&, const std::string&,
 		std::set<std::string>&, Definition&)> resolve_export =
 		[&](const std::filesystem::path& owner, const std::string& name,
@@ -381,66 +493,293 @@ std::vector<DylibBinding> DylibGraph::BindImports(
 			for (const auto& symbol : image.Symbols()) {
 				if (!symbol.name.empty() && symbol.name == name &&
 					(symbol.type & 0x0e) != 0) {
-					result = {name, owner, symbol.value};
+					if ((symbol.type & 0x0e) == 0x0a) {
+						if (!symbol.indirect_target.empty() && resolve_export(owner,
+							symbol.indirect_target, visiting, result)) {
+							visiting.erase(key);
+							return true;
+						}
+						continue;
+					}
+					result = {name, owner, symbol.value,
+						(symbol.description & 0x0080u) != 0};
 					visiting.erase(key);
 					return true;
 				}
 			}
 			for (const auto& reexport : image.Reexports()) {
-				if (reexport.name != name || reexport.dependency_ordinal == 0 ||
-					reexport.dependency_ordinal > image.Dependencies().size())
+				if (reexport.name != name || reexport.dependency_ordinal == 0)
 					continue;
-				const auto dependency = image.Dependencies()[reexport.dependency_ordinal - 1];
-				std::vector<std::filesystem::path> image_rpaths = rpaths;
-				for (const auto& rpath : image.RPaths())
-					image_rpaths.emplace_back(rpath);
-				try {
-					const auto resolved = DylibResolver::Resolve(owner, dependency,
-						image_rpaths, prefix, image_path.lexically_normal());
-					const auto target = reexport.target.empty() ? name : reexport.target;
-					if (resolve_export(resolved, target, visiting, result)) {
+				const auto owner_node = std::find_if(graph.begin(), graph.end(),
+					[&owner](const DylibGraphNode& candidate) {
+						return candidate.path == owner.lexically_normal();
+					});
+				if (owner_node == graph.end() ||
+					reexport.dependency_ordinal > owner_node->ordinal_dependencies.size())
+					continue;
+				const auto& dependency = owner_node->ordinal_dependencies[
+					reexport.dependency_ordinal - 1];
+				const auto target = reexport.target.empty() ? name : reexport.target;
+				if (dependency.empty()) {
+					const auto host_address = darling_windows_host_symbol(target.c_str());
+					if (host_address != 0) {
+						result = {target, {}, host_address, false};
 						visiting.erase(key);
 						return true;
 					}
-				} catch (const std::exception&) {
+					continue;
+				}
+				if (resolve_export(dependency, target, visiting, result)) {
+					visiting.erase(key);
+					return true;
 				}
 			}
 			visiting.erase(key);
 			return false;
 		};
+	std::vector<std::filesystem::path> flat_lookup_order;
+	std::set<std::filesystem::path> flat_lookup_seen;
+	std::function<void(const std::filesystem::path&)> append_flat_lookup_image =
+		[&](const std::filesystem::path& candidate_path) {
+			const auto normalized = candidate_path.lexically_normal();
+			if (!flat_lookup_seen.insert(normalized).second)
+				return;
+			flat_lookup_order.push_back(normalized);
+			const auto node = std::find_if(graph.begin(), graph.end(),
+				[&normalized](const DylibGraphNode& candidate) {
+					return candidate.path == normalized;
+				});
+			if (node == graph.end())
+				return;
+			for (const auto& dependency : node->dependencies)
+				append_flat_lookup_image(dependency);
+		};
+	append_flat_lookup_image(image_path);
 
 	std::vector<DylibBinding> bindings;
 	for (const auto& node : graph) {
 		const auto image = MachOImage::Open(node.path.wstring());
-		for (const auto& symbol : image.UndefinedSymbols()) {
-			const auto match = std::find_if(definitions.begin(), definitions.end(),
-				[&symbol](const auto& definition) {
-					return definition.name == symbol.name;
+		const bool two_level = image.UsesTwoLevelNamespace() &&
+			!force_flat_namespace;
+		struct ImportRequest final {
+			std::string name;
+			std::int32_t ordinal;
+			bool weak;
+			bool weak_bind;
+		};
+		std::vector<ImportRequest> imports;
+		const auto add_import = [&imports](const std::string& name,
+			std::int32_t ordinal, bool weak, bool weak_bind) {
+			auto existing = std::find_if(imports.begin(), imports.end(),
+				[&name, ordinal](const ImportRequest& candidate) {
+					return candidate.name == name && candidate.ordinal == ordinal;
 				});
-			if (match == definitions.end()) {
-				Definition forwarded;
-				std::set<std::string> visiting;
-				if (resolve_export(node.path, symbol.name, visiting, forwarded)) {
-					bindings.push_back({symbol.name, forwarded.provider,
-						forwarded.value});
-					continue;
-				}
-				const auto host_address = darling_windows_host_symbol(symbol.name.c_str());
-				if (host_address != 0) {
-					bindings.push_back({symbol.name, {}, host_address});
-					continue;
-				}
-				if (MachOImage::IsWeakUndefined(symbol)) {
-					// Darwin leaves an unresolved weak reference as NULL.
-					bindings.push_back({symbol.name, {}, 0});
-					continue;
-				}
-				throw std::runtime_error("unresolved Mach-O import: " + symbol.name);
+			if (existing == imports.end())
+				imports.push_back({name, ordinal, weak, weak_bind});
+			else {
+				existing->weak = existing->weak && weak;
+				existing->weak_bind = existing->weak_bind && weak_bind;
 			}
-			bindings.push_back({symbol.name, match->provider, match->value});
+		};
+		for (const auto& symbol : image.UndefinedSymbols()) {
+			const auto ordinal = MachOImage::IsFlatLookupUndefined(symbol) ? -2 :
+				MachOLibraryOrdinalFromSymbolDescription(symbol.description);
+			add_import(symbol.name, ordinal, MachOImage::IsWeakUndefined(symbol), false);
+		}
+		for (const auto& action : image.BindActions())
+			add_import(action.symbol, action.dylib_ordinal, action.weak,
+				action.weak_bind);
+		for (const auto& import : image.ChainedImports()) {
+			add_import(import.symbol, import.dylib_ordinal, import.weak, false);
+		}
+		for (const auto& import : imports) {
+			const std::int32_t binding_ordinal = import.ordinal;
+			if (two_level && import.ordinal < -3)
+				throw std::runtime_error("Mach-O import has an invalid special dylib ordinal: " +
+					import.name);
+			std::filesystem::path requested_provider;
+			if (two_level && import.ordinal == 0) {
+				requested_provider = node.path;
+			} else if (two_level && import.ordinal == -1) {
+				requested_provider = image_path.lexically_normal();
+			} else if (two_level && import.ordinal > 0 &&
+				static_cast<std::size_t>(import.ordinal) <=
+					node.ordinal_dependencies.size()) {
+				requested_provider = node.ordinal_dependencies[
+					static_cast<std::size_t>(import.ordinal - 1)];
+			}
+			if (two_level && import.ordinal > 0 &&
+				static_cast<std::size_t>(import.ordinal) >
+					node.ordinal_dependencies.size())
+				throw std::runtime_error("Mach-O import has an out-of-range dylib ordinal: " +
+					import.name);
+
+			Definition forwarded;
+			bool resolved = false;
+			if (!requested_provider.empty()) {
+				std::set<std::string> visiting;
+				resolved = resolve_export(requested_provider, import.name, visiting,
+					forwarded);
+				if (resolved && forwarded.weak) {
+					Definition first_weak_definition;
+					bool have_weak_definition = false;
+					for (const auto& candidate : flat_lookup_order) {
+						visiting.clear();
+						Definition candidate_definition;
+						if (!resolve_export(candidate, import.name, visiting,
+							candidate_definition))
+							continue;
+						if (!candidate_definition.weak) {
+							forwarded = std::move(candidate_definition);
+							have_weak_definition = false;
+							break;
+						}
+						if (!have_weak_definition) {
+							first_weak_definition = std::move(candidate_definition);
+							have_weak_definition = true;
+						}
+					}
+					if (have_weak_definition)
+						forwarded = std::move(first_weak_definition);
+				}
+			} else if (!two_level || import.ordinal == -2 || import.ordinal == -3) {
+				// Dynamic and weak lookup ordinals search the flat namespace.
+				// Keep the first weak definition, but let the first strong
+				// definition in load order override it.
+				std::set<std::string> visiting;
+				Definition first_weak_definition;
+				bool have_weak_definition = false;
+				for (const auto& candidate : flat_lookup_order) {
+					visiting.clear();
+					Definition candidate_definition;
+					if (!resolve_export(candidate, import.name, visiting,
+						candidate_definition))
+						continue;
+					if (!candidate_definition.weak) {
+						forwarded = std::move(candidate_definition);
+						resolved = true;
+						break;
+					}
+					if (!have_weak_definition) {
+						first_weak_definition = std::move(candidate_definition);
+						have_weak_definition = true;
+					}
+				}
+				if (!resolved && have_weak_definition) {
+					forwarded = std::move(first_weak_definition);
+					resolved = true;
+				}
+			}
+			if (resolved) {
+				bindings.push_back({import.name, forwarded.provider, forwarded.name,
+					forwarded.value, node.path, binding_ordinal, two_level});
+				continue;
+			}
+			{
+				const auto host_address = darling_windows_host_symbol(import.name.c_str());
+				if (host_address != 0 &&
+					(!two_level || import.ordinal == -2 || import.ordinal == -3 ||
+						requested_provider.empty())) {
+					bindings.push_back({import.name, {}, {}, host_address,
+						node.path, binding_ordinal, two_level});
+					continue;
+				}
+				if (import.weak || import.ordinal == -3) {
+					if (import.weak_bind)
+						continue;
+					// Darwin leaves an unresolved weak reference as NULL.
+					bindings.push_back({import.name, {}, {}, 0,
+						node.path, binding_ordinal, two_level});
+					continue;
+				}
+				throw std::runtime_error("unresolved Mach-O import from ordinal " +
+					std::to_string(import.ordinal) + ": " + import.name);
+			}
 		}
 	}
 	return bindings;
+}
+
+std::vector<DylibExportResolver> DylibGraph::ExportResolverOrder(
+	const std::vector<DylibBinding>& bindings)
+{
+	struct CachedImage final {
+		std::filesystem::path path;
+		MachOImage image;
+	};
+	std::vector<CachedImage> images;
+	const auto image_for = [&images](const std::filesystem::path& input_path)
+		-> const MachOImage& {
+		const auto path = input_path.lexically_normal();
+		auto found = std::find_if(images.begin(), images.end(),
+			[&path](const CachedImage& candidate) { return candidate.path == path; });
+		if (found == images.end()) {
+			images.push_back({path, MachOImage::Open(path.wstring())});
+			found = std::prev(images.end());
+		}
+		return found->image;
+	};
+	const auto is_resolver_export = [&image_for](
+		const std::filesystem::path& provider, const std::string& symbol) {
+		if (provider.empty() || symbol.empty()) return false;
+		const auto& image = image_for(provider);
+		return std::any_of(image.Symbols().begin(), image.Symbols().end(),
+			[&symbol](const MachOSymbol& candidate) {
+				return candidate.name == symbol && candidate.has_resolver;
+			});
+	};
+	std::vector<DylibExportResolver> nodes;
+	for (const auto& binding : bindings) {
+		if (!is_resolver_export(binding.provider, binding.provider_symbol))
+			continue;
+		const auto provider = binding.provider.lexically_normal();
+		const auto found = std::find_if(nodes.begin(), nodes.end(),
+			[&provider, &binding](const DylibExportResolver& candidate) {
+				return candidate.provider == provider &&
+					candidate.symbol == binding.provider_symbol;
+			});
+		if (found == nodes.end())
+			nodes.push_back({provider, binding.provider_symbol});
+	}
+	std::vector<std::vector<std::size_t>> dependencies(nodes.size());
+	for (std::size_t owner_index = 0; owner_index < nodes.size(); ++owner_index) {
+		for (const auto& binding : bindings) {
+			if (binding.client_image.lexically_normal() !=
+				nodes[owner_index].provider || binding.provider.empty() ||
+				!is_resolver_export(binding.provider, binding.provider_symbol))
+				continue;
+			const auto provider = binding.provider.lexically_normal();
+			const auto dependency = std::find_if(nodes.begin(), nodes.end(),
+				[&provider, &binding](const DylibExportResolver& candidate) {
+					return candidate.provider == provider &&
+						candidate.symbol == binding.provider_symbol;
+				});
+			if (dependency != nodes.end()) {
+				const auto dependency_index = static_cast<std::size_t>(
+					std::distance(nodes.begin(), dependency));
+				if (std::find(dependencies[owner_index].begin(),
+					dependencies[owner_index].end(), dependency_index) ==
+					dependencies[owner_index].end())
+					dependencies[owner_index].push_back(dependency_index);
+			}
+		}
+	}
+	std::vector<std::uint8_t> state(nodes.size());
+	std::vector<DylibExportResolver> order;
+	order.reserve(nodes.size());
+	std::function<void(std::size_t)> visit = [&](std::size_t index) {
+		if (state[index] == 2) return;
+		if (state[index] == 1)
+			throw std::runtime_error("cyclic Mach-O export resolver dependencies");
+		state[index] = 1;
+		for (const auto dependency : dependencies[index])
+			visit(dependency);
+		state[index] = 2;
+		order.push_back(nodes[index]);
+	};
+	for (std::size_t index = 0; index < nodes.size(); ++index)
+		visit(index);
+	return order;
 }
 
 class DarwinDynamicImage final {
@@ -450,6 +789,7 @@ public:
 		MachOImage image;
 		MachOImage::Mapping mapping;
 		std::vector<std::pair<DarwinTLVDescriptor*, std::size_t>> tlv_registrations;
+		std::vector<DyldResolvedBinding> bindings;
 	};
 	std::filesystem::path path;
 	MachOImage image;
@@ -472,39 +812,86 @@ public:
 
 DarwinDynamicImage* OpenDynamicImage(const std::filesystem::path& path)
 {
-	auto* result = new DarwinDynamicImage{path, MachOImage::Open(path.wstring()), {}, {}, {}, {}};
+	auto* result = new DarwinDynamicImage{path, MachOImage::Open(path.wstring()),
+		{}, {}, {}, {}, {}};
 	try {
 		result->mapping = result->image.MapSegments();
+		const auto graph_nodes = DylibGraph::Load(path, {}, {});
 		const auto graph_bindings = DylibGraph::BindImports(path, {}, {});
+		std::vector<std::uintptr_t> resolved_addresses;
+		resolved_addresses.reserve(graph_bindings.size());
+		const auto main_path = path.lexically_normal();
 		const auto preferred_provider_address = result->mapping.Segments().empty() ? 0 :
 			result->mapping.Segments().front().address;
-		for (const auto& binding : graph_bindings) {
-			if (binding.provider.empty()) {
-				result->bindings.push_back({binding.name,
-					static_cast<std::uintptr_t>(binding.provider_value)});
-				continue;
-			}
-			const auto normalized = binding.provider.lexically_normal();
-			auto provider = std::find_if(result->providers.begin(), result->providers.end(),
+		auto get_provider = [&](const std::filesystem::path& provider_path)
+			-> DarwinDynamicImage::Provider& {
+			const auto normalized = provider_path.lexically_normal();
+			auto found = std::find_if(result->providers.begin(), result->providers.end(),
 				[&normalized](const DarwinDynamicImage::Provider& candidate) {
 					return candidate.path == normalized;
 				});
-			if (provider == result->providers.end()) {
+			if (found == result->providers.end()) {
 				result->providers.push_back({normalized,
-					MachOImage::Open(normalized.wstring()), {}, {}});
+					MachOImage::Open(normalized.wstring()), {}, {}, {}});
 				result->providers.back().mapping = result->providers.back().image.MapSegments(
 					preferred_provider_address);
-				provider = std::prev(result->providers.end());
+				found = std::prev(result->providers.end());
 			}
-			const auto descriptor_address = provider->image.SymbolAddress(
-				provider->mapping, binding.name);
-			const auto pointer_address = provider->image.TLVPointerAddress(
-				provider->mapping, descriptor_address);
+			return *found;
+		};
+		// Load and initialize every dependency in the graph, including dylibs
+		// that contribute no undefined symbols to this image.
+		for (const auto& node : graph_nodes) {
+			if (node.path != main_path) (void)get_provider(node.path);
+		}
+		for (const auto& binding : graph_bindings) {
+			auto append_client_binding = [&](std::uintptr_t address) {
+				resolved_addresses.push_back(address);
+				DyldResolvedBinding resolved{binding.name, address,
+				binding.dylib_ordinal, binding.has_dylib_ordinal};
+				if (binding.client_image.lexically_normal() == main_path)
+					result->bindings.push_back(std::move(resolved));
+				else
+					get_provider(binding.client_image).bindings.push_back(
+						std::move(resolved));
+			};
+			if (binding.provider.empty()) {
+				append_client_binding(static_cast<std::uintptr_t>(
+					binding.provider_value));
+				continue;
+			}
+			std::uintptr_t descriptor_address = 0;
+			std::uintptr_t pointer_address = 0;
+			if (binding.provider.lexically_normal() == main_path) {
+				descriptor_address = result->image.SymbolAddress(
+					result->mapping, binding.provider_symbol);
+				pointer_address = result->image.TLVPointerAddress(
+					result->mapping, descriptor_address);
+			} else {
+				auto& provider = get_provider(binding.provider);
+				descriptor_address = provider.image.SymbolAddress(
+					provider.mapping, binding.provider_symbol);
+				pointer_address = provider.image.TLVPointerAddress(
+					provider.mapping, descriptor_address);
+			}
 			// A cross-image TLV import addresses the provider's per-thread
 			// pointer slot, not the descriptor object itself.
-			result->bindings.push_back({binding.name,
-				pointer_address == 0 ? descriptor_address : pointer_address});
+			append_client_binding(pointer_address == 0 ? descriptor_address :
+				pointer_address);
 		}
+		if (resolved_addresses.size() != graph_bindings.size())
+			throw std::logic_error("dynamic dyld lost a dependency binding record");
+		auto update_client_binding = [&](std::size_t index, std::uintptr_t address) {
+			const auto& source = graph_bindings[index];
+			auto& client_records = source.client_image.lexically_normal() == main_path ?
+				result->bindings : get_provider(source.client_image).bindings;
+			for (auto& record : client_records) {
+				if (record.symbol == source.name &&
+					(!record.has_dylib_ordinal ||
+						record.dylib_ordinal == source.dylib_ordinal))
+					record.address = address;
+			}
+		};
 		const auto initialization_order = DylibGraph::InitializationOrder(path, {}, {});
 		const auto provider_rank = [&initialization_order](
 			const std::filesystem::path& provider_path) {
@@ -531,27 +918,27 @@ DarwinDynamicImage* OpenDynamicImage(const std::filesystem::path& path)
 					provider_symbols[index] = provider.image.SymbolAddress(
 						provider.mapping, symbol.name);
 				else {
-					const auto found = std::find_if(result->bindings.begin(), result->bindings.end(),
-						[&symbol](const DyldResolvedBinding& candidate) {
-							return candidate.symbol == symbol.name;
+					const auto ordinal = MachOImage::IsFlatLookupUndefined(symbol) ? -2 :
+						MachOLibraryOrdinalFromSymbolDescription(symbol.description);
+					const auto found = std::find_if(provider.bindings.begin(), provider.bindings.end(),
+						[&symbol, ordinal](const DyldResolvedBinding& candidate) {
+							return candidate.symbol == symbol.name &&
+								(!candidate.has_dylib_ordinal || candidate.dylib_ordinal ==
+									ordinal);
 						});
-					if (found != result->bindings.end())
+					if (found != provider.bindings.end())
 						provider_symbols[index] = found->address;
 				}
 			}
 			if (!provider.image.Relocations().empty())
 				provider.image.ApplyRelocations(provider.mapping, provider_symbols, true);
-			if (!result->bindings.empty()) {
-				provider.image.ApplyBindActions(provider.mapping, result->bindings);
+			if (!provider.bindings.empty()) {
+				provider.image.ApplyBindActions(provider.mapping, provider.bindings);
 				MachOLazyBindingSession(provider.image, provider.mapping,
-					result->bindings).ApplyAll();
-				provider.image.ApplyChainedFixups(provider.mapping, result->bindings);
+					provider.bindings).ApplyAll();
+				provider.image.ApplyChainedFixups(provider.mapping, provider.bindings);
 			}
-			provider.image.ApplyIndirectImportBindings(provider.mapping, result->bindings);
-			provider.image.ExecuteInitializers(provider.mapping);
-			if (auto* token = RegisterDynamicObjectiveCSections(provider.image,
-				provider.mapping))
-				result->objc_tokens.push_back(token);
+			provider.image.ApplyIndirectImportBindings(provider.mapping, provider.bindings);
 		}
 		result->image.ApplyRebaseActions(result->mapping);
 		result->tlv_registrations = InitializeDynamicTLVSections(result->image,
@@ -564,9 +951,12 @@ DarwinDynamicImage* OpenDynamicImage(const std::filesystem::path& path)
 					result->mapping, symbol.name);
 				continue;
 			}
+			const auto ordinal = MachOImage::IsFlatLookupUndefined(symbol) ? -2 :
+				MachOLibraryOrdinalFromSymbolDescription(symbol.description);
 			const auto found = std::find_if(result->bindings.begin(), result->bindings.end(),
-				[&symbol](const DyldResolvedBinding& candidate) {
-					return candidate.symbol == symbol.name;
+				[&symbol, ordinal](const DyldResolvedBinding& candidate) {
+					return candidate.symbol == symbol.name &&
+						(!candidate.has_dylib_ordinal || candidate.dylib_ordinal == ordinal);
 				});
 			if (found != result->bindings.end())
 				symbol_addresses[index] = found->address;
@@ -580,9 +970,109 @@ DarwinDynamicImage* OpenDynamicImage(const std::filesystem::path& path)
 			result->image.ApplyChainedFixups(result->mapping, result->bindings);
 		}
 		result->image.ApplyIndirectImportBindings(result->mapping, result->bindings);
-		result->image.ExecuteInitializers(result->mapping);
+		const auto reapply_dynamic_client = [](const MachOImage& target_image,
+			const MachOImage::Mapping& target_mapping,
+			const std::vector<DyldResolvedBinding>& client_bindings,
+			bool defer_unreachable_external) {
+			std::vector<std::uintptr_t> addresses(target_image.Symbols().size());
+			for (std::size_t index = 0; index < target_image.Symbols().size(); ++index) {
+				const auto& symbol = target_image.Symbols()[index];
+				if ((symbol.type & 0x0e) != 0) {
+					addresses[index] = target_image.SymbolAddress(target_mapping,
+						symbol.name);
+					continue;
+				}
+				const auto ordinal = MachOImage::IsFlatLookupUndefined(symbol) ? -2 :
+					MachOLibraryOrdinalFromSymbolDescription(symbol.description);
+				const auto found = std::find_if(client_bindings.begin(),
+					client_bindings.end(), [&symbol, ordinal](
+						const DyldResolvedBinding& candidate) {
+							return candidate.symbol == symbol.name &&
+								(!candidate.has_dylib_ordinal ||
+									candidate.dylib_ordinal == ordinal);
+						});
+				if (found != client_bindings.end())
+					addresses[index] = found->address;
+			}
+			if (!target_image.Relocations().empty())
+				target_image.ApplyRelocations(target_mapping, addresses,
+					defer_unreachable_external);
+			target_image.ApplyBindActions(target_mapping, client_bindings);
+			MachOLazyBindingSession(target_image, target_mapping,
+				client_bindings).ApplyAll();
+			target_image.ApplyChainedFixups(target_mapping, client_bindings);
+			target_image.ApplyIndirectImportBindings(target_mapping, client_bindings);
+		};
+		auto reapply_all_images = [&]() {
+			for (auto& provider : result->providers)
+				reapply_dynamic_client(provider.image, provider.mapping,
+					provider.bindings, true);
+			reapply_dynamic_client(result->image, result->mapping,
+				result->bindings, false);
+		};
+		const auto resolve_export = [&](const DylibExportResolver& resolver) {
+			const MachOImage* owner_image = nullptr;
+			const MachOImage::Mapping* owner_mapping = nullptr;
+			if (resolver.provider == main_path) {
+				owner_image = &result->image;
+				owner_mapping = &result->mapping;
+			} else {
+				const auto provider = std::find_if(result->providers.begin(),
+					result->providers.end(), [&resolver](
+						const DarwinDynamicImage::Provider& candidate) {
+							return candidate.path == resolver.provider;
+						});
+				if (provider == result->providers.end())
+					throw std::logic_error("dynamic export resolver provider was not mapped");
+				owner_image = &provider->image;
+				owner_mapping = &provider->mapping;
+			}
+			const auto exported = std::find_if(owner_image->Symbols().begin(),
+				owner_image->Symbols().end(), [&resolver](const MachOSymbol& candidate) {
+					return candidate.name == resolver.symbol && candidate.has_resolver;
+				});
+			if (exported == owner_image->Symbols().end())
+				throw std::logic_error("ordered Mach-O export resolver disappeared");
+			const auto stub_address = owner_image->SymbolAddress(*owner_mapping,
+				resolver.symbol);
+			bool requested = false;
+			for (std::size_t index = 0; index < graph_bindings.size(); ++index) {
+				if (graph_bindings[index].provider.lexically_normal() == resolver.provider &&
+					graph_bindings[index].provider_symbol == resolver.symbol &&
+					resolved_addresses[index] == stub_address) {
+					requested = true;
+					break;
+				}
+			}
+			if (!requested) return;
+			const auto resolver_address = owner_image->SymbolResolverAddress(
+				*owner_mapping, resolver.symbol);
+			const auto implementation = abi::darling_windows_abi_call_export_resolver(
+				resolver_address);
+			if (implementation == 0)
+				throw std::runtime_error("Mach-O export resolver failed or returned null");
+			for (std::size_t index = 0; index < graph_bindings.size(); ++index) {
+				if (graph_bindings[index].provider.lexically_normal() == resolver.provider &&
+					graph_bindings[index].provider_symbol == resolver.symbol) {
+					resolved_addresses[index] = implementation;
+					update_client_binding(index, implementation);
+				}
+			}
+			reapply_all_images();
+		};
+		// Resolver code now sees every image in the dependency graph after its
+		// initial rebase and bind pass has completed.
+		for (const auto& resolver : DylibGraph::ExportResolverOrder(graph_bindings))
+			resolve_export(resolver);
+		for (auto& provider : result->providers) {
+			if (auto* token = RegisterDynamicObjectiveCSections(provider.image,
+				provider.mapping))
+				result->objc_tokens.push_back(token);
+			provider.image.ExecuteInitializers(provider.mapping);
+		}
 		if (auto* token = RegisterDynamicObjectiveCSections(result->image, result->mapping))
 			result->objc_tokens.push_back(token);
+		result->image.ExecuteInitializers(result->mapping);
 		return result;
 	} catch (...) {
 		delete result;
@@ -727,13 +1217,38 @@ const std::filesystem::path& DynamicImagePath(const DarwinDynamicImage& image) n
 
 const void* DynamicImageHeader(const DarwinDynamicImage& image) noexcept
 {
-	if (image.mapping.Segments().empty()) return nullptr;
-	return reinterpret_cast<const void*>(image.mapping.Segments().front().address);
+	return MappedMachOHeader(image.mapping);
 }
 
 std::intptr_t DynamicImageSlide(const DarwinDynamicImage& image) noexcept
 {
 	return image.mapping.Slide();
+}
+
+std::uint32_t DynamicImageProviderCount(const DarwinDynamicImage& image) noexcept
+{
+	return static_cast<std::uint32_t>((std::min)(image.providers.size(),
+		static_cast<std::size_t>((std::numeric_limits<std::uint32_t>::max)())));
+}
+
+const std::filesystem::path& DynamicImageProviderPath(
+	const DarwinDynamicImage& image, std::uint32_t index) noexcept
+{
+	static const std::filesystem::path empty;
+	return index < image.providers.size() ? image.providers[index].path : empty;
+}
+
+const void* DynamicImageProviderHeader(
+	const DarwinDynamicImage& image, std::uint32_t index) noexcept
+{
+	return index < image.providers.size() ?
+		MappedMachOHeader(image.providers[index].mapping) : nullptr;
+}
+
+std::intptr_t DynamicImageProviderSlide(
+	const DarwinDynamicImage& image, std::uint32_t index) noexcept
+{
+	return index < image.providers.size() ? image.providers[index].mapping.Slide() : 0;
 }
 
 bool DynamicImageContains(const DarwinDynamicImage& image, const void* address) noexcept

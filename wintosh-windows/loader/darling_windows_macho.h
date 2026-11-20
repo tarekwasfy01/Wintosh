@@ -37,6 +37,8 @@ constexpr std::int32_t CPU_TYPE_ARM64 = 0x0100000c;
 constexpr std::uint32_t MH_EXECUTE = 0x2;
 constexpr std::uint32_t MH_DYLIB = 0x6;
 constexpr std::uint32_t MH_BUNDLE = 0x8;
+constexpr std::uint32_t MH_TWOLEVEL = 0x80;
+constexpr std::uint32_t MH_FORCE_FLAT = 0x100;
 constexpr std::uint32_t LC_SYMTAB = 0x2;
 constexpr std::uint32_t LC_DYSYMTAB = 0xb;
 constexpr std::uint32_t LC_DYLD_INFO = 0x22;
@@ -267,7 +269,19 @@ struct MachOSymbol final {
 	std::uint8_t section = 0;
 	std::uint16_t description = 0;
 	std::uint64_t value = 0;
+	std::string indirect_target{};
+	// Preferred VM address of the resolver; export trie offsets are relative
+	// to the image's mach_header and are normalized while parsing.
+	std::uint64_t resolver_value = 0;
+	bool has_resolver = false;
 };
+
+[[nodiscard]] inline std::int32_t MachOLibraryOrdinalFromSymbolDescription(
+	std::uint16_t description) noexcept
+{
+	const auto encoded = static_cast<std::uint8_t>((description >> 8) & 0xffu);
+	return encoded == 0xfeu ? -2 : encoded == 0xffu ? -1 : encoded;
+}
 
 struct MachORelocation final {
 	std::int32_t address = 0;
@@ -294,11 +308,14 @@ struct DyldBindAction final {
 	bool threaded = false;
 	std::size_t threaded_table_size = 0;
 	std::size_t stream_offset = 0;
+	bool weak_bind = false;
 };
 
 struct DyldResolvedBinding final {
 	std::string symbol;
 	std::uintptr_t address = 0;
+	std::int32_t dylib_ordinal = 0;
+	bool has_dylib_ordinal = false;
 };
 
 struct DarwinX86_64StubFrame final {
@@ -357,6 +374,10 @@ public:
 	[[nodiscard]] const std::array<std::uint8_t, 16>& UUID() const noexcept { return m_uuid; }
 	[[nodiscard]] bool IsArm64() const noexcept { return m_header->cpu_type == CPU_TYPE_ARM64; }
 	[[nodiscard]] bool Is32Bit() const noexcept { return m_is_32_bit; }
+	[[nodiscard]] bool UsesTwoLevelNamespace() const noexcept
+	{
+		return (m_header->flags & MH_TWOLEVEL) != 0;
+	}
 	[[nodiscard]] const std::vector<MachOSegment>& Segments() const noexcept { return m_segments; }
 	[[nodiscard]] const std::vector<MachOSection>& Sections() const noexcept { return m_sections; }
 	[[nodiscard]] std::uint64_t EntryOffset() const noexcept { return m_entry_offset; }
@@ -381,6 +402,7 @@ public:
 		const std::vector<DyldResolvedBinding>& bindings) const;
 	[[nodiscard]] const std::vector<MachOReexport>& Reexports() const noexcept { return m_reexports; }
 	[[nodiscard]] static bool IsWeakUndefined(const MachOSymbol& symbol) noexcept;
+	[[nodiscard]] static bool IsFlatLookupUndefined(const MachOSymbol& symbol) noexcept;
 	[[nodiscard]] const std::vector<MachORelocation>& Relocations() const noexcept { return m_relocations; }
 	[[nodiscard]] const std::vector<DyldBindAction>& BindActions() const noexcept { return m_bind_actions; }
 	[[nodiscard]] const std::vector<DyldRebaseAction>& RebaseActions() const noexcept { return m_rebase_actions; }
@@ -388,6 +410,8 @@ public:
 	[[nodiscard]] const std::vector<DyldChainedImport>& ChainedImports() const noexcept { return m_chained_imports; }
 	[[nodiscard]] std::vector<MachOSymbol> UndefinedSymbols() const;
 	[[nodiscard]] std::uintptr_t SymbolAddress(
+		const Mapping& mapping, const std::string& name) const;
+	[[nodiscard]] std::uintptr_t SymbolResolverAddress(
 		const Mapping& mapping, const std::string& name) const;
 	[[nodiscard]] std::uintptr_t SectionAddress(const Mapping& mapping,
 		const std::string& segment_name, const std::string& section_name) const;
@@ -500,6 +524,11 @@ private:
 	std::uintptr_t m_entry_address = 0;
 	std::intptr_t m_slide = 0;
 	std::size_t m_reservation_bytes = 0;
+	// Preserve the linked contents of relocation sites so resolver rebinding
+	// can safely replay relocation calculations after the first fixup pass.
+	mutable std::vector<std::uint64_t> m_relocation_original_values;
+	mutable std::vector<std::uintptr_t> m_relocation_original_sites;
+	mutable std::vector<std::uint8_t> m_relocation_original_widths;
 };
 
 // Explicit lifetime boundary for future on-demand dyld binding. The session

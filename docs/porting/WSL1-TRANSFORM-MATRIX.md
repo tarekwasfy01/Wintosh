@@ -1,5 +1,9 @@
 # WSL1-to-Windows transformation matrix
 
+The executable Boolean model, evidence rules, and commands are in
+[MATHEMATICAL-MODEL.md](MATHEMATICAL-MODEL.md). It evaluates native and WSL1
+routes separately and never promotes unknown transitions to runtime proof.
+
 This document records where WSL1 is useful as an implementation reference for
 the native Wintosh backend. It is an architectural map, not a claim that WSL1
 implements Darwin or macOS behavior. WSL source remains external reference

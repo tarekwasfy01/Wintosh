@@ -29,12 +29,24 @@ public:
 struct DylibGraphNode final {
 	std::filesystem::path path;
 	std::vector<std::filesystem::path> dependencies;
+	// Keeps one slot per LC_LOAD_*_DYLIB ordinal, including entries omitted
+	// from the resolved graph because they are weak or provided by Wintosh.
+	std::vector<std::filesystem::path> ordinal_dependencies;
 };
 
 struct DylibBinding final {
 	std::string name;
 	std::filesystem::path provider;
+	std::string provider_symbol;
 	std::uint64_t provider_value = 0;
+	std::filesystem::path client_image;
+	std::int32_t dylib_ordinal = 0;
+	bool has_dylib_ordinal = false;
+};
+
+struct DylibExportResolver final {
+	std::filesystem::path provider;
+	std::string symbol;
 };
 
 class DylibGraph final {
@@ -53,6 +65,9 @@ public:
 		const std::filesystem::path& image_path,
 		const std::vector<std::filesystem::path>& rpaths,
 		const std::filesystem::path& prefix);
+
+	static std::vector<DylibExportResolver> ExportResolverOrder(
+		const std::vector<DylibBinding>& bindings);
 };
 
 class DarwinDynamicImage;
@@ -79,6 +94,13 @@ int DynamicImageExecuteEntry(const DarwinDynamicImage& image,
 const std::filesystem::path& DynamicImagePath(const DarwinDynamicImage& image) noexcept;
 const void* DynamicImageHeader(const DarwinDynamicImage& image) noexcept;
 std::intptr_t DynamicImageSlide(const DarwinDynamicImage& image) noexcept;
+std::uint32_t DynamicImageProviderCount(const DarwinDynamicImage& image) noexcept;
+const std::filesystem::path& DynamicImageProviderPath(
+	const DarwinDynamicImage& image, std::uint32_t index) noexcept;
+const void* DynamicImageProviderHeader(
+	const DarwinDynamicImage& image, std::uint32_t index) noexcept;
+std::intptr_t DynamicImageProviderSlide(
+	const DarwinDynamicImage& image, std::uint32_t index) noexcept;
 bool DynamicImageContains(const DarwinDynamicImage& image, const void* address) noexcept;
 void* DynamicImageBase(const DarwinDynamicImage& image) noexcept;
 bool DynamicImageNearestSymbol(const DarwinDynamicImage& image, const void* address,

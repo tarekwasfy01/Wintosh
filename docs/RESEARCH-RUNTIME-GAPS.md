@@ -24,6 +24,27 @@ und mit klaren ABI-Grenzen erweitern.
 - [Apple Open Source](https://opensource.apple.com/) ist die maßgebliche Quelle
   für lizenzkonform nutzbare Apple-Open-Source-Bestandteile.
 
+### TinyOS als Kandidat
+
+[tinyos/tinyos-main](https://github.com/tinyos/tinyos-main) ist ein
+eingebettetes Betriebssystem für stromsparende Funk- und Sensorgeräte. Dass
+Entwicklungswerkzeuge auf mehreren Host-Betriebssystemen eingesetzt werden
+können, bedeutet nicht, dass TinyOS macOS-Binärdateien oder Darwin-APIs
+ausführt. Das Repository wurde am 12. April 2026 archiviert; die README nennt
+`tinyprod/prod` beziehungsweise `tp-freeforall/prod` als Entwicklungszweig.
+
+| Benötigte Wintosh-Schicht | Beitrag von TinyOS | Bewertung |
+|---|---|---|
+| Mach-O-Laden und `dyld` | keiner | anderer Binär- und Startpfad |
+| Darwin-Syscalls und Mach-IPC | keiner | TinyOS abstrahiert Embedded-Hardware |
+| Foundation, AppKit und Cocoa | keiner | keine macOS-Frameworks |
+| Windows-GUI und App-Bundles | keiner | Firmware-/Mote-Ziel statt Desktop-App |
+| Build- und Portabilitätsmuster | eventuell | nur als allgemeine Toolchain-Referenz |
+
+Damit gilt für die Laufzeit-Portierung: `TinyOS → Wintosh` liefert keine
+fehlende Kompatibilitätsschicht. Es wird kein TinyOS-Code in den macOS-
+Laufzeitpfad übernommen.
+
 ## Befund im aktuellen Wintosh-Code
 
 ### Bereits vorhanden
@@ -48,8 +69,10 @@ und mit klaren ABI-Grenzen erweitern.
 4. **Darwin-Datenlayout:** `stat`, `dirent`, `FILE`, TLS/TLV und weitere
    Strukturen müssen exakt vom Darwin-Layout getrennt vom Windows-Layout
    modelliert werden.
-5. **Aufrufkonventionen:** Variadic-Funktionen, Aggregate, Rückrufe Gast→Host
-   und Host→Gast sowie Objective-C-Ausnahmen brauchen eigene Bridges.
+5. **Aufrufkonventionen:** Die ARM64-Objective-C-Brücke deckt ausgewählte
+   skalare und Aggregate-Signaturen ab; x86_64 hat ausgewählte SysV-Variadic-
+   Bridges. Allgemeine Aggregate, Rückrufe Gast→Host und Host→Gast sowie
+   Objective-C-Ausnahmen brauchen weiterhin eigene, ABI-geprüfte Bridges.
 6. **Fehlerisolierung:** Ein Gastzugriffsfehler muss in einen reproduzierbaren
    Runner-Fehler mit Exit-Code übersetzt werden, ohne Windows-Stack-Unwinding
    durch Gast-Frames zu erzwingen.

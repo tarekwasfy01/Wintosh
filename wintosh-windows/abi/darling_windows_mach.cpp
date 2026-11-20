@@ -35,6 +35,7 @@ std::atomic<darling_mach_port_name_t> next_task_port{0x70000000};
 std::mutex task_ports_mutex;
 std::unordered_map<darling_mach_port_name_t, DWORD> task_ports;
 std::unordered_map<darling_mach_port_name_t, std::uint32_t> task_port_send_refs;
+std::unordered_map<darling_mach_port_name_t, std::uint32_t> task_port_send_in_transit;
 darling::windows_host::MachOolOwnershipTable mach_ool_ownership;
 darling::windows_host::MachIpcCapabilityTable mach_ipc_capabilities;
 std::mutex mach_broker_mutex;
@@ -47,6 +48,26 @@ constexpr std::size_t max_port_queue_depth = 1024;
 constexpr std::size_t max_inline_message_size = 4 * 1024 * 1024;
 constexpr darling_mach_msg_id_t mach_notify_dead_name = 0x48;
 constexpr darling_mach_msg_id_t mach_notify_no_senders = 0x4a;
+constexpr std::uint32_t mach_header_remote_mask = 0x0000001fu;
+constexpr std::uint32_t mach_header_local_mask = 0x00001f00u;
+constexpr std::uint32_t mach_header_voucher_mask = 0x001f0000u;
+
+std::uint32_t MachRightForHeaderDisposition(std::uint32_t disposition)
+{
+	switch (disposition) {
+	case darling_mach_move_send:
+	case darling_mach_copy_send: return darling_mach_port_type_send;
+	case darling_mach_move_send_once: return darling_mach_port_type_send_once;
+	default: return 0;
+	}
+}
+
+std::uint32_t MachRightForReplyDisposition(std::uint32_t disposition)
+{
+	if (disposition == darling_mach_make_send_once)
+		return darling_mach_port_type_send_once;
+	return MachRightForHeaderDisposition(disposition);
+}
 
 bool ReadableRange(const void* address, std::size_t bytes)
 {
@@ -81,8 +102,14 @@ struct PortQueue final {
 	std::uint32_t receive_refs = 1;
 	std::uint32_t send_refs = 0;
 	std::uint32_t send_once_refs = 0;
+	std::uint32_t in_transit_receive_refs = 0;
+	std::uint32_t in_transit_send_refs = 0;
+	std::uint32_t in_transit_send_once_refs = 0;
 	std::uint32_t receive_sequence = 0;
-	std::uint32_t total_refs() const { return receive_refs + send_refs + send_once_refs; }
+	std::uint32_t total_refs() const {
+		return receive_refs + send_refs + send_once_refs + in_transit_receive_refs +
+			in_transit_send_refs + in_transit_send_once_refs;
+	}
 	bool closed = false;
 };
 
@@ -182,6 +209,7 @@ void ForgetTaskPort(darling_mach_port_name_t task)
 	std::lock_guard lock(task_ports_mutex);
 	task_ports.erase(task);
 	task_port_send_refs.erase(task);
+	task_port_send_in_transit.erase(task);
 }
 
 bool IsTaskPort(darling_mach_port_name_t name)
@@ -213,13 +241,211 @@ std::shared_ptr<PortQueue> FindPort(darling_mach_port_name_t name)
 	return found == ports.end() ? nullptr : found->second;
 }
 
-void DeliverPortNotification(darling_mach_port_name_t name)
+bool CanApplyHeaderRightDeltas(darling_mach_port_name_t name, std::uint32_t right,
+	std::uint32_t remove_count, std::uint32_t add_count,
+	std::uint32_t second_right = 0, std::uint32_t second_remove = 0,
+	std::uint32_t second_add = 0)
+{
+	if (right == 0) {
+		right = second_right;
+		remove_count = second_remove;
+		add_count = second_add;
+		second_right = 0;
+		second_remove = second_add = 0;
+	}
+	if (name == 0 || right == 0)
+		return remove_count == 0 && add_count == 0 && second_remove == 0 && second_add == 0;
+	if (IsTaskPort(name)) {
+		if (right != darling_mach_port_type_send ||
+			(second_right != 0 && second_right != darling_mach_port_type_send)) return false;
+		std::lock_guard lock(task_ports_mutex);
+		const auto found = task_port_send_refs.find(name);
+		const auto removes = static_cast<std::uint64_t>(remove_count) + second_remove;
+		const auto adds = static_cast<std::uint64_t>(add_count) + second_add;
+		if (found == task_port_send_refs.end() || found->second < removes) return false;
+		const auto updated = static_cast<std::uint64_t>(found->second) - removes + adds;
+		return updated <= (std::numeric_limits<std::uint32_t>::max)();
+	}
+	const auto port = FindPort(name);
+	if (port == nullptr) return false;
+	std::lock_guard lock(port->mutex);
+	const auto current = right == darling_mach_port_type_send ? port->send_refs :
+		right == darling_mach_port_type_send_once ? port->send_once_refs : 0;
+	const auto second_current = second_right == darling_mach_port_type_send ? port->send_refs :
+		second_right == darling_mach_port_type_send_once ? port->send_once_refs : 0;
+	if (right == second_right && second_right != 0) {
+		const auto removes = static_cast<std::uint64_t>(remove_count) + second_remove;
+		const auto adds = static_cast<std::uint64_t>(add_count) + second_add;
+		if (current < removes || static_cast<std::uint64_t>(current) - removes + adds >
+			(std::numeric_limits<std::uint32_t>::max)()) return false;
+	} else if (current < remove_count || second_current < second_remove ||
+		static_cast<std::uint64_t>(current - remove_count) + add_count >
+			(std::numeric_limits<std::uint32_t>::max)() ||
+		static_cast<std::uint64_t>(second_current - second_remove) + second_add >
+			(std::numeric_limits<std::uint32_t>::max)()) return false;
+	return true;
+}
+
+bool TransferHeaderRightToTransit(darling_mach_port_name_t name, std::uint32_t right)
+{
+	if (IsTaskPort(name)) {
+		if (right != darling_mach_port_type_send) return false;
+		std::lock_guard lock(task_ports_mutex);
+		auto normal = task_port_send_refs.find(name);
+		if (normal == task_port_send_refs.end() || normal->second == 0) return false;
+		auto& transit = task_port_send_in_transit[name];
+		if (transit == (std::numeric_limits<std::uint32_t>::max)()) return false;
+		--normal->second;
+		++transit;
+		return true;
+	}
+	const auto port = FindPort(name);
+	if (port == nullptr) return false;
+	std::lock_guard lock(port->mutex);
+	std::uint32_t* normal = right == darling_mach_port_type_send ? &port->send_refs :
+		right == darling_mach_port_type_send_once ? &port->send_once_refs : nullptr;
+	std::uint32_t* transit = right == darling_mach_port_type_send ? &port->in_transit_send_refs :
+		right == darling_mach_port_type_send_once ? &port->in_transit_send_once_refs : nullptr;
+	if (normal == nullptr || *normal == 0 ||
+		*transit == (std::numeric_limits<std::uint32_t>::max)()) return false;
+	--*normal;
+	++*transit;
+	port->refs = port->total_refs();
+	return true;
+}
+
+bool TransferHeaderRightFromTransit(darling_mach_port_name_t name, std::uint32_t right)
+{
+	if (IsTaskPort(name)) {
+		if (right != darling_mach_port_type_send) return false;
+		std::lock_guard lock(task_ports_mutex);
+		auto transit = task_port_send_in_transit.find(name);
+		if (transit == task_port_send_in_transit.end() || transit->second == 0) return false;
+		auto& normal = task_port_send_refs[name];
+		if (normal == (std::numeric_limits<std::uint32_t>::max)()) return false;
+		--transit->second;
+		++normal;
+		if (transit->second == 0) task_port_send_in_transit.erase(transit);
+		return true;
+	}
+	const auto port = FindPort(name);
+	if (port == nullptr) return false;
+	std::lock_guard lock(port->mutex);
+	std::uint32_t* normal = right == darling_mach_port_type_send ? &port->send_refs :
+		right == darling_mach_port_type_send_once ? &port->send_once_refs : nullptr;
+	std::uint32_t* transit = right == darling_mach_port_type_send ? &port->in_transit_send_refs :
+		right == darling_mach_port_type_send_once ? &port->in_transit_send_once_refs : nullptr;
+	if (normal == nullptr || *transit == 0 ||
+		*normal == (std::numeric_limits<std::uint32_t>::max)()) return false;
+	--*transit;
+	++*normal;
+	port->refs = port->total_refs();
+	return true;
+}
+
+bool TransferReceiveRightToTransit(darling_mach_port_name_t name)
+{
+	if (IsTaskPort(name)) return false;
+	const auto port = FindPort(name);
+	if (port == nullptr) return false;
+	std::lock_guard lock(port->mutex);
+	if (port->receive_refs == 0 ||
+		port->in_transit_receive_refs == (std::numeric_limits<std::uint32_t>::max)()) return false;
+	--port->receive_refs;
+	++port->in_transit_receive_refs;
+	port->refs = port->total_refs();
+	return true;
+}
+
+bool TransferReceiveRightFromTransit(darling_mach_port_name_t name)
+{
+	if (IsTaskPort(name)) return false;
+	const auto port = FindPort(name);
+	if (port == nullptr) return false;
+	std::lock_guard lock(port->mutex);
+	if (port->in_transit_receive_refs == 0 ||
+		port->receive_refs == (std::numeric_limits<std::uint32_t>::max)()) return false;
+	--port->in_transit_receive_refs;
+	++port->receive_refs;
+	port->refs = port->total_refs();
+	return true;
+}
+
+void DiscardQueuedRight(darling_mach_port_name_t name, std::uint32_t disposition,
+	bool reply_field)
+{
+	if (name == 0) return;
+	auto right = reply_field ? MachRightForReplyDisposition(disposition) :
+		MachRightForHeaderDisposition(disposition);
+	if (disposition == darling_mach_move_receive) {
+		if (!TransferReceiveRightFromTransit(name)) return;
+		right = darling_mach_port_type_receive;
+	} else if (right == 0) return;
+	if (disposition == darling_mach_move_send ||
+		disposition == darling_mach_move_send_once) {
+		if (!TransferHeaderRightFromTransit(name, right)) return;
+	}
+	(void)darling_windows_mach_port_mod_refs(darling_windows_mach_task_self(),
+		name, right, -1);
+}
+
+void DiscardQueuedMachMessage(const std::vector<std::uint8_t>& bytes)
+{
+	if (bytes.size() < sizeof(darling_mach_msg_header)) return;
+	const auto* header = reinterpret_cast<const darling_mach_msg_header*>(bytes.data());
+	DiscardQueuedRight(header->msgh_remote_port,
+		header->msgh_bits & mach_header_remote_mask, false);
+	DiscardQueuedRight(header->msgh_local_port,
+		(header->msgh_bits & mach_header_local_mask) >> 8, true);
+	if ((header->msgh_bits & darling_mach_msg_complex) == 0 ||
+		bytes.size() < sizeof(darling_mach_msg_header) + sizeof(darling_mach_msg_body)) return;
+	const auto* body = reinterpret_cast<const darling_mach_msg_body*>(
+		bytes.data() + sizeof(darling_mach_msg_header));
+	const auto* descriptor_bytes = reinterpret_cast<const std::uint8_t*>(body + 1);
+	const auto remaining = bytes.size() - sizeof(darling_mach_msg_header) - sizeof(*body);
+	const auto first_type = remaining >= offsetof(darling_mach_msg_ool_descriptor, type) + sizeof(std::uint32_t) ?
+		descriptor_bytes[offsetof(darling_mach_msg_ool_descriptor, type)] : 0;
+	if (body->msgh_descriptor_count == 1 && first_type == darling_mach_msg_descriptor_ool &&
+		remaining >= sizeof(darling_mach_msg_ool_descriptor)) {
+		const auto* descriptor = reinterpret_cast<const darling_mach_msg_ool_descriptor*>(descriptor_bytes);
+		if (descriptor->address != 0)
+			(void)mach_ool_ownership.ReleaseQueue(reinterpret_cast<void*>(
+				static_cast<std::uintptr_t>(descriptor->address)));
+		return;
+	}
+	const auto descriptor_bytes_count = static_cast<std::uint64_t>(body->msgh_descriptor_count) *
+		sizeof(darling_mach_msg_port_descriptor);
+	if (descriptor_bytes_count > remaining) return;
+	const auto* descriptors = reinterpret_cast<const darling_mach_msg_port_descriptor*>(body + 1);
+	for (std::uint32_t index = 0; index < body->msgh_descriptor_count; ++index) {
+		std::uint32_t right = 0;
+		switch (descriptors[index].disposition) {
+		case darling_mach_copy_send:
+		case darling_mach_make_send: right = darling_mach_port_type_send; break;
+		case darling_mach_make_send_once: right = darling_mach_port_type_send_once; break;
+		case darling_mach_copy_receive: right = darling_mach_port_type_receive; break;
+		case darling_mach_move_send:
+		case darling_mach_move_send_once:
+		case darling_mach_move_receive:
+			DiscardQueuedRight(descriptors[index].name, descriptors[index].disposition, false);
+			continue;
+		default: break;
+		}
+		if (right != 0 && descriptors[index].name != 0)
+			(void)darling_windows_mach_port_mod_refs(darling_windows_mach_task_self(),
+				descriptors[index].name, right, -1);
+	}
+}
+
+void DeliverPortNotification(darling_mach_port_name_t name,
+	darling_mach_msg_id_t expected_msgid = 0)
 {
 	PortNotification notification{};
 	{
 		std::lock_guard lock(port_notifications_mutex);
 		const auto found = port_notifications.find(name);
 		if (found == port_notifications.end()) return;
+		if (expected_msgid != 0 && found->second.msgid != expected_msgid) return;
 		notification = found->second;
 		port_notifications.erase(found);
 	}
@@ -628,6 +854,51 @@ extern "C" darling_kern_return_t darling_windows_thread_get_state(
 	(void)count;
 	return darling_kern_not_supported;
 #else
+#if defined(_M_ARM64)
+	if (thread == 0 || state == nullptr || count == nullptr)
+		return 4;
+	if (flavor != darling_arm_thread_state64_flavor)
+		return darling_kern_not_supported;
+	if (*count < darling_arm_thread_state64_count)
+		return 4;
+	CONTEXT context{};
+	context.ContextFlags = CONTEXT_FULL;
+	HANDLE handle = nullptr;
+	bool owned = false;
+	bool suspended = false;
+	if (thread == darling_windows_mach_thread_self()) {
+		RtlCaptureContext(&context);
+	} else {
+		handle = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT,
+			FALSE, thread);
+		if (handle == nullptr)
+			return 4;
+		owned = true;
+		if (SuspendThread(handle) == static_cast<DWORD>(-1)) {
+			CloseHandle(handle);
+			return 4;
+		}
+		suspended = true;
+		if (!GetThreadContext(handle, &context)) {
+			ResumeThread(handle);
+			CloseHandle(handle);
+			return 4;
+		}
+	}
+	auto* result = static_cast<darling_arm_thread_state64*>(state);
+	for (std::size_t index = 0; index < std::size(result->x); ++index)
+		result->x[index] = context.X[index];
+	result->fp = context.Fp;
+	result->lr = context.Lr;
+	result->sp = context.Sp;
+	result->pc = context.Pc;
+	result->cpsr = context.Cpsr;
+	result->pad = 0;
+	*count = darling_arm_thread_state64_count;
+	if (suspended) ResumeThread(handle);
+	if (owned) CloseHandle(handle);
+	return 0;
+#else
 	if (thread == 0 || state == nullptr || count == nullptr ||
 		(flavor != darling_x86_thread_state64_flavor && flavor != darling_x86_float_state64_flavor && flavor != darling_x86_avx_state64_flavor && flavor != darling_x86_avx512_state64_flavor && flavor != darling_x86_exception_state64_flavor && flavor != darling_x86_debug_state64_flavor) ||
 		*count < (flavor == darling_x86_thread_state64_flavor ? darling_x86_thread_state64_count : flavor == darling_x86_float_state64_flavor ? darling_x86_float_state64_count : flavor == darling_x86_avx_state64_flavor ? darling_x86_avx_state64_count : flavor == darling_x86_avx512_state64_flavor ? darling_x86_avx512_state64_count : flavor == darling_x86_exception_state64_flavor ? darling_x86_exception_state64_count : darling_x86_debug_state64_count))
@@ -759,6 +1030,7 @@ extern "C" darling_kern_return_t darling_windows_thread_get_state(
 	if (owned) CloseHandle(handle);
 	return 0;
 #endif
+#endif
 }
 
 extern "C" darling_kern_return_t darling_windows_thread_set_state(
@@ -771,6 +1043,43 @@ extern "C" darling_kern_return_t darling_windows_thread_set_state(
 	(void)state;
 	(void)count;
 	return darling_kern_not_supported;
+#else
+#if defined(_M_ARM64)
+	if (thread == 0 || state == nullptr)
+		return 4;
+	if (flavor != darling_arm_thread_state64_flavor)
+		return darling_kern_not_supported;
+	if (count < darling_arm_thread_state64_count)
+		return 4;
+	if (thread == darling_windows_mach_thread_self())
+		return darling_kern_not_supported;
+	const HANDLE handle = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT |
+		THREAD_SET_CONTEXT, FALSE, thread);
+	if (handle == nullptr)
+		return 4;
+	if (SuspendThread(handle) == static_cast<DWORD>(-1)) {
+		CloseHandle(handle);
+		return 4;
+	}
+	CONTEXT context{};
+	context.ContextFlags = CONTEXT_FULL;
+	if (!GetThreadContext(handle, &context)) {
+		ResumeThread(handle);
+		CloseHandle(handle);
+		return 4;
+	}
+	const auto* source = static_cast<const darling_arm_thread_state64*>(state);
+	for (std::size_t index = 0; index < std::size(source->x); ++index)
+		context.X[index] = source->x[index];
+	context.Fp = source->fp;
+	context.Lr = source->lr;
+	context.Sp = source->sp;
+	context.Pc = source->pc;
+	context.Cpsr = source->cpsr;
+	const BOOL applied = SetThreadContext(handle, &context);
+	ResumeThread(handle);
+	CloseHandle(handle);
+	return applied ? 0 : 4;
 #else
 	if (thread == 0 ||
 		(flavor != darling_x86_thread_state64_flavor && flavor != darling_x86_float_state64_flavor &&
@@ -890,6 +1199,7 @@ extern "C" darling_kern_return_t darling_windows_thread_set_state(
 	ResumeThread(handle);
 	CloseHandle(handle);
 	return applied ? 0 : 4;
+#endif
 #endif
 }
 
@@ -1145,9 +1455,9 @@ extern "C" darling_kern_return_t darling_windows_host_page_size(
 	darling_mach_port_name_t host, std::uint32_t* size)
 {
 	if (host == 0 || size == nullptr) return 4;
-	SYSTEM_INFO information{};
-	GetSystemInfo(&information);
-	*size = information.dwPageSize;
+	const int guest_page_size = darling_windows_getpagesize();
+	if (guest_page_size <= 0) return 4;
+	*size = static_cast<std::uint32_t>(guest_page_size);
 	return *size == 0 ? 4 : 0;
 }
 
@@ -1183,12 +1493,19 @@ extern "C" darling_kern_return_t darling_windows_mach_vm_allocate(
 	darling_mach_vm_size_t size, std::uint32_t flags)
 {
 	(void)flags;
-	if (task == 0 || address == nullptr || size == 0 || size > (std::numeric_limits<SIZE_T>::max)()) return 4;
+	const int guest_page_size_value = darling_windows_getpagesize();
+	if (task == 0 || address == nullptr || size == 0 || guest_page_size_value <= 0 ||
+		size > (std::numeric_limits<SIZE_T>::max)()) return 4;
+	const auto guest_page_size = static_cast<darling_mach_vm_size_t>(guest_page_size_value);
+	if ((*address != 0 && *address % guest_page_size != 0) ||
+		size > (std::numeric_limits<darling_mach_vm_size_t>::max)() - (guest_page_size - 1))
+		return 4;
+	const auto allocation_size = (size + guest_page_size - 1) / guest_page_size * guest_page_size;
 	bool owned = false;
 	const HANDLE process = OpenVmProcess(task, PROCESS_VM_OPERATION, owned);
 	if (process == nullptr) return 3;
 	void* allocated = VirtualAllocEx(process, reinterpret_cast<void*>(static_cast<std::uintptr_t>(*address)),
-		static_cast<SIZE_T>(size), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+		static_cast<SIZE_T>(allocation_size), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
 	CloseVmProcess(process, owned);
 	if (allocated == nullptr) return 3;
 	*address = static_cast<darling_mach_vm_address_t>(reinterpret_cast<std::uintptr_t>(allocated));
@@ -1230,9 +1547,16 @@ extern "C" darling_kern_return_t darling_windows_mach_vm_protect(
 	darling_mach_port_name_t task, darling_mach_vm_address_t address,
 	darling_mach_vm_size_t size, bool set_maximum, std::uint32_t protection)
 {
-	if (task == 0 || address == 0 || size == 0 || size > (std::numeric_limits<SIZE_T>::max)() ||
+	const int guest_page_size_value = darling_windows_getpagesize();
+	if (task == 0 || address == 0 || size == 0 || guest_page_size_value <= 0 ||
+		size > (std::numeric_limits<SIZE_T>::max)() ||
 		(protection & ~(darling_vm_prot_read | darling_vm_prot_write | darling_vm_prot_execute)) != 0)
 		return 4;
+	const auto guest_page_size = static_cast<darling_mach_vm_size_t>(guest_page_size_value);
+	if (address % guest_page_size != 0 ||
+		size > (std::numeric_limits<darling_mach_vm_size_t>::max)() - (guest_page_size - 1))
+		return 4;
+	const auto protected_size = (size + guest_page_size - 1) / guest_page_size * guest_page_size;
 	const VmMaximumProtectionKey protection_key{task, address};
 	if (!set_maximum) {
 		std::lock_guard lock(vm_maximum_protections_mutex);
@@ -1246,7 +1570,7 @@ extern "C" darling_kern_return_t darling_windows_mach_vm_protect(
 	DWORD old_protection = 0;
 	const BOOL protected_ok = VirtualProtectEx(process,
 		reinterpret_cast<void*>(static_cast<std::uintptr_t>(address)),
-		static_cast<SIZE_T>(size), VmProtection(protection), &old_protection);
+			static_cast<SIZE_T>(protected_size), VmProtection(protection), &old_protection);
 	CloseVmProcess(process, owned);
 	if (protected_ok && set_maximum) {
 		std::lock_guard lock(vm_maximum_protections_mutex);
@@ -1434,9 +1758,14 @@ extern "C" darling_kern_return_t darling_windows_mach_port_deallocate(
 		if (task_port != task_ports.end()) {
 			auto refs = task_port_send_refs.find(name);
 			if (refs != task_port_send_refs.end() && refs->second > 1) --refs->second;
+		else if (task_port_send_in_transit.contains(name) &&
+			task_port_send_in_transit.at(name) != 0) {
+				if (refs != task_port_send_refs.end()) refs->second = 0;
+			}
 			else {
 				task_ports.erase(task_port);
 				task_port_send_refs.erase(name);
+				task_port_send_in_transit.erase(name);
 			}
 			return 0;
 		}
@@ -1449,6 +1778,8 @@ extern "C" darling_kern_return_t darling_windows_mach_port_deallocate(
 	bool no_senders = false;
 	bool sender_removed = false;
 	bool exhausted = false;
+	bool receive_died = false;
+	std::deque<std::vector<std::uint8_t>> abandoned_messages;
 	{
 		std::lock_guard lock(ports_mutex);
 		const auto found = ports.find(name);
@@ -1459,11 +1790,19 @@ extern "C" darling_kern_return_t darling_windows_mach_port_deallocate(
 			if (port->refs == 0) return 3;
 			if (port->send_refs != 0) { --port->send_refs; sender_removed = true; }
 			else if (port->send_once_refs != 0) { --port->send_once_refs; sender_removed = true; }
-			else if (port->receive_refs != 0) --port->receive_refs;
+			else if (port->receive_refs != 0) {
+				--port->receive_refs;
+				receive_died = port->receive_refs == 0;
+			}
 			else return 3;
-			no_senders = sender_removed && port->send_refs == 0 && port->send_once_refs == 0;
+			no_senders = sender_removed && port->send_refs == 0 && port->send_once_refs == 0 &&
+				port->in_transit_send_refs == 0 && port->in_transit_send_once_refs == 0;
 			port->refs = port->total_refs();
 			exhausted = port->refs == 0;
+			if (receive_died || exhausted) {
+				abandoned_messages.swap(port->messages);
+				port->closed = true;
+			}
 			if (exhausted) {
 				ports.erase(found);
 				for (auto& [set_name, members] : port_sets) {
@@ -1473,14 +1812,15 @@ extern "C" darling_kern_return_t darling_windows_mach_port_deallocate(
 			}
 		}
 	}
-	if (exhausted) {
+	for (const auto& message : abandoned_messages)
+		DiscardQueuedMachMessage(message);
+	if (receive_died || exhausted) {
 		std::lock_guard lock(port->mutex);
-		port->closed = true;
 		port->condition.notify_all();
 		ports_condition.notify_all();
 	}
 	if (no_senders) DeliverNoSendersNotification(name);
-	if (exhausted) DeliverPortNotification(name);
+	if (receive_died || exhausted) DeliverPortNotification(name);
 	return 0; // Host tokens are borrowed pseudo-rights; nothing to close here.
 }
 
@@ -1578,7 +1918,12 @@ extern "C" darling_kern_return_t darling_windows_mach_port_destroy(
 		std::lock_guard lock(task_ports_mutex);
 		const auto task_port = task_ports.find(name);
 		if (task_port != task_ports.end()) {
-			task_ports.erase(task_port);
+			task_port_send_refs[name] = 0;
+			const auto transit = task_port_send_in_transit.find(name);
+			if (transit == task_port_send_in_transit.end() || transit->second == 0) {
+				task_ports.erase(task_port);
+				task_port_send_refs.erase(name);
+			}
 			return 0;
 		}
 	}
@@ -1588,14 +1933,19 @@ extern "C" darling_kern_return_t darling_windows_mach_port_destroy(
 	const auto port = FindPort(name);
 	if (port == nullptr) return 3;
 	bool had_senders = false;
+	std::deque<std::vector<std::uint8_t>> abandoned_messages;
 	{
 		std::lock_guard lock(port->mutex);
-		had_senders = port->send_refs != 0 || port->send_once_refs != 0;
+		had_senders = port->send_refs != 0 || port->send_once_refs != 0 ||
+			port->in_transit_send_refs != 0 || port->in_transit_send_once_refs != 0;
 		port->receive_refs = 1;
 		port->send_refs = 0;
 		port->send_once_refs = 0;
-		port->refs = 1;
+		abandoned_messages.swap(port->messages);
+		port->refs = port->total_refs();
 	}
+	for (const auto& message : abandoned_messages)
+		DiscardQueuedMachMessage(message);
 	{
 		std::lock_guard lock(exception_ports_mutex);
 		for (auto it = exception_ports.begin(); it != exception_ports.end();) {
@@ -1696,6 +2046,7 @@ extern "C" darling_kern_return_t darling_windows_mach_port_insert_right(
 		}
 		if (source == port) return 0;
 		bool source_exhausted = false;
+		bool source_receive_died = false;
 		std::unique_lock source_lock(source->mutex, std::defer_lock);
 		std::unique_lock destination_lock(port->mutex, std::defer_lock);
 		std::lock(source_lock, destination_lock);
@@ -1703,6 +2054,7 @@ extern "C" darling_kern_return_t darling_windows_mach_port_insert_right(
 		if (disposition == darling_mach_move_receive) {
 			if (source->receive_refs == 0) return 3;
 			--source->receive_refs;
+			source_receive_died = source->receive_refs == 0;
 			++port->receive_refs;
 		} else if (disposition == darling_mach_move_send_once) {
 			if (source->send_once_refs == 0) return 3;
@@ -1733,6 +2085,10 @@ extern "C" darling_kern_return_t darling_windows_mach_port_insert_right(
 		if (source_exhausted) {
 			source->condition.notify_all();
 			ports_condition.notify_all();
+		}
+		if (source_receive_died) {
+			source->condition.notify_all();
+			DeliverPortNotification(right, mach_notify_dead_name);
 		}
 	}
 	return 0;
@@ -1780,6 +2136,8 @@ extern "C" darling_kern_return_t darling_windows_mach_port_extract_right(
 	if (port == nullptr) return 3;
 	bool exhausted = false;
 	bool no_senders = false;
+	bool receive_died = false;
+	std::deque<std::vector<std::uint8_t>> abandoned_messages;
 	{
 		std::lock_guard lock(port->mutex);
 		if (disposition == darling_mach_dispose_receive) {
@@ -1811,10 +2169,24 @@ extern "C" darling_kern_return_t darling_windows_mach_port_extract_right(
 		}
 		port->refs = port->total_refs();
 		exhausted = port->refs == 0;
+		receive_died = port->receive_refs == 0 &&
+			(disposition == darling_mach_dispose_receive ||
+			 disposition == darling_mach_copy_receive);
+		if (receive_died) {
+			port->closed = true;
+			abandoned_messages.swap(port->messages);
+		}
 	no_senders = disposition != darling_mach_dispose_receive &&
 		disposition != darling_mach_move_receive && disposition != darling_mach_copy_receive &&
-			port->send_refs == 0 && port->send_once_refs == 0;
+			port->send_refs == 0 && port->send_once_refs == 0 &&
+			port->in_transit_send_refs == 0 && port->in_transit_send_once_refs == 0;
 		if (exhausted) port->closed = true;
+	}
+	for (const auto& message : abandoned_messages)
+		DiscardQueuedMachMessage(message);
+	if (receive_died) {
+		port->condition.notify_all();
+		DeliverPortNotification(name, mach_notify_dead_name);
 	}
 	if (no_senders && !exhausted) DeliverNoSendersNotification(name);
 	*right = (disposition == darling_mach_dispose_receive ||
@@ -1852,8 +2224,14 @@ extern "C" darling_kern_return_t darling_windows_mach_port_mod_refs(
 		const auto updated = static_cast<std::int64_t>(found->second) + delta;
 		if (updated < 0 || updated > static_cast<std::int64_t>((std::numeric_limits<std::uint32_t>::max)())) return 4;
 		if (updated == 0) {
-			task_ports.erase(name);
-			task_port_send_refs.erase(found);
+			const auto transit = task_port_send_in_transit.find(name);
+			if (transit == task_port_send_in_transit.end() || transit->second == 0) {
+				task_ports.erase(name);
+				task_port_send_refs.erase(found);
+				task_port_send_in_transit.erase(name);
+			} else {
+				found->second = 0;
+			}
 		} else {
 			found->second = static_cast<std::uint32_t>(updated);
 		}
@@ -1863,12 +2241,15 @@ extern "C" darling_kern_return_t darling_windows_mach_port_mod_refs(
 	if (port == nullptr) return 3;
 	bool exhausted = false;
 	bool no_senders = false;
+	bool receive_died = false;
+	std::deque<std::vector<std::uint8_t>> abandoned_messages;
 	{
 		std::lock_guard lock(port->mutex);
 		if (right == darling_mach_port_type_receive) {
 			const auto updated = static_cast<std::int64_t>(port->receive_refs) + delta;
 			if (updated < 0 || updated > static_cast<std::int64_t>((std::numeric_limits<std::uint32_t>::max)())) return 4;
 			port->receive_refs = static_cast<std::uint32_t>(updated);
+			receive_died = delta < 0 && port->receive_refs == 0;
 		} else if (right == darling_mach_port_type_send_once && delta >= 0) {
 			const auto updated = static_cast<std::int64_t>(port->send_once_refs) + delta;
 			if (updated > static_cast<std::int64_t>((std::numeric_limits<std::uint32_t>::max)())) return 4;
@@ -1889,8 +2270,19 @@ extern "C" darling_kern_return_t darling_windows_mach_port_mod_refs(
 		port->refs = port->total_refs();
 		exhausted = port->refs == 0;
 		no_senders = right != darling_mach_port_type_receive &&
-			port->send_refs == 0 && port->send_once_refs == 0;
+			port->send_refs == 0 && port->send_once_refs == 0 &&
+			port->in_transit_send_refs == 0 && port->in_transit_send_once_refs == 0;
+		if (receive_died) {
+			port->closed = true;
+			abandoned_messages.swap(port->messages);
+		}
 		if (exhausted) port->closed = true;
+	}
+	for (const auto& message : abandoned_messages)
+		DiscardQueuedMachMessage(message);
+	if (receive_died) {
+		port->condition.notify_all();
+		DeliverPortNotification(name, mach_notify_dead_name);
 	}
 	if (exhausted) {
 		std::lock_guard ports_lock(ports_mutex);
@@ -1933,6 +2325,18 @@ extern "C" darling_kern_return_t darling_windows_mach_port_get_refs(
 	return 0;
 }
 
+extern "C" darling_kern_return_t darling_windows_mach_port_pending_messages(
+	darling_mach_port_name_t name, std::uint32_t* count)
+{
+	if (name == 0 || count == nullptr) return 4;
+	const auto port = FindPort(name);
+	if (port == nullptr) return 3;
+	std::lock_guard lock(port->mutex);
+	if (port->closed || port->receive_refs == 0) return 3;
+	*count = static_cast<std::uint32_t>(port->messages.size());
+	return 0;
+}
+
 extern "C" darling_kern_return_t darling_windows_mach_port_type(
 	darling_mach_port_name_t task, darling_mach_port_name_t name,
 	std::uint32_t* type)
@@ -1941,8 +2345,11 @@ extern "C" darling_kern_return_t darling_windows_mach_port_type(
 	const auto port = FindPort(name);
 	if (port == nullptr) {
 		if (IsTaskPort(name)) {
-			*type = darling_mach_port_type_send;
-			return 0;
+			std::lock_guard lock(task_ports_mutex);
+			const auto found = task_port_send_refs.find(name);
+			*type = found != task_port_send_refs.end() && found->second != 0 ?
+				darling_mach_port_type_send : darling_mach_port_type_none;
+			return *type != darling_mach_port_type_none ? 0 : 3;
 		}
 		*type = darling_mach_port_type_none;
 		return 3;
@@ -2175,7 +2582,7 @@ extern "C" darling_kern_return_t darling_windows_mach_port_send(
 	if (size != 0) std::memcpy(message.data(), data, size);
 	{
 		std::lock_guard lock(port->mutex);
-		if (port->closed) return 3;
+		if (port->closed || port->receive_refs == 0) return 3;
 		if (port->messages.size() >= max_port_queue_depth)
 			return darling_mach_send_queue_full;
 		port->messages.push_back(std::move(message));
@@ -2194,9 +2601,9 @@ extern "C" darling_kern_return_t darling_windows_mach_port_receive(
 	if (port == nullptr) return 3;
 	std::unique_lock lock(port->mutex);
 	if (!port->condition.wait_for(lock, std::chrono::milliseconds(timeout_ms),
-		[&] { return port->closed || !port->messages.empty(); }))
+		[&] { return port->closed || port->receive_refs == 0 || !port->messages.empty(); }))
 		return 268; // MACH_RCV_TIMED_OUT
-	if (port->closed) return 3;
+	if (port->closed || port->receive_refs == 0) return 3;
 	const auto& queued_message = port->messages.front();
 	if (queued_message.size() > capacity) return 0x10004003; // MACH_MSG_TOO_LARGE
 	if (queued_message.size() >= sizeof(darling_mach_msg_header) + sizeof(darling_mach_msg_body)) {
@@ -2204,13 +2611,113 @@ extern "C" darling_kern_return_t darling_windows_mach_port_receive(
 		if ((header->msgh_bits & darling_mach_msg_complex) != 0) {
 			const auto* body = reinterpret_cast<const darling_mach_msg_body*>(
 				queued_message.data() + sizeof(darling_mach_msg_header));
-			const auto descriptor_bytes = static_cast<std::uint64_t>(body->msgh_descriptor_count) *
-				sizeof(darling_mach_msg_port_descriptor);
 			const auto remaining = queued_message.size() - sizeof(darling_mach_msg_header) - sizeof(*body);
 			const auto* descriptors = reinterpret_cast<const darling_mach_msg_port_descriptor*>(body + 1);
-			if (body->msgh_descriptor_count != 0 && descriptor_bytes <= remaining &&
-				descriptors[0].type == darling_mach_msg_descriptor_port) {
+			const auto* descriptor_data = reinterpret_cast<const std::uint8_t*>(body + 1);
+			const bool single_ool = body->msgh_descriptor_count == 1 &&
+				remaining >= offsetof(darling_mach_msg_ool_descriptor, type) + sizeof(std::uint32_t) &&
+				descriptor_data[offsetof(darling_mach_msg_ool_descriptor, type)] ==
+					darling_mach_msg_descriptor_ool;
+			if (single_ool) {
+				if (remaining < sizeof(darling_mach_msg_ool_descriptor)) return 4;
+				const auto* descriptor = reinterpret_cast<const darling_mach_msg_ool_descriptor*>(descriptor_data);
+				if (descriptor->type != darling_mach_msg_descriptor_ool ||
+					(descriptor->size != 0 && (descriptor->address == 0 ||
+						!mach_ool_ownership.Contains(reinterpret_cast<void*>(
+							static_cast<std::uintptr_t>(descriptor->address))) ||
+						mach_ool_ownership.Bytes(reinterpret_cast<void*>(
+							static_cast<std::uintptr_t>(descriptor->address))) < descriptor->size)))
+					return 4;
+			} else {
+			if (body->msgh_descriptor_count == 0) return 4;
+			const auto descriptor_bytes = static_cast<std::uint64_t>(body->msgh_descriptor_count) *
+				sizeof(darling_mach_msg_port_descriptor);
+			if (descriptor_bytes > remaining) return 4;
+			{
 				std::vector<std::pair<darling_mach_port_name_t, std::uint32_t>> added;
+				added.reserve(body->msgh_descriptor_count);
+				const auto adjust_locked_port = [&port](std::uint32_t right,
+					int delta) {
+					std::uint32_t* references = nullptr;
+					switch (right) {
+					case darling_mach_port_type_receive: references = &port->receive_refs; break;
+					case darling_mach_port_type_send: references = &port->send_refs; break;
+					case darling_mach_port_type_send_once: references = &port->send_once_refs; break;
+					default: return false;
+					}
+					if (delta > 0) {
+						if (port->refs == (std::numeric_limits<std::uint32_t>::max)())
+							return false;
+						++*references;
+					} else {
+						if (*references == 0) return false;
+						--*references;
+					}
+					port->refs = port->total_refs();
+					return true;
+				};
+				const auto adjust_right = [&](darling_mach_port_name_t right_name,
+					std::uint32_t right, int delta) {
+					if (right_name == name)
+						return adjust_locked_port(right, delta) ? 0 : 4;
+					return darling_windows_mach_port_mod_refs(
+						darling_windows_mach_task_self(), right_name, right, delta);
+				};
+				const auto adjust_transit_locked = [&port](std::uint32_t right, bool from_transit) {
+					std::uint32_t* normal = right == darling_mach_port_type_receive ? &port->receive_refs :
+						right == darling_mach_port_type_send ? &port->send_refs :
+						right == darling_mach_port_type_send_once ? &port->send_once_refs : nullptr;
+					std::uint32_t* transit = right == darling_mach_port_type_receive ? &port->in_transit_receive_refs :
+						right == darling_mach_port_type_send ? &port->in_transit_send_refs :
+						right == darling_mach_port_type_send_once ? &port->in_transit_send_once_refs : nullptr;
+					if (normal == nullptr) return false;
+					if (from_transit) {
+						if (*transit == 0 || *normal == (std::numeric_limits<std::uint32_t>::max)()) return false;
+						--*transit;
+						++*normal;
+					} else {
+						if (*normal == 0 || *transit == (std::numeric_limits<std::uint32_t>::max)()) return false;
+						--*normal;
+						++*transit;
+					}
+					port->refs = port->total_refs();
+					return true;
+				};
+				const auto materialize_moved_right = [&](darling_mach_port_name_t right_name,
+					std::uint32_t right) {
+					if (right == darling_mach_port_type_receive) {
+						return right_name == name ?
+							(adjust_transit_locked(right, true) ? 0 : 4) :
+							(TransferReceiveRightFromTransit(right_name) ? 0 : 4);
+					}
+					if (right == darling_mach_port_type_send || right == darling_mach_port_type_send_once) {
+						return right_name == name ?
+							(adjust_transit_locked(right, true) ? 0 : 4) :
+							(TransferHeaderRightFromTransit(right_name, right) ? 0 : 4);
+					}
+					return adjust_right(right_name, right, 1);
+				};
+				const auto unmaterialize_moved_right = [&](darling_mach_port_name_t right_name,
+					std::uint32_t right) {
+					if (right == darling_mach_port_type_receive) {
+						if (right_name == name) (void)adjust_transit_locked(right, false);
+						else (void)TransferReceiveRightToTransit(right_name);
+						return;
+					}
+					if (right == darling_mach_port_type_send || right == darling_mach_port_type_send_once) {
+						if (right_name == name) (void)adjust_transit_locked(right, false);
+						else (void)TransferHeaderRightToTransit(right_name, right);
+					} else {
+						(void)adjust_right(right_name, right, -1);
+					}
+				};
+				for (std::uint32_t index = 0; index < body->msgh_descriptor_count; ++index) {
+					if (descriptors[index].type != darling_mach_msg_descriptor_port) {
+						for (auto it = added.rbegin(); it != added.rend(); ++it)
+							unmaterialize_moved_right(it->first, it->second);
+						return 4;
+					}
+				}
 				for (std::uint32_t index = 0; index < body->msgh_descriptor_count; ++index) {
 					std::uint32_t right = 0;
 					switch (descriptors[index].disposition) {
@@ -2220,15 +2727,14 @@ extern "C" darling_kern_return_t darling_windows_mach_port_receive(
 					default: break;
 					}
 					if (right == 0) continue;
-					if (darling_windows_mach_port_mod_refs(darling_windows_mach_task_self(),
-						descriptors[index].name, right, 1) != 0) {
+					if (materialize_moved_right(descriptors[index].name, right) != 0) {
 						for (auto it = added.rbegin(); it != added.rend(); ++it)
-							(void)darling_windows_mach_port_mod_refs(darling_windows_mach_task_self(),
-								it->first, it->second, -1);
+							unmaterialize_moved_right(it->first, it->second);
 						return 4;
 					}
 					added.emplace_back(descriptors[index].name, right);
 				}
+			}
 			}
 		}
 	}
@@ -2253,8 +2759,8 @@ extern "C" darling_kern_return_t darling_windows_mach_port_receive(
 				const auto* descriptor = reinterpret_cast<const darling_mach_msg_ool_descriptor*>(descriptor_bytes);
 				if (descriptor->address != 0) {
 					void* address = reinterpret_cast<void*>(static_cast<std::uintptr_t>(descriptor->address));
-					if (mach_ool_ownership.RetainReceiver(address))
-						(void)mach_ool_ownership.ReleaseQueue(address);
+					if (!mach_ool_ownership.RetainReceiver(address)) return 4;
+					(void)mach_ool_ownership.ReleaseQueue(address);
 				}
 			}
 		}
@@ -2279,6 +2785,55 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 	if ((option & darling_mach_send_msg) != 0) {
 		if (send_size < sizeof(darling_mach_msg_header) ||
 			message->msgh_remote_port == 0 || message->msgh_size != send_size) return 4;
+		const auto remote_disposition = message->msgh_bits & mach_header_remote_mask;
+		const auto local_disposition = (message->msgh_bits & mach_header_local_mask) >> 8;
+		const auto voucher_disposition = (message->msgh_bits & mach_header_voucher_mask) >> 16;
+		if ((remote_disposition != 0 && MachRightForHeaderDisposition(remote_disposition) == 0) ||
+			(message->msgh_local_port == 0 && local_disposition != 0) ||
+			(message->msgh_local_port != 0 && MachRightForReplyDisposition(local_disposition) == 0) ||
+			voucher_disposition != 0)
+			return darling_kern_not_supported;
+		if (remote_disposition != 0) {
+			std::uint32_t refs = 0;
+			if (darling_windows_mach_port_get_refs(darling_windows_mach_task_self(),
+				message->msgh_remote_port, MachRightForHeaderDisposition(remote_disposition), &refs) != 0 || refs == 0)
+				return 3;
+		}
+		if (message->msgh_local_port != 0 &&
+			local_disposition != darling_mach_make_send_once) {
+			std::uint32_t refs = 0;
+			if (darling_windows_mach_port_get_refs(darling_windows_mach_task_self(),
+				message->msgh_local_port, MachRightForReplyDisposition(local_disposition), &refs) != 0 || refs == 0)
+				return 3;
+		} else if (message->msgh_local_port != 0) {
+			std::uint32_t refs = 0;
+			if (darling_windows_mach_port_get_refs(darling_windows_mach_task_self(),
+				message->msgh_local_port, darling_mach_port_type_receive, &refs) != 0 || refs == 0)
+				return 3;
+		}
+		if ((remote_disposition == darling_mach_move_send ||
+			remote_disposition == darling_mach_move_send_once) &&
+			IsTaskPort(message->msgh_remote_port)) return darling_kern_not_supported;
+		if ((local_disposition == darling_mach_move_send ||
+			local_disposition == darling_mach_move_send_once) &&
+			IsTaskPort(message->msgh_local_port)) return darling_kern_not_supported;
+		const auto remote_right = MachRightForHeaderDisposition(remote_disposition);
+		const auto reply_right = MachRightForReplyDisposition(local_disposition);
+		const auto remote_moves = remote_disposition == darling_mach_move_send ||
+			remote_disposition == darling_mach_move_send_once ? 1u : 0u;
+		const auto remote_copies = remote_disposition == darling_mach_copy_send ? 1u : 0u;
+		const auto reply_moves = local_disposition == darling_mach_move_send ||
+			local_disposition == darling_mach_move_send_once ? 1u : 0u;
+		const auto reply_copies = local_disposition == darling_mach_copy_send ||
+			local_disposition == darling_mach_make_send_once ? 1u : 0u;
+		const bool same_right_object = message->msgh_remote_port == message->msgh_local_port;
+		if (same_right_object ? !CanApplyHeaderRightDeltas(message->msgh_remote_port,
+			remote_right, remote_moves, remote_copies, reply_right, reply_moves, reply_copies) :
+			(!CanApplyHeaderRightDeltas(message->msgh_remote_port, remote_right,
+				remote_moves, remote_copies) ||
+			!CanApplyHeaderRightDeltas(message->msgh_local_port, reply_right,
+				reply_moves, reply_copies)))
+			return 3;
 		if ((message->msgh_bits & darling_mach_msg_complex) != 0) {
 			bool ool_descriptor = false;
 			if (send_size < sizeof(darling_mach_msg_header) + sizeof(darling_mach_msg_body)) return 4;
@@ -2379,6 +2934,9 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 			std::lock_guard broker_lock(mach_broker_mutex);
 			const auto capability = mach_ipc_capabilities.Lookup(message->msgh_remote_port);
 			if (mach_broker_client && capability) {
+				if ((message->msgh_bits &
+					(mach_header_remote_mask | mach_header_local_mask | mach_header_voucher_mask)) != 0)
+					return darling_kern_not_supported;
 				bool broker_descriptors_available = true;
 				if ((message->msgh_bits & darling_mach_msg_complex) != 0) {
 					const auto* body = reinterpret_cast<const darling_mach_msg_body*>(
@@ -2443,71 +3001,124 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 				}
 			}
 		}
-		if (!broker_routed_send)
-			result = darling_windows_mach_port_send(message->msgh_remote_port,
-				message, send_size);
-		if (result == 0 && (message->msgh_bits & darling_mach_msg_complex) != 0) {
-			const auto* body = reinterpret_cast<const darling_mach_msg_body*>(
-				reinterpret_cast<const std::uint8_t*>(message) + sizeof(darling_mach_msg_header));
-			const auto* descriptor_bytes_start = reinterpret_cast<const std::uint8_t*>(body + 1);
-			const auto descriptor_remaining = send_size - sizeof(darling_mach_msg_header) - sizeof(*body);
-			const auto first_ool_type = descriptor_remaining >= offsetof(darling_mach_msg_ool_descriptor, type) + sizeof(std::uint32_t) ?
-				descriptor_bytes_start[offsetof(darling_mach_msg_ool_descriptor, type)] : 0;
-			if (body->msgh_descriptor_count == 1 && first_ool_type == darling_mach_msg_descriptor_ool)
-				goto mach_msg_send_complete;
-			const auto* descriptors = reinterpret_cast<const darling_mach_msg_port_descriptor*>(body + 1);
-			for (std::uint32_t index = 0; index < body->msgh_descriptor_count; ++index) {
-				if (descriptors[index].disposition == darling_mach_copy_send) {
-					// COPY_SEND creates an additional receiver-held send right;
-					// the sender's right remains in place.
-					(void)darling_windows_mach_port_mod_refs(darling_windows_mach_task_self(),
-						descriptors[index].name, darling_mach_port_type_send, 1);
-				} else if (descriptors[index].disposition == darling_mach_copy_receive) {
-					(void)darling_windows_mach_port_mod_refs(darling_windows_mach_task_self(),
-						descriptors[index].name, darling_mach_port_type_receive, 1);
-				} else if (descriptors[index].disposition == darling_mach_make_send ||
-					descriptors[index].disposition == darling_mach_make_send_once) {
-					const auto right = descriptors[index].disposition == darling_mach_make_send_once ?
-						darling_mach_port_type_send_once : darling_mach_port_type_send;
-					(void)darling_windows_mach_port_mod_refs(darling_windows_mach_task_self(),
-						descriptors[index].name, right, 1);
-				} else if (descriptors[index].disposition == darling_mach_move_receive) {
-					// Keep a receive-less port object alive until the queued right is
-					// materialized by the receiver. Removing it here would make the
-					// moved receive right impossible to restore.
-					const auto source = FindPort(descriptors[index].name);
-					if (source == nullptr) return 3;
-					std::lock_guard source_lock(source->mutex);
-					if (source->receive_refs == 0) return 3;
-					--source->receive_refs;
-					source->refs = source->total_refs();
-				} else if (descriptors[index].disposition == darling_mach_move_send ||
-					descriptors[index].disposition == darling_mach_move_send_once) {
-					const auto right = descriptors[index].disposition == darling_mach_move_send_once ?
-						darling_mach_port_type_send_once : darling_mach_port_type_send;
-					(void)darling_windows_mach_port_mod_refs(darling_windows_mach_task_self(),
-						descriptors[index].name, right, -1);
+		struct HeaderRightAction final {
+			darling_mach_port_name_t name;
+			std::uint32_t right;
+			int delta;
+			bool transit;
+		bool receive;
+		};
+		std::vector<HeaderRightAction> header_right_actions;
+		const auto rollback_header_rights = [&] {
+			for (auto it = header_right_actions.rbegin(); it != header_right_actions.rend(); ++it) {
+				if (it->transit) {
+					if (it->receive) (void)TransferReceiveRightFromTransit(it->name);
+					else (void)TransferHeaderRightFromTransit(it->name, it->right);
+				}
+				else (void)darling_windows_mach_port_mod_refs(darling_windows_mach_task_self(),
+					it->name, it->right, -it->delta);
+			}
+			header_right_actions.clear();
+		};
+		bool header_rights_committed = broker_routed_send;
+		if (!broker_routed_send) {
+			const auto remote_disposition = message->msgh_bits & mach_header_remote_mask;
+			const auto local_disposition = (message->msgh_bits & mach_header_local_mask) >> 8;
+			const auto add_copy = [&](darling_mach_port_name_t name, std::uint32_t right, int delta) {
+				if (name == 0 || right == 0 || delta <= 0) return 0;
+				const auto status = darling_windows_mach_port_mod_refs(
+					darling_windows_mach_task_self(), name, right, delta);
+				if (status == 0) header_right_actions.push_back({name, right, delta, false, false});
+				return status;
+			};
+			const auto move_to_transit = [&](darling_mach_port_name_t name,
+				std::uint32_t right, std::uint32_t disposition) {
+				if (name == 0 || right == 0 ||
+					(disposition != darling_mach_move_send &&
+					 disposition != darling_mach_move_send_once &&
+					 disposition != darling_mach_move_receive)) return true;
+				const bool receive_right = disposition == darling_mach_move_receive;
+				const bool transferred = receive_right ? TransferReceiveRightToTransit(name) :
+					TransferHeaderRightToTransit(name, right);
+				if (!transferred) return false;
+				header_right_actions.push_back({name, right, -1, true, receive_right});
+				return true;
+			};
+			const auto remote_right = MachRightForHeaderDisposition(remote_disposition);
+			const auto local_right = MachRightForReplyDisposition(local_disposition);
+			const int remote_delta = remote_disposition == darling_mach_copy_send ? 1 : 0;
+			const int local_delta = local_disposition == darling_mach_copy_send ||
+				local_disposition == darling_mach_make_send_once ? 1 : 0;
+			if (add_copy(message->msgh_remote_port, remote_right, remote_delta) != 0 ||
+				add_copy(message->msgh_local_port, local_right, local_delta) != 0 ||
+				!move_to_transit(message->msgh_remote_port, remote_right, remote_disposition) ||
+				!move_to_transit(message->msgh_local_port, local_right, local_disposition)) {
+				rollback_header_rights();
+				return 3;
+			}
+			if ((message->msgh_bits & darling_mach_msg_complex) != 0) {
+				const auto* body = reinterpret_cast<const darling_mach_msg_body*>(
+					reinterpret_cast<const std::uint8_t*>(message) + sizeof(darling_mach_msg_header));
+				const auto* bytes = reinterpret_cast<const std::uint8_t*>(body + 1);
+				const auto remaining = send_size - sizeof(darling_mach_msg_header) - sizeof(*body);
+				const auto first_type = remaining >= offsetof(darling_mach_msg_ool_descriptor, type) + sizeof(std::uint32_t) ?
+					bytes[offsetof(darling_mach_msg_ool_descriptor, type)] : 0;
+				const bool single_ool = body->msgh_descriptor_count == 1 &&
+					first_type == darling_mach_msg_descriptor_ool;
+				if (!single_ool) {
+					const auto* descriptors = reinterpret_cast<const darling_mach_msg_port_descriptor*>(body + 1);
+					for (std::uint32_t index = 0; index < body->msgh_descriptor_count; ++index) {
+						const auto disposition = descriptors[index].disposition;
+						std::uint32_t right = 0;
+						int delta = 0;
+						switch (disposition) {
+						case darling_mach_copy_send: right = darling_mach_port_type_send; delta = 1; break;
+						case darling_mach_copy_receive: right = darling_mach_port_type_receive; delta = 1; break;
+						case darling_mach_make_send: right = darling_mach_port_type_send; delta = 1; break;
+						case darling_mach_make_send_once: right = darling_mach_port_type_send_once; delta = 1; break;
+						case darling_mach_move_send: right = darling_mach_port_type_send; break;
+						case darling_mach_move_send_once: right = darling_mach_port_type_send_once; break;
+						default: break;
+						}
+						if (delta != 0 && add_copy(descriptors[index].name, right, delta) != 0) {
+							rollback_header_rights();
+							return 3;
+						}
+						if ((disposition == darling_mach_move_send ||
+							disposition == darling_mach_move_send_once ||
+							disposition == darling_mach_move_receive) &&
+							!move_to_transit(descriptors[index].name, right, disposition)) {
+							rollback_header_rights();
+							return 3;
+						}
+					}
 				}
 			}
+			result = darling_windows_mach_port_send(message->msgh_remote_port,
+				message, send_size);
+			if (result == 0) header_rights_committed = true;
 		}
-	mach_msg_send_complete:
+		if (broker_routed_send)
+			result = 0;
 		if (result == darling_mach_send_queue_full && (option & darling_mach_send_timeout) != 0) {
 			const auto port = FindPort(message->msgh_remote_port);
-			if (port == nullptr) return 3;
+			if (port == nullptr) { rollback_header_rights(); return 3; }
 			const auto deadline = std::chrono::steady_clock::now() +
 				std::chrono::milliseconds(timeout_ms);
 			while (result == darling_mach_send_queue_full) {
 				std::unique_lock lock(port->mutex);
 				if (!port->condition.wait_until(lock, deadline, [&] {
 					return port->closed || port->messages.size() < max_port_queue_depth;
-				})) return darling_mach_send_queue_full;
-				if (port->closed) return 3;
+					})) { lock.unlock(); rollback_header_rights(); return darling_mach_send_queue_full; }
+				if (port->closed) { lock.unlock(); rollback_header_rights(); return 3; }
 				lock.unlock();
 				result = darling_windows_mach_port_send(message->msgh_remote_port,
 					message, send_size);
+				if (result == 0) header_rights_committed = true;
 			}
 		}
 		if (result != 0) {
+			if (!header_rights_committed) rollback_header_rights();
 			if (copied_ool_address != nullptr) (void)mach_ool_ownership.ReleaseQueue(copied_ool_address);
 			if (copied_ool_address != nullptr) {
 				const auto* body = reinterpret_cast<const darling_mach_msg_body*>(
@@ -2587,6 +3198,12 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 							}
 							std::memcpy(message, response.inline_payload.data(), response.inline_payload.size());
 							message->msgh_size = static_cast<std::uint32_t>(response.inline_payload.size());
+							const auto target_disposition = message->msgh_bits & mach_header_remote_mask;
+							message->msgh_remote_port = 0;
+							message->msgh_local_port = receive_name;
+							message->msgh_bits = (message->msgh_bits &
+								~(mach_header_remote_mask | mach_header_local_mask)) |
+								((target_disposition << 8) & mach_header_local_mask);
 							auto* inline_descriptor = reinterpret_cast<darling_mach_msg_ool_descriptor*>(
 								reinterpret_cast<std::uint8_t*>(message) + sizeof(darling_mach_msg_header) + sizeof(darling_mach_msg_body));
 							inline_descriptor->address = static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(local));
@@ -2595,8 +3212,8 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 						message->msgh_bits = darling_mach_msg_complex;
 						message->msgh_size = sizeof(darling_mach_msg_header) + sizeof(darling_mach_msg_body) +
 							sizeof(darling_mach_msg_ool_descriptor);
-						message->msgh_remote_port = receive_name;
-						message->msgh_local_port = 0;
+						message->msgh_remote_port = 0;
+						message->msgh_local_port = receive_name;
 						message->msgh_id = 0;
 						auto* body = reinterpret_cast<darling_mach_msg_body*>(
 							reinterpret_cast<std::uint8_t*>(message) + sizeof(darling_mach_msg_header));
@@ -2611,6 +3228,12 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 						return 0x10004003;
 					std::memcpy(message, response.payload.data(), response.payload.size());
 					message->msgh_size = static_cast<std::uint32_t>(response.payload.size());
+					const auto target_disposition = message->msgh_bits & mach_header_remote_mask;
+					message->msgh_remote_port = 0;
+					message->msgh_local_port = receive_name;
+					message->msgh_bits = (message->msgh_bits &
+						~(mach_header_remote_mask | mach_header_local_mask)) |
+						((target_disposition << 8) & mach_header_local_mask);
 					if (!response.port_descriptor_tokens.empty()) {
 						if (response.payload.size() < sizeof(darling_mach_msg_header) +
 							sizeof(darling_mach_msg_body)) return 4;
@@ -2651,6 +3274,33 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 			receive_size, &actual_size, receive_timeout);
 		if (result != 0) return result;
 		message->msgh_size = actual_size;
+		if (actual_size >= sizeof(darling_mach_msg_header)) {
+			const auto reply_port = message->msgh_local_port;
+			const auto destination_disposition = message->msgh_bits & mach_header_remote_mask;
+			const auto reply_disposition = (message->msgh_bits & mach_header_local_mask) >> 8;
+			const auto right = MachRightForReplyDisposition(reply_disposition);
+			auto received_reply_disposition = reply_disposition;
+			auto received_destination_disposition = destination_disposition;
+			if (reply_port != 0 && right != 0 &&
+				(reply_disposition == darling_mach_move_send ||
+					reply_disposition == darling_mach_move_send_once)) {
+				if (!TransferHeaderRightFromTransit(reply_port, right)) {
+					received_reply_disposition = 0;
+				}
+			}
+			const auto destination_right = MachRightForHeaderDisposition(destination_disposition);
+			if (destination_right != 0 &&
+				(destination_disposition == darling_mach_move_send ||
+					destination_disposition == darling_mach_move_send_once) &&
+				!TransferHeaderRightFromTransit(receive_name, destination_right))
+				received_destination_disposition = 0;
+			message->msgh_remote_port = received_reply_disposition != 0 ? reply_port : 0;
+			message->msgh_local_port = receive_name;
+			message->msgh_bits = (message->msgh_bits &
+				~(mach_header_remote_mask | mach_header_local_mask)) |
+			(received_reply_disposition & mach_header_remote_mask) |
+			((received_destination_disposition << 8) & mach_header_local_mask);
+		}
 		AppendReceiveTrailer(message, actual_size, receive_size, option,
 			mach_last_receive_sequence, receive_name);
 	}
@@ -2666,6 +3316,34 @@ extern "C" darling_kern_return_t darling_windows_mach_msg_destroy(
 	darling_mach_msg_header* message)
 {
 	if (message == nullptr || message->msgh_size < sizeof(darling_mach_msg_header)) return 4;
+	const auto remote_disposition = message->msgh_bits & mach_header_remote_mask;
+	const auto local_disposition = (message->msgh_bits & mach_header_local_mask) >> 8;
+	const auto remote_right = MachRightForReplyDisposition(remote_disposition);
+	const auto local_right = MachRightForHeaderDisposition(local_disposition);
+	const auto remote_port = message->msgh_remote_port;
+	const auto local_port = message->msgh_local_port;
+	const bool same_right_object = remote_port != 0 && remote_port == local_port;
+	if (same_right_object ? !CanApplyHeaderRightDeltas(remote_port,
+		remote_right, remote_right != 0 ? 1u : 0u, 0,
+		local_right, local_right != 0 ? 1u : 0u, 0) :
+		(!CanApplyHeaderRightDeltas(remote_port, remote_right,
+			remote_right != 0 ? 1u : 0u, 0) ||
+		 !CanApplyHeaderRightDeltas(local_port, local_right,
+			local_right != 0 ? 1u : 0u, 0)))
+		return 4;
+	if (remote_port != 0 && remote_right != 0 && darling_windows_mach_port_mod_refs(
+		darling_windows_mach_task_self(), remote_port, remote_right, -1) != 0)
+		return 4;
+	if (local_port != 0 && local_right != 0 && darling_windows_mach_port_mod_refs(
+		darling_windows_mach_task_self(), local_port, local_right, -1) != 0)
+		return 4;
+	const auto voucher_disposition = (message->msgh_bits & mach_header_voucher_mask) >> 16;
+	if (voucher_disposition != 0 && message->msgh_voucher_port != 0) {
+		const auto voucher_right = MachRightForHeaderDisposition(voucher_disposition);
+		if (voucher_right != 0 && darling_windows_mach_port_mod_refs(
+			darling_windows_mach_task_self(), message->msgh_voucher_port, voucher_right, -1) != 0)
+			return 4;
+	}
 	if ((message->msgh_bits & darling_mach_msg_complex) == 0) return 0;
 	if (message->msgh_size < sizeof(darling_mach_msg_header) + sizeof(darling_mach_msg_body)) return 4;
 	const auto* body = reinterpret_cast<const darling_mach_msg_body*>(

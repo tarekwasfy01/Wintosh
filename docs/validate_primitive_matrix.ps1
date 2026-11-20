@@ -2,22 +2,25 @@ param(
     [string]$Path = (Join-Path $PSScriptRoot '..\PRIMITIVE-MATRIX.csv')
 )
 
-$header = (Get-Content -LiteralPath $Path -TotalCount 1)
-$expected = ($header -split ',').Count
-$lines = Get-Content -LiteralPath $Path | Select-Object -Skip 1
+Add-Type -AssemblyName Microsoft.VisualBasic
+$parser = [Microsoft.VisualBasic.FileIO.TextFieldParser]::new([IO.Path]::GetFullPath($Path))
+$parser.SetDelimiters(',')
+$parser.HasFieldsEnclosedInQuotes = $true
+$expected = $parser.ReadFields().Count
+$records = 0
 $bad = @()
-$number = 2
-foreach ($line in $lines) {
-    $count = ($line -split ',').Count
-    if ($count -ne $expected) {
-        $bad += [pscustomobject]@{ Line = $number; Fields = $count }
+try {
+    while (-not $parser.EndOfData) {
+        $fields = $parser.ReadFields()
+        $records++
+        if ($fields.Count -ne $expected) {
+            $bad += [pscustomobject]@{ Record = $records; Fields = $fields.Count }
+        }
     }
-    $number++
-}
-
+} finally { $parser.Close() }
 "MATRIX=$([IO.Path]::GetFullPath($Path))"
 "EXPECTED_FIELDS=$expected"
-"DATA_ROWS=$($lines.Count)"
+"DATA_ROWS=$records"
 "MALFORMED_ROWS=$($bad.Count)"
 $bad | Format-Table -AutoSize
 if ($bad.Count -gt 0) { exit 1 }

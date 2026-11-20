@@ -1,11 +1,290 @@
 /* CoreGraphics geometry smoke; GPL-3.0-only. */
 #include "darling_windows_coregraphics.h"
+#include "darling_windows_corefoundation.h"
+#include "darling_windows_stdio.h"
 
 #include <cmath>
+#include <cstring>
 #include <iostream>
 
 int main()
 {
+	// A tiny valid PNG exercises the CFData-backed ImageIO source and WIC decode.
+	const std::uint8_t png[] = {
+		0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a,0x00,0x00,0x00,0x0d,
+		0x49,0x48,0x44,0x52,0x00,0x00,0x00,0x01,0x00,0x00,0x00,0x01,
+		0x08,0x04,0x00,0x00,0x00,0xb5,0x1c,0x0c,0x02,0x00,0x00,0x00,
+		0x0b,0x49,0x44,0x41,0x54,0x78,0x9c,0x63,0x60,0x60,0x00,0x00,
+		0x00,0x03,0x00,0x01,0x68,0x26,0x59,0x0d,0x00,0x00,0x00,0x00,
+		0x49,0x45,0x4e,0x44,0xae,0x42,0x60,0x82
+	};
+	auto* encoded = darling_windows_CFDataCreate(png, sizeof(png));
+	auto source = CGImageSourceCreateWithData(encoded, nullptr);
+	auto* decoded = CGImageSourceCreateImageAtIndex(source, 0, nullptr);
+	if (encoded == nullptr || source == nullptr || CGImageSourceGetCount(source) != 1 ||
+		decoded == nullptr || CGImageGetWidth(decoded) != 1 || CGImageGetHeight(decoded) != 1 ||
+		darling_windows_host_symbol("_CGImageSourceCreateWithData") !=
+			reinterpret_cast<std::uintptr_t>(&CGImageSourceCreateWithData)) return 2;
+	CGImageRelease(decoded);
+	darling_windows_CFRelease(source);
+	darling_windows_CFRelease(encoded);
+
+	auto* rgb_space = CGColorSpaceCreateDeviceRGB();
+	if (rgb_space == nullptr || CGColorSpaceGetNumberOfComponents(rgb_space) != 3 ||
+		CGColorSpaceGetNumberOfComponents(nullptr) != 0) return 2;
+	const double rgba[] = {1.0, 0.25, 0.0, 1.0};
+	auto* cg_color = CGColorCreate(rgb_space, rgba);
+	std::uint8_t bitmap[16]{};
+	auto* bitmap_context = CGBitmapContextCreate(bitmap, 2, 2, 8, 8, rgb_space,
+		darling_windows_kCGImageAlphaPremultipliedLast);
+	if (cg_color == nullptr || bitmap_context == nullptr ||
+		CGBitmapContextGetData(bitmap_context) != bitmap ||
+		CGBitmapContextGetWidth(bitmap_context) != 2 ||
+		CGBitmapContextGetHeight(bitmap_context) != 2 ||
+		CGBitmapContextGetBytesPerRow(bitmap_context) != 8 ||
+		darling_windows_host_symbol("_CGBitmapContextCreate") !=
+			reinterpret_cast<std::uintptr_t>(&CGBitmapContextCreate) ||
+		darling_windows_host_symbol("_CGContextFillRect") !=
+			reinterpret_cast<std::uintptr_t>(&CGContextFillRect)) return 2;
+	CGContextSetFillColorWithColor(bitmap_context, cg_color);
+	CGContextFillRect(bitmap_context, darling_windows_CGRectMake(0, 0, 1, 1));
+	if (bitmap[12] != 0 || bitmap[13] != 0 || bitmap[14] != 0 || bitmap[15] != 0 ||
+		bitmap[8] != 255 || bitmap[9] != 64 || bitmap[10] != 0 || bitmap[11] != 255) return 2;
+	CGContextClearRect(bitmap_context, darling_windows_CGRectMake(0, 0, 1, 1));
+	if (bitmap[8] != 0 || bitmap[9] != 0 || bitmap[10] != 0 || bitmap[11] != 0) return 2;
+	CGContextSetRGBStrokeColor(bitmap_context, 0, 0, 1, 1);
+	CGContextSetLineWidth(bitmap_context, 1);
+	CGContextStrokeRect(bitmap_context, darling_windows_CGRectMake(0, 0, 2, 2));
+	for (std::size_t index = 0; index < sizeof(bitmap); index += 4) {
+		if (bitmap[index] != 0 || bitmap[index + 1] != 0 ||
+			bitmap[index + 2] != 255 || bitmap[index + 3] != 255) return 2;
+	}
+	if (darling_windows_host_symbol("_CGContextStrokeRect") !=
+		reinterpret_cast<std::uintptr_t>(&CGContextStrokeRect)) return 2;
+	std::memset(bitmap, 0, sizeof(bitmap));
+	CGContextBeginPath(bitmap_context);
+	CGContextMoveToPoint(bitmap_context, 0, 0);
+	CGContextAddLineToPoint(bitmap_context, 2, 0);
+	CGContextAddLineToPoint(bitmap_context, 0, 2);
+	CGContextClosePath(bitmap_context);
+	CGContextSetRGBFillColor(bitmap_context, 1, 0, 0, 1);
+	CGContextFillPath(bitmap_context);
+	if (bitmap[8] != 255 || bitmap[9] != 0 || bitmap[10] != 0 || bitmap[11] != 255 ||
+		bitmap[12] != 0 || bitmap[13] != 0 || bitmap[14] != 0 || bitmap[15] != 0 ||
+		darling_windows_host_symbol("_CGContextFillPath") !=
+			reinterpret_cast<std::uintptr_t>(&CGContextFillPath)) return 2;
+	auto* snapshot = CGBitmapContextCreateImage(bitmap_context);
+	std::uint8_t copied_bitmap[16]{};
+	auto* copied_context = CGBitmapContextCreate(copied_bitmap, 2, 2, 8, 8, rgb_space,
+		darling_windows_kCGImageAlphaPremultipliedLast);
+	if (snapshot == nullptr || copied_context == nullptr ||
+		CGImageGetWidth(snapshot) != 2 || CGImageGetHeight(snapshot) != 2 ||
+		CGImageGetBytesPerRow(snapshot) != 8 ||
+		CGImageGetBitsPerComponent(snapshot) != 8 || CGImageGetBitsPerPixel(snapshot) != 32 ||
+		CGImageGetColorSpace(snapshot) != rgb_space ||
+		CGImageGetBitmapInfo(snapshot) != darling_windows_kCGImageAlphaPremultipliedLast ||
+		darling_windows_host_symbol("_CGBitmapContextCreateImage") !=
+			reinterpret_cast<std::uintptr_t>(&CGBitmapContextCreateImage) ||
+		darling_windows_host_symbol("_CGContextDrawImage") !=
+			reinterpret_cast<std::uintptr_t>(&CGContextDrawImage)) return 2;
+	CGContextDrawImage(copied_context, darling_windows_CGRectMake(0, 0, 2, 2), snapshot);
+	if (std::memcmp(bitmap, copied_bitmap, sizeof(bitmap)) != 0) return 2;
+	CGImageRelease(snapshot);
+	CGContextRelease(copied_context);
+	std::uint8_t transformed_bitmap[64]{};
+	auto* transformed_context = CGBitmapContextCreate(transformed_bitmap, 4, 4, 8, 16,
+		rgb_space, darling_windows_kCGImageAlphaPremultipliedLast);
+	CGContextSetRGBFillColor(transformed_context, 0, 0, 1, 1);
+	CGContextSaveGState(transformed_context);
+	CGContextTranslateCTM(transformed_context, 3, 0);
+	CGContextSetRGBFillColor(transformed_context, 1, 0, 0, 1);
+	CGContextRestoreGState(transformed_context);
+	CGContextFillRect(transformed_context, darling_windows_CGRectMake(0, 0, 1, 1));
+	if (transformed_bitmap[(3 * 4) * 4] != 0 ||
+		transformed_bitmap[(3 * 4) * 4 + 1] != 0 ||
+		transformed_bitmap[(3 * 4) * 4 + 2] != 255 ||
+		transformed_bitmap[(3 * 4) * 4 + 3] != 255 ||
+		!darling_windows_CGAffineTransformIsIdentity(CGContextGetCTM(transformed_context)) ||
+		darling_windows_host_symbol("_CGContextSaveGState") !=
+			reinterpret_cast<std::uintptr_t>(&CGContextSaveGState) ||
+		darling_windows_host_symbol("_CGContextRestoreGState") !=
+			reinterpret_cast<std::uintptr_t>(&CGContextRestoreGState)) return 2;
+	std::memset(transformed_bitmap, 0, sizeof(transformed_bitmap));
+	CGContextSetRGBFillColor(transformed_context, 1, 0, 0, 1);
+	CGContextTranslateCTM(transformed_context, 1, 1);
+	CGContextScaleCTM(transformed_context, 2, 2);
+	const auto ctm = CGContextGetCTM(transformed_context);
+	CGContextSetRGBFillColor(transformed_context, 1, 0, 0, 1);
+	CGContextFillRect(transformed_context, darling_windows_CGRectMake(0, 0, 1, 1));
+	const auto red_pixel = [](const std::uint8_t* pixel) {
+		return pixel[0] == 255 && pixel[1] == 0 && pixel[2] == 0 && pixel[3] == 255;
+	};
+	if (ctm.a != 2 || ctm.d != 2 || ctm.tx != 2 || ctm.ty != 2 ||
+		!red_pixel(transformed_bitmap + (1 * 4 + 2) * 4) ||
+		!red_pixel(transformed_bitmap + (1 * 4 + 3) * 4) ||
+		!red_pixel(transformed_bitmap + (0 * 4 + 2) * 4) ||
+		!red_pixel(transformed_bitmap + (0 * 4 + 3) * 4) ||
+		darling_windows_host_symbol("_CGContextGetCTM") !=
+			reinterpret_cast<std::uintptr_t>(&CGContextGetCTM) ||
+		darling_windows_host_symbol("_CGContextConcatCTM") !=
+			reinterpret_cast<std::uintptr_t>(&CGContextConcatCTM)) return 2;
+	std::memset(transformed_bitmap, 0, sizeof(transformed_bitmap));
+	CGContextSetCTM(transformed_context, darling_windows_CGAffineTransformIdentity());
+	CGContextRotateCTM(transformed_context, 0.5 * 3.14159265358979323846);
+	CGContextTranslateCTM(transformed_context, 3, 0);
+	CGContextFillRect(transformed_context, darling_windows_CGRectMake(0, 0, 1, 2));
+	if (!red_pixel(transformed_bitmap + (3 * 4 + 1) * 4) ||
+		!red_pixel(transformed_bitmap + (3 * 4 + 2) * 4)) return 2;
+	std::memset(transformed_bitmap, 0, sizeof(transformed_bitmap));
+	CGContextSetCTM(transformed_context, darling_windows_CGAffineTransformIdentity());
+	CGContextTranslateCTM(transformed_context, 1, 1);
+	CGContextBeginPath(transformed_context);
+	CGContextAddRect(transformed_context, darling_windows_CGRectMake(0, 0, 1, 1));
+	CGContextFillPath(transformed_context);
+	if (!red_pixel(transformed_bitmap + (2 * 4 + 1) * 4)) return 2;
+	CGContextSetCTM(transformed_context, darling_windows_CGAffineTransformIdentity());
+	if (!darling_windows_CGAffineTransformIsIdentity(CGContextGetCTM(transformed_context))) return 2;
+	std::memset(transformed_bitmap, 0, sizeof(transformed_bitmap));
+	CGContextSaveGState(transformed_context);
+	CGContextClipToRect(transformed_context, darling_windows_CGRectMake(1, 1, 2, 2));
+	CGContextSetRGBFillColor(transformed_context, 1, 0, 0, 1);
+	CGContextFillRect(transformed_context, darling_windows_CGRectMake(0, 0, 4, 4));
+	for (std::size_t row = 0; row < 4; ++row) {
+		for (std::size_t x = 0; x < 4; ++x) {
+			const auto y = 3 - row;
+			const bool expected_inside = x >= 1 && x < 3 && y >= 1 && y < 3;
+			const auto* pixel = transformed_bitmap + (row * 4 + x) * 4;
+			if ((pixel[3] == 255) != expected_inside) return 2;
+		}
+	}
+	CGContextRestoreGState(transformed_context);
+	std::memset(transformed_bitmap, 0, sizeof(transformed_bitmap));
+	CGContextSetRGBFillColor(transformed_context, 0, 1, 0, 1);
+	CGContextFillRect(transformed_context, darling_windows_CGRectMake(0, 0, 4, 4));
+	for (std::size_t index = 0; index < sizeof(transformed_bitmap); index += 4)
+		if (transformed_bitmap[index + 3] != 255) return 2;
+	std::memset(transformed_bitmap, 0, sizeof(transformed_bitmap));
+	CGContextBeginPath(transformed_context);
+	CGContextAddRect(transformed_context, darling_windows_CGRectMake(1, 1, 1, 1));
+	CGContextClip(transformed_context);
+	CGContextSetRGBFillColor(transformed_context, 0, 0, 1, 1);
+	CGContextFillRect(transformed_context, darling_windows_CGRectMake(0, 0, 4, 4));
+	const auto blue_pixel = [](const std::uint8_t* pixel) {
+		return pixel[0] == 0 && pixel[1] == 0 && pixel[2] == 255 && pixel[3] == 255;
+	};
+	if (!blue_pixel(transformed_bitmap + (2 * 4 + 1) * 4) ||
+		transformed_bitmap[(3 * 4 + 0) * 4 + 3] != 0 ||
+		darling_windows_host_symbol("_CGContextClipToRect") !=
+			reinterpret_cast<std::uintptr_t>(&CGContextClipToRect) ||
+		darling_windows_host_symbol("_CGContextClip") !=
+			reinterpret_cast<std::uintptr_t>(&CGContextClip)) return 2;
+	CGContextResetClip(transformed_context);
+	std::uint8_t translucent_mask_pixel[] = {0, 0, 0, 128};
+	auto* mask_context = CGBitmapContextCreate(translucent_mask_pixel, 1, 1, 8, 4,
+		rgb_space, darling_windows_kCGImageAlphaPremultipliedLast);
+	auto* translucent_mask = CGBitmapContextCreateImage(mask_context);
+	std::memset(transformed_bitmap, 0, sizeof(transformed_bitmap));
+	CGContextClipToMask(transformed_context,
+		darling_windows_CGRectMake(0, 0, 1, 1), translucent_mask);
+	CGContextSetRGBFillColor(transformed_context, 0, 0, 1, 1);
+	CGContextFillRect(transformed_context, darling_windows_CGRectMake(0, 0, 4, 4));
+	const auto* half_covered = transformed_bitmap + (3 * 4) * 4;
+	if (half_covered[0] != 0 || half_covered[1] != 0 ||
+		half_covered[2] != 128 || half_covered[3] != 128 ||
+		transformed_bitmap[(3 * 4 + 1) * 4 + 3] != 0 ||
+		darling_windows_host_symbol("_CGContextClipToMask") !=
+			reinterpret_cast<std::uintptr_t>(&CGContextClipToMask)) return 2;
+	CGImageRelease(translucent_mask);
+	CGContextRelease(mask_context);
+	CGContextResetClip(transformed_context);
+	std::uint8_t alpha_bitmap[4]{};
+	auto* alpha_context = CGBitmapContextCreate(alpha_bitmap, 1, 1, 8, 4, rgb_space,
+		darling_windows_kCGImageAlphaPremultipliedLast);
+	CGContextSetRGBFillColor(alpha_context, 1, 0, 0, 1);
+	CGContextSetAlpha(alpha_context, 0.5);
+	CGContextSaveGState(alpha_context);
+	CGContextSetAlpha(alpha_context, 1);
+	CGContextRestoreGState(alpha_context);
+	CGContextFillRect(alpha_context, darling_windows_CGRectMake(0, 0, 1, 1));
+	if (alpha_bitmap[0] != 128 || alpha_bitmap[1] != 0 || alpha_bitmap[2] != 0 ||
+		alpha_bitmap[3] != 128 || darling_windows_host_symbol("_CGContextSetAlpha") !=
+		reinterpret_cast<std::uintptr_t>(&CGContextSetAlpha)) return 2;
+	CGContextRelease(alpha_context);
+	std::memset(transformed_bitmap, 0, sizeof(transformed_bitmap));
+	CGContextSetRGBFillColor(transformed_context, 1, 0, 0, 1);
+	CGContextFillEllipseInRect(transformed_context, darling_windows_CGRectMake(0, 0, 4, 4));
+	if (transformed_bitmap[(2 * 4 + 1) * 4 + 3] != 255 ||
+		transformed_bitmap[(3 * 4 + 0) * 4 + 3] != 0 ||
+		darling_windows_host_symbol("_CGContextFillEllipseInRect") !=
+			reinterpret_cast<std::uintptr_t>(&CGContextFillEllipseInRect)) return 2;
+	std::memset(transformed_bitmap, 0, sizeof(transformed_bitmap));
+	CGContextBeginPath(transformed_context);
+	CGContextMoveToPoint(transformed_context, 0, 0);
+	CGContextAddCurveToPoint(transformed_context, 0, 2, 2, 2, 2, 0);
+	CGContextAddLineToPoint(transformed_context, 0, 0);
+	CGContextClosePath(transformed_context);
+	CGContextFillPath(transformed_context);
+	if (transformed_bitmap[(3 * 4 + 1) * 4 + 3] != 255 ||
+		darling_windows_host_symbol("_CGContextAddCurveToPoint") !=
+			reinterpret_cast<std::uintptr_t>(&CGContextAddCurveToPoint)) return 2;
+	CGContextRelease(transformed_context);
+	std::uint8_t arc_bitmap[8 * 8 * 4]{};
+	auto* arc_context = CGBitmapContextCreate(arc_bitmap, 8, 8, 8, 8 * 4, rgb_space,
+		darling_windows_kCGImageAlphaPremultipliedLast);
+	CGContextSetRGBFillColor(arc_context, 1, 0, 0, 1);
+	CGContextBeginPath(arc_context);
+	CGContextMoveToPoint(arc_context, 4, 4);
+	CGContextAddArc(arc_context, 4, 4, 2, 0, 0.5 * 3.14159265358979323846, 0);
+	CGContextAddLineToPoint(arc_context, 4, 4);
+	CGContextClosePath(arc_context);
+	CGContextFillPath(arc_context);
+	if (arc_bitmap[(3 * 8 + 4) * 4 + 3] != 255 ||
+		arc_bitmap[(3 * 8 + 6) * 4 + 3] != 0 ||
+		darling_windows_host_symbol("_CGContextAddArc") !=
+			reinterpret_cast<std::uintptr_t>(&CGContextAddArc)) return 2;
+	std::memset(arc_bitmap, 0, sizeof(arc_bitmap));
+	CGContextBeginPath(arc_context);
+	CGContextMoveToPoint(arc_context, 1, 4);
+	CGContextAddArcToPoint(arc_context, 4, 4, 4, 7, 1);
+	CGContextAddLineToPoint(arc_context, 1, 7);
+	CGContextClosePath(arc_context);
+	CGContextFillPath(arc_context);
+	if (arc_bitmap[(3 * 8 + 2) * 4 + 3] != 255 ||
+		darling_windows_host_symbol("_CGContextAddArcToPoint") !=
+			reinterpret_cast<std::uintptr_t>(&CGContextAddArcToPoint)) return 2;
+	CGContextRelease(arc_context);
+	std::uint8_t blend_bitmap[4]{};
+	auto* blend_context = CGBitmapContextCreate(blend_bitmap, 1, 1, 8, 4, rgb_space,
+		darling_windows_kCGImageAlphaPremultipliedLast);
+	CGContextSetRGBFillColor(blend_context, 0, 0, 1, 1);
+	CGContextFillRect(blend_context, darling_windows_CGRectMake(0, 0, 1, 1));
+	CGContextSetBlendMode(blend_context, darling_windows_kCGBlendModeMultiply);
+	CGContextSetRGBFillColor(blend_context, 1, 0, 0, 1);
+	CGContextFillRect(blend_context, darling_windows_CGRectMake(0, 0, 1, 1));
+	if (blend_bitmap[0] != 0 || blend_bitmap[1] != 0 || blend_bitmap[2] != 0 ||
+		blend_bitmap[3] != 255) return 2;
+	std::memset(blend_bitmap, 0, sizeof(blend_bitmap));
+	CGContextSetBlendMode(blend_context, darling_windows_kCGBlendModeNormal);
+	CGContextSetRGBFillColor(blend_context, 0, 0, 1, 1);
+	CGContextFillRect(blend_context, darling_windows_CGRectMake(0, 0, 1, 1));
+	CGContextSetBlendMode(blend_context, darling_windows_kCGBlendModeSourceIn);
+	CGContextSetAlpha(blend_context, 0.5);
+	CGContextSetRGBFillColor(blend_context, 1, 0, 0, 1);
+	CGContextFillRect(blend_context, darling_windows_CGRectMake(0, 0, 1, 1));
+	if (blend_bitmap[0] != 128 || blend_bitmap[1] != 0 || blend_bitmap[2] != 0 ||
+		blend_bitmap[3] != 128 || darling_windows_host_symbol("_CGContextSetBlendMode") !=
+		reinterpret_cast<std::uintptr_t>(&CGContextSetBlendMode)) return 2;
+	CGContextSetAlpha(blend_context, 1);
+	CGContextSetBlendMode(blend_context, darling_windows_kCGBlendModeCopy);
+	CGContextSetRGBFillColor(blend_context, 0, 0, 0, 0);
+	CGContextFillRect(blend_context, darling_windows_CGRectMake(0, 0, 1, 1));
+	if (blend_bitmap[0] != 0 || blend_bitmap[1] != 0 ||
+		blend_bitmap[2] != 0 || blend_bitmap[3] != 0) return 2;
+	CGContextRelease(blend_context);
+	CGColorRelease(cg_color);
+	CGContextRelease(bitmap_context);
+	CGColorSpaceRelease(rgb_space);
+	std::cout << "COREGRAPHICS_BITMAP_CONTEXT=PASS\n";
 	const auto identity = darling_windows_CGAffineTransformIdentity();
 	if (!darling_windows_CGAffineTransformIsIdentity(identity) ||
 		darling_windows_CGAffineTransformIsIdentity(

@@ -8,6 +8,7 @@
 
 #include "darling_windows_memory.h"
 #include "darling_windows_errno.h"
+#include "darling_windows_stdio.h"
 
 #include <windows.h>
 
@@ -115,6 +116,15 @@ extern "C" void* darling_windows_mmap_anonymous(void* address, std::size_t lengt
 		darling::windows_host::DarwinErrno::Set(95);
 		return reinterpret_cast<void*>(-1);
 	}
+	const auto page_size = static_cast<std::size_t>(darling_windows_getpagesize());
+	if (page_size == 0 ||
+		((flags & map_fixed) != 0 && address != nullptr &&
+		 reinterpret_cast<std::uintptr_t>(address) % page_size != 0) ||
+		length > (std::numeric_limits<std::size_t>::max)() - (page_size - 1)) {
+		darling::windows_host::DarwinErrno::Set(22);
+		return reinterpret_cast<void*>(-1);
+	}
+	const auto allocation_length = ((length + page_size - 1) / page_size) * page_size;
 	const auto bits = static_cast<std::uint8_t>(protection);
 	const bool read = (bits & 1) != 0;
 	const bool write = (bits & 2) != 0;
@@ -131,13 +141,13 @@ extern "C" void* darling_windows_mmap_anonymous(void* address, std::size_t lengt
 		}
 	}
 	void* mapped = VirtualAlloc((flags & map_fixed) != 0 ? address : nullptr,
-		length, MEM_RESERVE | MEM_COMMIT, page_protection);
+		allocation_length, MEM_RESERVE | MEM_COMMIT, page_protection);
 	if (mapped == nullptr) {
 		darling::windows_host::DarwinErrno::SetFromWin32(GetLastError());
 		return reinterpret_cast<void*>(-1);
 	}
 	{
-		darling::windows_host::RegisterOwnedAnonymousMapping(mapped, length);
+		darling::windows_host::RegisterOwnedAnonymousMapping(mapped, allocation_length);
 	}
 	return mapped;
 }
@@ -149,6 +159,13 @@ extern "C" int darling_windows_mprotect(void* address, std::size_t length,
 		darling::windows_host::DarwinErrno::Set(22);
 		return -1;
 	}
+	const auto page_size = static_cast<std::size_t>(darling_windows_getpagesize());
+	if (page_size == 0 || reinterpret_cast<std::uintptr_t>(address) % page_size != 0 ||
+		length > (std::numeric_limits<std::size_t>::max)() - (page_size - 1)) {
+		darling::windows_host::DarwinErrno::Set(22);
+		return -1;
+	}
+	length = ((length + page_size - 1) / page_size) * page_size;
 	try {
 		darling::windows_host::DarwinMemory::Mprotect(address, length,
 		static_cast<darling::windows_host::DarwinMemoryProtection>(protection));
@@ -161,6 +178,11 @@ extern "C" int darling_windows_mprotect(void* address, std::size_t length,
 extern "C" int darling_windows_munmap_anonymous(void* address, std::size_t length)
 {
 	if (address == nullptr || address == reinterpret_cast<void*>(-1) || length == 0) {
+		darling::windows_host::DarwinErrno::Set(22);
+		return -1;
+	}
+	const auto page_size = static_cast<std::size_t>(darling_windows_getpagesize());
+	if (page_size == 0 || reinterpret_cast<std::uintptr_t>(address) % page_size != 0) {
 		darling::windows_host::DarwinErrno::Set(22);
 		return -1;
 	}

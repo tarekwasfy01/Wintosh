@@ -22,9 +22,9 @@ struct DarwinLaunchOptions final {
 	std::vector<std::string> arguments;
 	std::vector<std::string> environment;
 	std::vector<DyldResolvedBinding> host_bindings;
-	// Darwin dyld carries argv/envp and a separate Apple-parameter vector.
-	// The current compatible entry ABI does not consume the latter yet, but
-	// keeping it explicit makes the future startup trampoline additive.
+	// Darwin launch state carries argv/envp and a separate Apple-parameter
+	// vector. DarwinStart lays out all three on the guest stack; compatible-main
+	// entry calls consume argc/argv/envp directly.
 	std::vector<std::string> apple_parameters;
 	DarwinEntryAbi entry_abi = DarwinEntryAbi::CompatibleMain;
 };

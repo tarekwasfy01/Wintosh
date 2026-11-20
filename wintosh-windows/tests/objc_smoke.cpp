@@ -737,6 +737,69 @@ int main()
 		darling_windows_host_symbol("_objc_getClassList") == 0 ||
 		darling_windows_host_symbol("_libobjc_missing") != 0)
 		return 23;
+	const struct { const char* name; std::uintptr_t expected; } arc_exports[] = {
+		{"_objc_initWeak", reinterpret_cast<std::uintptr_t>(&objc_initWeak)},
+		{"_objc_storeWeak", reinterpret_cast<std::uintptr_t>(&objc_storeWeak)},
+		{"_objc_loadWeak", reinterpret_cast<std::uintptr_t>(&objc_loadWeak)},
+		{"_objc_loadWeakRetained", reinterpret_cast<std::uintptr_t>(&objc_loadWeakRetained)},
+		{"_objc_destroyWeak", reinterpret_cast<std::uintptr_t>(&objc_destroyWeak)},
+		{"_objc_copyWeak", reinterpret_cast<std::uintptr_t>(&objc_copyWeak)},
+		{"_objc_moveWeak", reinterpret_cast<std::uintptr_t>(&objc_moveWeak)},
+		{"_objc_retainAutoreleasedReturnValue", reinterpret_cast<std::uintptr_t>(&objc_retainAutoreleasedReturnValue)},
+		{"_objc_autoreleaseReturnValue", reinterpret_cast<std::uintptr_t>(&objc_autoreleaseReturnValue)},
+		{"_objc_retainAutorelease", reinterpret_cast<std::uintptr_t>(&objc_retainAutorelease)},
+		{"_objc_retainAutoreleaseReturnValue", reinterpret_cast<std::uintptr_t>(&objc_retainAutoreleaseReturnValue)},
+		{"_objc_unsafeClaimAutoreleasedReturnValue", reinterpret_cast<std::uintptr_t>(&objc_unsafeClaimAutoreleasedReturnValue)},
+		{"_objc_opt_self", reinterpret_cast<std::uintptr_t>(&objc_opt_self)},
+		{"_objc_opt_class", reinterpret_cast<std::uintptr_t>(&objc_opt_class)},
+		{"_objc_opt_respondsToSelector", reinterpret_cast<std::uintptr_t>(&objc_opt_respondsToSelector)},
+		{"_objc_opt_isKindOfClass", reinterpret_cast<std::uintptr_t>(&objc_opt_isKindOfClass)},
+		{"_objc_autoreleasePoolPush", reinterpret_cast<std::uintptr_t>(&objc_autoreleasePoolPush)},
+		{"_objc_autoreleasePoolPop", reinterpret_cast<std::uintptr_t>(&objc_autoreleasePoolPop)},
+		{"_objc_getAssociatedObject", reinterpret_cast<std::uintptr_t>(&objc_getAssociatedObject)},
+		{"_objc_setAssociatedObject", reinterpret_cast<std::uintptr_t>(&objc_setAssociatedObject)},
+		{"_objc_removeAssociatedObjects", reinterpret_cast<std::uintptr_t>(&objc_removeAssociatedObjects)},
+	};
+	for (const auto& entry : arc_exports) {
+		if (darling_windows_host_symbol(entry.name) != entry.expected)
+			return 24;
+	}
+	if (objc_opt_self(object) != object || objc_opt_self(nullptr) != nullptr ||
+		objc_opt_class(object) != child ||
+		!objc_opt_respondsToSelector(object, self_selector) ||
+		objc_opt_respondsToSelector(object, sel_registerName("notImplemented")) ||
+		!objc_opt_isKindOfClass(object, child) ||
+		!objc_opt_isKindOfClass(object, root) ||
+		objc_opt_isKindOfClass(object, objc_getClass("NSObject")))
+		return 32;
+	id returned_object = class_createInstance(child, 0);
+	id returned_weak = nullptr;
+	if (!returned_object || objc_initWeak(&returned_weak, returned_object) != returned_object)
+		return 25;
+	void* return_pool = objc_autoreleasePoolPush();
+	if (!return_pool || objc_autoreleaseReturnValue(returned_object) != returned_object ||
+		objc_retainAutoreleasedReturnValue(returned_object) != returned_object)
+		return 26;
+	objc_autoreleasePoolPop(return_pool);
+	if (objc_loadWeak(&returned_weak) != returned_object)
+		return 27;
+	objc_release(returned_object);
+	if (objc_loadWeak(&returned_weak) != nullptr)
+		return 28;
+	objc_destroyWeak(&returned_weak);
+	id autoreleased_object = class_createInstance(child, 0);
+	id autoreleased_weak = nullptr;
+	if (!autoreleased_object || objc_initWeak(&autoreleased_weak, autoreleased_object) != autoreleased_object)
+		return 29;
+	void* retain_autorelease_pool = objc_autoreleasePoolPush();
+	if (!retain_autorelease_pool ||
+		objc_retainAutoreleaseReturnValue(autoreleased_object) != autoreleased_object)
+		return 30;
+	objc_release(autoreleased_object);
+	objc_autoreleasePoolPop(retain_autorelease_pool);
+	if (objc_loadWeak(&autoreleased_weak) != nullptr)
+		return 31;
+	objc_destroyWeak(&autoreleased_weak);
 	struct RawClassData final {
 		std::uint32_t flags{};
 		std::uint32_t instance_start{};

@@ -1,6 +1,683 @@
 # Wintosh current status
 
-Status date: 2026-10-12
+## Reading this status
+
+This file records implemented behavior and known limits; it is not a claim of
+complete macOS compatibility. “Implemented” means host-side code exists;
+validation still requires the guest fixture or application evidence stated in
+each section. Begin with the [repository README](../README.md) for build
+entry points and the [documentation index](DOCUMENTATION-INDEX.md) for the full
+map.\n\nStatus date: 2026-11-20
+
+### Foundation dates and AppKit event queue (2026-11-17)
+
+`NSDate` now provides current, Unix-epoch, reference-date, distant-past/future,
+and date-relative construction, comparison, and interval queries. Unix seconds
+convert to the Cocoa reference epoch using 978307200 seconds. AppKit now
+supports `NSApplication.currentEvent`, event polling with
+`nextEventMatchingMask:untilDate:inMode:dequeue:`, `postEvent:atStart:`, and
+`discardEventsMatchingMask:beforeEvent:`. Mouse, keyboard, and wheel events can
+be queued or sent directly; `NSApplication.run` drains posted events and a
+thread message wakes it when another thread posts. Deadline waits continue
+across Windows' bounded wait intervals. Run-loop mode filtering is not yet
+modeled. Clang and MSVC Release builds link; no guest fixture has exercised
+event ordering, queue ownership, or deadline behavior.
+
+### Darwin sysctl guest identity and CPU topology (2026-11-17)
+
+Name-based `hw.optional.*` queries now expose host-supported x86_64 SSE2, SSE3,
+AVX2, AVX-512F and ARM64 NEON, ARMv8.1 atomics, CRC32, and ARM crypto feature
+flags. Windows provides an aggregate ARMv8 crypto capability, so the AES/SHA1/
+SHA256 names are aliases for that aggregate rather than independent detection.
+Features belonging to another guest architecture are not registered. This
+improves optimized-code-path selection, but runtime behavior still needs a
+Darwin guest fixture and the full XNU feature catalog remains incomplete.
+
+Fixed `hw.machine`/`hw.cputype` so Windows ARM64 reports ARM64 rather than
+being collapsed into x86_64 by `_WIN64`. Added `hw.cpusubtype`, logical and
+physical active/maximum processor counts, and `CTL_KERN` selectors for
+`kern.ostype`, `kern.osrelease`, `kern.version`, and `kern.osversion`. The
+`sysctlbyname` name table also now exposes `hw.byteorder`, `hw.pagesize`,
+`hw.cachelinesize`, `hw.machine_arch`, and `kern.version`, keeping these queries aligned with the
+existing numeric `CTL_HW` MIB path. The MIB selectors follow Apple's public
+XNU definitions (`CTL_HW=6`, `HW_NCPU=3`, `HW_CACHELINE=16`,
+`HW_AVAILCPU=25`, `HW_L1ICACHESIZE=17`, `HW_L1DCACHESIZE=18`,
+`HW_L2CACHESIZE=20`, `HW_L3CACHESIZE=22`). `hw.cachelinesize` reads the largest reported level-one
+data/unified cache line across Windows processor groups, with a 64-byte
+fallback when Windows reports no cache topology; `WINTOSH_DARWIN_CACHELINESIZE`
+can select a power-of-two value from 16 through 4096. The legacy numeric
+`HW_CACHELINE` MIB returns an `int`; the ARM64 name-based key returns a
+64-bit value to match XNU's quad-typed ARM64 selector. XNU's registration and
+selector behavior is visible in its
+[kernel MIB implementation](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/kern_mib.c). The
+name-based and numeric MIB queries now also expose L1 instruction/data and L2/L3
+cache sizes from Windows cache topology. For each level, Wintosh reports the
+smallest matching cache descriptor; this is a conservative approximation of
+Apple's least-performant-core generic cache selector, not a full Apple
+performance-level model. Apple documents the cache keys in its
+[system capability guide](https://developer.apple.com/documentation/kernel/1387446-sysctlbyname/determining_system_capabilities). The
+Darwin page-size profile now defaults to 4 KiB on x86_64 and 16 KiB on ARM64;
+`WINTOSH_DARWIN_PAGESIZE` may select either supported value. `getpagesize`,
+`getpagesizes`, `_SC_PAGESIZE`, `hw.pagesize`, and Mach `host_page_size` read
+the same profile. Anonymous and file-backed mappings round lengths and check
+guest-page alignment; Windows allocation-granularity limits can still prevent
+some fixed file mappings. Processor `sysconf` values now use the same
+processor-group-aware counts as the Darwin sysctl surface. Apple documents
+that macOS page sizes differ by architecture in its
+[Apple-silicon porting guidance](https://developer.apple.com/documentation/Apple-Silicon/addressing-architectural-differences-in-your-macos-code).
+Apple also recommends querying `hw.cachelinesize` for architecture-sensitive
+alignment ([system capability guide](https://developer.apple.com/documentation/kernel/1387446-sysctlbyname/determining_system_capabilities)).
+The default guest identity is macOS 14.0.0 / Darwin 23.0.0 / build 23A344, with
+launch-environment overrides (including runner `--env`) `WINTOSH_MACOS_VERSION`,
+`WINTOSH_DARWIN_OSRELEASE`, `WINTOSH_DARWIN_OSVERSION`, and
+`WINTOSH_DARWIN_MODEL`, plus `WINTOSH_DARWIN_PAGESIZE` and
+`WINTOSH_DARWIN_CACHELINESIZE` for memory topology.
+This makes the current guest profile internally
+coherent but does not implement all Darwin sysctl nodes. Apple documents the
+CPU-count aliases and physical/logical semantics in its
+[system capability guide](https://developer.apple.com/documentation/kernel/1387446-sysctlbyname/determining_system_capabilities);
+the selector meanings follow [XNU's public sysctl headers](https://github.com/apple-oss-distributions/xnu/blob/main/libkern/libkern/sysctl.h).
+Clang and MSVC x64 Release `wintosh` builds compiled and linked; the ARM64
+Ninja build compiled the changed sources but cannot link because this
+environment lacks `msvcrt.lib`, `oldnames.lib`, and `msvcprt.lib`. No guest
+Mach-O fixture has verified page-size queries or mapping alignment.
+
+### CoreFoundation executable architecture queries (2026-11-17)
+
+Added the Apple C entry points `CFBundleCopyExecutableArchitectures` and
+`CFBundleCopyExecutableArchitecturesForURL`. They inspect thin, fat32, and
+fat64 Mach-O headers and return retained CFArray objects containing CFNumbers
+with raw CPU type IDs. The URL form accepts a bundle directory or an
+unbundled Mach-O file. Invalid/missing executables and unsupported URLs return
+`NULL`. These APIs report image slices only; they do not imply that the loader
+can execute every reported architecture. Apple documents the same C APIs and
+the CFNumber-array return contract ([bundle API](https://developer.apple.com/documentation/corefoundation/cfbundlecopyexecutablearchitectures%28_%3A%29),
+[URL API](https://developer.apple.com/documentation/corefoundation/cfbundlecopyexecutablearchitecturesforurl%28_%3A%29)).
+Both Clang and MSVC Release `wintosh` builds compiled and linked successfully;
+no runtime fixture has exercised these APIs.
+
+### NSBundle file URL APIs (2026-11-17)
+
+The bridge also exposes `principalClass` and `classNamed:`. Principal-class
+lookup and named-class lookup now call `CFBundleLoadExecutable` first, then
+read `NSPrincipalClass` or query the Objective-C runtime registry. This uses
+the existing `dlopen`-backed dynamic Mach-O adapter, so the lookup supports
+only the architectures and image features already handled there; it is not a
+general plug-in loader. A first successful load posts
+`NSBundleDidLoadNotification`; `userInfo[NSLoadedClasses]` contains the class
+names newly registered across that load. This is a runtime-wide before/after
+class-list difference, so it does not establish per-image ownership when
+multiple images load concurrently. `preflightAndReturnError:` exposes the
+existing Mach-O plus host-architecture preflight; `loadAndReturnError:` runs
+the dynamic loader. They now return `NSExecutableNotLoadableError` for an
+unreadable executable, `NSExecutableArchitectureMismatchError` when no host
+slice exists, and `NSExecutableLoadError` for general dependency/load failures.
+More specific linker errors remain open. `executableArchitectures` reads CPU types from thin, fat32,
+or fat64 Mach-O headers and returns them as `NSNumber` values, including raw
+IDs for unfamiliar architectures.
+The AppKit `NSBundle` bridge now exposes `bundleURL`, `executableURL`, and
+`resourceURL`, plus `URLForResource:withExtension:` and its subdirectory
+variant. `bundleWithURL:` and `initWithURL:` accept file URLs and pass their
+path through the existing CFBundle registry. Each returned URL is constructed
+as a host `NSURL` file URL from the same CFBundle path lookup used by the
+existing path APIs. Non-file URL and security-scope semantics remain
+unsupported. The Clang Release `wintosh` target compiles and links with these
+methods, and the MSVC Release target also compiles and links. Both builds
+exposed and fixed two compile errors: the export-resolver bridge needed its
+`abi::` namespace qualifier, and the menu finalizer referenced a key-equivalent
+field that exists only on menu items. The resolver call bridge is now
+`noexcept`; guest failure or a null implementation returns zero, which both
+loader call sites turn into a controlled bootstrap error. No Mach-O guest
+fixture exercised the new bundle URL selectors or resolver-failure path.
+
+### Mach-O dependency-scoped symbol binding (2026-11-17)
+
+Import records retain their client image and `n_desc` library ordinal.
+Two-level binding resolves against the selected dependency, SELF, or main
+executable; undefined-symbol records, bind opcodes, and chained imports are
+merged by symbol and lookup ordinal. This also feeds lazy-bind-only symbols and
+weak-bind streams into provider resolution. Bind actions, threaded bindings, indirect pointer
+slots, lazy binding, and relocation symbol vectors now match within the client
+image's binding set. `MH_FORCE_FLAT` and images without `MH_TWOLEVEL` keep the
+flat lookup fallback. Dependency dylibs are mapped even when they define no
+imported symbols, so their initializers and Objective-C registration still run.
+The process bootstrap now applies each graph binding only to its recorded
+client image, preserves the dependency ordinal through relocation lookup, and
+uses the resolved re-export provider symbol. Imports that resolve back to the
+main executable reuse its existing mapping instead of mapping a duplicate.
+Objective-C class, category, and selector sections are now registered only
+after rebasing and import fixups, but before image initializers execute.
+The chained-import parser now handles all three Apple import formats, including
+16-bit signed ordinals and 64-bit addends in `DYLD_CHAINED_IMPORT_ADDEND64`.
+The symbol table parser retains `N_INDR` target names, and export lookup follows
+alias chains and re-exported provider names before creating client bindings.
+Flat lookup now searches the main image first, followed by dependencies in
+recursive load-command order; within that search, the first strong definition
+wins over weak definitions, with the first weak definition retained as fallback.
+When a two-level dependency supplies a weak definition, binding now searches the
+loaded graph for a strong override or the first weak definition in load order.
+Some weak-coalescing and re-export edge cases remain incomplete. The whitespace
+check passes; no build or Mach-O runtime fixture was run. Mach-O `N_ABS`
+symbols and absolute exports-trie entries now bypass image-slide adjustment.
+Re-export traversal now uses the owner's resolved dependency ordinal and can
+forward an absent built-in dylib export to the host symbol resolver, preserving
+the graph's inherited `LC_RPATH` selection.
+Export-trie addresses are now normalized from offsets relative to the image's
+`mach_header` into preferred VM addresses. `STUB_AND_RESOLVER` resolver
+addresses are retained in the same coordinate system and checked against an
+executable segment before invocation. The process bootstrap and dynamic-image
+loader call referenced no-argument resolvers after provider imports are bound,
+update the corresponding client bindings, replay retained
+relocations and bind/lazy/chained/indirect fixups, and run initializers only
+after graph binding. Original relocation-site contents are retained per mapping
+so repeat relocation passes preserve link-time addends. All graph images now
+complete their initial rebase and bind passes before any resolver runs.
+Referenced export resolvers are topologically ordered from their images'
+resolver-bearing imports; detected cycles fail before any resolver executes.
+The weak-binding precedence follows Apple's
+legacy rule in
+[ImageLoader.cpp](https://github.com/opensource-apple/dyld/blob/master/src/ImageLoader.cpp).
+Undefined symbols marked `N_REF_TO_WEAK` now request flat lookup; this remains
+separate from `N_WEAK_REF`, which permits an unresolved import to become NULL,
+as specified in Apple's [nlist.h](https://github.com/apple-oss-distributions/xnu/blob/main/EXTERNAL_HEADERS/mach-o/nlist.h).
+
+### Mach-O lazy-bind stream termination (2026-11-17)
+
+The legacy `LC_DYLD_INFO` lazy-bind parser now treats each `BIND_OPCODE_DONE`
+as the end of one symbol's opcode sequence and continues parsing subsequent
+symbols. Each lazy action now retains the start offset of its symbol sequence,
+which is the offset supplied by the lazy stub; non-lazy and weak-bind actions
+retain their opcode offsets. Non-lazy and weak-bind streams still stop at their
+terminal marker. Apple's legacy dyld `eachLazyBind` continues at each lazy
+marker, while `doBindFastLazySymbol` starts decoding at the supplied sequence
+offset. No guest Mach-O fixture or build was run in this turn.
+
+### NSApplication sendAction routing (2026-11-17)
+
+`sendAction:to:from:` now invokes an explicitly targeted action when the target
+implements the selector. With a nil target it searches the key window's
+responder chain and delegate, the distinct main window's chain and delegate,
+then the application and its delegate. `targetForAction:` and
+`targetForAction:to:from:` expose explicit-target validation and key-window
+responder-chain lookup. `NSResponder.tryToPerform:with:` searches from the
+receiver up its responder chain and then checks a window or application
+delegate. Native menu and control actions share the same
+`sendAction:` dispatch path. The selector is invoked through the existing guest
+Objective-C bridge. Clang and MSVC x64 host builds compile/link; no Mach-O
+action-dispatch fixture has exercised this path.
+
+### Native ARM64 Mach-O entry path (2026-11-17)
+
+The execution architecture guard now accepts only ARM64 images on Windows
+ARM64 and retains fail-closed cross-architecture behavior. The Darwin-start
+stack trampoline is wired for Clang ARM64; the ordinary integer/pointer
+`main(argc, argv, envp)` entry uses x0-x2. All 32 host C++ translation units
+and the ARM64 trampoline compile and archive as 33 ARM64 COFF members. A fresh
+ARM64 CMake configure cannot identify/link the compiler because the environment
+is missing `msvcrtd.lib`; no ARM64 runner link or guest execution is verified.
+Apple's aggregate,
+stack-passed, variadic, and red-zone ABI differences mean general Objective-C
+and framework calls still need an ARM64 bridge and guest fixture.
+
+### NSApplication activation lifecycle (2026-11-17)
+
+`WM_ACTIVATEAPP` now drives `NSApplicationWillBecomeActiveNotification`,
+`NSApplicationDidBecomeActiveNotification`,
+`NSApplicationWillResignActiveNotification`, and
+`NSApplicationDidResignActiveNotification`. Matching optional delegate
+callbacks receive the notification on the app thread; state transitions are
+coalesced across multiple top-level windows, and `isActive` reads the adapter's
+transition state. Apple specifies `NSApp` as the notification object and
+main-actor delivery. This does not reproduce every AppKit activation, hide,
+unhide, screen-change, or workspace event. No Mach-O guest callback fixture
+was run.
+
+`hide:` and both unhide routes now deliver the corresponding will/did
+notifications and optional delegate callbacks around window visibility
+changes. Reentrant hide/unhide requests during those callbacks are coalesced.
+`unhide:` requests activation only after restoring windows; the native
+activation transition remains a separate event. No guest lifecycle fixture
+was run.
+
+NSWindow key/main callbacks now follow tracked state transitions. The state
+is updated before callbacks, and losing-window `WM_ACTIVATE` is coalesced with
+the next window's activation so one transition cannot emit duplicate resign
+notifications. Ordering a window out or destroying it clears its tracked state
+and emits resign callbacks once when it was key/main. This still lacks a
+guest-window lifecycle fixture.
+
+### Darwin dyld image enumeration (2026-11-17)
+
+During a guest launch, `_dyld_image_count`, `_dyld_get_image_name`,
+`_dyld_get_image_header`, and `_dyld_get_image_vmaddr_slide` now enumerate the
+mapped guest Mach-O executable, its mapped dependency providers, and Mach-O
+images loaded through `dlopen`. They no longer expose Windows PE module
+headers as guest Mach-O headers. Header queries return the mapped `__TEXT`
+segment where present. `dlopen` dependency providers are included and the
+dynamic portion of the list is sorted by path for repeatable queries. The four guest-facing
+functions use the x86_64 Darwin SysV calling convention in Clang builds. Native
+host calls outside a guest launch retain the old host-module view for the
+existing host API surface. `_dyld_register_func_for_add_image` now stores
+guest callbacks and immediately reports the current image snapshot;
+`_dyld_register_func_for_remove_image` stores removal callbacks, and image-list
+replacement plus `dlopen`/`dlclose` notify registered callbacks for added and
+removed Mach-O headers. Remove callbacks run before the dynamic image is
+released. Callback pointers are discarded when the guest image-list scope ends
+so a later guest launch cannot call stale guest code. Callback registration,
+image notifications, and dynamic unload transitions are serialized with a
+reentrant process lock. Exact callback ordering around all dyld initializers
+and guest code that races its own image use with `dlclose` remain open. MSVC
+and Clang x64 runner targets compile and link; the changed stdio unit also
+compiles for ARM64. No guest callback fixture or tests were run.
+
+### NSApplication stop and termination replies (2026-11-17)
+
+The AppKit event loop now exposes `stop:` and exits after the current Win32
+event. Worker-thread stop requests are relayed to the application thread,
+which calls `PostQuitMessage`. `terminate:` consults the delegate's
+`applicationShouldTerminate:` and supports cancel, deferred, and immediate
+replies; `replyToApplicationShouldTerminate:` completes deferred replies.
+Closing the last window now continues the event loop by default and calls
+`applicationShouldTerminateAfterLastWindowClosed:` when the delegate implements
+it; a true reply enters the termination flow. BOOL object callbacks accept both
+`B` and `c` return encodings. Nested modal-loop stopping and full NSEvent
+semantics remain open. Accepted termination now dispatches
+`NSApplicationWillTerminateNotification` and invokes
+`applicationWillTerminate:` once on the app thread before quitting, including
+for deferred replies arriving from a worker; plain `stop:` does not.
+MSVC and Clang x64 runner targets compile and link; no guest delegate fixture
+was run.
+
+The event path translates Win32 left/right mouse down, double click, up, move,
+and captured drag messages into AppKit `NSEvent` types. It also translates
+key down/up and modifier changes, computes characters through the active
+Windows keyboard layout, maps PC scan positions to macOS hardware key codes
+(with virtual-key fallback for unmapped keys),
+and sends key events through the first-responder chain. `NSApplication.sendEvent:`
+routes input to guest overrides; unhandled keys continue to native controls.
+Key-down dispatch first asks the key window's `performKeyEquivalent:`; the
+default window and view implementations search the content view and nested
+subviews. If none handles the event, app-menu key equivalents run before
+`keyDown:`. The Win32 procedure no longer fires menu shortcuts before the
+guest `sendEvent:` override. `NSButton` exposes `keyEquivalent`,
+`keyEquivalentModifierMask`, `performKeyEquivalent:`, and `performClick:`.
+Matching enabled, visible buttons invoke native click-state and target/action dispatch; Command is
+the default modifier, with physical Windows Ctrl accepted as Command. Classic
+keyed NIB button decoding reads `NSKeyEquiv` and `NSKeyEquivModMask`. Storyboard
+decoding and complete Cocoa text key bindings remain unsupported.
+Events expose type, location, modifiers, timestamp, window, button/click data,
+characters, key code, and repeat state. `acceptsMouseMovedEvents` opts into
+hover delivery. IME composition, dead-key fidelity, tracking areas, enter/exit,
+pressure/tablet events, and full Cocoa hit-testing remain unsupported. The
+Objective-C dispatcher now preserves signed and unsigned 16-bit scalar return
+values so `NSEvent.keyCode` survives guest-side `objc_msgSend`. Clang and MSVC
+Release `wintosh_windows_host` targets compiled successfully; no Mach-O guest
+input/key-equivalent fixture was run.
+
+Windows vertical and horizontal wheel messages now also create scroll-wheel
+`NSEvent` values for a hit-tested view implementing `scrollWheel:` (or an app
+that overrides `sendEvent:`). `deltaX/Y` and `scrollingDeltaX/Y` use the existing
+40-point-per-notch adapter step; precision is reported false. If no guest
+handler claims the event, the existing native `NSScrollView` scroll path runs.
+Trackpad momentum/phase, precise deltas, and Cocoa scroll physics are not
+implemented. The Release host library compiled; no guest input fixture was run.
+
+Each successfully retrieved Win32 event now runs inside its own Objective-C
+autorelease-pool scope, including Wintosh's internal stop/terminate messages.
+The pool drains after that event's callbacks and dispatch return, keeping
+temporary Cocoa objects bounded by event lifetime instead of the whole app
+session. This approximates AppKit's event-scoped cleanup; it does not add
+nested modal-loop or full NSEvent behavior. No guest fixture was run.
+
+### NSFileHandle bridge and runner link check (2026-11-17)
+
+The AppKit host now provides path-based `NSFileHandle` creation, standard
+handles, file-handle wrapping for Wintosh Darwin descriptors, bounded and
+to-end reads, available data, writes, seeking, truncation, synchronization,
+and close semantics. Darwin descriptors are resolved through Wintosh's
+descriptor table; wrapped native handles are duplicated so the guest descriptor
+remains valid unless `closeOnDealloc` requests Darwin-side close. The MSVC and
+Clang x64 `wintosh.exe` runner targets compile and link. The ARM64 host library
+is present, but the configured runner link cannot find the MSVC ARM64 runtime
+libraries (`msvcrt.lib`, `oldnames.lib`, `msvcprt.lib`), so ARM64 runner linking
+is unverified. No guest fixture or tests were run.
+
+### Objective-C NSUserDefaults bridge (2026-11-16)
+
+The AppKit/Foundation host now exposes `standardUserDefaults`, suite
+initialization, object/string/integer/boolean/double reads, scalar and
+property-list object writes, removal, synchronization, and `registerDefaults:`
+values over
+the existing prefix-relative preferences store. Reads prioritize the command
+argument domain, managed preferences, then the application/suite store;
+`open_arguments` now contains only parsed argument-domain values so stale
+persistent values cannot mask later writes. The store persists strings,
+signed 64-bit integers, finite doubles, booleans, and recursively converts
+arrays, string-keyed dictionaries, data, and dates through the CoreFoundation
+XML-plist serializer/parser. Property-list objects are supported by object
+reads/writes and registration defaults. Null and unsupported collection values
+are rejected. The Objective-C bridge also implements `volatileDomainForName:`,
+`setVolatileDomain:forName:`, `removeVolatileDomainForName:`, and
+`volatileDomainNames`; each instance keeps independent volatile domains as
+serialized snapshots. `objectForKey:` and the numeric convenience getters now
+consult volatile snapshots after argument and managed values and before the
+application store; among volatile snapshots, the most recently set domain
+wins. Full Apple search-list controls and exact global/language/suite domain
+ordering remain open. Change notifications remain open. Builds validate
+compile/link only; no guest fixture was run.
+
+### NSApplication lifecycle selectors (2026-11-16)
+
+`NSApplication` now exposes `finishLaunching`, `activateIgnoringOtherApps:`,
+`isActive`, `windows`, `keyWindow`, and `mainWindow`. Launch notifications and
+delegate callbacks run once, whether the guest calls `finishLaunching` itself
+or enters through `run`; activation brings the first visible Wintosh window
+forward. `NSWindow` supports key/main queries, make-key/main calls, and
+can-become-key/main queries. `delegate`/`setDelegate:` retain the window
+delegate; `windowShouldClose:` can veto Cocoa and native close requests, and
+resize/key/main transitions post the corresponding `NSWindow...Notification`
+and send delegate callbacks with the notification object. Win32 activation,
+Cocoa fronting, order-out, and close update the tracked references. `hide:`, `unhide:`,
+`unhideWithoutActivation`, and `isHidden` hide currently visible windows and
+restore still-live windows hidden by that operation. Window min/max sizes are
+stored and enforced through `WM_GETMINMAXINFO`; centering and minimize/restore/
+zoom selectors map to Win32 window operations. Closing a window keeps the loop
+alive while another AppKit window remains; after the last closes, the delegate's
+`applicationShouldTerminateAfterLastWindowClosed:` can request termination,
+which then passes through `applicationShouldTerminate:`. Without that optional
+delegate method, the event loop continues with no windows, matching Cocoa's
+default. Event tracking modes and full activation policy remain open.
+Release builds check compile/link only; no guest application was run.
+
+### NSButton checkbox and radio state (2026-11-16)
+
+`NSButton` now exposes `buttonType`, `setButtonType:`, `state`, `setState:`,
+`allowsMixedState`, and `setAllowsMixedState:`. Checkbox-like buttons cycle
+off/on by default and off/on/mixed when mixed state is enabled; disabling it
+while mixed resets the value to off. Switch/three-state and push-like toggle
+buttons use native Win32 styles and synchronize state before target/action
+dispatch. Radio buttons update sibling radio buttons in the same superview as
+an exclusive group. Radio grouping flags across nested containers and
+accessibility presentation remain open.
+
+### NSProgressIndicator (2026-11-16)
+
+`NSProgressIndicator` maps to the Win32 common-controls progress bar. It
+supports minimum/maximum/current values, increments, determinate and
+indeterminate state, bar/spinning style, and start/stop animation. Determinate
+values map proportionally into the native 0–10000 range; started indeterminate
+and spinning modes use the Windows marquee. Native appearance, timing, and accessibility behavior differ
+from AppKit.
+
+### NSSlider (2026-11-16)
+
+`NSSlider` is registered as an `NSControl` subclass and maps to the Win32
+common-controls trackbar. It exposes numeric/string values, minimum and maximum,
+orientation, continuous mode, first-responder eligibility, and inherited
+target/action handling. Native movement updates the Cocoa value and dispatches
+actions continuously or on completion according to `isContinuous`. Tick mark
+configuration, knob appearance, and accessibility semantics remain open.
+
+### NSStepper (2026-11-16)
+
+`NSStepper` uses the Win32 common-controls up-down control. It exposes
+`minValue`, `maxValue`, `increment`, and `doubleValue`; native arrow clicks
+clamp or wrap at the Cocoa range according to `valueWraps` (default true),
+update the value, and dispatch the inherited target/action only on a change.
+With `autorepeat` false, mouse input applies one change on release; with it true,
+Windows supplies the press-and-repeat timing, which differs from Apple's exact
+0.5-second delay and 10-per-second repeat rate. Keyboard behavior remains open.
+
+### NSPopUpButton (2026-11-16)
+
+`NSPopUpButton` subclasses the host `NSButton` and uses a native noneditable
+Win32 ComboBox. It supports inserting and removing titled entries, count and
+title queries, selection by index or title, selected title/string value, and
+`pullsDown` state. User selection updates the index and dispatches inherited
+target/action. Pull-down command presentation, NSMenuItem-backed entries,
+images, and popup tracking callbacks are not implemented. `selectedItem`,
+`itemAtIndex:`, `itemArray`, `itemTitles`, `itemWithTitle:`, `indexOfItem:`,
+and `lastItem` expose stable NSMenuItem objects. Changing an item's title updates
+the native list and title queries; other item state does not yet control native
+entry behavior.
+
+### NSView object lifetime (2026-11-16)
+
+`NSView` state now registers an Objective-C runtime finalizer. Releasing the
+last reference detaches the native control tree, removes view/control and
+popup-item mappings, clears first-responder references into the released tree,
+and releases retained titles, targets, popup items, and child views.
+
+### Multiline NSTextView (2026-11-16)
+
+`NSTextView` is registered as an `NSView` subclass and uses a native multiline
+Win32 edit control with vertical scrolling. `string`/`setString:`, native edit
+synchronization, `selectedRange`/`setSelectedRange:`, `isEditable`/`setEditable:`,
+first-responder support, and focus traversal are implemented. Selection offsets
+use UTF-16 units and synchronize with native edit selections. Text containers
+and storage, attributed text, advanced selection/range behavior, layout, undo,
+and delegate notifications remain open.
+
+### Scroll and clip views (2026-11-16)
+
+`NSScrollView` and `NSClipView` are registered as `NSView` subclasses.
+Scroll views own a clipping content view and document view; clip bounds constrain
+scroll positions and report `documentVisibleRect`. Programmatic scroll points
+and vertical/horizontal mouse-wheel input move the clip bounds when that axis
+is enabled. Native edit-control
+windows receive a window region limited to the nearest clip view. Enabled axes
+create native Windows scrollbar controls with line/page/thumb/end actions,
+document-aware range and position, and clip-area inset. `autohidesScrollers`
+hides axes whose document fits. macOS scroller appearance and its full tracking
+behavior remain open. `NSView.visibleRect` intersects bounds with ancestor view
+clipping; `scrollRectToVisible:` performs minimal axis-aligned scrolling and
+reports whether it moved. `NSClipView.documentVisibleRect` converts into the
+document view's coordinate space and `documentRect` accounts for documents
+smaller than the clip; the scroll view exposes the same visible rectangle and
+`reflectScrolledClipView:` refreshes native thumbs. `NSView.enclosingScrollView`
+finds the nearest ancestor.
+Rotation, sibling occlusion, and printing visibility are not modeled.
+
+`NSView.autoresizingMask` and `setAutoresizingMask:` now store the six flexible
+margin/size bits and keyed view decoding restores `NSAutoresizingMask`. Changes
+to a parent bounds size distribute the delta proportionally among a child's
+flexible leading margin, extent, and trailing margin, including when the window
+content view is resized. Subclass overrides of
+`resizeSubviewsWithOldSize:` and `resizeWithOldSuperviewSize:` receive the old
+`NSSize` through a typed guest ABI dispatch. Auto Layout and a guest NIB runtime
+remain unsupported/unverified.
+
+Added a basic Foundation `NSTimer` target/selector subset with unscheduled and
+scheduled factories, manual `fire`, invalidation, validity, interval, mutable
+fire date, and user info access. Repeating timers advance from scheduled dates
+and skip missed intervals. Scheduled timers queue callbacks on the AppKit
+application thread and wake its Win32 message loop. Run-loop modes,
+invocation-based timers, and delivery without a running AppKit loop remain
+unsupported.
+
+### AppKit menus (2026-11-16)
+
+The host registers `NSMenu` and `NSMenuItem` objects with retained menu-item
+ownership, indexed insertion/removal and lookup, submenu relationships,
+separators, enabled/check state, action/target, tag, and key-equivalent storage.
+`NSApplication.mainMenu` rebuilds Win32 menu bars for host-backed windows;
+selected menu commands dispatch through an explicit target, the active
+window's responder chain, or the application delegate. Key equivalents are
+handled from window and control key messages using the active Windows keyboard
+layout, including Unicode characters and Cocoa escape, return, tab, delete,
+arrow, function, and navigation key codes. Cocoa Command/Control map to
+Windows Ctrl, Option to Alt, and Shift to Shift. Menus with `autoenablesItems`
+call `validateMenuItem:` and update native enabled state as they open.
+`popUpContextMenu:withEvent:forView:` and its `withFont:` form display a native
+blocking popup at the current Windows pointer and dispatch the chosen item
+through the common target/action route. `NSView.menu`/`setMenu:` retain a
+context menu; right-clicks on host controls and hit-tested nested views show
+that menu at the Windows context-event coordinates. Keyboard context-menu
+invocation falls back to the pointer. Nonblocking tracking, grapheme/multi-
+character shortcuts, exact Command-vs-Control modifier distinctions, and all
+Cocoa validation timing remain open. The Clang/MSVC builds validate
+compile/link only; no guest menu interaction was run.
+
+### NSProcessInfo guest environment and OS version (2026-11-17)
+
+The host registers `NSProcessInfo.processInfo` and implements `arguments`,
+`environment`, `processName`, `hostName`, `processIdentifier`,
+`processorCount`, `activeProcessorCount`, `physicalMemory`, `systemUptime`,
+`userName`, and `fullUserName`. `processorCount` sums each Windows processor
+group's maximum count; `activeProcessorCount` reports currently active logical
+processors. Uptime uses Windows unbiased interrupt time, which excludes
+low-power sleep, with a monotonic tick-count fallback. Account names come from
+the guest `USER`/`LOGNAME` variables or guest home path; the optional
+`WINTOSH_FULL_USER_NAME` value configures the guest full name. These values do
+not query the Windows account. Arguments come
+from `NSApplicationMain`'s guest `argc/argv`; the environment dictionary now
+copies the launch-scoped guest `environ` vector, including runner `--env`
+values, rather than enumerating host variables. `operatingSystemVersion`, its
+display string, deprecated OS name/number methods, and
+`isOperatingSystemAtLeastVersion:` use the configurable `WINTOSH_MACOS_VERSION`
+profile. The 24-byte `NSOperatingSystemVersion` return is handled by the
+x86_64 `objc_msgSend_stret` bridge; the comparison dispatcher decodes the
+stack-passed aggregate argument. Defaults are macOS 14.0.0 / build 23A344.
+Apple describes these process properties and version comparisons in its
+[ProcessInfo reference](https://developer.apple.com/documentation/foundation/processinfo),
+[processor-count references](https://developer.apple.com/documentation/foundation/processinfo/activeprocessorcount),
+and [operating-system version reference](https://developer.apple.com/documentation/foundation/operatingsystemversion).
+Clang and MSVC Release builds validate compilation and linking; no guest fixture verifies
+environment isolation or the aggregate method calls. Activity/state, thermal,
+and power APIs remain absent.
+
+### NSAutoreleasePool lifecycle (2026-11-16)
+
+AppKit/Foundation host registration now includes `NSAutoreleasePool` with
+`init`, `new`, and `drain`. Each pool object owns one runtime autorelease-pool
+token; releasing or draining the object pops that token and releases queued
+objects in LIFO order. The underlying Objective-C runtime pool functions were
+already exported to guest code. Clang and MSVC builds validate compilation and
+linking only; nested guest pool behavior has not been exercised by a Mach-O
+fixture.
+
+### Objective-C NSRange return ABI (2026-11-16)
+
+The x86_64 SysV message-send dispatcher now handles methods returning the
+two-word Darwin `NSRange` (`{_NSRange=QQ}`) with zero arguments, an object,
+object plus options, or object plus options and a search range. The trampoline
+preserves the returned words in `RAX` and `RDX`, covering common string and
+character-set range searches. This remains an explicit layout adapter; other
+aggregate returns and ABI classes remain unsupported.
+Clang and MSVC host builds are the available validation for this change; no
+Mach-O fixture was run.
+
+### Virtual system framework providers (2026-11-16)
+
+dyld's dependency graph now recognizes CoreFoundation, CoreGraphics, and
+ImageIO as built-in provider names alongside Foundation and AppKit. When no
+matching macOS dylib is staged, these dependencies can proceed to Wintosh's
+host symbol resolver, which still rejects every unavailable strong import;
+the names do not create placeholder APIs. If a real dependency binary is
+present in the resolved search path, normal graph loading still takes
+precedence. This closes a loader-level dependency-name gap for the framework
+families with existing host exports, but does not establish API completeness
+or app compatibility.
+
+### Synchronous AppKit notifications (2026-11-16)
+
+The AppKit host now registers `NSNotification` and a singleton
+`NSNotificationCenter`. Notifications retain their name, object, and user-info
+dictionary. The center supports selector observers with weak observer/object
+references, optional name and object filters, observer removal, and synchronous
+delivery through `postNotification:` and both name-based posting methods.
+`NSApplication` posts will-finish and did-finish notifications and passes each
+notification object to the matching delegate callback. Block observers,
+operation queues, thread/queue delivery policies, and the full set of AppKit
+events remain unsupported. These changes have build evidence only; there is no
+Mach-O guest fixture for observer lifetime or callback delivery.
+
+### Host/guest architecture boundary (2026-11-16)
+
+CMake now selects the x86_64 SysV and startup assembly only when the 64-bit
+target is not identified as ARM64/AArch64. The Darwin-start trampoline in the
+Mach-O loader is explicitly x86_64-only. Mach-O parsing/mapping and an ARM64
+relocation subset do not provide ARM64 instruction execution: on the current
+x64 Windows host ARM64 and i386 guests still require a CPU translator. A
+Windows ARM64 runtime path remains unverified and lacks Darwin-start and
+Objective-C ABI support. See `docs/porting/MATHEMATICAL-MODEL.md` for the
+parse/map/execute matrix.
+
+### Basic NSString drawing (2026-11-16)
+
+`NSString drawAtPoint:` now renders a UTF-8-backed string through the active
+CoreGraphics bitmap context. The implementation transforms the baseline point
+with the context CTM, draws one line with the stock Windows GUI font and current
+NSColor fill RGB (black by default), and restores the context's per-pixel alpha
+bytes after GDI updates its color channels. The Windows host now links `gdi32`.
+`NSFont` now implements `systemFontOfSize:`, `boldSystemFontOfSize:`,
+`fontWithName:size:`, and `set`; selected fonts are retained through the active
+view draw and released when that bitmap pass ends. GDI may substitute a missing
+font face. `drawAtPoint:withAttributes:` reads font and foreground-color values
+using the exported `NSFontAttributeName` and `NSForegroundColorAttributeName`
+data symbols. Paragraph styling, wrapping, text measurement, advanced
+typographic layout, and verified Cocoa baseline parity remain absent.
+`NSAttributedString` now has immutable string/attributes construction,
+`string`, `length`, and `drawAtPoint:`; its retained dictionary feeds the same
+font/color renderer. `NSMutableAttributedString` adds mutable construction,
+`mutableString`, UTF-16 range replacement, and `setAttributes:range:` for the
+entire string. Partial attribute ranges are ignored; per-run styling,
+paragraph layout, wrapping, and measurement remain unsupported. Clang and MSVC
+Release host-library builds succeeded after this addition. No Mach-O drawing
+fixture has verified rendered pixels.
+Clang and MSVC Release host-library builds succeed; no Mach-O drawing fixture
+has verified rendered pixels.
+
+### AppKit rounded `NSBezierPath` rectangles (2026-11-16)
+
+`NSBezierPath` now exposes `bezierPathWithRoundedRect:xRadius:yRadius:` and
+`appendBezierPathWithRoundedRect:xRadius:yRadius:`. The Windows backend
+standardizes negative rectangle dimensions, clamps finite per-axis radii to
+half the rectangle dimensions, and creates cubic Bézier corners. The x86_64
+SysV Objective-C dispatcher decodes the stack-passed 32-byte `CGRect` and the
+two XMM-passed radius doubles for the matching class and instance methods.
+`lineCapStyle` supports butt, round, and square caps on open stroked contours;
+the corresponding CoreGraphics state is saved and restored around path
+strokes.
+Clang and MSVC Release builds of `wintosh_windows_host` succeed. No Mach-O
+guest drawing fixture has verified rendered pixels, so this remains source and
+build evidence rather than AppKit runtime compatibility evidence.
+
+### NSColor RGBA accessors (2026-11-16)
+
+The four stored RGBA components are available through `redComponent`,
+`greenComponent`, `blueComponent`, and `alphaComponent`, as well as the
+BOOL-returning `getRed:green:blue:alpha:` method. The Objective-C dispatcher
+passes all four output pointers using the guest SysV ABI. These accessors
+preserve the existing RGB-only color-space boundary. Calibrated, device, and
+neutral-white constructors use the guest two-double SysV Objective-C path.
+`whiteComponent` reads the value recorded for grayscale factories and named
+grayscale colors; non-grayscale calls return zero instead of raising Apple's
+color-space exception. `getWhite:alpha:` now returns `false` for non-grayscale
+colors without writing its output pointers and returns the grayscale/alpha
+pair for recorded grayscale colors through the guest ABI. The current Clang
+and MSVC Release builds succeed. `colorWithAlphaComponent:` now returns an
+immutable color with the requested alpha while preserving stored RGB and
+grayscale classification. `blendedColorWithFraction:ofColor:` now creates a
+weighted RGBA result using the mixed XMM-double and GP-object SysV argument
+locations and returns nil when either color is absent. No guest Mach-O fixture
+exercises these color methods yet. Calibrated/device HSB factory methods now
+clamp finite hue, saturation, brightness, and alpha inputs to `[0, 1]` and
+convert HSB to the adapter's RGB storage. `getHue:saturation:brightness:alpha:`
+converts the stored RGB triple back to HSB and writes only non-null guest output
+pointers. The individual `hueComponent`, `saturationComponent`, and
+`brightnessComponent` queries use the same conversion. Device and calibrated
+color-space distinctions remain unmodeled, and these paths also lack a Mach-O
+guest fixture. The device CMYK factory and `getCyan:magenta:yellow:black:alpha:`
+now provide a clamped RGB-backed conversion; CMYK profiles are not preserved.
+The Objective-C dispatcher handles five XMM double arguments and five guest
+output pointers for these selectors. There is still no Mach-O guest fixture.
+Calibrated/device/sRGB four-component constructors, white constructors, and
+alpha replacement now clamp finite components to `[0, 1]`; extended-gamut RGB
+values remain unsupported by this RGB-backed model. `numberOfComponents` and
+`getComponents:` return the adapter's two-component grayscale or four-component
+RGB representation; the component-array pointer is decoded through the guest
+SysV ABI.
 
 ## Evidence summary
 
@@ -165,9 +842,32 @@ remain open.
 The adapter now additionally has a limited `bplist00` reader for single-byte
 ASCII strings, BMP UTF-16 strings, integers, booleans, null, simple arrays,
 string-key dictionaries, extended length markers for strings, arrays, and
-dictionaries, plus binary data/date, IEEE-754 real-number, and UID primitives,
+dictionaries, plus binary data/date, IEEE-754 real-number, and UID markers
+preserved as a distinct private `PropertyListUID` CF type with a 64-bit value
+accessor separate from `CFNumber`,
 including UTF-8 string byte extraction and UTF-16-unit string length for valid UTF-8 (including surrogate-pair accounting) and common-Unicode-whitespace trimming plus mutable append/replace-all/range-replace, mutable data byte access/append/replace/resize/clear, array append/append-array/insert/remove/remove-range/replace, dictionary duplicate-key collapse/set/remove/merge, numeric cross-type equality, set add/remove/union/intersection/subtract operations, date and number comparison plus interval creation/difference, and named/wildcard local notifications with global removal. Unicode collation, normalization, malformed-UTF-8 recovery policy, complex
 numeric/time semantics, and complete ownership semantics remain open.
+
+`NSKeyedUnarchiver +unarchiveObjectWithData:` now parses a limited
+`NSKeyedArchiver` binary-plist archive and resolves UID references into
+Foundation strings, numbers, data, dates, arrays, dictionaries, and null
+values. An object cache preserves repeated references, including cycles in
+arrays, dictionaries, and custom classes, by caching placeholders first. Custom
+classes may run `initWithCoder:` with temporary `decodeObjectForKey:`,
+`decodeObjectOfClass:forKey:`, `containsValueForKey:`, `decodeBoolForKey:`,
+signed/unsigned 32- and 64-bit integer decoding, and float/double decoding.
+NSCoder superclass/conditional decoding, secure-coding validation, decode
+delegates, and NIB instantiation remain unsupported. No archive fixture was
+run for cyclic graphs.
+
+`NSView -initWithCoder:` now reads `NSFrame`, optional `NSBounds`, `NSSubviews`,
+hidden state from `NSvFlags`, and `NSNextKeyView` from the temporary archive
+context. `NSCustomView` placeholders resolve `NSClassName`, allocate a loaded
+`NSView` subclass with `initWithFrame:` using `NSFrame`/`NSFrameSize`, and restore
+selected bounds, subview, hidden, and key-view state. Rectangle values use
+NSString-based keyed geometry coding. Other placeholder types, connections,
+`awakeFromNib`, automatic `NSMainNibFile` startup, and NIB fixture coverage
+remain absent.
 
 The same batch now exposes bulk extraction for array ranges, dictionary
 key/value pairs, and set members, plus validated `CFData` byte-range copies.
@@ -194,6 +894,44 @@ maximum, containment, intersection, and union primitives, covered by the
 Foundation smoke gate.
 Quoted aggregate field names such as `"x"` and `"y"` are skipped while
 parsing, matching common Objective-C runtime encodings.
+
+CoreFoundation now has a first CFBundle path subset: a guest launch records the
+main executable path; `CFBundleGetMainBundle` derives its bundle root;
+`CFBundleCreate`, bundle/executable/resource-directory URLs, resource URL
+lookup, the cached nonlocalized Info.plist dictionary, arbitrary key lookup,
+bundle identifier access, and `CFBundleCopyLocalizedString` are exposed through
+the Darwin symbol table. The string lookup searches the Windows preferred UI
+localizations, the bundle development region, `Base`, and the unlocalized
+table. Resource URL lookup now searches the same preferred language folders
+before falling back to unlocalized bundle resources, so localized NIB and
+other resource lookup shares that ordering. It reads OpenStep `.strings` files
+with UTF-8 or UTF-16 text, as well as
+XML and supported binary property-list tables. Executable discovery reads
+`CFBundleExecutable` from XML or the supported binary-plist subset. Resource
+lookup rejects absolute and parent-traversal names. The
+`CFBundleGetValueForInfoDictionaryKey` lookup also checks localized string
+values in `InfoPlist.strings` before the global dictionary. Local-info-dictionary
+access and full plist type coverage remain open. The CFBundle executable
+surface now also exposes `CFBundleIsExecutableLoaded`, preflight, load/unload,
+and function/data pointer lookup, plus standard URLs for built-in plug-ins,
+private/shared frameworks, and shared support. Directory discovery now
+creates CFBundle objects from immediate child bundles with an optional
+extension filter; it is bounded to 65,536 inspected entries and 4,096 child
+directories. A process-wide normalized-path catalog now uniques bundle objects
+and supports `CFBundleGetBundleWithIdentifier` and `CFBundleGetAllBundles`.
+The catalog intentionally keeps bundle objects alive for the process, so code
+unloading relies on the explicit unload API. Non-main bundles use the existing
+Mach-O `dlopen`/`dlsym`/`dlclose` path. Bundle lookup checks app bundle
+`Contents` paths and
+versioned framework `Versions/Current` plus concrete version directories for
+the executable, Info.plist, and resources. Preflight currently returns no
+`CFError`; its preliminary, side-effect-free Mach-O parse checks structure and
+host architecture only, so dependency/link errors can still appear during
+load. Resource localization through all framework variants, full Objective-C
+`NSBundle` coverage, full plug-in discovery, and main image symbol
+enumeration remain incomplete. The new CFBundle loader symbols have no
+dedicated guest fixture and this change is not build-verified in this
+environment.
 The Objective-C bridge now also supports separate lazy metaclass objects for
 registered classes, class-method lookup through those metaclasses, and runtime
 `class_addProperty` registration
@@ -201,6 +939,11 @@ with serialized attribute pairs and verified lookup. The machine-readable matrix
 and metaclass mutation. The DYLD resolver now combines caller-provided
 `@rpath` roots with embedded `LC_RPATH` entries even when the caller already
 provided search paths; `DYLD_COMBINED_RPATH=PASS` covers this behavior. The
+dependency graph now carries the ordered runpath context from the main image
+through nested dylibs, preserving load-command order when a shared image is
+first reached. The graph still chooses the first path context for a shared
+image; this extension has build evidence only, not nested guest-fixture or
+multi-parent runtime evidence. The
 native prefix also creates the Apple-documented `Library` data roots
 (`Application Support`, `Caches`, `Frameworks`, `Logs`, `Preferences`, and
 `Saved Application State`) plus `System/Library/Frameworks` and `usr/lib`.
@@ -236,9 +979,76 @@ incompatible encodings are rejected without mutation. Full Apple method-cache,
 concurrency, and arbitrary swizzling semantics remain open.
 complex numbers, quoted aggregates, and nested pointers.
 
-CoreGraphics now has a separate partial geometry/color adapter with the
-`coregraphics_smoke` gate. It does not provide drawing contexts, paths, image
-decoding, text rendering, events, or AppKit.
+CoreGraphics now has a separate partial adapter with the `coregraphics_smoke`
+gate. In addition to geometry and color values, it supports 8-bit
+premultiplied RGBA/BGRA bitmap contexts, fill/clear/stroke rectangles, bitmap
+data/size queries, and basic multi-contour move/line/close/fill/even-odd-fill/
+stroke paths, immutable bitmap-context snapshots as `CGImage`, and
+nearest-neighbor `CGContextDrawImage` with premultiplied-alpha compositing.
+The current transformation matrix supports get/set/concatenate/translate/scale/
+rotate, with save/restore of the CTM, fill/stroke colors, and line width. Its
+inverse maps rectangle and image samples back to user space; paths are transformed
+before raster fill and stroke. Path and rectangle clipping use a device-space
+coverage mask; `CGContextClipToMask` scales bitmap snapshot alpha into that mask.
+Successive clip regions multiply coverage and participate in saved graphics state.
+`CGContextSetAlpha` modulates bitmap fills and image compositing and is preserved
+by save/restore; clear operations remain governed by clip coverage.
+Blend state now implements normal source-over, multiply/screen/overlay/darken/
+lighten/difference/exclusion, and the Porter-Duff clear/copy/source-in/source-out/
+source-atop/destination-over/destination-in/destination-out/destination-atop/XOR
+operators for fills and bitmap images.
+Path construction now flattens cubic and quadratic Bézier curves to 32 segments,
+ellipses to 64 segments, and circular arcs by a radius-dependent chord-error
+bound capped at 8192 segments. Tangent arcs calculate their tangent points and
+center from neighboring line vectors. Antialiasing remains open.
+ImageIO now has a minimal `CGImageSource` path backed by CoreFoundation data,
+CoreGraphics data providers created from CFData, URLs, filenames, or caller
+memory with a release callback, and file
+URLs. The source is a distinct CoreFoundation object with its own type
+ID and generic `CFRetain`/`CFRelease` lifetime. Windows Imaging Component
+validates the source, reports its frame count, decodes a requested frame into
+premultiplied BGRA pixels, and reports the source UTI through
+`CGImageSourceGetType`; source-level properties report image count, and
+indexed properties report pixel width and height. Source and per-frame status
+queries distinguish incomplete, complete, and invalid data. Incremental sources
+accept replacement snapshots of accumulated `CFData`, matching ImageIO's update
+contract. Common WIC containers map to PNG, JPEG, GIF, TIFF, BMP, ICO, and
+JPEG XR identifiers.
+`CGImageSourceCopyTypeIdentifiers` enumerates registered default WIC decoders
+for the mapped containers. `CGImageSourceCreateThumbnailAtIndex` generates a
+WIC-scaled thumbnail when the `Always` or `IfAbsent` flag is true and honors
+the maximum-pixel-size option. `IfAbsent` first asks the WIC frame for its
+embedded thumbnail and falls back to scaling the full frame.
+`CreateThumbnailWithTransform` applies EXIF orientations 1–8. Other metadata
+remains open, as do animated-image timing, text, antialiasing, events, display
+backends, and AppKit.
+Data providers also expose size, direct byte-pointer access, bounded
+position-based reads, and a copied `CFData` representation. These APIs cover
+direct-provider access, while `CGDataProviderCreateSequential` adds callback-
+backed stream reads with optional skip/rewind and final `releaseInfo` cleanup.
+Sequential reads are serialized per provider; size and direct-pointer queries
+report the unknown/unavailable state for that provider kind. The provider
+length query returns caller-owned buffers' recorded length as well as
+internally copied storage, so external-provider copies and ImageIO source
+creation see the supplied bytes. `CGDataProviderCreateDirect` adds sized
+positioned-read providers or provider-owned byte pointers, with paired
+`CGDataProviderReleaseBytePointer` and `releaseInfo` callbacks.
+`CGImageSourceCreateWithDataProvider` snapshots both sequential providers
+through EOF and direct providers through bounded positional reads, including
+partial callback reads, then validates the encoded bytes. These snapshots are
+bounded by WIC's 32-bit in-memory stream size limit; data beyond it fails
+source creation.
+The write path now includes `CGDataConsumerCreate`, its CFData and URL forms,
+consumer retain/release/type-ID access, and
+`CGImageDestinationCreateWithDataConsumer`. Callback consumers support partial
+writes and release client info when the last reference is freed. The existing
+`CGImageDestinationCreateWithData` and `CreateWithURL` entry points use the same
+consumer path. Finalization encodes 32-bit premultiplied pixels through WIC for
+PNG, JPEG, TIFF, GIF, and BMP. It requires the exact declared image count;
+multiple frames are accepted only for GIF/TIFF. Metadata/options, HEIF, and
+codec qualification remain open. Public CoreFoundation data/type functions
+have Darwin-ABI wrappers with their native allocator and range arguments before
+host-symbol binding.
 The adapter now includes point/size/rectangle constructors and
 standardization, affine transform inversion/application, rectangle operations,
 transform equality and integral rectangles, and RGBA/grayscale/white/clear colors.
@@ -266,6 +1076,13 @@ native loader path on x64 Windows:
 
 These are native adapter and synthetic Mach-O gates. They do not prove that an
 unmodified third-party macOS executable or the full Darling server runs.
+
+The Darwin bootstrap now scopes the absolute loaded guest image path around
+initialization and entry execution. `_NSGetExecutablePath` returns that Mach-O
+path (with Windows separators normalized) to guest code and falls back to the
+host module path outside a guest launch. This implementation change has not
+been rebuilt in the current environment, so existing host API gate results do
+not yet verify it.
 
 ## Current-batch provenance audit
 
@@ -485,6 +1302,13 @@ the Mach ABI smoke gate fills the queue and verifies the overflow path.
 Local inline Mach messages are also bounded at 4 MiB before allocation, matching
 the versioned broker envelope limit; an oversized send returns the existing
 `MACH_MSG_TOO_LARGE` adapter status.
+
+Local Mach receive now materializes moved port rights while holding the
+receive queue lock without recursively locking that same port when a message
+contains the receive port itself. Descriptor types are validated before
+rights are changed; a failed transfer rolls back already materialized rights
+and leaves the queued message available. MSVC, Clang x64, and ARM64 source
+compilation succeeded; no runtime fixture was run for this edge case.
 
 Port-set receive no longer sleeps in a fixed one-millisecond polling loop:
 local sends and port destruction signal a shared condition variable, so set
@@ -846,3 +1670,79 @@ The signal resolver now also covers common Darwin spellings for
 the double-underscore forms. They reuse the existing Windows signal adapter;
 native cross-process signal delivery, full masks, interruption, and cancellation
 semantics remain open.
+
+A minimal AppKit slice now resolves NSApplicationMain, reads NSPrincipalClass from the main bundle Info.plist and initializes that NSApplication subclass (falling back to NSApplication when the key is absent), registers host-owned NSObject, NSResponder, NSString, NSConstantString, NSMutableString, NSApplication, NSWindow, NSView, NSControl, NSButton, and NSTextField classes, exposes class symbols and NSApp, implements common NSObject class/instance queries, allocation, equality, hash, description, and autorelease messages, dispatches application will-finish/did-finish callbacks with a nil notification placeholder, and implements window lifecycle/title/content-view methods, CGRect frame/setFrame:display: conversion, and contentSize/setContentSize resizing through Win32 with root content-view geometry updates. The Mach-O loader registers x86_64 `__cfstring` literals before image initializers; `UTF8String` and `length` read byte and UTF-16 constant-string records, while retain/release leave literal storage immutable. Dynamically allocated UTF-8 NSString values support UTF-8/string construction, length, UTF8String, equality, concatenation, prefix/suffix queries, UTF-16 indexed substring selection/from/to operations, and immutable copy. NSMutableString adds `+string`, UTF-8/string construction, `appendString:`, `setString:`, and UTF-16 indexed deletion/replacement/insertion; a runtime finalizer releases its native buffer at final object release. Range methods reject boundaries that split surrogate pairs. Other encodings, mutable-string operations, formatting, and localization remain unsupported. The selected CGRect stack argument and following style/backing/defer register arguments for `initWithContentRect:styleMask:backing:defer:` are decoded; dimensions, primary-screen position, and common style bits map to Win32. Windows own a default NSView; NSView supports frame/bounds initialization and mutation, frameOrigin/frameSize getters and setters, window/superview/subviews queries, hidden-state queries/setter, inherited control visibility, and viewDidHide/viewDidUnhide effective-state callbacks, descendant checks, responder links, nextKeyView/setNextKeyView, NSTextField string/placeholder/editable APIs backed by native Win32 edit controls with guest string synchronization and Return target/action, point conversion to/from another same-window view or window coordinates with frame/bounds axis-aligned scales and NSView isFlipped-driven y transforms, and add/remove hierarchy operations. Win32 button placement composes ancestor frame/bounds origins, axis-aligned scales, and flipped-y transforms to map nested views into window coordinates. NSWindow exposes `firstResponder`, `makeFirstResponder:`, `selectNextKeyView:`, `selectPreviousKeyView:`, and `acceptsFirstResponder`; NSButton and NSTextField accept focus and clicking a button updates the first responder. Hiding or detaching a focused subtree chooses the first visible enabled native control in the content view, falling back to the window. Tab follows visible enabled native-control nextKeyView links with a view-tree fallback; Shift+Tab follows a direct predecessor link with a reverse view-tree fallback; finalizing a view clears nextKeyView links from other views that point to it. Custom-view focus remains unsupported; NSTextField formatting, secure entry, field-editor behavior, validation, and delegate notifications are also unsupported. NSApplication, NSWindow, and NSView inherit the host NSResponder class. NSControl provides target/action, enabled state, stringValue, and integer/floating-point/boolean value getters and setters; NSButton maps to a Win32 push button with title and the `+buttonWithTitle:target:action:` convenience constructor. Its factory's Darwin x86_64 object/object/selector argument encoding is explicitly dispatched and returns an autoreleased instance. Button clicks deliver to an explicit target or, when nil, search parent views, window, application, then the application delegate for the first responder implementing the action selector. Backing/defer behavior is not reproduced. The run loop shows a fallback window only if the delegate has not shown an NSWindow. `objc_msgSend` handles guest `*` C-string returns, selector arguments, and selected CGRect/NSRange arguments; the `objc_msgSend_stret` family handles no-argument CGRect returns, including legacy and Super2 superclass search, such as NSView frame and bounds; typed helpers call guest IMPs with SysV for delegate callbacks, `UTF8String`, window initialization, views, and buttons. General aggregate signatures and the `screen:` variant remain unsupported, as do nib/storyboard loading, real NSNotification objects, rotation coordinate conversion, `convertRect:` APIs, full keyboard and input-method translation, and complete AppKit policy. Window painting now creates a bitmap-backed CoreGraphics context, exposes `NSGraphicsContext.currentContext`/`CGContext`, traverses visible views, calls `drawRect:` with view bounds under composed frame/bounds and flipped-y transforms, clips to each view's bounds, and blits the BGRA buffer through Win32. The base NSView draw method is a no-op. NSColor now supports common named RGB colors, calibrated/device/sRGB four-component constructors, and set/setFill/setStroke into the active CGContext, backed by guest-ABI dispatch for four-double class factories. `redComponent`, `greenComponent`, `blueComponent`, `alphaComponent`, and pointer-output, BOOL-returning `getRed:green:blue:alpha:` are available. Calibrated/device/neutral-white factories and grayscale-only whiteComponent are available. For non-grayscale input whiteComponent returns zero instead of raising Apple color-space exception. Color-space conversion and pattern/dynamic colors remain absent. NSBezierPath stores and replays move/line/cubic-curve/close plus rectangle/oval commands, with empty/rect/oval factories, path/primitive append, point clearing, line-width access, fill/even-odd-fill/stroke, and a CGPoint-triple guest SysV dispatcher; curve-extrema bounds, controlPointBounds, and isEmpty queries are available; rounded-rectangle factories and append support plus butt/round/square line-cap styles for open stroked contours are present but have no dedicated guest drawing fixture; element inspection, dash patterns, and join-style selection remain absent. `setNeedsDisplay:` and `setNeedsDisplayInRect:` now invalidate the corresponding window region, and the damaged portion is mapped into each view for `drawRect:`. Fine-grained old/new exposure tracking, text rendering and broader Quartz/AppKit drawing APIs, and pixel-verified Mach-O drawing fixtures remain absent. MSVC and Clang runner builds link; no Mach-O guest fixture demonstrates these paths. See frameworks/README.md and the AppKit row in PRIMITIVE-MATRIX.csv.
+
+The Windows Objective-C host registers NSArray/NSMutableArray,
+NSDictionary/NSMutableDictionary, NSSet/NSMutableSet, and NSData/NSMutableData.
+Array literals dispatch
+`+arrayWithObjects:count:`; the selected array methods include factories,
+count, indexed access, `isEqual:` containment, and mutable add/insert/remove/
+replace/clear operations. Dictionary literals dispatch
+`+dictionaryWithObjects:forKeys:count:`; selected methods include empty
+creation, `initWithObjects:forKeys:count:`, count, key lookup, allKeys/allValues,
+and mutable set/remove/clear operations. NSArray also supports
+`initWithObjects:count:`.
+Set literals dispatch `+setWithObjects:count:` and selected set queries and
+mutations use `isEqual:` semantics with unique retained elements.
+NSData supports byte-pointer/length construction and access; NSMutableData adds
+zero-filled creation, append, resize, and bounded range replacement. `subdataWithRange:`
+copies the selected bytes, and `getBytes:length:` copies into caller storage.
+Mutable byte pointers can be invalidated by mutation.
+The runtime decodes the respective one-pointer/count and two-pointer/count
+guest SysV signatures. Collections retain their contents and release them from
+Objective-C finalizers. Remaining collection APIs, Foundation-compatible exception behavior, and dedicated guest
+fixtures remain open. Clang and MSVC Release runner builds link the implemented
+collection slice; no runtime guest behavior was executed in this update.
+
+The Objective-C `NSBundle` bridge now wraps CFBundle with a distinct host object
+and lifetime. It supports the main bundle, path/identifier construction,
+bundle/executable/resource paths, common Info.plist values, resource path
+lookup, localized strings, and load state/load/unload through the existing
+Mach-O loader. `infoDictionary` recursively converts common plist strings,
+numbers, booleans, dates, nulls, data, arrays, and dictionaries; unknown CF type
+conversion remains missing. URL-based construction, bundle URLs, and dynamic
+class loading are still missing. No Mach-O app fixture has exercised these
+selectors yet.
+
+The Objective-C host also registers a narrow `NSNumber` implementation with
+signed/unsigned integer, double, and boolean factories; scalar getters,
+`stringValue`, and numeric equality. Common plist integer values retain their
+64-bit signedness during conversion. Other NSNumber constructors, conversion
+rules, formatting, and complete Foundation comparison behavior remain open.
+The same bridge now registers a small `NSDate` implementation for reference-time
+creation, retrieval, interval addition, and equality, along with the `NSNull`
+singleton. Unix-time convenience methods, date formatting, and broader
+calendar behavior remain unsupported.
+
+The Darwin 64-bit Mach header layout is corrected to six 32-bit words: the
+voucher field at byte 16 and message ID at byte 20. Compile-time size/offset
+assertions protect this ABI layout. `mach_msg` now validates selected remote
+and reply dispositions, reserves moved rights as in-transit before local queue
+insertion with rollback on failure, and swaps destination/reply header fields
+plus disposition bits on local receive. `mach_msg_destroy` now releases
+copied-out header rights as well as body descriptors. Voucher disposition and
+brokered header-right transfers are rejected as unsupported. Preflight can race
+external right mutation. Body MOVE-SEND, MOVE-SEND-ONCE, and MOVE-RECEIVE
+descriptors now use transit references too. Queue teardown releases transit
+header/body rights, queued OOL storage, and selected copied/created body
+rights. Local OOL receive now validates the owned allocation and declared size
+before dequeue, instead of interpreting the OOL layout as port descriptors.
+Broker capability aliasing and stronger concurrency guarantees remain
+required; brokered header-right transfers remain unsupported.
+
+The Objective-C runtime's fixed-arity exports use SysV ABI declarations in x64 Clang builds. objc_msgSend/objc_msgSendSuper/objc_msgSendSuper2 use assembly entry shims and typed aggregate AppKit dispatch plus raw forwarding for scalar-only guest IMP signatures, including mixed GP/XMM registers and bounded overflow stack words. The `objc_msgSend_stret` family handles no-argument CGRect returns, including legacy and Super2 superclass search, through the x86_64 hidden result buffer. Aggregate classification and returns, variadic IMPs, blocks, and exception behavior remain incomplete; see abi/README.md and the objc-guest-abi matrix row.
+
+The Windows ARM64 Clang path now maps guest imports of `objc_msgSend`,
+`objc_msgSendSuper`, and `objc_msgSendSuper2` to ARM64 assembly entry shims.
+These preserve the native Windows C wrappers and pass Apple's variadic stack
+area to a typed reader; Super2 begins lookup at `objc_super.super_class`'s
+superclass. Their shared assembly return path restores `x0-x1` and `d0-d3`;
+the typed dispatcher currently covers scalar float/double, CGPoint/CGSize/
+CGRect HFA, and NSRange returns. Direct Clang probes confirm the register
+classes match Windows ARM64 for these signatures. The Objective-C dispatcher,
+Win32 symbol resolver, and assembly object compile to ARM64 COFF, but there is
+still no linked ARM64 runner or Mach-O guest execution evidence. Unsupported
+method encodings, broader
+aggregate/overflow cases, and red-zone behavior remain open. See the ARM64
+dispatch matrix in `docs/porting/MATHEMATICAL-MODEL.md` and `abi/README.md`.

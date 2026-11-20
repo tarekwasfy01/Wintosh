@@ -520,8 +520,10 @@ and `_getegid`. Windows token user SID data supplies the stable nonnegative
 Darwin-side identity value; effective and group IDs currently follow the
 same host identity mapping until a full POSIX account database is added.
 
-The memory ABI now also exposes `_getpagesize`, backed by the Windows system
-page size and covered by the host API smoke test.
+The memory ABI exposes `_getpagesize` using the Darwin guest page-size profile:
+4 KiB on x86_64, 16 KiB on ARM64 by default, configurable by
+`WINTOSH_DARWIN_PAGESIZE`. The host API smoke test covers the page-size query;
+guest ARM64 mapping semantics still need a Mach-O fixture.
 
 The host ABI now includes `_sysconf` for Darwin page size, processor counts,
 and physical/available page counts, with explicit `EINVAL` handling for
@@ -1995,11 +1997,11 @@ verify consistency with `getdtablesize` on x64 and Win32. Dynamic per-process
 descriptor ceilings, `RLIMIT_NOFILE` enforcement, inherited limits, and exact
 Darwin sysconf numbering/error precedence remain open.
 
-The page-size family now also exports `_getpagesizes` and `getpagesizes`; the
-Windows bridge reports its single native page size, supports the Darwin query
-form with a zero-length output request, rejects null output for nonzero count,
-and passes both host fixtures. Multiple-page-size discovery, huge-page policy,
-VM pressure behavior, and exact Darwin ABI/error semantics remain open.
+The page-size family also exports `_getpagesizes` and `getpagesizes`; the
+bridge reports the single configured guest page size, supports the Darwin
+query form with a zero-length output request, and rejects null output for
+nonzero count. Multiple-page-size discovery, huge-page policy, VM pressure
+behavior, and exact Darwin ABI/error semantics remain open.
 
 The minimal process entry bridge now resolves both Darwin `_exit` and the
 unprefixed `exit` symbol automatically through the host-symbol table and maps

@@ -8,6 +8,7 @@
 
 #include "darling_windows_abi_bridge.h"
 #include "darling_windows_stdio.h"
+#include "darling_windows_tlv.h"
 
 #include <cstdio>
 #include <cstdint>
@@ -24,6 +25,19 @@ int main()
 		return 1;
 	}
 	std::puts("ABI_BRIDGE_SYMBOL_LOOKUP=PASS");
+	darling::windows_host::DarwinTLVDescriptor tlv_descriptor{};
+	darling::windows_host::InitializeDarwinTLV(&tlv_descriptor, 1);
+	const auto tlv_direct = darling::windows_host::abi::darling_windows_abi_tlv_get_addr(
+		&tlv_descriptor);
+	const auto tlv_resolved = darling_windows_host_symbol("__tlv_bootstrap");
+	const auto tlv_expected = reinterpret_cast<std::uintptr_t>(
+		&darling::windows_host::abi::darling_windows_abi_tlv_get_addr);
+	if (tlv_direct == nullptr || tlv_resolved != tlv_expected ||
+		darling_windows_host_symbol("___tlv_bootstrap") != tlv_expected) {
+		std::fprintf(stderr, "ABI_BRIDGE_TLV_BOOTSTRAP=FAIL\n");
+		return 1;
+	}
+	std::puts("ABI_BRIDGE_TLV_BOOTSTRAP=PASS");
 	const auto immediate_exit = darling_windows_host_symbol("_exit");
 	const auto normal_exit = darling_windows_host_symbol("exit");
 	const auto immediate_expected = reinterpret_cast<std::uintptr_t>(

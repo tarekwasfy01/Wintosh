@@ -11,6 +11,8 @@ obj/
 .idea/
 *.user
 *.suo
+__pycache__/
+*.pyc
 
 # Logs and temporary probes
 *.log
@@ -30,3 +32,11 @@ conpty-*.txt
 *-source/
 
 # Keep checked-out source trees, license files, and documentation in git.
+
+# Local PS3 experiments and personal/firmware artifacts (not Wintosh sources)
+/ps3-debian-build/
+/ps3-usb-ready/
+/evilnat-cex*
+/mega-firmware-index.json
+/otheros.cpp
+/otheros.h

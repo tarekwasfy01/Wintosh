@@ -9,16 +9,19 @@
 #include "darling_windows_bootstrap.h"
 #include "darling_windows_dyld.h"
 #include "darling_windows_runtime.h"
+#include "darling_windows_corefoundation.h"
 
 #include <windows.h>
 
 #include <cctype>
 #include <cstdio>
+#include <cstring>
 #include <filesystem>
 #include <cwchar>
 #include <fstream>
 #include <iostream>
 #include <limits>
+#include <memory>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -28,87 +31,45 @@
 
 namespace {
 
-std::uint64_t ReadBigEndian(const std::vector<std::uint8_t>& bytes,
-	std::size_t offset, std::size_t width)
+std::optional<std::string> PlistBundleExecutable(const std::vector<std::uint8_t>& bytes)
 {
-	if (width == 0 || width > sizeof(std::uint64_t) || offset > bytes.size() ||
-		width > bytes.size() - offset)
-		throw std::runtime_error("invalid binary plist integer");
-	std::uint64_t value = 0;
-	for (std::size_t index = 0; index < width; ++index)
-		value = (value << 8) | bytes[offset + index];
-	return value;
+	if (bytes.size() > static_cast<std::size_t>(
+		(std::numeric_limits<darling_windows_CFIndex>::max)()))
+		return std::nullopt;
+	const auto release_cf = [](const void* value) {
+		darling_windows_CFRelease(value);
+	};
+	const bool binary = bytes.size() >= 8 &&
+		std::memcmp(bytes.data(), "bplist00", 8) == 0;
+	const std::string xml(bytes.begin(), bytes.end());
+	const auto properties_value = binary
+		? darling_windows_CFPropertyListCreateFromBinary(bytes.data(),
+			static_cast<darling_windows_CFIndex>(bytes.size()))
+		: darling_windows_CFPropertyListCreateFromXML(xml.c_str());
+	std::unique_ptr<const void, decltype(release_cf)> properties(properties_value, release_cf);
+	if (properties == nullptr || darling_windows_CFGetTypeID(properties.get()) !=
+		darling_windows_CFDictionaryGetTypeID())
+		return std::nullopt;
+	std::unique_ptr<const void, decltype(release_cf)> key(
+		darling_windows_CFStringCreateWithCString("CFBundleExecutable"), release_cf);
+	if (key == nullptr) return std::nullopt;
+	const auto executable = darling_windows_CFDictionaryGetValue(
+		static_cast<darling_windows_CFDictionaryRef>(properties.get()), key.get());
+	if (executable == nullptr || darling_windows_CFGetTypeID(executable) !=
+		darling_windows_CFStringGetTypeID())
+		return std::nullopt;
+	const auto* value = darling_windows_CFStringGetCStringPtr(executable);
+	if (value == nullptr) return std::nullopt;
+	return std::string(value);
 }
 
-std::optional<std::string> BinaryPlistExecutable(const std::vector<std::uint8_t>& bytes)
+std::filesystem::path PathFromUtf8(std::string_view value)
 {
-	if (bytes.size() < 40 || std::string(bytes.begin(), bytes.begin() + 8) != "bplist00")
-		return std::nullopt;
-	const auto offset_size = bytes[6];
-	const auto reference_size = bytes[7];
-	const auto object_count = ReadBigEndian(bytes, bytes.size() - 32, 8);
-	const auto top_object = ReadBigEndian(bytes, bytes.size() - 24, 8);
-	const auto offset_table = ReadBigEndian(bytes, bytes.size() - 8, 8);
-	if (offset_size == 0 || reference_size == 0 || object_count == 0 ||
-		top_object >= object_count || offset_table >= bytes.size() ||
-		object_count > (bytes.size() - offset_table) / offset_size)
-		return std::nullopt;
-	auto object_offset = [&](std::uint64_t index) {
-		return ReadBigEndian(bytes, static_cast<std::size_t>(offset_table + index * offset_size),
-			offset_size);
-	};
-	auto object_string = [&](std::uint64_t index) -> std::optional<std::string> {
-		const auto offset = object_offset(index);
-		if (offset >= offset_table || offset >= bytes.size()) return std::nullopt;
-		const auto marker = bytes[static_cast<std::size_t>(offset)];
-		const auto type = marker >> 4;
-		std::uint64_t count = marker & 0x0f;
-		std::size_t cursor = static_cast<std::size_t>(offset + 1);
-		if (count == 0x0f) {
-			if (cursor >= bytes.size() || bytes[cursor] >> 4 != 0x1) return std::nullopt;
-			const auto width = std::size_t(1) << (bytes[cursor] & 0x0f);
-			count = ReadBigEndian(bytes, cursor + 1, width);
-			cursor += 1 + width;
-		}
-		if (type == 0x5 && count <= bytes.size() - cursor)
-			return std::string(reinterpret_cast<const char*>(bytes.data() + cursor),
-				static_cast<std::size_t>(count));
-		if (type == 0x6 && count <= (bytes.size() - cursor) / 2) {
-			std::string result;
-			result.reserve(static_cast<std::size_t>(count));
-			for (std::uint64_t index = 0; index < count; ++index) {
-				const auto code = ReadBigEndian(bytes, cursor + index * 2, 2);
-				if (code > 0x7f) return std::nullopt;
-				result.push_back(static_cast<char>(code));
-			}
-			return result;
-		}
-		return std::nullopt;
-	};
-	const auto root_offset = object_offset(top_object);
-	if (root_offset >= bytes.size() || (bytes[static_cast<std::size_t>(root_offset)] >> 4) != 0xd)
-		return std::nullopt;
-	const auto root_marker = bytes[static_cast<std::size_t>(root_offset)];
-	std::uint64_t pair_count = root_marker & 0x0f;
-	std::size_t refs = static_cast<std::size_t>(root_offset + 1);
-	if (pair_count == 0x0f) {
-		if (refs >= bytes.size() || bytes[refs] >> 4 != 0x1) return std::nullopt;
-		const auto width = std::size_t(1) << (bytes[refs] & 0x0f);
-		if (width > bytes.size() - refs - 1) return std::nullopt;
-		pair_count = ReadBigEndian(bytes, refs + 1, width);
-		refs += 1 + width;
-	}
-	if (refs > bytes.size()) return std::nullopt;
-	if (pair_count > (bytes.size() - refs) / (2 * reference_size)) return std::nullopt;
-	for (std::uint64_t index = 0; index < pair_count; ++index) {
-		const auto key = ReadBigEndian(bytes, refs + static_cast<std::size_t>(index * reference_size),
-			reference_size);
-		const auto value = ReadBigEndian(bytes, refs + static_cast<std::size_t>(
-			(pair_count + index) * reference_size), reference_size);
-		if (object_string(key) == std::optional<std::string>("CFBundleExecutable"))
-			return object_string(value);
-	}
-	return std::nullopt;
+	std::u8string encoded;
+	encoded.reserve(value.size());
+	for (const unsigned char byte : value)
+		encoded.push_back(static_cast<char8_t>(byte));
+	return std::filesystem::path(encoded);
 }
 
 std::string Utf8(const wchar_t* value)
@@ -214,9 +175,11 @@ void DiagnoseHost()
 		prefix.assign(prefix_buffer, prefix_buffer + prefix_length);
 	std::wcout << L"host_architecture=" << architecture << L"\n"
 		<< L"pointer_bits=" << (sizeof(void*) * 8) << L"\n"
+		<< L"preferred_mach_o_slice=" << architecture << L"\n"
 		<< L"mach_o_x86_64=" << (system.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_AMD64 ? L"yes" : L"no") << L"\n"
 		<< L"mach_o_arm64=" << (system.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_ARM64 ? L"yes" : L"no") << L"\n"
 		<< L"mach_o_i386=" << (sizeof(void*) == 4 ? L"inspect-only" : L"fail-closed") << L"\n"
+		<< L"cross_architecture_translation=none\n"
 		<< L"prefix_source=" << (prefix.empty() ? L"image-parent-or-explicit" : L"WINTOSH_PREFIX") << L"\n";
 	if (!prefix.empty())
 		std::wcout << L"prefix=" << prefix.wstring() << L"\n"
@@ -257,30 +220,14 @@ std::filesystem::path ResolveImage(std::filesystem::path image)
 	std::ifstream plist_input(plist, std::ios::binary);
 	if (plist_input) {
 		const std::vector<std::uint8_t> bytes((std::istreambuf_iterator<char>(plist_input)), {});
-		if (const auto binary_value = BinaryPlistExecutable(bytes); binary_value.has_value() &&
-			!binary_value->empty() && binary_value->find('/') == std::string::npos &&
-			binary_value->find('\\') == std::string::npos) {
-			executable_name = std::filesystem::path(*binary_value);
-		}
-		const std::string contents(bytes.begin(), bytes.end());
-		const auto key_position = contents.find("CFBundleExecutable");
-		if (key_position != std::string::npos) {
-			const auto string_tag_start = contents.find("<string", key_position);
-			const auto value_start = string_tag_start == std::string::npos ? string_tag_start :
-				contents.find('>', string_tag_start);
-			const auto value_end = value_start == std::string::npos ? value_start :
-				contents.find("</string>", value_start);
-			if (value_start != std::string::npos && value_end != std::string::npos &&
-				value_end > value_start && contents.find('<', value_start) >= value_end) {
-				const auto value = contents.substr(value_start + 1, value_end - value_start - 1);
-				const auto first = value.find_first_not_of(" \t\r\n");
-				const auto last = value.find_last_not_of(" \t\r\n");
-				const auto trimmed = first == std::string::npos ? std::string{} :
-					value.substr(first, last - first + 1);
-				if (!trimmed.empty() && trimmed.find('/') == std::string::npos &&
-					trimmed.find('\\') == std::string::npos)
-					executable_name = std::filesystem::path(trimmed);
-			}
+		if (const auto plist_executable = PlistBundleExecutable(bytes);
+			plist_executable.has_value() && !plist_executable->empty()) {
+			const auto candidate = PathFromUtf8(*plist_executable);
+			const bool single_component = candidate.filename() == candidate &&
+				!candidate.has_root_name() && !candidate.has_root_directory() &&
+				candidate != L"." && candidate != L".." &&
+				plist_executable->find_first_of("/\\:") == std::string::npos;
+			if (single_component) executable_name = candidate;
 		}
 	}
 	const auto executable = image / L"Contents" / L"MacOS" / executable_name;
@@ -315,13 +262,25 @@ LONG WINAPI GuestExceptionBoundary(PEXCEPTION_POINTERS pointers)
 	char message[192]{};
 	const auto code = pointers != nullptr && pointers->ExceptionRecord != nullptr ?
 		pointers->ExceptionRecord->ExceptionCode : 0u;
+#if defined(_M_ARM64)
+	const auto pc = pointers != nullptr && pointers->ContextRecord != nullptr ?
+		static_cast<unsigned long long>(pointers->ContextRecord->Pc) : 0ull;
+	const auto sp = pointers != nullptr && pointers->ContextRecord != nullptr ?
+		static_cast<unsigned long long>(pointers->ContextRecord->Sp) : 0ull;
+#else
 	const auto rip = pointers != nullptr && pointers->ContextRecord != nullptr ?
 		static_cast<unsigned long long>(pointers->ContextRecord->Rip) : 0ull;
 	const auto rsp = pointers != nullptr && pointers->ContextRecord != nullptr ?
 		static_cast<unsigned long long>(pointers->ContextRecord->Rsp) : 0ull;
+#endif
 	const auto length = std::snprintf(message, sizeof(message),
-		"DARLING_GUEST_EXCEPTION=0x%08lX RIP=0x%llX RSP=0x%llX\r\n",
-		static_cast<unsigned long>(code), rip, rsp);
+		"DARLING_GUEST_EXCEPTION=0x%08lX PC=0x%llX SP=0x%llX\r\n",
+		static_cast<unsigned long>(code),
+#if defined(_M_ARM64)
+		pc, sp);
+#else
+		rip, rsp);
+#endif
 	DWORD written = 0;
 	if (length > 0)
 		WriteFile(GetStdHandle(STD_ERROR_HANDLE), message,
@@ -446,7 +405,7 @@ int wmain(int argc, wchar_t** argv)
 			Usage();
 			return 64;
 		}
-		image = ResolveImage(image);
+		image = std::filesystem::absolute(ResolveImage(image)).lexically_normal();
 		options.apple_parameters.insert(options.apple_parameters.begin(),
 			"executable_path=" + Utf8(image.c_str()));
 		if (!options.arguments.empty())
@@ -472,7 +431,7 @@ int wmain(int argc, wchar_t** argv)
 	if (!SetEnvironmentVariableW(L"WINTOSH_GUEST_PREFIX", options.prefix.c_str()))
 		throw std::system_error(static_cast<int>(GetLastError()),
 			std::system_category(), "SetEnvironmentVariableW(WINTOSH_GUEST_PREFIX)");
-		if (inspect) {
+	if (inspect) {
 			const auto inspected = darling::windows_host::MachOImage::Open(image.wstring());
 			const auto& header = inspected.Header();
 			std::wcout << L"path=" << image.wstring() << L"\n"
@@ -516,7 +475,7 @@ int wmain(int argc, wchar_t** argv)
 		}
 		#if !defined(__clang__)
 		if (options.entry_abi != darling::windows_host::DarwinEntryAbi::SyntheticCompatibleMain) {
-			std::cerr << "DARLING_RUNNER_ERROR=real Mach-O execution requires a Clang build with System-V ABI support\n";
+			std::cerr << "DARLING_RUNNER_ERROR=real Mach-O execution requires a Clang build with the native guest ABI bridge\n";
 			return 1;
 		}
 		#endif

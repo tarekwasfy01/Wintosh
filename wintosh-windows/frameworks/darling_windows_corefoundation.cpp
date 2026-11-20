@@ -1,10 +1,15 @@
 /* Minimal CoreFoundation-compatible primitives; GPL-3.0-only. */
 #include "darling_windows_corefoundation.h"
+#include "../loader/darling_windows_macho.h"
+
+#include <windows.h>
 
 #include <atomic>
 #include <algorithm>
+#include <array>
 #include <cstring>
 #include <cctype>
+#include <cwchar>
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -13,6 +18,7 @@
 #include <condition_variable>
 #include <mutex>
 #include <memory>
+#include <optional>
 #include <thread>
 #include <unordered_map>
 #include <sstream>
@@ -22,9 +28,13 @@
 #include <cstdarg>
 #include <cstdio>
 #include <limits>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
+#include <new>
 
 namespace {
-enum class Kind { String, Data, Array, Number, Real, Dictionary, Set, Date, URL, Boolean, Null };
+enum class Kind { String, Data, Array, Number, Real, Dictionary, Set, Date, URL, Boolean, Null, ImageSource, DataProvider, ImageDestination, DataConsumer, Bundle, PropertyListUID };
 constexpr darling_windows_CFTypeID TypeId(Kind kind)
 {
 	return static_cast<darling_windows_CFTypeID>(kind) + 1;
@@ -39,16 +49,50 @@ struct Object {
 	bool immortal = false;
 	Kind kind;
 	std::string string;
+	std::string bundle_path;
+	mutable const void* bundle_info_dictionary = nullptr;
+	std::vector<const void*> bundle_localized_info_values;
+	void* bundle_executable_handle = nullptr;
+	darling_windows_CFBundleReleaseExecutableCallback bundle_release_executable = nullptr;
+	mutable std::mutex bundle_info_mutex;
 	std::vector<unsigned char> data;
 	std::vector<const void*> array;
 	std::int64_t number = 0;
+	std::uint64_t property_list_uid = 0;
 	double real_number = 0;
 	std::vector<std::pair<const void*, const void*>> dictionary;
 	double date = 0;
 	bool boolean = false;
+	void* external_data_info = nullptr;
+	const void* external_data = nullptr;
+	std::size_t external_data_size = 0;
+	darling_windows_CFDataProviderReleaseCallback external_data_release = nullptr;
+	bool is_external_data_provider = false;
+	void* sequential_info = nullptr;
+	darling_windows_CFDataProviderGetBytesCallback sequential_get_bytes = nullptr;
+	darling_windows_CFDataProviderSkipForwardCallback sequential_skip_forward = nullptr;
+	darling_windows_CFDataProviderRewindCallback sequential_rewind = nullptr;
+	darling_windows_CFDataProviderReleaseInfoCallback sequential_release_info = nullptr;
+	std::int64_t sequential_position = 0;
+	std::mutex sequential_mutex;
+	bool is_sequential_data_provider = false;
+	void* direct_info = nullptr;
+	darling_windows_CFIndex direct_length = 0;
+	darling_windows_CFDataProviderGetBytePointerCallback direct_get_byte_pointer = nullptr;
+	darling_windows_CFDataProviderReleaseBytePointerCallback direct_release_byte_pointer = nullptr;
+	darling_windows_CFDataProviderGetBytesAtPositionCallback direct_get_bytes_at_position = nullptr;
+	darling_windows_CFDataProviderReleaseInfoCallback direct_release_info = nullptr;
+	bool is_direct_callback_provider = false;
+	void* opaque_payload = nullptr;
+	darling_windows_CFOpaqueDestroyCallback opaque_destroy = nullptr;
 	~Object();
 };
 Object* As(const void* value) { return const_cast<Object*>(static_cast<const Object*>(value)); }
+std::mutex bundle_state_mutex;
+std::string main_executable_path;
+Object* main_bundle_object = nullptr;
+std::mutex bundle_registry_mutex;
+std::unordered_map<std::string, Object*> bundle_registry;
 darling_windows_CFIndex UTF16Length(const std::string& value)
 {
 	std::size_t index = 0;
@@ -116,7 +160,29 @@ void ReleaseOwned(Object* object)
 }
 Object::~Object()
 {
+	if (opaque_destroy != nullptr) {
+		try { opaque_destroy(opaque_payload); }
+		catch (...) { /* C callbacks must not unwind through CoreFoundation. */ }
+	}
+	if (is_direct_callback_provider && direct_release_info != nullptr) {
+		try { direct_release_info(direct_info); }
+		catch (...) { /* C callbacks must not unwind through CoreFoundation. */ }
+	}
+	if (is_sequential_data_provider && sequential_release_info != nullptr) {
+		try { sequential_release_info(sequential_info); }
+		catch (...) { /* C callbacks must not unwind through CoreFoundation. */ }
+	}
+	if (external_data_release != nullptr) {
+		try { external_data_release(external_data_info, external_data, external_data_size); }
+		catch (...) { /* C callbacks must not unwind through CoreFoundation. */ }
+	}
 	for (const auto* value : array) ReleaseOwned(As(value));
+	ReleaseOwned(As(bundle_info_dictionary));
+	for (const auto* value : bundle_localized_info_values) ReleaseOwned(As(value));
+	if (bundle_executable_handle != nullptr && bundle_release_executable != nullptr) {
+		try { bundle_release_executable(bundle_executable_handle); }
+		catch (...) { /* Loader cleanup callbacks must not escape CFRelease. */ }
+	}
 	for (const auto& entry : dictionary) {
 		ReleaseOwned(As(entry.first));
 		ReleaseOwned(As(entry.second));
@@ -124,7 +190,9 @@ Object::~Object()
 }
 void RetainOwned(const void* value)
 {
-	if (value != nullptr) As(value)->references.fetch_add(1, std::memory_order_relaxed);
+	auto* object = As(value);
+	if (object != nullptr && !object->immortal)
+		object->references.fetch_add(1, std::memory_order_relaxed);
 }
 std::string EscapeXML(const std::string& value)
 {
@@ -450,8 +518,8 @@ Object* ParseBinaryObject(const BinaryPlistContext& context, std::size_t index,
 	if (type == 0x8) {
 		const auto width = static_cast<std::size_t>(info) + 1;
 		if (width > 8 || offset + 1 + width > context.length) return nullptr;
-		auto* object = new Object{}; object->kind = Kind::Number;
-		object->number = static_cast<std::int64_t>(ReadBigEndian(context.bytes + offset + 1, width));
+		auto* object = new Object{}; object->kind = Kind::PropertyListUID;
+		object->property_list_uid = ReadBigEndian(context.bytes + offset + 1, width);
 		return object;
 	}
 	if (type == 0x4) {
@@ -573,6 +641,56 @@ extern "C" darling_windows_CFTypeID darling_windows_CFGetTypeID(const void* valu
 	return object == nullptr ? 0 : TypeId(object->kind);
 }
 
+extern "C" darling_windows_CFTypeRef darling_windows_CFImageDestinationCreateOpaque(
+	void* payload, darling_windows_CFOpaqueDestroyCallback destroy_payload)
+{
+	if (payload == nullptr || destroy_payload == nullptr) return nullptr;
+	auto* object = new (std::nothrow) Object{};
+	if (object == nullptr) return nullptr;
+	object->kind = Kind::ImageDestination;
+	object->opaque_payload = payload;
+	object->opaque_destroy = destroy_payload;
+	return object;
+}
+
+extern "C" void* darling_windows_CFImageDestinationGetOpaque(
+	darling_windows_CFTypeRef value)
+{
+	const auto* object = static_cast<const Object*>(value);
+	return object != nullptr && object->kind == Kind::ImageDestination
+		? object->opaque_payload : nullptr;
+}
+
+extern "C" darling_windows_CFTypeID darling_windows_CFImageDestinationGetTypeID()
+{
+	return TypeId(Kind::ImageDestination);
+}
+
+extern "C" darling_windows_CFTypeRef darling_windows_CFDataConsumerCreateOpaque(
+	void* payload, darling_windows_CFOpaqueDestroyCallback destroy_payload)
+{
+	if (payload == nullptr || destroy_payload == nullptr) return nullptr;
+	auto* object = new (std::nothrow) Object{};
+	if (object == nullptr) return nullptr;
+	object->kind = Kind::DataConsumer;
+	object->opaque_payload = payload;
+	object->opaque_destroy = destroy_payload;
+	return object;
+}
+
+extern "C" void* darling_windows_CFDataConsumerGetOpaque(
+	darling_windows_CFTypeRef value)
+{
+	const auto* object = static_cast<const Object*>(value);
+	return object != nullptr && object->kind == Kind::DataConsumer
+		? object->opaque_payload : nullptr;
+}
+
+extern "C" darling_windows_CFTypeID darling_windows_CFDataConsumerGetTypeID()
+{
+	return TypeId(Kind::DataConsumer);
+}
+
 extern "C" std::uint64_t darling_windows_CFHash(const void* value)
 {
 	const auto* object = static_cast<const Object*>(value);
@@ -593,6 +711,8 @@ extern "C" std::uint64_t darling_windows_CFHash(const void* value)
 		// equal, so both representations must share one hash domain.
 		return 0x4e554d455249435full + static_cast<std::uint64_t>(std::hash<double>{}(
 			object->kind == Kind::Number ? static_cast<double>(object->number) : object->real_number));
+	case Kind::PropertyListUID:
+		return mix(object->property_list_uid);
 	case Kind::Date: return mix(static_cast<std::uint64_t>(std::hash<double>{}(object->date)));
 	case Kind::Boolean: return mix(object->boolean ? 1 : 0);
 	case Kind::Null: return mix(0);
@@ -642,6 +762,8 @@ extern "C" bool darling_windows_CFEqual(const void* left, const void* right)
 	case Kind::Data: return lhs->data == rhs->data;
 	case Kind::Number: return lhs->number == rhs->number;
 	case Kind::Real: return lhs->real_number == rhs->real_number;
+	case Kind::PropertyListUID:
+		return lhs->property_list_uid == rhs->property_list_uid;
 	case Kind::Date: return lhs->date == rhs->date;
 	case Kind::Boolean: return lhs->boolean == rhs->boolean;
 	case Kind::Null: return true;
@@ -1368,6 +1490,18 @@ extern "C" darling_windows_CFDataRef darling_windows_CFDataCreate(const void* by
 	return object;
 }
 
+extern "C" darling_windows_CFDataRef darling_windows_CFDataCreateMutable(
+	darling_windows_CFIndex capacity)
+{
+	if (capacity < 0) return nullptr;
+	auto* object = new (std::nothrow) Object{};
+	if (object == nullptr) return nullptr;
+	object->kind = Kind::Data;
+	try { object->data.reserve(static_cast<std::size_t>(capacity)); }
+	catch (...) { delete object; return nullptr; }
+	return object;
+}
+
 extern "C" darling_windows_CFDataRef darling_windows_CFDataCreateCopy(
 	darling_windows_CFDataRef value)
 {
@@ -1396,6 +1530,266 @@ extern "C" darling_windows_CFIndex darling_windows_CFDataGetLength(darling_windo
 	const auto* object = static_cast<const Object*>(value);
 	return object != nullptr && object->kind == Kind::Data ?
 		static_cast<darling_windows_CFIndex>(object->data.size()) : 0;
+}
+
+extern "C" darling_windows_CFTypeRef darling_windows_CFImageSourceCreate(
+	const void* bytes, darling_windows_CFIndex length, bool is_final)
+{
+	if (length < 0 || (length != 0 && bytes == nullptr)) return nullptr;
+	try {
+		auto* object = new Object{};
+		object->kind = Kind::ImageSource;
+		object->boolean = is_final;
+		if (length != 0) {
+			const auto* begin = static_cast<const unsigned char*>(bytes);
+			object->data.assign(begin, begin + length);
+		}
+		return object;
+	} catch (...) { return nullptr; }
+}
+
+extern "C" const unsigned char* darling_windows_CFImageSourceGetBytePtr(
+	darling_windows_CFTypeRef value)
+{
+	const auto* object = static_cast<const Object*>(value);
+	return object != nullptr && object->kind == Kind::ImageSource && !object->data.empty()
+		? object->data.data() : nullptr;
+}
+
+extern "C" darling_windows_CFIndex darling_windows_CFImageSourceGetLength(
+	darling_windows_CFTypeRef value)
+{
+	const auto* object = static_cast<const Object*>(value);
+	return object != nullptr && object->kind == Kind::ImageSource
+		? static_cast<darling_windows_CFIndex>(object->data.size()) : 0;
+}
+
+extern "C" darling_windows_CFTypeID darling_windows_CFImageSourceGetTypeID()
+{
+	return TypeId(Kind::ImageSource);
+}
+
+extern "C" bool darling_windows_CFImageSourceSetData(darling_windows_CFTypeRef value,
+	const void* bytes, darling_windows_CFIndex length, bool is_final)
+{
+	auto* object = As(value);
+	if (object == nullptr || object->kind != Kind::ImageSource || length < 0 ||
+		(length != 0 && bytes == nullptr)) return false;
+	try {
+		std::vector<unsigned char> replacement;
+		if (length != 0) {
+			const auto* begin = static_cast<const unsigned char*>(bytes);
+			replacement.assign(begin, begin + length);
+		}
+		object->data.swap(replacement);
+		object->boolean = is_final;
+		return true;
+	} catch (...) { return false; }
+}
+
+extern "C" bool darling_windows_CFImageSourceIsFinal(darling_windows_CFTypeRef value)
+{
+	const auto* object = static_cast<const Object*>(value);
+	return object != nullptr && object->kind == Kind::ImageSource && object->boolean;
+}
+
+extern "C" darling_windows_CFTypeRef darling_windows_CFDataProviderCreate(
+	const void* bytes, darling_windows_CFIndex length)
+{
+	if (length < 0 || (length != 0 && bytes == nullptr)) return nullptr;
+	try {
+		auto* object = new Object{};
+		object->kind = Kind::DataProvider;
+		if (length != 0) {
+			const auto* begin = static_cast<const unsigned char*>(bytes);
+			object->data.assign(begin, begin + length);
+		}
+		return object;
+	} catch (...) { return nullptr; }
+}
+
+extern "C" darling_windows_CFTypeRef darling_windows_CFDataProviderCreateExternal(
+	void* info, const void* bytes, darling_windows_CFIndex length,
+	darling_windows_CFDataProviderReleaseCallback release_callback)
+{
+	if (length < 0 || (length != 0 && bytes == nullptr)) return nullptr;
+	auto* object = new (std::nothrow) Object{};
+	if (object == nullptr) return nullptr;
+	object->kind = Kind::DataProvider;
+	object->external_data_info = info;
+	object->external_data = bytes;
+	object->external_data_size = static_cast<std::size_t>(length);
+	object->external_data_release = release_callback;
+	object->is_external_data_provider = true;
+	return object;
+}
+
+extern "C" darling_windows_CFTypeRef darling_windows_CFDataProviderCreateSequential(
+	void* info, darling_windows_CFDataProviderGetBytesCallback get_bytes,
+	darling_windows_CFDataProviderSkipForwardCallback skip_forward,
+	darling_windows_CFDataProviderRewindCallback rewind,
+	darling_windows_CFDataProviderReleaseInfoCallback release_info)
+{
+	if (get_bytes == nullptr) return nullptr;
+	auto* object = new (std::nothrow) Object{};
+	if (object == nullptr) return nullptr;
+	object->kind = Kind::DataProvider;
+	object->is_sequential_data_provider = true;
+	object->sequential_info = info;
+	object->sequential_get_bytes = get_bytes;
+	object->sequential_skip_forward = skip_forward;
+	object->sequential_rewind = rewind;
+	object->sequential_release_info = release_info;
+	return object;
+}
+
+extern "C" darling_windows_CFTypeRef darling_windows_CFDataProviderCreateDirect(
+	void* info, darling_windows_CFIndex length,
+	darling_windows_CFDataProviderGetBytePointerCallback get_byte_pointer,
+	darling_windows_CFDataProviderReleaseBytePointerCallback release_byte_pointer,
+	darling_windows_CFDataProviderGetBytesAtPositionCallback get_bytes_at_position,
+	darling_windows_CFDataProviderReleaseInfoCallback release_info)
+{
+	if (length < 0 || (get_byte_pointer == nullptr && get_bytes_at_position == nullptr))
+		return nullptr;
+	auto* object = new (std::nothrow) Object{};
+	if (object == nullptr) return nullptr;
+	object->kind = Kind::DataProvider;
+	object->is_direct_callback_provider = true;
+	object->direct_info = info;
+	object->direct_length = length;
+	object->direct_get_byte_pointer = get_byte_pointer;
+	object->direct_release_byte_pointer = release_byte_pointer;
+	object->direct_get_bytes_at_position = get_bytes_at_position;
+	object->direct_release_info = release_info;
+	return object;
+}
+
+extern "C" std::size_t darling_windows_CFDataProviderReadAtPosition(
+	darling_windows_CFTypeRef value, void* buffer, std::int64_t position,
+	std::size_t count)
+{
+	auto* object = As(value);
+	if (object == nullptr || object->kind != Kind::DataProvider ||
+		buffer == nullptr || position < 0) return 0;
+	if (!object->is_sequential_data_provider) {
+		const auto length = darling_windows_CFDataProviderGetLength(value);
+		if (position >= length) return 0;
+		const auto available = static_cast<std::size_t>(length - position);
+		const auto copied = (std::min)(available, count);
+		if (copied == 0) return 0;
+		if (object->is_direct_callback_provider) {
+			try {
+				if (object->direct_get_byte_pointer != nullptr) {
+					const auto* bytes = object->direct_get_byte_pointer(object->direct_info);
+					if (bytes == nullptr) return 0;
+					std::memcpy(buffer, static_cast<const unsigned char*>(bytes) +
+						static_cast<std::size_t>(position), copied);
+					if (object->direct_release_byte_pointer != nullptr)
+						object->direct_release_byte_pointer(object->direct_info, bytes);
+					return copied;
+				}
+				const auto read = object->direct_get_bytes_at_position(
+					object->direct_info, position, buffer, copied);
+				return read <= copied ? read : 0;
+			} catch (...) { return 0; }
+		}
+		const auto* bytes = darling_windows_CFDataProviderGetBytePtr(value);
+		if (copied != 0 && bytes != nullptr)
+			std::memcpy(buffer, bytes + static_cast<std::size_t>(position), copied);
+		return copied;
+	}
+	std::lock_guard<std::mutex> lock(object->sequential_mutex);
+	if (position < object->sequential_position) {
+		if (object->sequential_rewind == nullptr) return 0;
+		try { object->sequential_rewind(object->sequential_info); }
+		catch (...) { return 0; }
+		object->sequential_position = 0;
+	}
+	auto remaining = position - object->sequential_position;
+	if (remaining > 0 && object->sequential_skip_forward != nullptr) {
+		std::int64_t skipped = 0;
+		try { skipped = object->sequential_skip_forward(object->sequential_info, remaining); }
+		catch (...) { return 0; }
+		if (skipped < 0 || skipped > remaining) return 0;
+		object->sequential_position += skipped;
+		remaining -= skipped;
+	}
+	std::array<unsigned char, 4096> discard{};
+	while (remaining > 0) {
+		const auto amount = static_cast<std::size_t>((std::min<std::int64_t>)(
+			remaining, static_cast<std::int64_t>(discard.size())));
+		std::size_t read = 0;
+		try { read = object->sequential_get_bytes(object->sequential_info, discard.data(), amount); }
+		catch (...) { return 0; }
+		if (read == 0 || read > amount) return 0;
+		object->sequential_position += static_cast<std::int64_t>(read);
+		remaining -= static_cast<std::int64_t>(read);
+	}
+	if (count == 0) return 0;
+	std::size_t read = 0;
+	try { read = object->sequential_get_bytes(object->sequential_info, buffer, count); }
+	catch (...) { return 0; }
+	if (read > count) return 0;
+	if (read <= static_cast<std::size_t>((std::numeric_limits<std::int64_t>::max)() - object->sequential_position))
+		object->sequential_position += static_cast<std::int64_t>(read);
+	else return 0;
+	return read;
+}
+
+extern "C" const unsigned char* darling_windows_CFDataProviderGetBytePtr(
+	darling_windows_CFTypeRef value)
+{
+	const auto* object = static_cast<const Object*>(value);
+	if (object == nullptr || object->kind != Kind::DataProvider) return nullptr;
+	if (object->is_sequential_data_provider) return nullptr;
+	if (object->is_direct_callback_provider) {
+		try { return object->direct_get_byte_pointer == nullptr ? nullptr
+			: static_cast<const unsigned char*>(
+				object->direct_get_byte_pointer(object->direct_info)); }
+		catch (...) { return nullptr; }
+	}
+	if (object->is_external_data_provider)
+		return static_cast<const unsigned char*>(object->external_data);
+	return object->data.empty() ? nullptr : object->data.data();
+}
+
+extern "C" darling_windows_CFIndex darling_windows_CFDataProviderGetLength(
+	darling_windows_CFTypeRef value)
+{
+	const auto* object = static_cast<const Object*>(value);
+	if (object == nullptr || object->kind != Kind::DataProvider) return 0;
+	if (object->is_sequential_data_provider) return 0;
+	if (object->is_direct_callback_provider) return object->direct_length;
+	const auto length = object->is_external_data_provider
+		? object->external_data_size : object->data.size();
+	if (length > static_cast<std::size_t>((std::numeric_limits<darling_windows_CFIndex>::max)()))
+		return 0;
+	return static_cast<darling_windows_CFIndex>(length);
+}
+
+extern "C" bool darling_windows_CFDataProviderIsSequential(
+	darling_windows_CFTypeRef value)
+{
+	const auto* object = static_cast<const Object*>(value);
+	return object != nullptr && object->kind == Kind::DataProvider &&
+		object->is_sequential_data_provider;
+}
+
+extern "C" void darling_windows_CFDataProviderReleaseBytePointer(
+	darling_windows_CFTypeRef value, const void* pointer)
+{
+	const auto* object = static_cast<const Object*>(value);
+	if (object == nullptr || object->kind != Kind::DataProvider || pointer == nullptr ||
+		!object->is_direct_callback_provider || object->direct_release_byte_pointer == nullptr)
+		return;
+	try { object->direct_release_byte_pointer(object->direct_info, pointer); }
+	catch (...) { /* C callbacks must not unwind through CoreFoundation. */ }
+}
+
+extern "C" darling_windows_CFTypeID darling_windows_CFDataProviderGetTypeID()
+{
+	return TypeId(Kind::DataProvider);
 }
 
 extern "C" bool darling_windows_CFDataGetBytes(darling_windows_CFDataRef value,
@@ -2442,6 +2836,87 @@ extern "C" darling_windows_CFTypeID darling_windows_CFSetGetTypeID() { return Ty
 extern "C" darling_windows_CFTypeID darling_windows_CFNumberGetTypeID() { return TypeId(Kind::Number); }
 extern "C" darling_windows_CFTypeID darling_windows_CFDateGetTypeID() { return TypeId(Kind::Date); }
 
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeRef CFRetain(const void* value)
+{
+	return darling_windows_CFRetain(value);
+}
+
+extern "C" DARLING_CF_GUEST_ABI void CFRelease(const void* value)
+{
+	darling_windows_CFRelease(value);
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeID CFGetTypeID(const void* value)
+{
+	return darling_windows_CFGetTypeID(value);
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFDataRef CFDataCreate(
+	const void*, const unsigned char* bytes, darling_windows_CFIndex length)
+{
+	return darling_windows_CFDataCreate(bytes, length);
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFMutableDataRef CFDataCreateMutable(
+	const void*, darling_windows_CFIndex capacity)
+{
+	return const_cast<void*>(darling_windows_CFDataCreateMutable(capacity));
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFDataRef CFDataCreateCopy(
+	const void*, darling_windows_CFDataRef data)
+{
+	return darling_windows_CFDataCreateCopy(data);
+}
+
+extern "C" DARLING_CF_GUEST_ABI const unsigned char* CFDataGetBytePtr(
+	darling_windows_CFDataRef data)
+{
+	return darling_windows_CFDataGetBytePtr(data);
+}
+
+extern "C" DARLING_CF_GUEST_ABI unsigned char* CFDataGetMutableBytePtr(
+	darling_windows_CFDataRef data)
+{
+	return darling_windows_CFDataGetMutableBytePtr(data);
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFIndex CFDataGetLength(
+	darling_windows_CFDataRef data)
+{
+	return darling_windows_CFDataGetLength(data);
+}
+
+extern "C" DARLING_CF_GUEST_ABI void CFDataGetBytes(darling_windows_CFDataRef data,
+	darling_windows_CFRange range, unsigned char* buffer)
+{
+	(void)darling_windows_CFDataGetBytes(data, range.location, range.length, buffer);
+}
+
+extern "C" DARLING_CF_GUEST_ABI void CFDataAppendBytes(darling_windows_CFDataRef data,
+	const unsigned char* bytes, darling_windows_CFIndex length)
+{
+	(void)darling_windows_CFDataAppendBytes(data, bytes, length);
+}
+
+extern "C" DARLING_CF_GUEST_ABI void CFDataReplaceBytes(darling_windows_CFDataRef data,
+	darling_windows_CFRange range, const unsigned char* bytes,
+	darling_windows_CFIndex length)
+{
+	(void)darling_windows_CFDataReplaceBytes(data, range.location, range.length, bytes, length);
+}
+
+extern "C" DARLING_CF_GUEST_ABI void CFDataSetLength(darling_windows_CFDataRef data,
+	darling_windows_CFIndex length)
+{
+	(void)darling_windows_CFDataSetLength(data, length);
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeID CFDataGetTypeID()
+{
+	return darling_windows_CFDataGetTypeID();
+}
+
 extern "C" darling_windows_CFBooleanRef darling_windows_CFBooleanGetValue(bool value)
 {
 	static Object false_value{};
@@ -2470,6 +2945,22 @@ extern "C" darling_windows_CFTypeRef darling_windows_CFNullGetValue()
 }
 
 extern "C" darling_windows_CFTypeID darling_windows_CFNullGetTypeID() { return TypeId(Kind::Null); }
+
+extern "C" darling_windows_CFTypeID
+darling_windows_CFPropertyListUIDGetTypeID()
+{
+	return TypeId(Kind::PropertyListUID);
+}
+
+extern "C" bool darling_windows_CFPropertyListUIDGetValue(
+	darling_windows_CFTypeRef value, std::uint64_t* uid)
+{
+	const auto* object = static_cast<const Object*>(value);
+	if (object == nullptr || object->kind != Kind::PropertyListUID || uid == nullptr)
+		return false;
+	*uid = object->property_list_uid;
+	return true;
+}
 
 extern "C" darling_windows_CFStringRef darling_windows_CFPropertyListCreateXML(
 	darling_windows_CFTypeRef value)
@@ -2672,4 +3163,1117 @@ extern "C" void darling_windows_CFNotificationCenterPostNotification(void* cente
 			snapshot.insert(snapshot.end(), wildcard->second.begin(), wildcard->second.end());
 	}
 	for (const auto& entry : snapshot) entry.callback(entry.observer, name, object);
+}
+
+namespace {
+Object* AsBundle(const void* value)
+{
+	auto* object = As(value);
+	return object != nullptr && object->kind == Kind::Bundle ? object : nullptr;
+}
+
+std::string PathUtf8(const std::filesystem::path& path)
+{
+	const auto value = path.u8string();
+	return std::string(reinterpret_cast<const char*>(value.data()), value.size());
+}
+
+std::filesystem::path NormalizeBundlePath(const std::filesystem::path& path)
+{
+	std::error_code error;
+	const auto canonical = std::filesystem::weakly_canonical(path, error);
+	if (!error) return canonical.lexically_normal();
+	return std::filesystem::absolute(path).lexically_normal();
+}
+
+std::vector<std::filesystem::path> BundleVersionDirectories(
+	const std::filesystem::path& root)
+{
+	std::vector<std::filesystem::path> versions{root / "Versions" / "Current"};
+	std::error_code error;
+	const auto version_root = root / "Versions";
+	if (!std::filesystem::is_directory(version_root, error) || error) return versions;
+	try {
+		std::vector<std::filesystem::path> concrete;
+		for (std::filesystem::directory_iterator iterator(version_root, error), end;
+			!error && iterator != end; iterator.increment(error)) {
+			if (iterator->path().filename() == "Current") continue;
+			std::error_code entry_error;
+			if (iterator->is_directory(entry_error) && !entry_error)
+				concrete.push_back(iterator->path());
+		}
+		// Current is authoritative when present; if a transfer dropped that
+		// symlink, prefer the greatest version name as a deterministic fallback.
+		std::sort(concrete.rbegin(), concrete.rend());
+		versions.insert(versions.end(), concrete.begin(), concrete.end());
+	} catch (...) { /* Keep the conventional Current path even if enumeration fails. */ }
+	return versions;
+}
+
+std::vector<std::filesystem::path> BundleResourceRoots(
+	const std::filesystem::path& root)
+{
+	std::vector<std::filesystem::path> resources{
+		root / "Contents" / "Resources", root / "Resources"};
+	for (const auto& version : BundleVersionDirectories(root))
+		resources.push_back(version / "Resources");
+	return resources;
+}
+
+darling_windows_CFDictionaryRef LoadBundleInfoDictionary(
+	const std::filesystem::path& root)
+{
+	std::vector<std::filesystem::path> plist_paths{
+		root / "Contents" / "Info.plist", root / "Info.plist"};
+	for (const auto& resources : BundleResourceRoots(root))
+		plist_paths.push_back(resources / "Info.plist");
+	for (const auto& plist_path : plist_paths) {
+		try {
+			std::ifstream input(plist_path, std::ios::binary);
+			if (!input) continue;
+			std::string contents((std::istreambuf_iterator<char>(input)),
+				std::istreambuf_iterator<char>());
+			if (contents.size() > static_cast<std::size_t>(
+				(std::numeric_limits<darling_windows_CFIndex>::max)())) continue;
+			const auto* properties = contents.rfind("bplist00", 0) == 0
+				? darling_windows_CFPropertyListCreateFromBinary(contents.data(),
+					static_cast<darling_windows_CFIndex>(contents.size()))
+				: darling_windows_CFPropertyListCreateFromXML(contents.c_str());
+			if (properties != nullptr && darling_windows_CFGetTypeID(properties) ==
+				darling_windows_CFDictionaryGetTypeID())
+				return static_cast<darling_windows_CFDictionaryRef>(properties);
+			darling_windows_CFRelease(properties);
+		} catch (...) { /* Invalid or inaccessible Info.plist is not a valid executable lookup. */ }
+	}
+	return nullptr;
+}
+
+darling_windows_CFDictionaryRef BundleInfoDictionary(const Object* bundle)
+{
+	if (bundle == nullptr || bundle->kind != Kind::Bundle) return nullptr;
+	std::lock_guard lock(bundle->bundle_info_mutex);
+	if (bundle->bundle_info_dictionary == nullptr) {
+		try {
+			bundle->bundle_info_dictionary = LoadBundleInfoDictionary(
+				std::filesystem::u8path(bundle->bundle_path));
+		} catch (...) { return nullptr; }
+	}
+	return static_cast<darling_windows_CFDictionaryRef>(bundle->bundle_info_dictionary);
+}
+
+std::filesystem::path BundleExecutablePath(const Object* bundle)
+{
+	if (bundle == nullptr || bundle->kind != Kind::Bundle) return {};
+	const auto root = std::filesystem::u8path(bundle->bundle_path);
+	const auto properties = BundleInfoDictionary(bundle);
+	const auto key = darling_windows_CFStringCreateWithCString("CFBundleExecutable");
+	const auto value = properties == nullptr || key == nullptr ? nullptr :
+		darling_windows_CFDictionaryGetValue(properties, key);
+	std::array<char, 4096> executable{};
+	const bool valid = value != nullptr && darling_windows_CFStringGetCString(value,
+		executable.data(), static_cast<darling_windows_CFIndex>(executable.size()));
+	darling_windows_CFRelease(key);
+	std::vector<std::filesystem::path> candidates;
+	if (valid && executable[0] != '\0') {
+		const std::filesystem::path executable_name =
+			std::filesystem::u8path(executable.data());
+		// CFBundleExecutable is a file name, not a relative path. Reject path
+		// components so malformed bundle metadata cannot escape its bundle root.
+		if (executable_name.filename() != executable_name || executable_name == "." ||
+			executable_name == ".." || executable_name.has_root_path() ||
+		std::find(executable.begin(), executable.end(), ':') != executable.end()) return {};
+		candidates.push_back(root / "Contents" / "MacOS" / executable_name);
+		for (const auto& version : BundleVersionDirectories(root))
+			candidates.push_back(version / executable_name);
+		candidates.push_back(root / executable_name);
+	}
+	const auto name = root.filename().stem();
+	if (!name.empty()) {
+		candidates.push_back(root / "Contents" / "MacOS" / name);
+		for (const auto& version : BundleVersionDirectories(root))
+			candidates.push_back(version / name);
+		candidates.push_back(root / name);
+	}
+	for (const auto& candidate : candidates) {
+		std::error_code error;
+		if (std::filesystem::is_regular_file(candidate, error) && !error) return candidate;
+	}
+	return {};
+}
+
+bool ReadMachOArchitectures(const std::filesystem::path& path,
+	std::vector<std::int32_t>& architectures)
+{
+	using darling::windows_host::FAT_MAGIC_64_BE;
+	using darling::windows_host::FAT_MAGIC_BE;
+	using darling::windows_host::MH_MAGIC;
+	using darling::windows_host::MH_MAGIC_64;
+	using darling::windows_host::MachHeader32;
+	std::ifstream input(path, std::ios::binary);
+	if (!input) return false;
+	std::error_code error;
+	const auto file_bytes = std::filesystem::file_size(path, error);
+	if (error || file_bytes < sizeof(MachHeader32) ||
+		file_bytes > static_cast<std::uintmax_t>(
+			(std::numeric_limits<std::streamoff>::max)())) return false;
+	auto read_at = [&input](std::uint64_t offset, void* output, std::size_t bytes) {
+		input.clear();
+		input.seekg(static_cast<std::streamoff>(offset), std::ios::beg);
+		return input.good() && input.read(static_cast<char*>(output),
+			static_cast<std::streamsize>(bytes)).good();
+	};
+	auto big_endian_32 = [](const std::uint8_t* bytes) {
+		return (static_cast<std::uint32_t>(bytes[0]) << 24) |
+			(static_cast<std::uint32_t>(bytes[1]) << 16) |
+			(static_cast<std::uint32_t>(bytes[2]) << 8) | bytes[3];
+	};
+	auto big_endian_64 = [&big_endian_32](const std::uint8_t* bytes) {
+		return (static_cast<std::uint64_t>(big_endian_32(bytes)) << 32) |
+			big_endian_32(bytes + 4);
+	};
+	std::uint32_t raw_magic = 0;
+	if (!read_at(0, &raw_magic, sizeof(raw_magic))) return false;
+	if (raw_magic != FAT_MAGIC_BE && raw_magic != FAT_MAGIC_64_BE) {
+		MachHeader32 header{};
+		if (!read_at(0, &header, sizeof(header)) ||
+			(header.magic != MH_MAGIC && header.magic != MH_MAGIC_64)) return false;
+		architectures.push_back(header.cpu_type);
+		return true;
+	}
+	std::array<std::uint8_t, 8> fat_header{};
+	if (!read_at(0, fat_header.data(), fat_header.size())) return false;
+	const std::uint32_t count = big_endian_32(fat_header.data() + 4);
+	if (count == 0 || count > 128) return false;
+	const std::size_t record_bytes = raw_magic == FAT_MAGIC_64_BE ? 32 : 20;
+	const std::uint64_t table_bytes = static_cast<std::uint64_t>(count) * record_bytes;
+	if (table_bytes > file_bytes - fat_header.size()) return false;
+	std::vector<std::uint8_t> table(static_cast<std::size_t>(table_bytes));
+	if (!read_at(fat_header.size(), table.data(), table.size())) return false;
+	for (std::uint32_t index = 0; index < count; ++index) {
+		const auto* record = table.data() + static_cast<std::size_t>(index) * record_bytes;
+		const auto cpu_type = static_cast<std::int32_t>(big_endian_32(record));
+		const std::uint64_t offset = raw_magic == FAT_MAGIC_64_BE ?
+			big_endian_64(record + 8) : big_endian_32(record + 8);
+		const std::uint64_t slice_bytes = raw_magic == FAT_MAGIC_64_BE ?
+			big_endian_64(record + 16) : big_endian_32(record + 12);
+		if (offset > file_bytes || slice_bytes > file_bytes - offset ||
+			slice_bytes < sizeof(MachHeader32)) return false;
+		MachHeader32 slice_header{};
+		if (!read_at(offset, &slice_header, sizeof(slice_header)) ||
+			(slice_header.magic != MH_MAGIC && slice_header.magic != MH_MAGIC_64) ||
+			slice_header.cpu_type != cpu_type) return false;
+		if (std::find(architectures.begin(), architectures.end(), cpu_type) ==
+			architectures.end()) architectures.push_back(cpu_type);
+	}
+	return !architectures.empty();
+}
+
+darling_windows_CFArrayRef CreateArchitectureArray(
+	const std::filesystem::path& executable_path)
+{
+	std::vector<std::int32_t> architectures;
+	if (!ReadMachOArchitectures(executable_path, architectures)) return nullptr;
+	std::vector<const void*> numbers;
+	numbers.reserve(architectures.size());
+	for (const auto architecture : architectures) {
+		const auto number = darling_windows_CFNumberCreateInteger(architecture);
+		if (number == nullptr) {
+			for (const auto* value : numbers) darling_windows_CFRelease(value);
+			return nullptr;
+		}
+		numbers.push_back(number);
+	}
+	const auto result = darling_windows_CFArrayCreate(numbers.data(),
+		static_cast<darling_windows_CFIndex>(numbers.size()));
+	for (const auto* value : numbers) darling_windows_CFRelease(value);
+	return result;
+}
+
+void AppendUTF8(std::string& output, std::uint32_t codepoint)
+{
+	if (codepoint <= 0x7f) output.push_back(static_cast<char>(codepoint));
+	else if (codepoint <= 0x7ff) {
+		output.push_back(static_cast<char>(0xc0 | (codepoint >> 6)));
+		output.push_back(static_cast<char>(0x80 | (codepoint & 0x3f)));
+	} else if (codepoint <= 0xffff) {
+		output.push_back(static_cast<char>(0xe0 | (codepoint >> 12)));
+		output.push_back(static_cast<char>(0x80 | ((codepoint >> 6) & 0x3f)));
+		output.push_back(static_cast<char>(0x80 | (codepoint & 0x3f)));
+	} else {
+		output.push_back(static_cast<char>(0xf0 | (codepoint >> 18)));
+		output.push_back(static_cast<char>(0x80 | ((codepoint >> 12) & 0x3f)));
+		output.push_back(static_cast<char>(0x80 | ((codepoint >> 6) & 0x3f)));
+		output.push_back(static_cast<char>(0x80 | (codepoint & 0x3f)));
+	}
+}
+
+bool DecodeStringsText(const std::vector<unsigned char>& bytes, std::string& text)
+{
+	if (bytes.size() >= 2 && ((bytes[0] == 0xff && bytes[1] == 0xfe) ||
+		(bytes[0] == 0xfe && bytes[1] == 0xff))) {
+		const bool little_endian = bytes[0] == 0xff;
+		const auto count = (bytes.size() - 2) / 2;
+		std::vector<wchar_t> wide;
+		wide.reserve(count);
+		for (std::size_t index = 0; index < count; ++index) {
+			const auto first = bytes[2 + index * 2];
+			const auto second = bytes[3 + index * 2];
+			wide.push_back(static_cast<wchar_t>(little_endian
+				? (first | (static_cast<unsigned>(second) << 8))
+				: (second | (static_cast<unsigned>(first) << 8))));
+		}
+		if ((bytes.size() - 2) % 2 != 0) return false;
+		if (wide.empty()) { text.clear(); return true; }
+		const int required = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS,
+			wide.data(), static_cast<int>(wide.size()), nullptr, 0, nullptr, nullptr);
+		if (required <= 0) return false;
+		text.resize(static_cast<std::size_t>(required));
+		return WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS,
+			wide.data(), static_cast<int>(wide.size()), text.data(), required,
+			nullptr, nullptr) == required;
+	}
+	std::size_t offset = bytes.size() >= 3 && bytes[0] == 0xef && bytes[1] == 0xbb &&
+		bytes[2] == 0xbf ? 3 : 0;
+	if (bytes.size() == offset) { text.clear(); return true; }
+	text.assign(reinterpret_cast<const char*>(bytes.data() + offset), bytes.size() - offset);
+	return true;
+}
+
+struct OpenStepStringsParser final {
+	std::string_view text;
+	std::size_t position = 0;
+	bool SkipTrivia()
+	{
+		for (;;) {
+			while (position < text.size() && std::isspace(static_cast<unsigned char>(text[position])))
+				++position;
+			if (position + 1 < text.size() && text[position] == '/' && text[position + 1] == '/') {
+				position += 2;
+				while (position < text.size() && text[position] != '\n') ++position;
+				continue;
+			}
+			if (position + 1 < text.size() && text[position] == '/' && text[position + 1] == '*') {
+				const auto end = text.find("*/", position + 2);
+				if (end == std::string_view::npos) return false;
+				position = end + 2;
+				continue;
+			}
+			return true;
+		}
+	}
+	bool ParseString(std::string& result)
+	{
+		if (!SkipTrivia() || position >= text.size()) return false;
+		result.clear();
+		if (text[position] != '"') {
+			const auto begin = position;
+			while (position < text.size() && !std::isspace(static_cast<unsigned char>(text[position])) &&
+				text[position] != '=' && text[position] != ';') ++position;
+			if (position == begin) return false;
+			result.assign(text.substr(begin, position - begin));
+			return true;
+		}
+		++position;
+		while (position < text.size()) {
+			const auto character = text[position++];
+			if (character == '"') return true;
+			if (character != '\\') { result.push_back(character); continue; }
+			if (position >= text.size()) return false;
+			const auto escape = text[position++];
+			switch (escape) {
+			case 'n': result.push_back('\n'); break;
+			case 'r': result.push_back('\r'); break;
+			case 't': result.push_back('\t'); break;
+			case 'b': result.push_back('\b'); break;
+			case 'f': result.push_back('\f'); break;
+			case '\n': break;
+			case '\r': if (position < text.size() && text[position] == '\n') ++position; break;
+			case 'u':
+			case 'U': {
+				auto read_hex = [&]() -> std::optional<std::uint32_t> {
+					if (text.size() - position < 4) return std::nullopt;
+					std::uint32_t result = 0;
+					for (int digit = 0; digit < 4; ++digit) {
+						const auto hex = text[position++];
+						result <<= 4;
+						if (hex >= '0' && hex <= '9') result |= hex - '0';
+						else if (hex >= 'a' && hex <= 'f') result |= hex - 'a' + 10;
+						else if (hex >= 'A' && hex <= 'F') result |= hex - 'A' + 10;
+						else return std::nullopt;
+					}
+					return result;
+				};
+				auto decoded = read_hex();
+				if (!decoded) return false;
+				std::uint32_t codepoint = *decoded;
+				if (codepoint >= 0xd800 && codepoint <= 0xdbff) {
+					if (text.size() - position < 2 || text[position++] != '\\') return false;
+					const auto low_marker = text[position++];
+					if (low_marker != 'u' && low_marker != 'U') return false;
+					const auto low = read_hex();
+					if (!low || *low < 0xdc00 || *low > 0xdfff) return false;
+					codepoint = 0x10000 + ((codepoint - 0xd800) << 10) + (*low - 0xdc00);
+				} else if (codepoint >= 0xdc00 && codepoint <= 0xdfff) return false;
+				AppendUTF8(result, codepoint);
+				break;
+			}
+			default: result.push_back(escape); break;
+			}
+		}
+		return false;
+	}
+	darling_windows_CFDictionaryRef Parse()
+	{
+		auto dictionary = darling_windows_CFDictionaryCreateMutable(0);
+		if (dictionary == nullptr) return nullptr;
+		for (;;) {
+			if (!SkipTrivia()) { darling_windows_CFRelease(dictionary); return nullptr; }
+			if (position >= text.size()) break;
+			std::string key_text, value_text;
+			if (!ParseString(key_text) || !SkipTrivia() || position >= text.size() ||
+				text[position++] != '=' || !ParseString(value_text) || !SkipTrivia() ||
+				position >= text.size() || text[position++] != ';') {
+				darling_windows_CFRelease(dictionary);
+				return nullptr;
+			}
+			const auto key = darling_windows_CFStringCreateWithCString(key_text.c_str());
+			const auto value = darling_windows_CFStringCreateWithCString(value_text.c_str());
+			const bool inserted = key != nullptr && value != nullptr &&
+				darling_windows_CFDictionarySetValue(dictionary, key, value);
+			darling_windows_CFRelease(key);
+			darling_windows_CFRelease(value);
+			if (!inserted) { darling_windows_CFRelease(dictionary); return nullptr; }
+		}
+		return dictionary;
+	}
+};
+
+darling_windows_CFDictionaryRef LoadStringsTable(const std::filesystem::path& path)
+{
+	try {
+		std::ifstream input(path, std::ios::binary);
+		if (!input) return nullptr;
+		std::vector<unsigned char> bytes((std::istreambuf_iterator<char>(input)), {});
+		if (bytes.size() > 16 * 1024 * 1024) return nullptr;
+		std::string text;
+		if (!DecodeStringsText(bytes, text)) return nullptr;
+		if (text.rfind("bplist00", 0) == 0) {
+			const auto object = darling_windows_CFPropertyListCreateFromBinary(text.data(),
+				static_cast<darling_windows_CFIndex>(text.size()));
+			if (object != nullptr && darling_windows_CFGetTypeID(object) ==
+				darling_windows_CFDictionaryGetTypeID())
+				return static_cast<darling_windows_CFDictionaryRef>(object);
+			darling_windows_CFRelease(object);
+			return nullptr;
+		}
+		const auto first = text.find_first_not_of(" \t\r\n");
+		if (first != std::string::npos && (text.compare(first, 5, "<?xml") == 0 ||
+			text.find("<plist", first) != std::string::npos)) {
+			const auto object = darling_windows_CFPropertyListCreateFromXML(text.c_str());
+			if (object != nullptr && darling_windows_CFGetTypeID(object) ==
+				darling_windows_CFDictionaryGetTypeID())
+				return static_cast<darling_windows_CFDictionaryRef>(object);
+			darling_windows_CFRelease(object);
+			return nullptr;
+		}
+		return OpenStepStringsParser{text}.Parse();
+	} catch (...) { return nullptr; }
+}
+
+std::vector<std::string> PreferredBundleLocalizations(const Object* bundle)
+{
+	std::vector<std::string> result;
+	ULONG language_count = 0;
+	ULONG buffer_length = 0;
+	GetUserPreferredUILanguages(MUI_LANGUAGE_NAME, &language_count, nullptr, &buffer_length);
+	if (buffer_length != 0 && buffer_length < 65536) {
+		std::vector<wchar_t> languages(buffer_length);
+		if (GetUserPreferredUILanguages(MUI_LANGUAGE_NAME, &language_count,
+			languages.data(), &buffer_length)) {
+			for (const wchar_t* language = languages.data(); *language != L'\0';
+				language += std::wcslen(language) + 1) {
+				const auto required = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS,
+					language, -1, nullptr, 0, nullptr, nullptr);
+				if (required <= 1) continue;
+				std::string full(static_cast<std::size_t>(required), '\0');
+				if (WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, language, -1,
+					full.data(), required, nullptr, nullptr) <= 0) continue;
+				full.resize(static_cast<std::size_t>(required - 1));
+				result.push_back(full);
+				std::replace(full.begin(), full.end(), '-', '_');
+				result.push_back(full);
+				const auto separator = full.find_first_of("_-");
+				if (separator != std::string::npos) result.push_back(full.substr(0, separator));
+			}
+		}
+	}
+	const auto development_key = darling_windows_CFStringCreateWithCString(
+		"CFBundleDevelopmentRegion");
+	const auto* bundle_object = AsBundle(bundle);
+	const auto dictionary = BundleInfoDictionary(bundle_object);
+	const auto development = development_key == nullptr || dictionary == nullptr ? nullptr :
+		darling_windows_CFDictionaryGetValue(dictionary, development_key);
+	std::array<char, 128> region{};
+	if (development != nullptr && darling_windows_CFStringGetCString(development,
+		region.data(), static_cast<darling_windows_CFIndex>(region.size())))
+		result.emplace_back(region.data());
+	darling_windows_CFRelease(development_key);
+	result.emplace_back("Base");
+	return result;
+}
+
+darling_windows_CFTypeRef FindLocalizedString(Object* bundle, const std::string& key,
+	const std::string& table)
+{
+	if (bundle == nullptr || bundle->kind != Kind::Bundle || table.empty() ||
+	table.find_first_of("/\\") != std::string::npos || table == "." || table == "..")
+		return nullptr;
+	const auto root = std::filesystem::u8path(bundle->bundle_path);
+	const auto resource_roots = BundleResourceRoots(root);
+	for (const auto& localization : PreferredBundleLocalizations(bundle)) {
+		if (localization.empty() || localization == "." || localization == ".." ||
+			localization.find_first_of("/\\") != std::string::npos) continue;
+		for (const auto& resources : resource_roots) {
+			const auto dictionary = LoadStringsTable(resources /
+				std::filesystem::u8path(localization + ".lproj") /
+				std::filesystem::u8path(table + ".strings"));
+			if (dictionary == nullptr) continue;
+			const auto key_object = darling_windows_CFStringCreateWithCString(key.c_str());
+			const auto value = key_object == nullptr ? nullptr :
+				darling_windows_CFDictionaryGetValue(dictionary, key_object);
+			if (value != nullptr && darling_windows_CFGetTypeID(value) ==
+				darling_windows_CFStringGetTypeID()) {
+				darling_windows_CFRetain(value);
+				darling_windows_CFRelease(key_object);
+				darling_windows_CFRelease(dictionary);
+				return value;
+			}
+			darling_windows_CFRelease(key_object);
+			darling_windows_CFRelease(dictionary);
+		}
+	}
+	for (const auto& resources : resource_roots) {
+		const auto dictionary = LoadStringsTable(resources / std::filesystem::u8path(table + ".strings"));
+		if (dictionary == nullptr) continue;
+		const auto key_object = darling_windows_CFStringCreateWithCString(key.c_str());
+		const auto value = key_object == nullptr ? nullptr :
+			darling_windows_CFDictionaryGetValue(dictionary, key_object);
+		if (value != nullptr && darling_windows_CFGetTypeID(value) ==
+			darling_windows_CFStringGetTypeID()) {
+			darling_windows_CFRetain(value);
+			darling_windows_CFRelease(key_object);
+			darling_windows_CFRelease(dictionary);
+			return value;
+		}
+		darling_windows_CFRelease(key_object);
+		darling_windows_CFRelease(dictionary);
+	}
+	return nullptr;
+}
+
+darling_windows_CFBundleRef CreateBundleForPath(const std::filesystem::path& path)
+{
+	std::error_code error;
+	if (!std::filesystem::is_directory(path, error) || error) return nullptr;
+	const auto normalized_path = PathUtf8(NormalizeBundlePath(path));
+	{
+		std::lock_guard lock(bundle_registry_mutex);
+		const auto found = bundle_registry.find(normalized_path);
+		if (found != bundle_registry.end()) {
+			RetainOwned(found->second);
+			return found->second;
+		}
+	}
+	auto* object = new (std::nothrow) Object{};
+	if (object == nullptr) return nullptr;
+	try {
+		object->kind = Kind::Bundle;
+		object->bundle_path = normalized_path;
+		std::lock_guard lock(bundle_registry_mutex);
+		const auto [entry, inserted] = bundle_registry.emplace(normalized_path, object);
+		if (inserted) {
+			// Keep a registry reference so Get-rule lookups remain valid and
+			// repeated CFBundleCreate calls return the same object.
+			object->references.fetch_add(1, std::memory_order_relaxed);
+			return object;
+		}
+		RetainOwned(entry->second);
+		delete object;
+		return entry->second;
+	} catch (...) { delete object; return nullptr; }
+}
+
+darling_windows_CFURLRef CopyBundleSubdirectoryURL(darling_windows_CFBundleRef bundle,
+	const std::vector<std::filesystem::path>& relative_paths)
+{
+	const auto* object = AsBundle(bundle);
+	if (object == nullptr) return nullptr;
+	try {
+		const auto root = std::filesystem::u8path(object->bundle_path);
+		for (const auto& relative : relative_paths) {
+			const auto candidate = root / relative;
+			std::error_code error;
+			if (std::filesystem::is_directory(candidate, error) && !error)
+				return darling_windows_CFURLCreateWithFileSystemPath(
+					PathUtf8(candidate).c_str());
+		}
+	} catch (...) { }
+	return nullptr;
+}
+
+darling_windows_CFArrayRef CreateBundlesFromDirectory(
+	darling_windows_CFURLRef directory_url, darling_windows_CFStringRef bundle_type)
+{
+	const auto* url = As(directory_url);
+	const auto* type_object = bundle_type == nullptr ? nullptr : As(bundle_type);
+	if (url == nullptr || url->kind != Kind::URL || url->string.empty() ||
+		(type_object != nullptr && type_object->kind != Kind::String)) return nullptr;
+	const bool filter_by_type = type_object != nullptr;
+	const auto requested_type = type_object == nullptr ? std::string{} : type_object->string;
+	if (requested_type.find_first_of("/\\:") != std::string::npos) return nullptr;
+	std::vector<darling_windows_CFBundleRef> bundles;
+	try {
+		bundles.reserve(4096);
+		const auto directory = std::filesystem::u8path(url->string);
+		std::error_code error;
+		if (!std::filesystem::is_directory(directory, error) || error)
+			return darling_windows_CFArrayCreate(nullptr, 0);
+		std::vector<std::filesystem::path> children;
+		std::size_t inspected_entries = 0;
+		for (std::filesystem::directory_iterator iterator(directory, error), end;
+			!error && iterator != end && children.size() < 4096 &&
+			inspected_entries < 65536; iterator.increment(error), ++inspected_entries) {
+			std::error_code entry_error;
+			if (iterator->is_directory(entry_error) && !entry_error)
+				children.push_back(iterator->path());
+		}
+		std::sort(children.begin(), children.end());
+		for (const auto& child : children) {
+			if (filter_by_type) {
+				auto extension = PathUtf8(child.extension());
+				if (!extension.empty() && extension.front() == '.') extension.erase(0, 1);
+				if (extension != requested_type) continue;
+			}
+			auto bundle = CreateBundleForPath(child);
+			if (bundle == nullptr) continue;
+			if (BundleInfoDictionary(AsBundle(bundle)) == nullptr) {
+				darling_windows_CFRelease(bundle);
+				continue;
+			}
+			bundles.push_back(bundle);
+		}
+		const auto result = darling_windows_CFArrayCreate(
+			bundles.data(),
+			static_cast<darling_windows_CFIndex>(bundles.size()));
+		for (const auto bundle : bundles) darling_windows_CFRelease(bundle);
+		return result;
+	} catch (...) {
+		for (const auto bundle : bundles) darling_windows_CFRelease(bundle);
+		return nullptr;
+	}
+}
+}
+
+extern "C" void darling_windows_CFBundleSetMainExecutablePath(const char* utf8_path)
+{
+	std::lock_guard lock(bundle_state_mutex);
+	main_executable_path = utf8_path == nullptr ? "" : utf8_path;
+	if (main_executable_path.empty()) return;
+	try {
+		const auto executable = std::filesystem::u8path(main_executable_path);
+		auto root = executable.parent_path();
+		if (root.filename() == "MacOS" && root.parent_path().filename() == "Contents")
+			root = root.parent_path().parent_path();
+		std::string normalized_root = PathUtf8(NormalizeBundlePath(root));
+		std::lock_guard registry_lock(bundle_registry_mutex);
+		Object* previous_main = main_bundle_object;
+		Object* selected_main = previous_main;
+		std::unique_ptr<Object> new_main;
+		const auto existing = bundle_registry.find(normalized_root);
+		if (existing != bundle_registry.end()) selected_main = existing->second;
+		if (selected_main == nullptr) {
+			new_main.reset(new (std::nothrow) Object{});
+			selected_main = new_main.get();
+			if (selected_main == nullptr) return;
+			selected_main->kind = Kind::Bundle;
+		}
+		const bool path_changed = selected_main->bundle_path != normalized_root;
+		bundle_registry.insert_or_assign(normalized_root, selected_main);
+		(void)new_main.release();
+		if (path_changed) {
+			std::lock_guard info_lock(selected_main->bundle_info_mutex);
+			ReleaseOwned(As(selected_main->bundle_info_dictionary));
+			selected_main->bundle_info_dictionary = nullptr;
+			for (const auto* value : selected_main->bundle_localized_info_values)
+				ReleaseOwned(As(value));
+			selected_main->bundle_localized_info_values.clear();
+			selected_main->bundle_path.swap(normalized_root);
+			const auto old_entry = bundle_registry.find(normalized_root);
+			if (old_entry != bundle_registry.end() && old_entry->second == selected_main)
+				bundle_registry.erase(old_entry);
+		}
+		main_bundle_object = selected_main;
+	} catch (...) { /* Keep the last successfully registered main bundle. */ }
+}
+
+extern "C" darling_windows_CFBundleRef darling_windows_CFBundleCreate(
+	const void*, darling_windows_CFURLRef bundle_url)
+{
+	const auto* url = As(bundle_url);
+	if (url == nullptr || url->kind != Kind::URL || url->string.empty()) return nullptr;
+	try { return CreateBundleForPath(std::filesystem::u8path(url->string)); }
+	catch (...) { return nullptr; }
+}
+
+extern "C" darling_windows_CFBundleRef darling_windows_CFBundleGetMainBundle()
+{
+	std::lock_guard lock(bundle_state_mutex);
+	return main_executable_path.empty() ? nullptr : main_bundle_object;
+}
+
+extern "C" darling_windows_CFURLRef darling_windows_CFBundleCopyBundleURL(
+	darling_windows_CFBundleRef bundle)
+{
+	const auto* object = AsBundle(bundle);
+	if (object == nullptr) return nullptr;
+	return darling_windows_CFURLCreateWithFileSystemPath(object->bundle_path.c_str());
+}
+
+extern "C" darling_windows_CFURLRef darling_windows_CFBundleCopyExecutableURL(
+	darling_windows_CFBundleRef bundle)
+{
+	const auto* object = AsBundle(bundle);
+	if (object == nullptr) return nullptr;
+	try {
+		const auto path = BundleExecutablePath(object);
+		return path.empty() ? nullptr :
+			darling_windows_CFURLCreateWithFileSystemPath(PathUtf8(path).c_str());
+	} catch (...) { return nullptr; }
+}
+
+extern "C" darling_windows_CFArrayRef darling_windows_CFBundleCopyExecutableArchitectures(
+	darling_windows_CFBundleRef bundle)
+{
+	const auto* object = AsBundle(bundle);
+	if (object == nullptr) return nullptr;
+	try {
+		const auto executable = BundleExecutablePath(object);
+		return executable.empty() ? nullptr : CreateArchitectureArray(executable);
+	} catch (...) { return nullptr; }
+}
+
+extern "C" darling_windows_CFArrayRef darling_windows_CFBundleCopyExecutableArchitecturesForURL(
+	darling_windows_CFURLRef url)
+{
+	const auto* object = As(url);
+	if (object == nullptr || object->kind != Kind::URL || object->string.empty()) return nullptr;
+	try {
+		const auto path = std::filesystem::u8path(object->string);
+		std::error_code error;
+		if (std::filesystem::is_directory(path, error) && !error) {
+			const auto bundle = CreateBundleForPath(path);
+			if (bundle == nullptr) return nullptr;
+			const auto result = darling_windows_CFBundleCopyExecutableArchitectures(bundle);
+			darling_windows_CFRelease(bundle);
+			return result;
+		}
+		return CreateArchitectureArray(path);
+	} catch (...) { return nullptr; }
+}
+
+extern "C" darling_windows_CFURLRef darling_windows_CFBundleCopyResourcesDirectoryURL(
+	darling_windows_CFBundleRef bundle)
+{
+	const auto* object = AsBundle(bundle);
+	if (object == nullptr) return nullptr;
+	try {
+		const auto root = std::filesystem::u8path(object->bundle_path);
+		for (const auto& path : BundleResourceRoots(root)) {
+			std::error_code error;
+			if (std::filesystem::is_directory(path, error) && !error)
+				return darling_windows_CFURLCreateWithFileSystemPath(PathUtf8(path).c_str());
+		}
+	} catch (...) { }
+	return nullptr;
+}
+
+extern "C" darling_windows_CFURLRef darling_windows_CFBundleCopyBuiltInPlugInsURL(
+	darling_windows_CFBundleRef bundle)
+{
+	try {
+		return CopyBundleSubdirectoryURL(bundle, {
+			std::filesystem::path("Contents") / "PlugIns", "PlugIns"});
+	} catch (...) { return nullptr; }
+}
+
+extern "C" darling_windows_CFURLRef darling_windows_CFBundleCopyPrivateFrameworksURL(
+	darling_windows_CFBundleRef bundle)
+{
+	try {
+		return CopyBundleSubdirectoryURL(bundle, {
+			std::filesystem::path("Contents") / "Frameworks", "Frameworks"});
+	} catch (...) { return nullptr; }
+}
+
+extern "C" darling_windows_CFURLRef darling_windows_CFBundleCopySharedFrameworksURL(
+	darling_windows_CFBundleRef bundle)
+{
+	try {
+		return CopyBundleSubdirectoryURL(bundle, {
+			std::filesystem::path("Contents") / "SharedFrameworks", "SharedFrameworks"});
+	} catch (...) { return nullptr; }
+}
+
+extern "C" darling_windows_CFURLRef darling_windows_CFBundleCopySharedSupportURL(
+	darling_windows_CFBundleRef bundle)
+{
+	try {
+		return CopyBundleSubdirectoryURL(bundle, {
+			std::filesystem::path("Contents") / "SharedSupport", "SharedSupport"});
+	} catch (...) { return nullptr; }
+}
+
+extern "C" darling_windows_CFArrayRef darling_windows_CFBundleCreateBundlesFromDirectory(
+	const void*, darling_windows_CFURLRef directory_url,
+	darling_windows_CFStringRef bundle_type)
+{
+	return CreateBundlesFromDirectory(directory_url, bundle_type);
+}
+
+extern "C" darling_windows_CFBundleRef darling_windows_CFBundleGetBundleWithIdentifier(
+	darling_windows_CFStringRef bundle_identifier)
+{
+	const auto* identifier = As(bundle_identifier);
+	if (identifier == nullptr || identifier->kind != Kind::String) return nullptr;
+	std::lock_guard registry_lock(bundle_registry_mutex);
+	for (const auto& entry : bundle_registry) {
+		const auto dictionary = BundleInfoDictionary(entry.second);
+		const auto* dictionary_object = As(dictionary);
+		if (dictionary_object == nullptr || dictionary_object->kind != Kind::Dictionary) continue;
+		for (const auto& property : dictionary_object->dictionary) {
+			const auto* key_object = As(property.first);
+			const auto* value_object = As(property.second);
+			if (key_object != nullptr && key_object->kind == Kind::String &&
+				key_object->string == "CFBundleIdentifier" && value_object != nullptr &&
+				value_object->kind == Kind::String &&
+				value_object->string == identifier->string)
+				return entry.second;
+		}
+	}
+	return nullptr;
+}
+
+extern "C" darling_windows_CFArrayRef darling_windows_CFBundleGetAllBundles()
+{
+	try {
+		std::lock_guard registry_lock(bundle_registry_mutex);
+		std::vector<const void*> bundles;
+		bundles.reserve(bundle_registry.size());
+		for (const auto& entry : bundle_registry) bundles.push_back(entry.second);
+		return darling_windows_CFArrayCreate(bundles.data(),
+			static_cast<darling_windows_CFIndex>(bundles.size()));
+	} catch (...) { return nullptr; }
+}
+
+extern "C" darling_windows_CFURLRef darling_windows_CFBundleCopyResourceURL(
+	darling_windows_CFBundleRef bundle, darling_windows_CFStringRef resource_name,
+	darling_windows_CFStringRef resource_type, darling_windows_CFStringRef subdirectory)
+{
+	const auto* object = AsBundle(bundle);
+	const auto* name = As(resource_name);
+	const auto* type = resource_type == nullptr ? nullptr : As(resource_type);
+	const auto* subdir = subdirectory == nullptr ? nullptr : As(subdirectory);
+	if (object == nullptr || name == nullptr || name->kind != Kind::String ||
+		name->string.empty() || (type != nullptr && type->kind != Kind::String) ||
+		(subdir != nullptr && subdir->kind != Kind::String)) return nullptr;
+	auto safe_relative = [](const std::string& value) {
+		const auto path = std::filesystem::u8path(value);
+		if (path.is_absolute()) return false;
+		for (const auto& component : path)
+			if (component == "..") return false;
+		return true;
+	};
+	try {
+		std::filesystem::path relative;
+		if (subdir != nullptr && !subdir->string.empty()) {
+			if (!safe_relative(subdir->string)) return nullptr;
+			relative /= std::filesystem::u8path(subdir->string);
+		}
+		if (!safe_relative(name->string)) return nullptr;
+		auto filename = std::filesystem::u8path(name->string);
+		if (type != nullptr && !type->string.empty() && filename.extension().empty()) {
+			if (type->string.find_first_of("/\\") != std::string::npos || type->string == "." ||
+				type->string == "..") return nullptr;
+			filename += std::filesystem::u8path(
+				type->string.front() == '.' ? type->string : "." + type->string);
+		}
+		relative /= filename;
+		const auto root = std::filesystem::u8path(object->bundle_path);
+		const auto resource_roots = BundleResourceRoots(root);
+		for (const auto& localization : PreferredBundleLocalizations(object)) {
+			if (localization.empty() || localization == "." || localization == ".." ||
+				localization.find_first_of("/\\") != std::string::npos) continue;
+			const auto localized_relative =
+				std::filesystem::u8path(localization + ".lproj") / relative;
+			for (const auto& base : resource_roots) {
+				const auto candidate = base / localized_relative;
+				std::error_code error;
+				if ((std::filesystem::is_regular_file(candidate, error) ||
+					std::filesystem::is_directory(candidate, error)) && !error)
+					return darling_windows_CFURLCreateWithFileSystemPath(
+						PathUtf8(candidate).c_str());
+			}
+		}
+		for (const auto& base : resource_roots) {
+			const auto candidate = base / relative;
+			std::error_code error;
+			if ((std::filesystem::is_regular_file(candidate, error) ||
+				std::filesystem::is_directory(candidate, error)) && !error)
+				return darling_windows_CFURLCreateWithFileSystemPath(
+					PathUtf8(candidate).c_str());
+		}
+	} catch (...) { }
+	return nullptr;
+}
+
+extern "C" darling_windows_CFTypeID darling_windows_CFBundleGetTypeID()
+{
+	return TypeId(Kind::Bundle);
+}
+
+extern "C" bool darling_windows_CFBundleIsMainExecutable(
+	darling_windows_CFBundleRef bundle)
+{
+	auto* object = AsBundle(bundle);
+	if (object == nullptr) return false;
+	std::lock_guard lock(bundle_state_mutex);
+	return main_bundle_object != nullptr && !main_executable_path.empty() &&
+		object->bundle_path == main_bundle_object->bundle_path;
+}
+
+extern "C" void* darling_windows_CFBundleGetExecutableHandle(
+	darling_windows_CFBundleRef bundle)
+{
+	auto* object = AsBundle(bundle);
+	if (object == nullptr) return nullptr;
+	std::lock_guard lock(object->bundle_info_mutex);
+	return object->bundle_executable_handle;
+}
+
+extern "C" bool darling_windows_CFBundleSetExecutableHandle(
+	darling_windows_CFBundleRef bundle, void* handle,
+	darling_windows_CFBundleReleaseExecutableCallback release_handle)
+{
+	auto* object = AsBundle(bundle);
+	if (object == nullptr || handle == nullptr || release_handle == nullptr) return false;
+	std::lock_guard lock(object->bundle_info_mutex);
+	if (object->bundle_executable_handle != nullptr) return false;
+	object->bundle_executable_handle = handle;
+	object->bundle_release_executable = release_handle;
+	return true;
+}
+
+extern "C" void darling_windows_CFBundleReleaseExecutable(
+	darling_windows_CFBundleRef bundle)
+{
+	auto* object = AsBundle(bundle);
+	if (object == nullptr || darling_windows_CFBundleIsMainExecutable(bundle)) return;
+	void* handle = nullptr;
+	darling_windows_CFBundleReleaseExecutableCallback release_handle = nullptr;
+	{
+		std::lock_guard lock(object->bundle_info_mutex);
+		handle = object->bundle_executable_handle;
+		release_handle = object->bundle_release_executable;
+		object->bundle_executable_handle = nullptr;
+		object->bundle_release_executable = nullptr;
+	}
+	if (handle != nullptr && release_handle != nullptr) {
+		try { release_handle(handle); }
+		catch (...) { /* Loader cleanup callbacks must not escape CFBundle. */ }
+	}
+}
+
+extern "C" darling_windows_CFDictionaryRef darling_windows_CFBundleGetInfoDictionary(
+	darling_windows_CFBundleRef bundle)
+{
+	return BundleInfoDictionary(AsBundle(bundle));
+}
+
+extern "C" darling_windows_CFTypeRef darling_windows_CFBundleGetValueForInfoDictionaryKey(
+	darling_windows_CFBundleRef bundle, darling_windows_CFStringRef key)
+{
+	auto* bundle_object = AsBundle(bundle);
+	const auto* key_object = As(key);
+	if (bundle_object == nullptr || key_object == nullptr || key_object->kind != Kind::String)
+		return nullptr;
+	try {
+		const auto localized = FindLocalizedString(bundle_object, key_object->string, "InfoPlist");
+		if (localized != nullptr) {
+			std::lock_guard lock(bundle_object->bundle_info_mutex);
+			bundle_object->bundle_localized_info_values.push_back(localized);
+			return localized;
+		}
+	} catch (...) { }
+	const auto dictionary = BundleInfoDictionary(bundle_object);
+	return dictionary == nullptr ? nullptr : darling_windows_CFDictionaryGetValue(dictionary, key);
+}
+
+extern "C" darling_windows_CFStringRef darling_windows_CFBundleGetIdentifier(
+	darling_windows_CFBundleRef bundle)
+{
+	const auto dictionary = BundleInfoDictionary(AsBundle(bundle));
+	const auto key = darling_windows_CFStringCreateWithCString("CFBundleIdentifier");
+	if (key == nullptr) return nullptr;
+	const auto value = dictionary == nullptr ? nullptr :
+		darling_windows_CFDictionaryGetValue(dictionary, key);
+	darling_windows_CFRelease(key);
+	return value != nullptr && darling_windows_CFGetTypeID(value) ==
+		darling_windows_CFStringGetTypeID() ? static_cast<darling_windows_CFStringRef>(value) : nullptr;
+}
+
+extern "C" darling_windows_CFStringRef darling_windows_CFBundleCopyLocalizedString(
+	darling_windows_CFBundleRef bundle, darling_windows_CFStringRef key,
+	darling_windows_CFStringRef value, darling_windows_CFStringRef table_name)
+{
+	auto* bundle_object = AsBundle(bundle);
+	const auto* key_object = As(key);
+	const auto* value_object = value == nullptr ? nullptr : As(value);
+	const auto* table_object = table_name == nullptr ? nullptr : As(table_name);
+	if (bundle_object == nullptr || key_object == nullptr || key_object->kind != Kind::String ||
+		(value_object != nullptr && value_object->kind != Kind::String) ||
+		(table_object != nullptr && table_object->kind != Kind::String)) return nullptr;
+	const auto table = table_object == nullptr || table_object->string.empty()
+		? std::string("Localizable") : table_object->string;
+	try {
+		const auto localized = FindLocalizedString(bundle_object, key_object->string, table);
+		if (localized != nullptr) {
+			const auto copy = darling_windows_CFStringCreateCopy(localized);
+			darling_windows_CFRelease(localized);
+			return copy;
+		}
+		return darling_windows_CFStringCreateCopy(value_object == nullptr ? key : value);
+	} catch (...) { return nullptr; }
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFBundleRef CFBundleCreate(
+	const void* allocator, darling_windows_CFURLRef bundle_url)
+{
+	return darling_windows_CFBundleCreate(allocator, bundle_url);
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFBundleRef CFBundleGetMainBundle()
+{
+	return darling_windows_CFBundleGetMainBundle();
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFURLRef CFBundleCopyBundleURL(
+	darling_windows_CFBundleRef bundle)
+{
+	return darling_windows_CFBundleCopyBundleURL(bundle);
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFURLRef CFBundleCopyExecutableURL(
+	darling_windows_CFBundleRef bundle)
+{
+	return darling_windows_CFBundleCopyExecutableURL(bundle);
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFArrayRef
+CFBundleCopyExecutableArchitectures(darling_windows_CFBundleRef bundle)
+{
+	return darling_windows_CFBundleCopyExecutableArchitectures(bundle);
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFArrayRef
+CFBundleCopyExecutableArchitecturesForURL(darling_windows_CFURLRef url)
+{
+	return darling_windows_CFBundleCopyExecutableArchitecturesForURL(url);
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFURLRef
+CFBundleCopyResourcesDirectoryURL(darling_windows_CFBundleRef bundle)
+{
+	return darling_windows_CFBundleCopyResourcesDirectoryURL(bundle);
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFURLRef CFBundleCopyBuiltInPlugInsURL(
+	darling_windows_CFBundleRef bundle)
+{
+	return darling_windows_CFBundleCopyBuiltInPlugInsURL(bundle);
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFURLRef CFBundleCopyPrivateFrameworksURL(
+	darling_windows_CFBundleRef bundle)
+{
+	return darling_windows_CFBundleCopyPrivateFrameworksURL(bundle);
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFURLRef CFBundleCopySharedFrameworksURL(
+	darling_windows_CFBundleRef bundle)
+{
+	return darling_windows_CFBundleCopySharedFrameworksURL(bundle);
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFURLRef CFBundleCopySharedSupportURL(
+	darling_windows_CFBundleRef bundle)
+{
+	return darling_windows_CFBundleCopySharedSupportURL(bundle);
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFArrayRef
+CFBundleCreateBundlesFromDirectory(const void* allocator,
+	darling_windows_CFURLRef directory_url, darling_windows_CFStringRef bundle_type)
+{
+	return darling_windows_CFBundleCreateBundlesFromDirectory(
+		allocator, directory_url, bundle_type);
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFBundleRef
+CFBundleGetBundleWithIdentifier(darling_windows_CFStringRef bundle_identifier)
+{
+	return darling_windows_CFBundleGetBundleWithIdentifier(bundle_identifier);
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFArrayRef CFBundleGetAllBundles()
+{
+	return darling_windows_CFBundleGetAllBundles();
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFURLRef CFBundleCopyResourceURL(
+	darling_windows_CFBundleRef bundle, darling_windows_CFStringRef resource_name,
+	darling_windows_CFStringRef resource_type, darling_windows_CFStringRef subdirectory)
+{
+	return darling_windows_CFBundleCopyResourceURL(bundle, resource_name,
+		resource_type, subdirectory);
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeID CFBundleGetTypeID()
+{
+	return darling_windows_CFBundleGetTypeID();
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFDictionaryRef CFBundleGetInfoDictionary(
+	darling_windows_CFBundleRef bundle)
+{
+	return darling_windows_CFBundleGetInfoDictionary(bundle);
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeRef
+CFBundleGetValueForInfoDictionaryKey(darling_windows_CFBundleRef bundle,
+	darling_windows_CFStringRef key)
+{
+	return darling_windows_CFBundleGetValueForInfoDictionaryKey(bundle, key);
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFBundleGetIdentifier(
+	darling_windows_CFBundleRef bundle)
+{
+	return darling_windows_CFBundleGetIdentifier(bundle);
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFBundleCopyLocalizedString(
+	darling_windows_CFBundleRef bundle, darling_windows_CFStringRef key,
+	darling_windows_CFStringRef value, darling_windows_CFStringRef table_name)
+{
+	return darling_windows_CFBundleCopyLocalizedString(bundle, key, value, table_name);
 }

@@ -8,12 +8,13 @@
 #pragma once
 
 #include <cstdint>
+#include "darling_windows_tlv.h"
 
 // Clang can express the System-V x86_64 ABI on a Windows target.  MSVC is
 // deliberately kept source-compatible for the default build; its plain
 // pointer fallback preserves the existing compatible-main behavior until the
 // bridge library is selected for a Clang build.
-#if defined(__clang__) && defined(_WIN64)
+#if defined(__clang__) && defined(_WIN64) && !defined(_M_ARM64) && !defined(__aarch64__)
 #define DARLING_SYSV __attribute__((sysv_abi))
 #else
 #define DARLING_SYSV
@@ -21,7 +22,7 @@
 
 namespace darling::windows_host::abi {
 
-static_assert(sizeof(void*) == 8, "Darling ABI bridge is x86_64-only");
+static_assert(sizeof(void*) == 8, "Darling ABI bridge is 64-bit only");
 
 template <typename R, typename... A>
 using GuestFn = DARLING_SYSV R (*)(A...);
@@ -37,8 +38,22 @@ extern "C" DARLING_SYSV int* darling_windows_abi_error();
 extern "C" DARLING_SYSV std::uintptr_t darling_windows_abi_resolve_lazy_binding(
 	std::uintptr_t image_cache, std::uintptr_t lazy_binding_info);
 extern "C" DARLING_SYSV int darling_windows_abi_lazy_binding_session_active();
-#if defined(__clang__) && defined(_WIN64)
+extern "C" DARLING_SYSV void* darling_windows_abi_tlv_get_addr(
+	darling::windows_host::DarwinTLVDescriptor* descriptor);
+// Export-trie resolvers are zero-argument Darwin functions returning the
+// selected implementation address.
+extern "C" std::uintptr_t darling_windows_abi_call_export_resolver(
+	std::uintptr_t resolver_address) noexcept;
+#if defined(__clang__) && defined(_WIN64) && !defined(_M_ARM64) && !defined(__aarch64__)
 extern "C" int darling_windows_abi_printf_windows_helper(const char*, const void*);
+extern "C" std::uintptr_t darling_windows_abi_objc_msgSend_sysv();
+extern "C" std::uintptr_t darling_windows_abi_objc_msgSendSuper_sysv();
+extern "C" std::uintptr_t darling_windows_abi_objc_msgSendSuper2_sysv();
+#endif
+#if defined(DARLING_ARM64_GUEST_BRIDGE)
+extern "C" std::uintptr_t darling_windows_abi_objc_msgSend_arm64();
+extern "C" std::uintptr_t darling_windows_abi_objc_msgSendSuper_arm64();
+extern "C" std::uintptr_t darling_windows_abi_objc_msgSendSuper2_arm64();
 #endif
 extern "C" DARLING_SYSV int darling_windows_abi_printf(const char* format, ...);
 extern "C" DARLING_SYSV [[noreturn]] void darling_windows_abi_exit(int status);

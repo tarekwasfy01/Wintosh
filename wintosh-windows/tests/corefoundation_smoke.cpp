@@ -895,9 +895,12 @@ int main()
 	binary_uid_trailer[15] = 1; binary_uid_trailer[31] = 10;
 	const auto parsed_binary_uid = darling_windows_CFPropertyListCreateFromBinary(
 		binary_uid_plist.data(), static_cast<darling_windows_CFIndex>(binary_uid_plist.size()));
-	std::int64_t binary_uid_value = 0;
+	std::uint64_t binary_uid_value = 0;
 	const bool binary_uid_ok = parsed_binary_uid != nullptr &&
-		darling_windows_CFNumberGetInteger(parsed_binary_uid, &binary_uid_value) && binary_uid_value == 7;
+		darling_windows_CFGetTypeID(parsed_binary_uid) ==
+			darling_windows_CFPropertyListUIDGetTypeID() &&
+		darling_windows_CFPropertyListUIDGetValue(parsed_binary_uid,
+			&binary_uid_value) && binary_uid_value == 7;
 	const auto mutable_array = darling_windows_CFArrayCreateMutable(4);
 	const auto mutable_array_copy = darling_windows_CFArrayCreateMutableCopy(4, mutable_array);
 	const void* mutable_array_replacement[] = {data};

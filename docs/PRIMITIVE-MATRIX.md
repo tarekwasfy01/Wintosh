@@ -20,7 +20,7 @@ adapter layer, with the corresponding source and license provenance retained.
 6. Keep Darwin-only or Apple-framework behavior explicitly `missing` instead
    of silently mapping it to an unrelated Windows behavior.
 
-The tracked source is [PRIMITIVE-MATRIX.csv](../PRIMITIVE-MATRIX.csv). It is currently a human-maintained matrix with six rows that still require CSV quoting normalization; run [`validate_primitive_matrix.ps1`](validate_primitive_matrix.ps1) before using it in automated reports.
+The tracked source is [PRIMITIVE-MATRIX.csv](../PRIMITIVE-MATRIX.csv). Its 30 rows now quote embedded commas; run [`validate_primitive_matrix.ps1`](validate_primitive_matrix.ps1) before using it in automated reports.
 The consolidated cross-source extraction is [SOURCE-EXTRACTION-MATRIX.md](SOURCE-EXTRACTION-MATRIX.md).
 
 The Windows host adapter exposes a tested Darwin `rename` primitive through
@@ -419,6 +419,10 @@ protection transfer and cross-process transfer remain open. `copy=1` is
 implemented as an eager independent host copy, not as XNU physical-page
 semantics. Deallocation is accepted only for an already-owned local mapping;
 raw unmanaged deallocation requests remain rejected.
+The local receive path distinguishes a single OOL descriptor from the
+port-descriptor array before materializing body rights. It checks that the
+queued address is owned and that its registered allocation covers the declared
+size; truncated or malformed complex descriptors fail before dequeue.
 When a `mach_msg` receive buffer has room beyond the payload, the native path
 now appends the Darwin `trailer_none` layout and updates `msgh_size`; exact
 payload-sized buffers retain the previous behavior. Credential and audit
@@ -452,7 +456,7 @@ seconds are also supported. A limited binary `bplist00` reader now handles
 single-byte ASCII strings, BMP UTF-16 strings, integers, booleans, null, simple
 arrays, string-key dictionaries, extended length markers for strings, arrays,
 and dictionaries, plus binary data, date, IEEE-754 real-number, and UID
-primitives, including UTF-8 string byte extraction and ASCII-whitespace trimming plus mutable append/replace-all/range-replace, mutable data byte access/append/replace/resize/clear, array append/append-array/insert/remove/remove-range/replace, dictionary duplicate-key collapse/set/remove/merge, and set add/remove/union/intersection/subtract operations.
+markers preserved as a distinct private CF type with a 64-bit accessor, including UTF-8 string byte extraction and ASCII-whitespace trimming plus mutable append/replace-all/range-replace, mutable data byte access/append/replace/resize/clear, array append/append-array/insert/remove/remove-range/replace, dictionary duplicate-key collapse/set/remove/merge, and set add/remove/union/intersection/subtract operations.
 Surrogate pairs,
 complex numeric/time semantics, and full ownership semantics remain open.
 
@@ -752,16 +756,65 @@ The superclass family has matching typed floating-point entry points for
 separate from the untyped `objc_msgSendSuper` return path so that Windows does
 not silently reinterpret an XMM-register result as an object pointer.
 
-CoreGraphics geometry now has an independent partial adapter for affine
-transforms, point/rectangle application, inversion, containment, intersection,
-transform equality, integral rectangles,
-and union, plus edge division with oversized amounts clamped to the actual
-edge length, translation/scale/rotation convenience constructors, null/infinite
-rectangle predicates, rectangle containment, immutable RGBA color values,
-component extraction, direct red/green/blue/white getters, component-count
-queries, and equality. This is
-geometry/color ABI coverage only; drawing contexts, paths, images, text,
-events, and Quartz display backends remain open.
+CoreGraphics now has an independent partial adapter for affine transforms,
+point/rectangle application, inversion, containment, intersection, transform
+equality, integral rectangles, and union, plus edge division with oversized
+amounts clamped to the actual edge length, translation/scale/rotation
+convenience constructors, null/infinite rectangle predicates, immutable RGBA
+color values, component extraction, direct red/green/blue/white getters,
+component-count queries, and equality. The adapter also exposes device RGB/gray
+colorspaces and colors, 8-bit premultiplied RGBA/BGRA bitmap contexts, clipped
+fill/clear/stroke rectangles, and bitmap data/size queries. Its path subset
+supports multiple contours, move/line/close, nonzero and even-odd fills, and
+stroke paths, immutable bitmap-context snapshots as `CGImage`, and
+nearest-neighbor `CGContextDrawImage` with premultiplied-alpha compositing.
+The context CTM supports get/set/concatenate/translate/scale/rotate; save/restore
+preserves the CTM, fill/stroke colors, and line width. The inverse maps rectangle
+and image samples into user space, and paths are transformed before raster fill
+and stroke. Path and rectangle clipping intersect device-space coverage masks;
+`CGContextClipToMask` samples bitmap snapshot alpha into that mask. Clip coverage
+multiplies across intersections and is saved with graphics state. Concatenation
+uses `CTMnew = transform * CTMcontext`. `CGContextSetAlpha` modulates fill and
+image compositing and is saved with graphics state. The compositor supports
+normal, multiply, screen, overlay, darken, lighten, difference, exclusion, and
+the clear/copy/source-in/source-out/source-atop/destination-over/destination-in/
+destination-out/destination-atop/XOR Porter-Duff modes. Cubic and quadratic
+Bézier paths are flattened to 32 segments, ellipse paths to 64 segments, and
+circular arcs use a radius-dependent chord-error bound capped at 8192 segments.
+Tangent arcs are derived from segment vectors. Antialiasing remains open.
+ImageIO has a minimal `CGImageSource` backed by copied `CFData`, a
+`CGDataProvider` created from CFData, URL, filename, caller memory with a
+release callback, or sequential callbacks (`getBytes`, `skipForward`, `rewind`,
+and `releaseInfo`). Sequential providers serialize stream reads and return to
+offset zero only when a rewind callback exists. Direct providers expose size,
+byte pointer, bounded position-based reads, copied CFData, retain, and release;
+`CGDataProviderCreateDirect` adds sized callback providers with byte-pointer
+acquisition/release or positioned reads, and final `releaseInfo` cleanup.
+Sequential providers have unknown size and no direct byte pointer. The ImageIO
+provider initializer snapshots sequential data through EOF and direct callback
+providers by bounded reads, up to WIC's 32-bit in-memory stream size limit;
+it is a distinct CoreFoundation object with its own type ID and generic retain/
+release lifetime. Windows Imaging Component validates sources, reports frame count, and decodes a
+requested frame to premultiplied BGRA pixels; indexed properties include pixel
+width and height, and source types map common WIC containers to PNG, JPEG, GIF,
+TIFF, BMP, ICO, and JPEG XR UTIs. Available formats depend on installed WIC
+codecs. `CGImageSourceCopyTypeIdentifiers` enumerates registered default WIC
+decoders for the mapped containers. Source properties include image count;
+indexed properties include pixel width and height. Incremental sources accept
+updated snapshots of accumulated `CFData`; source and frame status queries
+distinguish incomplete, complete, and invalid data. Thumbnail generation
+supports the `Always` and `IfAbsent` flags and maximum pixel size through WIC
+scaling. `IfAbsent` prefers the WIC frame's embedded thumbnail and falls back
+to the full frame; `CreateThumbnailWithTransform` applies EXIF orientations
+1–8. Other metadata remains open. Animated-image timing, text, antialiasing,
+PDF, events, and Quartz display backends remain open; this does not provide
+AppKit. The current ImageIO destination path adds bitmap snapshots to a
+CF-retained destination and finalizes PNG, JPEG, TIFF, GIF, or BMP through WIC
+to mutable `CFData` or a file URL; encoder availability and multi-frame support
+depend on the installed WIC codec, and destination metadata/options are not yet
+implemented. `CGDataConsumer` provides callback, CFData, and URL sinks; callback
+writes may complete partially and are continued until the encoded buffer is
+consumed or the callback stops making progress.
 
 The collection ABI also exposes bulk extraction primitives for array ranges,
 dictionary key/value pairs, and set values. `CFData` additionally supports

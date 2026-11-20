@@ -1,5 +1,17 @@
 # Porting documentation
 
+Additional emulator reference: [macemu assessment](MACEMU-REFERENCE.md).
+For Cocoa and iOS runtime scope, see the
+[reference comparison](COCOA-REFERENCE-COMPARISON.md).
+For CPU, Mach-O, OS-emulation and recompilation boundaries, see the
+[loader and emulator comparison](LOADER-EMULATOR-REFERENCES.md).
+For Darwin_Computa, game-specific Darling patches, XNU and Sogen, see the
+[user-space emulator references](USERSPACE-EMULATOR-REFERENCES.md).
+For the TinyOS repository and what its cross-host build design can (and cannot)
+contribute to Wintosh, see the [TinyOS assessment](TINYOS-REFERENCE.md).
+The supplied Aequora link could not be verified as a runtime project; see
+[the reference check](AEQUORA-REFERENCE-CHECK.md).
+
 This directory is the ordered entry point for the porting notes. The detailed
 historical notes remain at the repository root for compatibility with existing
 links; this index gives them a deliberate reading order.
@@ -44,3 +56,8 @@ provenance documentation, but they are not permission to copy code.
 The WSL1 transformation map is documented in
 [WSL1-TRANSFORM-MATRIX.md](WSL1-TRANSFORM-MATRIX.md). It distinguishes
 reusable Windows-host architecture from Linux-only or Darwin-only semantics.
+The [mathematical model](MATHEMATICAL-MODEL.md) now also records the AppKit
+launch/NIB dependency chain and the latest bounded WSL observation.
+
+For currently unverified loader/emulator references and their upstream scope,
+see [LOADER-EMULATOR-REFERENCES.md](LOADER-EMULATOR-REFERENCES.md).

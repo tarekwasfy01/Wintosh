@@ -3,6 +3,13 @@
 These scripts support the native Windows port without bundling upstream
 Darling source code.
 
+## Mathematical capability report
+
+`python tools/porting_matrix.py` composes Boolean transformation bounds for
+the native and Darwin/Linux/WSL1/Windows routes. Supply CTest JUnit results
+to enable bounded native evidence; without results all implemented rows
+remain unproven. See [the model and commands](../docs/porting/MATHEMATICAL-MODEL.md).
+
 ## MIG inventory
 
 ```powershell

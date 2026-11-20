@@ -18,9 +18,14 @@ struct DarwinTLVDescriptor final {
 	std::uintptr_t key;
 	std::uintptr_t offset;
 };
+struct DarwinTLVDescriptorRange final { DarwinTLVDescriptor* descriptors; std::size_t count; };
 
+// Descriptors in one registration share per-thread storage. Supply the full
+// template extent (including zero-fill) to preserve space for each variable.
 void InitializeDarwinTLV(DarwinTLVDescriptor* descriptors, std::size_t count);
 void InitializeDarwinTLV(DarwinTLVDescriptor* descriptors, std::size_t count,
+	const void* initial_data, std::size_t initial_bytes);
+void InitializeDarwinTLV(const DarwinTLVDescriptorRange* ranges, std::size_t range_count,
 	const void* initial_data, std::size_t initial_bytes);
 void DestroyDarwinTLV(DarwinTLVDescriptor* descriptors, std::size_t count) noexcept;
 void* ResolveDarwinTLV(DarwinTLVDescriptor* descriptor) noexcept;

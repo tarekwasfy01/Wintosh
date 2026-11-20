@@ -58,7 +58,11 @@ Comparator-based range sorting and binary search are also exported; binary
 search assumes the searched range is already sorted by the same ordering.
 
 Version-0 `CFRunLoopSource` objects support create/context/order queries, mode
-registration/removal, signal delivery, validity, and invalidation. Guest
+registration/removal, signal delivery, validity, and invalidation. Version-1
+sources can register a Mach port through `getPort`; the active loop polls it on
+10 ms slices, receives one available message, and invokes `perform` in source
+order. Reply messages returned from `perform`, one-to-one port/source checks,
+and a native multi-port wait set remain open. Guest
 `CFRunLoopTimer` creation, context/order/interval/fire-date queries, repeat
 semantics, next-fire-date mutation, mode registration/removal, and invalidation
 are also wired into the run loop. Due timers fire on the active loop thread;
@@ -74,8 +78,9 @@ variable wait. A dispatched message can end a `returnAfterSource` turn, and a
 cross-thread stop wakes the main queue. The guest `CFRunLoopRunInMode` maps
 outcomes to CoreFoundation's `Finished=1`, `Stopped=2`, `TimedOut=3`, and
 `HandledSource=4`; `CFRunLoopRun` is exported and returns for an empty worker
-mode or a stop. Mach-port source-1 and arbitrary Windows-handle registration,
-timer tolerance, the remaining observer phases, recursive activation
+mode or a stop. Mach source-1 reply messages, unique-port checks, a native
+multi-port wait set, arbitrary Windows-handle registration, timer tolerance,
+the remaining observer phases, recursive activation
 semantics, and guest ABI fixture verification remain open.
 `CFRunLoopIsWaiting` is exported and reports a blocked loop only to a caller
 on another thread, matching Apple's contract; this has build evidence only.

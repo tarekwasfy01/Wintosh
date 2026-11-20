@@ -41,7 +41,10 @@ open.
 The current `NSRunLoop` bridge exposes current/main wrappers, its underlying
 CF loop, default/common modes, bounded run methods, and ordered selector
 delivery. The internal callback queue retains mode-tagged work and leaves it
-pending while another mode is active. Version-0 `CFRunLoopSource` create,
+pending while another mode is active. Version-0 and version-1 `CFRunLoopSource`
+creation are supported; source-1 Mach ports are polled in 10 ms active-mode
+wait slices and one available message is passed to `perform`. Returned reply
+messages and native multi-port waits remain unsupported. Version-0 source
 context/order reads, add/remove/contains, signal, validity, and invalidation
 are also exported. Signaled sources enqueue one ordered callback over their
 registered modes; the first eligible run loop consumes the pending signal.

@@ -3,6 +3,7 @@
 #include "../loader/darling_windows_macho.h"
 #include "darling_windows_appkit.h"
 #include "../abi/darling_windows_objc.h"
+#include "../abi/darling_windows_mach.h"
 
 #include <windows.h>
 
@@ -79,10 +80,12 @@ struct Object {
 	double real_number = 0;
 	std::vector<std::pair<const void*, const void*>> dictionary;
 	DarlingCFRunLoopSourceContext run_loop_source_context{};
+	DarlingCFRunLoopSourceContext1 run_loop_source_context1{};
 	const void* run_loop_source_info = nullptr;
 	const void* run_loop_source_allocator = nullptr;
 	darling_windows_CFIndex run_loop_source_order = 0;
 	bool run_loop_source_valid = false;
+	bool run_loop_source_is_v1 = false;
 	bool run_loop_source_signaled = false;
 	std::uint64_t run_loop_source_generation = 0;
 	std::mutex run_loop_source_mutex;
@@ -232,9 +235,10 @@ void ReleaseOwned(Object* object)
 }
 Object::~Object()
 {
-	if (kind == Kind::RunLoopSource && run_loop_source_context.release != nullptr &&
-		run_loop_source_info != nullptr) {
-		try { run_loop_source_context.release(run_loop_source_info); }
+	if (kind == Kind::RunLoopSource && run_loop_source_info != nullptr) {
+		const auto release = run_loop_source_is_v1 ? run_loop_source_context1.release :
+			run_loop_source_context.release;
+		try { if (release != nullptr) release(run_loop_source_info); }
 		catch (...) { /* Guest callbacks must not unwind through CoreFoundation. */ }
 	}
 	if (kind == Kind::RunLoopTimer && run_loop_timer_context.release != nullptr &&
@@ -873,7 +877,8 @@ const void* RunLoopModeObject(const std::string& mode)
 }
 bool DispatchSignaledRunLoopSource(Object* source)
 {
-	if (source == nullptr || source->kind != Kind::RunLoopSource) return false;
+	if (source == nullptr || source->kind != Kind::RunLoopSource ||
+		source->run_loop_source_is_v1) return false;
 	std::vector<std::pair<std::shared_ptr<RunLoopState>, std::vector<std::string>>> targets;
 	std::uint64_t generation{};
 	{
@@ -3634,6 +3639,88 @@ bool HasDueRunLoopTimer(const RunLoopState& state, const std::string& mode)
 	}
 	return false;
 }
+bool HasRunLoopMachSource(const RunLoopState& state, const std::string& mode)
+{
+	for (const auto& binding : state.sources) {
+		if (binding.mode != mode) continue;
+		std::lock_guard source_lock(binding.object->run_loop_source_mutex);
+		if (binding.object->run_loop_source_valid && binding.object->run_loop_source_is_v1)
+			return true;
+	}
+	return false;
+}
+struct RunLoopMachMessage final {
+	Object* source{};
+	DarlingCFRunLoopSource1Perform perform{};
+	void* info{};
+	const void* allocator{};
+	std::vector<std::uint8_t> bytes;
+};
+std::vector<RunLoopMachMessage> CollectRunLoopMachMessages(
+	const std::shared_ptr<RunLoopState>& state, const std::string& mode)
+{
+	std::vector<Object*> sources;
+	{
+		std::lock_guard state_lock(state->mutex);
+		for (const auto& binding : state->sources) {
+			if (binding.mode != mode) continue;
+			auto* source = binding.object;
+			std::lock_guard source_lock(source->run_loop_source_mutex);
+			if (!source->run_loop_source_valid || !source->run_loop_source_is_v1) continue;
+			RetainOwned(source);
+			try { sources.push_back(source); }
+			catch (...) { ReleaseOwned(source); break; }
+		}
+	}
+	std::stable_sort(sources.begin(), sources.end(), [](const Object* left, const Object* right) {
+		return left->run_loop_source_order < right->run_loop_source_order;
+	});
+	std::vector<RunLoopMachMessage> messages;
+	for (auto* source : sources) {
+		DarlingCFRunLoopSource1GetPort get_port = nullptr;
+		DarlingCFRunLoopSource1Perform perform = nullptr;
+		void* info = nullptr;
+		const void* allocator = nullptr;
+		{
+			std::lock_guard source_lock(source->run_loop_source_mutex);
+			if (source->run_loop_source_valid && source->run_loop_source_is_v1) {
+				get_port = source->run_loop_source_context1.get_port;
+				perform = source->run_loop_source_context1.perform;
+				info = const_cast<void*>(source->run_loop_source_info);
+				allocator = source->run_loop_source_allocator;
+			}
+		}
+		if (get_port == nullptr || perform == nullptr) { ReleaseOwned(source); continue; }
+		const auto port = get_port(info);
+		if (port == 0) { ReleaseOwned(source); continue; }
+		std::uint32_t sequence = 0, message_size = 0, trailer_size = 0;
+		darling_mach_msg_id_t message_id = 0;
+		const auto peek = darling_windows_mach_port_peek(darling_windows_mach_task_self(),
+			port, 0, &sequence, &message_size, &message_id, nullptr, &trailer_size);
+		if (peek != 0 || message_size < sizeof(darling_mach_msg_header)) {
+			ReleaseOwned(source);
+			continue;
+		}
+		RunLoopMachMessage pending;
+		pending.source = source;
+		pending.perform = perform;
+		pending.info = info;
+		pending.allocator = allocator;
+		try { pending.bytes.resize(message_size); }
+		catch (...) { ReleaseOwned(source); continue; }
+		std::uint32_t received_size = 0;
+		if (darling_windows_mach_port_receive(port, pending.bytes.data(), message_size,
+			&received_size, 0) != 0 || received_size < sizeof(darling_mach_msg_header) ||
+			received_size > message_size) {
+			ReleaseOwned(source);
+			continue;
+		}
+		pending.bytes.resize(received_size);
+		try { messages.push_back(std::move(pending)); }
+		catch (...) { ReleaseOwned(source); }
+	}
+	return messages;
+}
 std::optional<std::chrono::steady_clock::time_point> NextRunLoopTimerDeadline(
 	const RunLoopState& state, const std::string& mode)
 {
@@ -3771,12 +3858,45 @@ extern "C" int darling_windows_CFRunLoopRunInModeForLoop(
 		lock.lock();
 		if (state->stopped) break;
 		NotifyRunLoopObservers(state, active_mode, kCFRunLoopActivityBeforeSources, lock);
+		lock.unlock();
+		auto mach_messages = CollectRunLoopMachMessages(state, active_mode);
+		lock.lock();
+		if (state->stopped) break;
+		if (!mach_messages.empty()) {
+			lock.unlock();
+			for (auto& pending : mach_messages) {
+				bool valid = false;
+				{
+					std::lock_guard source_lock(pending.source->run_loop_source_mutex);
+					valid = pending.source->run_loop_source_valid &&
+						pending.source->run_loop_source_is_v1;
+				}
+				if (valid) {
+					try { (void)pending.perform(pending.bytes.data(),
+						static_cast<darling_windows_CFIndex>(pending.bytes.size()),
+						pending.allocator, pending.info); }
+					catch (...) { /* Guest callbacks must not unwind through CoreFoundation. */ }
+				}
+				ReleaseOwned(pending.source);
+			}
+			lock.lock();
+			if (return_after_source) {
+				returned_after_source = true;
+				break;
+			}
+			continue;
+		}
 		const bool has_blocks = HasRunLoopBlockForMode(*state, active_mode);
 		if (!has_blocks) {
 			auto wait_deadline = deadline;
 			if (const auto timer_deadline = NextRunLoopTimerDeadline(*state, active_mode);
 				timer_deadline && *timer_deadline < wait_deadline)
 				wait_deadline = *timer_deadline;
+			if (HasRunLoopMachSource(*state, active_mode)) {
+				const auto poll_deadline = std::chrono::steady_clock::now() +
+					std::chrono::milliseconds(10);
+				if (poll_deadline < wait_deadline) wait_deadline = poll_deadline;
+			}
 			const bool will_wait = seconds > 0 &&
 				wait_deadline > std::chrono::steady_clock::now();
 			if (will_wait)
@@ -4025,6 +4145,17 @@ void InvokeRunLoopSourceModeCallback(Object* source, bool scheduling,
 bool AddRunLoopSourceMode(void* loop, const std::shared_ptr<RunLoopState>& state,
 	Object* source, const std::string& mode)
 {
+	if (source->run_loop_source_is_v1) {
+		DarlingCFRunLoopSource1GetPort get_port = nullptr;
+		void* info = nullptr;
+		{
+			std::lock_guard source_lock(source->run_loop_source_mutex);
+			if (!source->run_loop_source_valid) return false;
+			get_port = source->run_loop_source_context1.get_port;
+			info = const_cast<void*>(source->run_loop_source_info);
+		}
+		if (get_port == nullptr || get_port(info) == 0) return false;
+	}
 	{
 		std::lock_guard source_lock(source->run_loop_source_mutex);
 		if (!source->run_loop_source_valid) return false;
@@ -4103,20 +4234,29 @@ extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeRef CFRunLoopSourceCreate(
 	const void* allocator, darling_windows_CFIndex order,
 	const DarlingCFRunLoopSourceContext* context)
 {
-	if (context == nullptr || context->version != 0 || context->perform == nullptr) return nullptr;
+	if (context == nullptr || (context->version != 0 && context->version != 1)) return nullptr;
+	const bool is_v1 = context->version == 1;
+	const auto* context1 = reinterpret_cast<const DarlingCFRunLoopSourceContext1*>(context);
+	if ((!is_v1 && context->perform == nullptr) ||
+		(is_v1 && (context1->get_port == nullptr || context1->perform == nullptr))) return nullptr;
 	auto* source = new (std::nothrow) Object{};
 	if (source == nullptr) return nullptr;
 	source->kind = Kind::RunLoopSource;
-	source->run_loop_source_context = *context;
+	source->run_loop_source_is_v1 = is_v1;
+	if (is_v1) source->run_loop_source_context1 = *context1;
+	else source->run_loop_source_context = *context;
 	source->run_loop_source_allocator = allocator;
 	source->run_loop_source_order = order;
 	source->run_loop_source_valid = true;
-	if (context->info != nullptr && context->retain != nullptr) {
-		try { source->run_loop_source_info = context->retain(context->info); }
+	const auto info = is_v1 ? context1->info : context->info;
+	const auto retain = is_v1 ? context1->retain : context->retain;
+	if (info != nullptr && retain != nullptr) {
+		try { source->run_loop_source_info = retain(info); }
 		catch (...) { delete source; return nullptr; }
 		if (source->run_loop_source_info == nullptr) { delete source; return nullptr; }
-	} else source->run_loop_source_info = context->info;
-	source->run_loop_source_context.info = const_cast<void*>(source->run_loop_source_info);
+	} else source->run_loop_source_info = info;
+	if (is_v1) source->run_loop_source_context1.info = const_cast<void*>(source->run_loop_source_info);
+	else source->run_loop_source_context.info = const_cast<void*>(source->run_loop_source_info);
 	return source;
 }
 
@@ -4132,8 +4272,19 @@ extern "C" DARLING_CF_GUEST_ABI void CFRunLoopSourceGetContext(
 {
 	const auto* source = AsRunLoopSource(value);
 	if (source != nullptr && context != nullptr) {
-		*context = source->run_loop_source_context;
-		context->info = const_cast<void*>(source->run_loop_source_info);
+		if (source->run_loop_source_is_v1) {
+			*context = {};
+			context->version = 1;
+			context->info = const_cast<void*>(source->run_loop_source_info);
+			context->retain = source->run_loop_source_context1.retain;
+			context->release = source->run_loop_source_context1.release;
+			context->copy_description = source->run_loop_source_context1.copy_description;
+			context->equal = source->run_loop_source_context1.equal;
+			context->hash = source->run_loop_source_context1.hash;
+		} else {
+			*context = source->run_loop_source_context;
+			context->info = const_cast<void*>(source->run_loop_source_info);
+		}
 	}
 }
 
@@ -4153,6 +4304,7 @@ extern "C" DARLING_CF_GUEST_ABI void CFRunLoopSourceSignal(darling_windows_CFTyp
 	{
 		std::lock_guard lock(source->run_loop_source_mutex);
 		if (!source->run_loop_source_valid) return;
+		if (source->run_loop_source_is_v1) return;
 		source->run_loop_source_signaled = true;
 		++source->run_loop_source_generation;
 	}

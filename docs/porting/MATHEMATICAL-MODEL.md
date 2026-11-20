@@ -511,6 +511,7 @@ pending. The current default common set is `{kCFRunLoopDefaultMode}` until
 | Ordered selector queue | Process target selector on target thread in requested modes/order | `NSRunLoop.performSelector:target:argument:order:modes:` | No direct WSL1 equivalent | Source/build only |
 | Main AppKit loop | Cocoa loop dispatches AppKit input and Foundation work | Existing Win32 message loop pumps default-mode CF callback work | WSL1 cannot supply AppKit behavior | Source/build only |
 | CF source version 0 | Register by mode, signal, retain, invalidate, and service in order | Mode-tagged callback queue; first eligible loop consumes a signal | Not supplied by WSL1 | Clang Release build; no guest fixture |
+| CF source version 1 | Register a Mach port and perform received messages in order | `getPort` is queried on registration and each turn; incoming messages are polled on 10 ms wait slices | Not supplied by WSL1 | Clang Release build; reply-message handling and guest fixture remain open |
 | CF timer | Fire at deadline, repeat on cadence, invalidate after one shot | Timer registry per loop and mode; repeating fire date advances over missed intervals | Not supplied by WSL1 | Clang Release build; no guest fixture |
 | CF observer | Report run-loop phases in registered modes; one-shot invalidates once | Ordered callbacks for entry, before timers/sources, before/after wait, and exit | Not supplied by WSL1 | Clang Release build; no guest fixture |
 
@@ -519,8 +520,12 @@ For a source `s`, registered loops `L(s)` and generation `g`,
 its registered modes. Delivery is enabled only if `valid(s) ∧ signaled(s) ∧
 generation(s)=g`; the first eligible loop atomically clears `signaled(s)`, so
 remaining mode/loop tokens become no-ops. This models version-0 manual
-signaling but not native input-source integration or the complete run-loop
-state machine. References: [Apple CFRunLoopSource](https://developer.apple.com/documentation/corefoundation/cfrunloopsource),
+signaling. Version-1 sources use `getPort` to poll the registered Mach port,
+receive one ready message, and call `perform` in source order. The polling
+bound is `Δt ≤ 10 ms` while an active-mode version-1 source is registered;
+reply messages returned by `perform`, port/source uniqueness, and a native
+multi-port wait set are not implemented. References: [Apple CFRunLoopSource](https://developer.apple.com/documentation/corefoundation/cfrunloopsource),
+[CFRunLoopSourceContext1.getPort](https://developer.apple.com/documentation/corefoundation/cfrunloopsourcecontext1/getport),
 [source context](https://developer.apple.com/documentation/corefoundation/cfrunloopsourcecontext),
 [CFRunLoop mode contract](https://developer.apple.com/documentation/corefoundation/cfrunloop),
 and [CFRunLoopPerformBlock](https://developer.apple.com/documentation/corefoundation/cfrunloopperformblock%28_%3A_%3A_%3A%29).
@@ -534,9 +539,10 @@ message is an input-source delivery. Thus
 message. The other threads wait on `L`'s condition variable, whose predicate
 is `stopped ∨ pendingBlock(m) ∨ dueTimer(m)`. A stop transition sets
 `stopped := true` and signals the condition variable; on the main loop it also
-posts a thread message so that the Win32 wait becomes observable. This only
-models the AppKit main-thread queue; it does not implement arbitrary native
-handles or Darwin Mach-port source-1 semantics. The Win32 wait contract follows
+posts a thread message so that the Win32 wait becomes observable. This models
+the AppKit main-thread queue; source-1 ports use 10 ms polling, without reply
+messages or a native multi-port wait set. Arbitrary native handles remain
+unsupported. The Win32 wait contract follows
 [`MsgWaitForMultipleObjectsEx`](https://learn.microsoft.com/en-us/windows/desktop/api/Winuser/nf-winuser-msgwaitformultipleobjectsex),
 while Apple describes input sources in its [CFRunLoop contract](https://developer.apple.com/documentation/corefoundation/cfrunloop).
 

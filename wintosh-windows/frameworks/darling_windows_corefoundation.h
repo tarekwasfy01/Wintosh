@@ -97,6 +97,20 @@ struct DarlingCFRunLoopSourceContext {
 	DarlingCFRunLoopSourceCancelCallback cancel;
 	DarlingCFRunLoopSourcePerformCallback perform;
 };
+using DarlingCFRunLoopSource1GetPort = std::uint32_t (DARLING_CF_GUEST_ABI *)(void* info);
+using DarlingCFRunLoopSource1Perform = void* (DARLING_CF_GUEST_ABI *)(
+	void* message, darling_windows_CFIndex size, const void* allocator, void* info);
+struct DarlingCFRunLoopSourceContext1 {
+	darling_windows_CFIndex version;
+	void* info;
+	DarlingCFRunLoopSourceRetainCallback retain;
+	DarlingCFRunLoopSourceReleaseCallback release;
+	DarlingCFRunLoopSourceCopyDescriptionCallback copy_description;
+	DarlingCFRunLoopSourceEqualCallback equal;
+	DarlingCFRunLoopSourceHashCallback hash;
+	DarlingCFRunLoopSource1GetPort get_port;
+	DarlingCFRunLoopSource1Perform perform;
+};
 using darling_windows_CFNotificationCallback = void (*)(const void* observer,
 	const char* name, const void* object);
 using darling_windows_CFArrayApplierFunction = void (*)(const void* value, void* context);

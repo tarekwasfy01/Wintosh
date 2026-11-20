@@ -296,8 +296,11 @@ thread, queued selector work wakes and is drained by `NSApplication.run`.
 Version-0 `CFRunLoopSource` supports context ownership, order queries,
 add/remove/contains by mode, signal delivery, and invalidation. Signaling queues
 the source's ordered perform callback on each associated loop; the first
-eligible loop consumes the signal. CF timers and observers, native Windows
-input-source registration, recursive activations, selector cancellation, and
+eligible loop consumes the signal. Version-1 sources query their Mach port and
+poll it in 10 ms slices while active; one received message is passed to the
+version-1 perform callback. Returned reply messages, unique port/source
+enforcement, and a native multi-port wait set remain unsupported. CF timers
+and observers, native Windows input-source registration, recursive activations, selector cancellation, and
 arbitrary-mode `NSTimer` scheduling remain outside this subset. CoreFoundation
 timers can be created, registered by mode, queried, rescheduled, invalidated,
 and fired on the active loop thread. Repeating timers preserve cadence while
@@ -309,7 +312,7 @@ callback. The AppKit main-thread run loop now waits on and dispatches the
 Win32 message queue, including Cocoa window/input messages, so a mode turn can
 return after dispatched input. Worker loops keep their condition-variable
 wait. These guest ABI paths have not yet been verified with a Mach-O fixture;
-Mach-port source-1 and arbitrary Windows-handle registration remain absent.
+arbitrary Windows-handle registration remains absent.
 Guest `CFRunLoopRunInMode` returns the CoreFoundation result values for
 finished, stopped, timed out, and handled source; `CFRunLoopRun` is also
 exported and returns when stopped or when its mode has no work source. This is

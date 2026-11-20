@@ -24,8 +24,9 @@ invalidieren beim ersten passenden Callback. Der AppKit-Hauptthread integriert
 beim Warten seine Win32-Nachrichtenqueue in den Run-Loop; Fenster- und
 Eingabenachrichten werden dort dispatched, und `returnAfterSource` kann danach
 zurückkehren. Worker-Loops behalten Condition-Variable-Waits. Offen bleiben
-Timer-Toleranz, weitere Aktivitätsphasen, native Mach-Port-Quellen, beliebige
-Windows-Handles und rekursive Aktivierungen.
+Timer-Toleranz, weitere Aktivitätsphasen, Mach-Antwortnachrichten,
+Eindeutigkeitsprüfung zwischen Ports und Quellen, ein nativer Multi-Port-Wait,
+beliebige Windows-Handles und rekursive Aktivierungen.
 Referenzen: [Foundation `run(mode:before:)`](https://developer.apple.com/documentation/foundation/runloop/run%28mode%3Abefore%3A%29),
 [CoreFoundation `CFRunLoop`](https://developer.apple.com/documentation/corefoundation/cfrunloop),
 [`CFRunLoopPerformBlock`](https://developer.apple.com/documentation/corefoundation/cfrunloopperformblock%28_%3A_%3A_%3A%29).
@@ -41,16 +42,20 @@ String-ABI-Aufrufe akzeptieren nur die implementierte UTF-8-Darstellung.
 `CFRunLoopPerformBlock` ist nun angebunden: ein einzelner Modus
 oder ein Array von Modi wird kopiert, der Gast-Block bleibt bis zur Ausführung
 retained, und die AppKit-Hauptschleife wird aufgeweckt. Ein Längenlimit von
-4095 UTF-8-Bytes pro Modus gilt vorläufig. `CFRunLoopSource` ist für Version 0
-mit Create/GetContext/GetOrder, Add/Remove/Contains, Signal, IsValid und
-Invalidate angebunden. `CFRunLoopTimer` deckt Create, Kontextabfrage,
+4095 UTF-8-Bytes pro Modus gilt vorläufig. `CFRunLoopSource` unterstützt
+Version 0 mit Create/GetContext/GetOrder, Add/Remove/Contains, Signal, IsValid und
+Invalidate angebunden.
+`CFRunLoopTimer` deckt Create, Kontextabfrage,
 Intervall-/Ordnungs-/Feuerzeitabfrage, SetNextFireDate, DoesRepeat, Add/Remove/
 Contains, IsValid und Invalidate ab. Observer unterstützt Create,
 Activities-/Repeat-/Order- und Kontextabfrage, Add/Remove/Contains, IsValid und
 Invalidate für sechs implementierte Loop-Phasen. Die Gast-ABI bildet
 `CFRunLoopRunInMode` auf Apples vier Run-Ergebnisse ab und exportiert
 `CFRunLoopRun`; leere Worker-Modi kehren als `Finished` zurück. Timer-Toleranz,
-native Mach-Port-Quellen, weitere Aktivitätsphasen und Gast-Fixture-Verifikation
+Antwortnachrichten für Mach-Quellen, weitere Aktivitätsphasen und Gast-Fixture-Verifikation
+Version-1-Quellen können über `getPort` einen Mach-Port registrieren; der
+aktive Modus fragt Nachrichten in 10-ms-Intervallen ab und ruft `perform` auf.
+Antwortnachrichten, Port-/Quellen-Eindeutigkeit und ein nativer Multi-Port-Wait
 bleiben offen. Run-Loop-Handles teilen das CF-Objektlayout und sind immortal;
 generisches `CFRetain`/`CFRelease` sowie `CFGetTypeID` arbeiten damit ohne
 Lifetime-Fehler.

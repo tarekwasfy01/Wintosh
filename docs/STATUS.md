@@ -57,10 +57,14 @@ registration/removal, signal delivery, validity, and invalidation. Guest
 semantics, next-fire-date mutation, mode registration/removal, and invalidation
 are also wired into the run loop. Due timers fire on the active loop thread;
 repeating timers advance on their scheduled cadence and skip missed intervals.
-The Windows x64 Clang Release build compiles and links this surface. Timer and
-source guest-fixture behavior remains unverified. Observer objects, native
-Windows input-source registration, tolerance, and full recursive activation
-semantics remain open.
+`CFRunLoopObserver` creation, activity/context/order queries, mode
+registration/removal, validity, and invalidation are also exported. Callbacks
+run at entry, before timers/sources, before/after waiting, and exit; one-shot
+observers invalidate after their first matching activity. The Windows x64
+Clang Release build compiles and links these APIs. Guest ABI behavior remains
+unverified. Native Windows input-source registration, timer tolerance, the
+remaining observer phases, and complete recursive activation semantics remain
+open.
 
 ### Foundation dates and AppKit event queue (2026-11-17)
 

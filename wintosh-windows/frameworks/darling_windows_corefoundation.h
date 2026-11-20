@@ -67,6 +67,18 @@ struct DarlingCFRunLoopTimerContext {
 	DarlingCFRunLoopTimerReleaseCallback release;
 	DarlingCFRunLoopTimerCopyDescriptionCallback copy_description;
 };
+using DarlingCFRunLoopObserverRetainCallback = const void* (DARLING_CF_GUEST_ABI *)(const void* info);
+using DarlingCFRunLoopObserverReleaseCallback = void (DARLING_CF_GUEST_ABI *)(const void* info);
+using DarlingCFRunLoopObserverCopyDescriptionCallback = const void* (DARLING_CF_GUEST_ABI *)(const void* info);
+using DarlingCFRunLoopObserverCallout = void (DARLING_CF_GUEST_ABI *)(
+	darling_windows_CFTypeRef observer, std::uint64_t activity, void* info);
+struct DarlingCFRunLoopObserverContext {
+	darling_windows_CFIndex version;
+	void* info;
+	DarlingCFRunLoopObserverRetainCallback retain;
+	DarlingCFRunLoopObserverReleaseCallback release;
+	DarlingCFRunLoopObserverCopyDescriptionCallback copy_description;
+};
 struct DarlingCFRunLoopSourceContext {
 	darling_windows_CFIndex version;
 	void* info;
@@ -706,6 +718,32 @@ extern "C" DARLING_CF_GUEST_ABI void CFRunLoopRemoveTimer(
 	darling_windows_CFStringRef mode);
 extern "C" DARLING_CF_GUEST_ABI double CFRunLoopGetNextTimerFireDate(
 	darling_windows_CFRunLoopRef loop, darling_windows_CFStringRef mode);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeID CFRunLoopObserverGetTypeID();
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeRef CFRunLoopObserverCreate(
+	const void* allocator, std::uint64_t activities, std::uint8_t repeats,
+	darling_windows_CFIndex order, DarlingCFRunLoopObserverCallout callout,
+	const DarlingCFRunLoopObserverContext* context);
+extern "C" DARLING_CF_GUEST_ABI std::uint64_t CFRunLoopObserverGetActivities(
+	darling_windows_CFTypeRef observer);
+extern "C" DARLING_CF_GUEST_ABI std::uint8_t CFRunLoopObserverDoesRepeat(
+	darling_windows_CFTypeRef observer);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFIndex CFRunLoopObserverGetOrder(
+	darling_windows_CFTypeRef observer);
+extern "C" DARLING_CF_GUEST_ABI void CFRunLoopObserverGetContext(
+	darling_windows_CFTypeRef observer, DarlingCFRunLoopObserverContext* context);
+extern "C" DARLING_CF_GUEST_ABI std::uint8_t CFRunLoopObserverIsValid(
+	darling_windows_CFTypeRef observer);
+extern "C" DARLING_CF_GUEST_ABI void CFRunLoopObserverInvalidate(
+	darling_windows_CFTypeRef observer);
+extern "C" DARLING_CF_GUEST_ABI std::uint8_t CFRunLoopContainsObserver(
+	darling_windows_CFRunLoopRef loop, darling_windows_CFTypeRef observer,
+	darling_windows_CFStringRef mode);
+extern "C" DARLING_CF_GUEST_ABI void CFRunLoopAddObserver(
+	darling_windows_CFRunLoopRef loop, darling_windows_CFTypeRef observer,
+	darling_windows_CFStringRef mode);
+extern "C" DARLING_CF_GUEST_ABI void CFRunLoopRemoveObserver(
+	darling_windows_CFRunLoopRef loop, darling_windows_CFTypeRef observer,
+	darling_windows_CFStringRef mode);
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeID CFStringGetTypeID();
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFStringCreateWithCString(
 	const void* allocator, const char* bytes, std::uint32_t encoding);

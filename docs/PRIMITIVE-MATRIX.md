@@ -1126,8 +1126,11 @@ architectures. Version-0 `CFRunLoopSource` creation, mode registration,
 signaling, context/order queries, and invalidation are implemented at source
 and build level. `CFRunLoopTimer` create/query/reschedule/mode registration,
 repeating cadence, and invalidation also compile and link. Guest ABI behavior,
-timer tolerance, native input sources, observers, and complete cross-thread
-run-loop semantics remain unverified or missing.
+timer tolerance, and native input sources remain unverified or missing.
+`CFRunLoopObserver` creation/query/mode registration/invalidation and selected
+activity phases also compile and link; guest ABI behavior, remaining observer
+phases, and complete cross-thread run-loop semantics remain unverified or
+missing.
 
 The CoreFoundation date family also covers
 `CFDateGetTimeIntervalSinceReferenceDate`; the bridge keeps one explicit

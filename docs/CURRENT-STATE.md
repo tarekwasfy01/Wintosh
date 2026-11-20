@@ -446,9 +446,11 @@ add/remove/contains, signal, validity, and invalidation entry points are now
 implemented through the mode-tagged callback queue. `CFRunLoopTimer` also has
 create/query/reschedule/invalidate and mode registration, with run-loop-thread
 delivery and repeating cadence that skips missed intervals. The x64 Release
-build passes; guest fixture verification is still absent. Timer tolerance,
-observers, native input sources, and full recursive run-loop semantics remain
-outside this adapter.
+build passes. `CFRunLoopObserver` also exposes creation, selected activity-phase
+callbacks, mode registration, and invalidation; one-shot observers invalidate
+after their first matching callback. Guest fixture verification is still
+absent. Timer tolerance, native input sources, remaining observer phases, and
+full recursive run-loop semantics remain outside this adapter.
 
 The Objective-C bridge now covers `objc_msgSendSuper` with a boolean argument
 (`B@:B`) in addition to the existing direct-send path; the registry smoke

@@ -18,8 +18,10 @@ Modusregistrierung, Signalisierung und Invalidierung ab. `CFRunLoopTimer`
 unterstützt Erzeugung, Kontext-/Ordnungs-/Intervallabfragen, nächste Feuerzeit,
 Modusregistrierung und Invalidierung. Fällige Timer laufen auf dem aktiven
 Loop-Thread; Wiederholungen halten ihre Kadenz ein und überspringen verpasste
-Intervalle. Ein vollständiges Modell benötigt zusätzlich Observer pro Modus,
-Timer-Toleranz, native Eingabequellen sowie rekursive Aktivierungen.
+Intervalle. `CFRunLoopObserver`-Callbacks sind für Eintritt, vor Timer-/Quellen-
+Verarbeitung, vor/nach dem Warten und Austritt angebunden; one-shot Observer
+invalidieren beim ersten passenden Callback. Offen bleiben Timer-Toleranz,
+weitere Aktivitätsphasen, native Eingabequellen und rekursive Aktivierungen.
 Referenzen: [Foundation `run(mode:before:)`](https://developer.apple.com/documentation/foundation/runloop/run%28mode%3Abefore%3A%29),
 [CoreFoundation `CFRunLoop`](https://developer.apple.com/documentation/corefoundation/cfrunloop),
 [`CFRunLoopPerformBlock`](https://developer.apple.com/documentation/corefoundation/cfrunloopperformblock%28_%3A_%3A_%3A%29).
@@ -39,7 +41,9 @@ retained, und die AppKit-Hauptschleife wird aufgeweckt. Ein Längenlimit von
 mit Create/GetContext/GetOrder, Add/Remove/Contains, Signal, IsValid und
 Invalidate angebunden. `CFRunLoopTimer` deckt Create, Kontextabfrage,
 Intervall-/Ordnungs-/Feuerzeitabfrage, SetNextFireDate, DoesRepeat, Add/Remove/
-Contains, IsValid und Invalidate ab. Observer, Timer-Toleranz, native
+Contains, IsValid und Invalidate ab. Observer unterstützt Create,
+Activities-/Repeat-/Order- und Kontextabfrage, Add/Remove/Contains, IsValid und
+Invalidate für sechs implementierte Loop-Phasen. Timer-Toleranz, native
 Eingabequellen und vollständige RunLoop-Rückgabestatus bleiben offen. Die
 ABI-Ausführung ist noch nicht durch einen Gast-Fixture-Lauf bestätigt.
 

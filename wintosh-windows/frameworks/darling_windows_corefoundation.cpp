@@ -36,7 +36,7 @@
 #include <new>
 
 namespace {
-enum class Kind { String, Data, Array, Number, Real, Dictionary, Set, Date, URL, Boolean, Null, ImageSource, DataProvider, ImageDestination, DataConsumer, Bundle, PropertyListUID, RunLoopSource, RunLoopTimer };
+enum class Kind { String, Data, Array, Number, Real, Dictionary, Set, Date, URL, Boolean, Null, ImageSource, DataProvider, ImageDestination, DataConsumer, Bundle, PropertyListUID, RunLoopSource, RunLoopTimer, RunLoopObserver };
 constexpr darling_windows_CFTypeID TypeId(Kind kind)
 {
 	return static_cast<darling_windows_CFTypeID>(kind) + 1;
@@ -107,6 +107,21 @@ struct Object {
 		std::string mode;
 	};
 	std::vector<TimerSchedule> run_loop_timer_schedules;
+	DarlingCFRunLoopObserverContext run_loop_observer_context{};
+	const void* run_loop_observer_info = nullptr;
+	const void* run_loop_observer_allocator = nullptr;
+	DarlingCFRunLoopObserverCallout run_loop_observer_callout{};
+	std::uint64_t run_loop_observer_activities = 0;
+	darling_windows_CFIndex run_loop_observer_order = 0;
+	bool run_loop_observer_repeats = false;
+	bool run_loop_observer_valid = false;
+	std::mutex run_loop_observer_mutex;
+	struct ObserverSchedule final {
+		std::weak_ptr<RunLoopState> state;
+		void* loop{};
+		std::string mode;
+	};
+	std::vector<ObserverSchedule> run_loop_observer_schedules;
 	double date = 0;
 	bool boolean = false;
 	void* external_data_info = nullptr;
@@ -225,6 +240,11 @@ Object::~Object()
 	if (kind == Kind::RunLoopTimer && run_loop_timer_context.release != nullptr &&
 		run_loop_timer_info != nullptr) {
 		try { run_loop_timer_context.release(run_loop_timer_info); }
+		catch (...) { /* Guest callbacks must not unwind through CoreFoundation. */ }
+	}
+	if (kind == Kind::RunLoopObserver && run_loop_observer_context.release != nullptr &&
+		run_loop_observer_info != nullptr) {
+		try { run_loop_observer_context.release(run_loop_observer_info); }
 		catch (...) { /* Guest callbacks must not unwind through CoreFoundation. */ }
 	}
 	if (opaque_destroy != nullptr) {
@@ -811,13 +831,19 @@ struct RunLoopState {
 		Object* object{};
 		std::string mode;
 	};
+	struct Observer final {
+		Object* object{};
+		std::string mode;
+	};
 	std::vector<Block> blocks;
 	std::vector<Source> sources;
 	std::vector<Timer> timers;
+	std::vector<Observer> observers;
 	~RunLoopState()
 	{
 		for (const auto& source : sources) ReleaseOwned(source.object);
 		for (const auto& timer : timers) ReleaseOwned(timer.object);
+		for (const auto& observer : observers) ReleaseOwned(observer.object);
 	}
 };
 struct RunLoop {
@@ -3482,6 +3508,13 @@ extern "C" void darling_windows_CFRunLoopUseCurrentAsMain()
 
 namespace {
 constexpr double kCFAbsoluteTimeUnixOffset = 978307200.0;
+constexpr std::uint64_t kCFRunLoopActivityEntry = 1ull << 0;
+constexpr std::uint64_t kCFRunLoopActivityBeforeTimers = 1ull << 1;
+constexpr std::uint64_t kCFRunLoopActivityBeforeSources = 1ull << 2;
+constexpr std::uint64_t kCFRunLoopActivityBeforeWaiting = 1ull << 5;
+constexpr std::uint64_t kCFRunLoopActivityAfterWaiting = 1ull << 6;
+constexpr std::uint64_t kCFRunLoopActivityExit = 1ull << 7;
+constexpr std::uint64_t kCFRunLoopAllActivities = 0x0fffffffULL;
 double CFAbsoluteTimeNow()
 {
 	return std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch()).count() -
@@ -3563,6 +3596,42 @@ void FireRunLoopTimer(Object* timer)
 		CFRunLoopTimerInvalidate(timer);
 	ReleaseOwned(timer);
 }
+void NotifyRunLoopObservers(const std::shared_ptr<RunLoopState>& state,
+	const std::string& mode, std::uint64_t activity,
+	std::unique_lock<std::mutex>& state_lock)
+{
+	std::vector<Object*> pending;
+	try { pending.reserve(state->observers.size()); }
+	catch (...) { return; }
+	for (const auto& binding : state->observers) {
+		if (binding.mode != mode) continue;
+		auto* observer = binding.object;
+		std::lock_guard observer_lock(observer->run_loop_observer_mutex);
+		if (!observer->run_loop_observer_valid ||
+			(observer->run_loop_observer_activities & activity) == 0) continue;
+		RetainOwned(observer);
+		try { pending.push_back(observer); }
+		catch (...) { ReleaseOwned(observer); break; }
+		if (!observer->run_loop_observer_repeats)
+			observer->run_loop_observer_valid = false;
+	}
+	std::stable_sort(pending.begin(), pending.end(), [](const Object* left, const Object* right) {
+		return left->run_loop_observer_order < right->run_loop_observer_order;
+	});
+	state_lock.unlock();
+	for (auto* observer : pending) {
+		const auto callout = observer->run_loop_observer_callout;
+		void* info = const_cast<void*>(observer->run_loop_observer_info);
+		const bool repeats = observer->run_loop_observer_repeats;
+		if (callout != nullptr) {
+			try { callout(observer, activity, info); }
+			catch (...) { /* Guest callbacks must not unwind through CoreFoundation. */ }
+		}
+		if (!repeats) CFRunLoopObserverInvalidate(observer);
+		ReleaseOwned(observer);
+	}
+	state_lock.lock();
+}
 }
 
 extern "C" int darling_windows_CFRunLoopRunInMode(double seconds, bool return_after_source)
@@ -3593,25 +3662,32 @@ extern "C" int darling_windows_CFRunLoopRunInModeForLoop(
 		std::chrono::duration_cast<std::chrono::steady_clock::duration>(
 			std::chrono::duration<double>((std::min)(seconds, max_wait_seconds)));
 	bool returned_after_source = false;
+	NotifyRunLoopObservers(state, active_mode, kCFRunLoopActivityEntry, lock);
 	while (!state->stopped) {
+		NotifyRunLoopObservers(state, active_mode, kCFRunLoopActivityBeforeTimers, lock);
 		auto due_timers = CollectDueRunLoopTimers(*state, active_mode);
-		if (state->stopped) {
-			lock.unlock();
-			for (auto* timer : due_timers) ReleaseOwned(timer);
-			lock.lock();
-			break;
-		}
+		lock.unlock();
+		for (auto* timer : due_timers) FireRunLoopTimer(timer);
+		lock.lock();
+		if (state->stopped) break;
+		NotifyRunLoopObservers(state, active_mode, kCFRunLoopActivityBeforeSources, lock);
 		const bool has_blocks = HasRunLoopBlockForMode(*state, active_mode);
-		if (!has_blocks && due_timers.empty()) {
+		if (!has_blocks) {
 			auto wait_deadline = deadline;
 			if (const auto timer_deadline = NextRunLoopTimerDeadline(*state, active_mode);
 				timer_deadline && *timer_deadline < wait_deadline)
 				wait_deadline = *timer_deadline;
+			const bool will_wait = seconds > 0 &&
+				wait_deadline > std::chrono::steady_clock::now();
+			if (will_wait)
+				NotifyRunLoopObservers(state, active_mode, kCFRunLoopActivityBeforeWaiting, lock);
 			const bool woke = state->condition.wait_until(lock, wait_deadline,
 				[&state, &active_mode] {
 					return state->stopped || HasRunLoopBlockForMode(*state, active_mode) ||
 						HasDueRunLoopTimer(*state, active_mode);
 				});
+			if (will_wait)
+				NotifyRunLoopObservers(state, active_mode, kCFRunLoopActivityAfterWaiting, lock);
 			if (!woke && std::chrono::steady_clock::now() >= deadline) break;
 			continue;
 		}
@@ -3644,7 +3720,6 @@ extern "C" int darling_windows_CFRunLoopRunInModeForLoop(
 				});
 		}
 		lock.unlock();
-		for (auto* timer : due_timers) FireRunLoopTimer(timer);
 		for (const auto& entry : pending) {
 			if (entry.callback == nullptr) continue;
 			try { entry.callback(entry.context); }
@@ -3656,6 +3731,7 @@ extern "C" int darling_windows_CFRunLoopRunInModeForLoop(
 			!HasRunLoopBlockForMode(*state, active_mode) &&
 			!HasDueRunLoopTimer(*state, active_mode)) break;
 	}
+	NotifyRunLoopObservers(state, active_mode, kCFRunLoopActivityExit, lock);
 	if (!state->mode_stack.empty()) state->mode_stack.pop_back();
 	state->activation_depth = state->mode_stack.size();
 	state->running = state->activation_depth != 0;
@@ -3761,6 +3837,11 @@ Object* AsRunLoopTimer(const void* value)
 {
 	auto* object = As(value);
 	return object != nullptr && object->kind == Kind::RunLoopTimer ? object : nullptr;
+}
+Object* AsRunLoopObserver(const void* value)
+{
+	auto* object = As(value);
+	return object != nullptr && object->kind == Kind::RunLoopObserver ? object : nullptr;
 }
 std::vector<std::string> RunLoopConcreteModes(const std::shared_ptr<RunLoopState>& state,
 	const std::string& mode)
@@ -4239,6 +4320,206 @@ extern "C" DARLING_CF_GUEST_ABI double CFRunLoopGetNextTimerFireDate(
 			next = binding.object->run_loop_timer_fire_date;
 	}
 	return next.value_or(0.0);
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeID CFRunLoopObserverGetTypeID()
+{
+	return TypeId(Kind::RunLoopObserver);
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeRef CFRunLoopObserverCreate(
+	const void* allocator, std::uint64_t activities, std::uint8_t repeats,
+	darling_windows_CFIndex order, DarlingCFRunLoopObserverCallout callout,
+	const DarlingCFRunLoopObserverContext* context)
+{
+	if (activities == 0 || (activities & ~kCFRunLoopAllActivities) != 0 ||
+		callout == nullptr || (context != nullptr && context->version != 0)) return nullptr;
+	auto* observer = new (std::nothrow) Object{};
+	if (observer == nullptr) return nullptr;
+	observer->kind = Kind::RunLoopObserver;
+	observer->run_loop_observer_context = context == nullptr
+		? DarlingCFRunLoopObserverContext{} : *context;
+	observer->run_loop_observer_allocator = allocator;
+	observer->run_loop_observer_callout = callout;
+	observer->run_loop_observer_activities = activities;
+	observer->run_loop_observer_order = order;
+	observer->run_loop_observer_repeats = repeats != 0;
+	observer->run_loop_observer_valid = true;
+	if (context != nullptr && context->info != nullptr && context->retain != nullptr) {
+		try { observer->run_loop_observer_info = context->retain(context->info); }
+		catch (...) { delete observer; return nullptr; }
+		if (observer->run_loop_observer_info == nullptr) { delete observer; return nullptr; }
+	} else if (context != nullptr) observer->run_loop_observer_info = context->info;
+	observer->run_loop_observer_context.info = const_cast<void*>(observer->run_loop_observer_info);
+	return observer;
+}
+
+extern "C" DARLING_CF_GUEST_ABI std::uint64_t CFRunLoopObserverGetActivities(
+	darling_windows_CFTypeRef value)
+{
+	auto* observer = AsRunLoopObserver(value);
+	return observer == nullptr ? 0 : observer->run_loop_observer_activities;
+}
+
+extern "C" DARLING_CF_GUEST_ABI std::uint8_t CFRunLoopObserverDoesRepeat(
+	darling_windows_CFTypeRef value)
+{
+	auto* observer = AsRunLoopObserver(value);
+	return observer != nullptr && observer->run_loop_observer_repeats ? 1 : 0;
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFIndex CFRunLoopObserverGetOrder(
+	darling_windows_CFTypeRef value)
+{
+	auto* observer = AsRunLoopObserver(value);
+	return observer == nullptr ? 0 : observer->run_loop_observer_order;
+}
+
+extern "C" DARLING_CF_GUEST_ABI void CFRunLoopObserverGetContext(
+	darling_windows_CFTypeRef value, DarlingCFRunLoopObserverContext* context)
+{
+	auto* observer = AsRunLoopObserver(value);
+	if (observer == nullptr || context == nullptr) return;
+	std::lock_guard lock(observer->run_loop_observer_mutex);
+	*context = observer->run_loop_observer_context;
+	context->info = const_cast<void*>(observer->run_loop_observer_info);
+}
+
+extern "C" DARLING_CF_GUEST_ABI std::uint8_t CFRunLoopObserverIsValid(
+	darling_windows_CFTypeRef value)
+{
+	auto* observer = AsRunLoopObserver(value);
+	if (observer == nullptr) return 0;
+	std::lock_guard lock(observer->run_loop_observer_mutex);
+	return observer->run_loop_observer_valid ? 1 : 0;
+}
+
+extern "C" DARLING_CF_GUEST_ABI void CFRunLoopObserverInvalidate(
+	darling_windows_CFTypeRef value)
+{
+	auto* observer = AsRunLoopObserver(value);
+	if (observer == nullptr) return;
+	std::vector<Object::ObserverSchedule> schedules;
+	{
+		std::lock_guard lock(observer->run_loop_observer_mutex);
+		observer->run_loop_observer_valid = false;
+		schedules.swap(observer->run_loop_observer_schedules);
+	}
+	for (const auto& schedule : schedules) {
+		auto state = schedule.state.lock();
+		if (state == nullptr) continue;
+		bool removed = false;
+		{
+			std::lock_guard lock(state->mutex);
+			for (auto it = state->observers.begin(); it != state->observers.end(); ++it) {
+				if (it->object == observer && it->mode == schedule.mode) {
+					state->observers.erase(it); removed = true; break;
+				}
+			}
+		}
+		state->condition.notify_all();
+		if (state == main_run_loop.state) darling_windows_appkit_wake_main_run_loop();
+		if (removed) ReleaseOwned(observer);
+	}
+}
+
+extern "C" DARLING_CF_GUEST_ABI std::uint8_t CFRunLoopContainsObserver(
+	darling_windows_CFRunLoopRef value, darling_windows_CFTypeRef observer_value,
+	darling_windows_CFStringRef mode_value)
+{
+	auto* observer = AsRunLoopObserver(observer_value);
+	const auto* mode = static_cast<const Object*>(mode_value);
+	if (value == nullptr || observer == nullptr || mode == nullptr || mode->kind != Kind::String)
+		return 0;
+	auto* loop = static_cast<RunLoop*>(value);
+	const auto modes = RunLoopConcreteModes(loop->state, mode->string);
+	std::lock_guard lock(loop->state->mutex);
+	return std::any_of(loop->state->observers.begin(), loop->state->observers.end(),
+		[&](const RunLoopState::Observer& entry) {
+			return entry.object == observer &&
+				std::find(modes.begin(), modes.end(), entry.mode) != modes.end();
+		}) ? 1 : 0;
+}
+
+extern "C" DARLING_CF_GUEST_ABI void CFRunLoopAddObserver(
+	darling_windows_CFRunLoopRef value, darling_windows_CFTypeRef observer_value,
+	darling_windows_CFStringRef mode_value)
+{
+	auto* observer = AsRunLoopObserver(observer_value);
+	const auto* mode = static_cast<const Object*>(mode_value);
+	if (value == nullptr || observer == nullptr || mode == nullptr || mode->kind != Kind::String)
+		return;
+	auto* loop = static_cast<RunLoop*>(value);
+	for (const auto& concrete_mode : RunLoopConcreteModes(loop->state, mode->string)) {
+		bool registered = false;
+		{
+			std::lock_guard lock(observer->run_loop_observer_mutex);
+			if (!observer->run_loop_observer_valid) break;
+			auto found = std::find_if(observer->run_loop_observer_schedules.begin(),
+				observer->run_loop_observer_schedules.end(),
+				[&](const Object::ObserverSchedule& entry) {
+					return entry.state.lock() == loop->state && entry.mode == concrete_mode;
+				});
+			if (found != observer->run_loop_observer_schedules.end()) continue;
+			try { observer->run_loop_observer_schedules.push_back(
+				{loop->state, value, concrete_mode}); registered = true; }
+			catch (...) { continue; }
+		}
+		if (!registered) continue;
+		bool inserted = false;
+		{
+			std::lock_guard lock(loop->state->mutex);
+			auto found = std::find_if(loop->state->observers.begin(), loop->state->observers.end(),
+				[&](const RunLoopState::Observer& entry) {
+					return entry.object == observer && entry.mode == concrete_mode;
+				});
+			if (found == loop->state->observers.end()) {
+				try { RetainOwned(observer); loop->state->observers.push_back(
+					{observer, concrete_mode}); inserted = true; }
+				catch (...) { ReleaseOwned(observer); }
+			}
+		}
+		if (!inserted) {
+			std::lock_guard lock(observer->run_loop_observer_mutex);
+			std::erase_if(observer->run_loop_observer_schedules,
+				[&](const Object::ObserverSchedule& entry) {
+					return entry.state.lock() == loop->state && entry.mode == concrete_mode;
+				});
+			continue;
+		}
+		loop->state->condition.notify_all();
+	}
+}
+
+extern "C" DARLING_CF_GUEST_ABI void CFRunLoopRemoveObserver(
+	darling_windows_CFRunLoopRef value, darling_windows_CFTypeRef observer_value,
+	darling_windows_CFStringRef mode_value)
+{
+	auto* observer = AsRunLoopObserver(observer_value);
+	const auto* mode = static_cast<const Object*>(mode_value);
+	if (value == nullptr || observer == nullptr || mode == nullptr || mode->kind != Kind::String)
+		return;
+	auto* loop = static_cast<RunLoop*>(value);
+	for (const auto& concrete_mode : RunLoopConcreteModes(loop->state, mode->string)) {
+		bool removed = false;
+		{
+			std::lock_guard lock(loop->state->mutex);
+			for (auto it = loop->state->observers.begin(); it != loop->state->observers.end(); ++it) {
+				if (it->object == observer && it->mode == concrete_mode) {
+					loop->state->observers.erase(it); removed = true; break;
+				}
+			}
+		}
+		{
+			std::lock_guard lock(observer->run_loop_observer_mutex);
+			std::erase_if(observer->run_loop_observer_schedules,
+				[&](const Object::ObserverSchedule& entry) {
+					return entry.state.lock() == loop->state && entry.mode == concrete_mode;
+				});
+		}
+		if (removed) ReleaseOwned(observer);
+	}
+	loop->state->condition.notify_all();
 }
 
 extern "C" void darling_windows_CFRunLoopWakeUp(darling_windows_CFRunLoopRef value)
@@ -5504,6 +5785,28 @@ extern "C" std::uintptr_t darling_windows_corefoundation_symbol(const char* name
 		return reinterpret_cast<std::uintptr_t>(&CFRunLoopRemoveTimer);
 	if (std::strcmp(name, "CFRunLoopGetNextTimerFireDate") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFRunLoopGetNextTimerFireDate);
+	if (std::strcmp(name, "CFRunLoopObserverGetTypeID") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFRunLoopObserverGetTypeID);
+	if (std::strcmp(name, "CFRunLoopObserverCreate") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFRunLoopObserverCreate);
+	if (std::strcmp(name, "CFRunLoopObserverGetActivities") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFRunLoopObserverGetActivities);
+	if (std::strcmp(name, "CFRunLoopObserverDoesRepeat") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFRunLoopObserverDoesRepeat);
+	if (std::strcmp(name, "CFRunLoopObserverGetOrder") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFRunLoopObserverGetOrder);
+	if (std::strcmp(name, "CFRunLoopObserverGetContext") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFRunLoopObserverGetContext);
+	if (std::strcmp(name, "CFRunLoopObserverIsValid") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFRunLoopObserverIsValid);
+	if (std::strcmp(name, "CFRunLoopObserverInvalidate") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFRunLoopObserverInvalidate);
+	if (std::strcmp(name, "CFRunLoopContainsObserver") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFRunLoopContainsObserver);
+	if (std::strcmp(name, "CFRunLoopAddObserver") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFRunLoopAddObserver);
+	if (std::strcmp(name, "CFRunLoopRemoveObserver") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFRunLoopRemoveObserver);
 	if (std::strcmp(name, "CFStringGetTypeID") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFStringGetTypeID);
 	if (std::strcmp(name, "CFStringCreateWithCString") == 0)

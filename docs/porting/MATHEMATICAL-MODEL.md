@@ -512,7 +512,7 @@ pending. The current default common set is `{kCFRunLoopDefaultMode}` until
 | Main AppKit loop | Cocoa loop dispatches AppKit input and Foundation work | Existing Win32 message loop pumps default-mode CF callback work | WSL1 cannot supply AppKit behavior | Source/build only |
 | CF source version 0 | Register by mode, signal, retain, invalidate, and service in order | Mode-tagged callback queue; first eligible loop consumes a signal | Not supplied by WSL1 | Clang Release build; no guest fixture |
 | CF timer | Fire at deadline, repeat on cadence, invalidate after one shot | Timer registry per loop and mode; repeating fire date advances over missed intervals | Not supplied by WSL1 | Clang Release build; no guest fixture |
-| CF observer | Report run-loop phases in registered modes | Not implemented | Not supplied by WSL1 | Missing |
+| CF observer | Report run-loop phases in registered modes; one-shot invalidates once | Ordered callbacks for entry, before timers/sources, before/after wait, and exit | Not supplied by WSL1 | Clang Release build; no guest fixture |
 
 For a source `s`, registered loops `L(s)` and generation `g`,
 `Signal(s,g)` queues at most one delivery token per loop across the union of
@@ -533,6 +533,16 @@ avoids a burst of callbacks after the host thread was delayed. A timer with
 run-loop thread; tolerance-based coalescing and wall-clock-change handling are
 not modeled. See [Apple CFRunLoopTimerCreate](https://developer.apple.com/documentation/corefoundation/cfrunlooptimercreate%28_%3A_%3A_%3A_%3A_%3A_%3A_%3A%29)
 and [CFRunLoopTimerSetNextFireDate](https://developer.apple.com/documentation/corefoundation/cfrunlooptimersetnextfiredate%28_%3A_%3A%29).
+
+An observer `o` with activity mask `A(o)`, repeat flag `r(o)`, order
+`ord(o)`, active mode `m`, and current phase `a` is eligible iff
+`valid(o) ∧ registered(o,m) ∧ (A(o) ∧ a ≠ 0)`. Eligible observers run in
+ascending `ord(o)`; if `r(o)=false`, the observer is invalidated after its
+first matching callback, even when its mask contains multiple phases. The
+current phase set is `{entry, beforeTimers, beforeSources, beforeWaiting,
+afterWaiting, exit}`. Native event-source phases and remaining activity-mask
+bits are not implemented. See [Apple CFRunLoopObserverCreate](https://developer.apple.com/documentation/corefoundation/cfrunloopobservercreate%28_%3A_%3A_%3A_%3A_%3A_%3A%29)
+and [CFRunLoopActivity](https://developer.apple.com/documentation/corefoundation/cfrunloopactivity).
 
 ## CoreFoundation scalar bridge
 

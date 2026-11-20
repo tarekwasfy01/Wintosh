@@ -301,8 +301,12 @@ input-source registration, recursive activations, selector cancellation, and
 arbitrary-mode `NSTimer` scheduling remain outside this subset. CoreFoundation
 timers can be created, registered by mode, queried, rescheduled, invalidated,
 and fired on the active loop thread. Repeating timers preserve cadence while
-skipping missed intervals. Timer tolerance and observer phases are not modeled;
-these guest ABI paths have not yet been verified with a Mach-O fixture.
+skipping missed intervals. Timer tolerance is not modeled.
+`CFRunLoopObserver` can register for entry, before-timer/source,
+before/after-wait, and exit activities, with activity, context, order, repeat,
+and validity queries. One-shot observers invalidate on their first matching
+callback. These guest ABI paths have not yet been verified with a Mach-O
+fixture; native Windows input-source registration is absent.
 The keyed-archive decoder also recognizes Apple's `NSCustomView` placeholder,
 resolves its `NSClassName`, allocates a loaded `NSView` subclass, and calls
 `initWithFrame:` using `NSFrame` or `NSFrameSize`. It then restores selected

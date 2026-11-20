@@ -376,6 +376,7 @@ DarlingObjcAppleBlock* DARLING_OBJC_GUEST_ABI darling_objc_apple_block_copy(
 	DarlingObjcAppleBlock* block);
 void DARLING_OBJC_GUEST_ABI darling_objc_apple_block_release(DarlingObjcAppleBlock* block);
 id DARLING_OBJC_GUEST_ABI darling_objc_apple_block_invoke1(DarlingObjcAppleBlock* block, id argument);
+void DARLING_OBJC_GUEST_ABI darling_objc_apple_block_invoke0(void* block);
 const char* DARLING_OBJC_GUEST_ABI darling_objc_apple_block_signature(DarlingObjcAppleBlock* block);
 void* DARLING_OBJC_GUEST_ABI objc_retainBlock(void* block);
 void DARLING_OBJC_GUEST_ABI objc_releaseBlock(void* block);

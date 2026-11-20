@@ -19980,6 +19980,12 @@ extern "C" void darling_windows_appkit_initialize()
 	RegisterBootstrapWindowClass();
 }
 
+extern "C" void darling_windows_appkit_wake_main_run_loop()
+{
+	const DWORD thread = g_application_thread_id.load(std::memory_order_acquire);
+	if (thread != 0) PostThreadMessageW(thread, kApplicationEventMessage, 0, 0);
+}
+
 extern "C" std::uintptr_t darling_windows_appkit_symbol(const char* name)
 {
 	if (name == nullptr) return 0;

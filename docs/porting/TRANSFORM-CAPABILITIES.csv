@@ -8,7 +8,7 @@ thread_adapter,implemented,wintosh_thread_smoke,unknown,unknown,unknown,Host thr
 tlv_adapter,implemented,wintosh_tlv_smoke,unknown,unknown,unknown,Host TLV storage only; no guest thunk proof
 nsrunloop_bridge,implemented,,unknown,unknown,implemented,"NSRunLoop current/main wrappers, default/common mode values, run turns, and CFRunLoop access; source/build evidence only"
 runloop_mode_scheduling,implemented,,Apple_CFRunLoop_contract,unknown,implemented,"Mode-tagged callback queue, per-loop common modes, ordered target-selector delivery, and AppKit main-loop pump; CF sources/timers/observers remain missing"
-cf_runloop_guest_exports,partial,,Darwin_x86_64_C_ABI,unknown,partial,"Mach-O resolver exports run-loop control, basic CFString create/read and CFArray type/count/index; broad encodings, mutation, callback ABI and guest fixture verification remain open"
+cf_runloop_guest_exports,partial,,Darwin_x86_64_C_ABI,unknown,partial,"Mach-O resolver exports run-loop control and block scheduling plus basic CFString create/read and CFArray type/count/index; broad encodings, mutation and guest ABI fixture verification remain open"
 objc_unwind,missing,,unknown,unknown,unknown,Apple-compatible Objective-C exception unwind ABI
 arbitrary_app_bundle,missing,,unknown,unknown,unknown,Arbitrary application execution including all dependencies
 cpu_emulation,unknown,,unknown,unknown,missing,No CPU translator is integrated; x64 Windows explicitly rejects ARM64 and i386 guest execution

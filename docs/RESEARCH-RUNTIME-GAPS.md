@@ -23,11 +23,13 @@ Referenzen: [Foundation `run(mode:before:)`](https://developer.apple.com/documen
 Der Mach-O-Hostresolver exportiert jetzt zusätzlich ausgewählte
 `CFString`-Erzeugungs- und Leseoperationen sowie `CFArray`-Typ-, Anzahl- und
 Indexabfragen. String-ABI-Aufrufe akzeptieren nur die implementierte UTF-8-
-Darstellung. Das ist kein vollständiger CoreFoundation-Export: Block-Callbacks,
-CFRunLoopSource/Timer/Observer, mutierbare Collections und die vollständigen
-RunLoop-Rückgabestatus sind noch offen. Für `CFRunLoopPerformBlock` verlangt
-Apple einen Blockwert und ein explizites WakeUp; die Runtime braucht dafür noch
-einen geprüften Block-Invocation-Pfad.
+Darstellung. `CFRunLoopPerformBlock` ist nun angebunden: ein einzelner Modus
+oder ein Array von Modi wird kopiert, der Gast-Block bleibt bis zur Ausführung
+retained, und die AppKit-Hauptschleife wird aufgeweckt. Ein Längenlimit von
+4095 UTF-8-Bytes pro Modus gilt vorläufig. `CFRunLoopSource`/Timer/Observer,
+mutierbare Collections und die vollständigen RunLoop-Rückgabestatus bleiben
+offen. Die ABI-Ausführung ist noch nicht durch einen Gast-Fixture-Lauf
+bestätigt.
 
 ## Externe Referenzen
 

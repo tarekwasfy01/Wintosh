@@ -28,8 +28,10 @@ run-loop current/main/run/stop/wakeup/common-mode operations, plus
 `CFStringGetTypeID`, `CFStringCreateWithCString`, `CFStringGetLength`,
 `CFStringGetCString`, and array type/count/index reads. String conversions are
 limited to the runtime's UTF-8 representation and do not cover all Darwin
-encodings. `CFRunLoopPerformBlock` and the source/timer/observer APIs remain
-unexported; guest imports and edge-case status behavior need fixture coverage.
+encodings. `CFRunLoopPerformBlock` accepts a string or array of modes, retains
+and queues the guest block, and wakes the AppKit main thread. Mode names are
+currently bounded to 4095 UTF-8 bytes. Source/timer/observer APIs, guest import
+fixtures, and edge-case status behavior still need coverage.
 
 This is a useful Foundation scheduling subset, not the complete CoreFoundation
 run-loop contract: CFRunLoopSource/Timer/Observer objects, true input-source

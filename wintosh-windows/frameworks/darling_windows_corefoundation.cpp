@@ -1,6 +1,8 @@
 /* Minimal CoreFoundation-compatible primitives; GPL-3.0-only. */
 #include "darling_windows_corefoundation.h"
 #include "../loader/darling_windows_macho.h"
+#include "darling_windows_appkit.h"
+#include "../abi/darling_windows_objc.h"
 
 #include <windows.h>
 
@@ -3218,7 +3220,11 @@ extern "C" void darling_windows_CFRunLoopAddCommonMode(
 
 extern "C" void darling_windows_CFRunLoopWakeUp(darling_windows_CFRunLoopRef value)
 {
-	if (value != nullptr) static_cast<RunLoop*>(value)->state->condition.notify_all();
+	if (value == nullptr) return;
+	auto* loop = static_cast<RunLoop*>(value);
+	loop->state->condition.notify_all();
+	if (loop->state == main_run_loop.state)
+		darling_windows_appkit_wake_main_run_loop();
 }
 
 extern "C" bool darling_windows_CFRunLoopPerformOneShotTimer(
@@ -3272,6 +3278,72 @@ extern "C" DARLING_CF_GUEST_ABI void CFRunLoopStop(darling_windows_CFRunLoopRef 
 
 extern "C" DARLING_CF_GUEST_ABI void CFRunLoopWakeUp(darling_windows_CFRunLoopRef loop)
 {
+	darling_windows_CFRunLoopWakeUp(loop);
+}
+
+namespace {
+struct DarlingRunLoopGuestBlock final {
+	void* block{};
+	~DarlingRunLoopGuestBlock() { if (block != nullptr) objc_releaseBlock(block); }
+};
+
+void DarlingRunLoopInvokeGuestBlock(void* context)
+{
+	std::unique_ptr<DarlingRunLoopGuestBlock> retained(
+		static_cast<DarlingRunLoopGuestBlock*>(context));
+	try { darling_objc_apple_block_invoke0(retained->block); }
+	catch (...) { /* Never unwind a guest block through CoreFoundation. */ }
+}
+
+bool DarlingRunLoopCopyModeName(darling_windows_CFStringRef mode, std::string& output)
+{
+	char buffer[4096]{};
+	if (mode == nullptr || !darling_windows_CFStringGetCString(mode, buffer,
+		static_cast<darling_windows_CFIndex>(sizeof(buffer)))) return false;
+	output.assign(buffer);
+	return !output.empty();
+}
+}
+
+extern "C" DARLING_CF_GUEST_ABI void CFRunLoopPerformBlock(
+	darling_windows_CFRunLoopRef loop, darling_windows_CFTypeRef modes, void* block)
+{
+	if (loop == nullptr || modes == nullptr || block == nullptr) return;
+	std::vector<std::string> mode_names;
+	try {
+		const auto mode_type = darling_windows_CFGetTypeID(modes);
+		if (mode_type == darling_windows_CFStringGetTypeID()) {
+			mode_names.emplace_back();
+			if (!DarlingRunLoopCopyModeName(modes, mode_names.back())) return;
+		} else if (mode_type == darling_windows_CFArrayGetTypeID()) {
+			const auto count = darling_windows_CFArrayGetCount(modes);
+			if (count <= 0 || count > 256) return;
+			mode_names.reserve(static_cast<std::size_t>(count));
+			for (darling_windows_CFIndex index = 0; index < count; ++index) {
+				mode_names.emplace_back();
+				if (!DarlingRunLoopCopyModeName(
+					darling_windows_CFArrayGetValueAtIndex(modes, index), mode_names.back()))
+					return;
+			}
+		} else return;
+	} catch (...) { return; }
+	std::vector<const char*> mode_pointers;
+	try {
+		mode_pointers.reserve(mode_names.size());
+		for (const auto& mode : mode_names) mode_pointers.push_back(mode.c_str());
+	} catch (...) { return; }
+	void* retained_block = objc_retainBlock(block);
+	if (retained_block == nullptr) return;
+	std::unique_ptr<DarlingRunLoopGuestBlock> context(
+		new (std::nothrow) DarlingRunLoopGuestBlock{retained_block});
+	if (context == nullptr) {
+		objc_releaseBlock(retained_block);
+		return;
+	}
+	if (!darling_windows_CFRunLoopPerformBlockInModesWithOrder(loop,
+		mode_pointers.data(), mode_pointers.size(), 0,
+		&DarlingRunLoopInvokeGuestBlock, context.get())) return;
+	context.release();
 	darling_windows_CFRunLoopWakeUp(loop);
 }
 
@@ -3353,6 +3425,8 @@ extern "C" std::uintptr_t darling_windows_corefoundation_symbol(const char* name
 		return reinterpret_cast<std::uintptr_t>(&CFRunLoopStop);
 	if (std::strcmp(name, "CFRunLoopWakeUp") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFRunLoopWakeUp);
+	if (std::strcmp(name, "CFRunLoopPerformBlock") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFRunLoopPerformBlock);
 	if (std::strcmp(name, "CFRunLoopAddCommonMode") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFRunLoopAddCommonMode);
 	if (std::strcmp(name, "CFStringGetTypeID") == 0)

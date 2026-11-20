@@ -4939,6 +4939,24 @@ extern "C" id darling_objc_apple_block_invoke1(DarlingObjcAppleBlock* block,
 	return block && block->invoke ? block->invoke(block, argument) : nullptr;
 }
 
+extern "C" void darling_objc_apple_block_invoke0(void* raw_block)
+{
+	if (raw_block == nullptr) return;
+	if (IsManagedAppleBlock(raw_block)) {
+		auto* block = static_cast<DarlingObjcAppleBlock*>(raw_block);
+		if (block->invoke != nullptr) block->invoke(block, nullptr);
+		return;
+	}
+	auto* block = static_cast<AppleBlockHeader*>(raw_block);
+	if (block->invoke == nullptr) return;
+#if defined(__clang__) && defined(_WIN64) && !defined(_M_ARM64) && !defined(__aarch64__)
+	using Invoke = void (__attribute__((sysv_abi)) *)(void*);
+#else
+	using Invoke = void (*)(void*);
+#endif
+	reinterpret_cast<Invoke>(block->invoke)(raw_block);
+}
+
 extern "C" const char* darling_objc_apple_block_signature(
 	DarlingObjcAppleBlock* block)
 {

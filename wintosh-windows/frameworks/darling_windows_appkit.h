@@ -10,5 +10,6 @@
 #endif
 
 extern "C" void darling_windows_appkit_initialize();
+extern "C" void darling_windows_appkit_wake_main_run_loop();
 extern "C" std::uintptr_t darling_windows_appkit_symbol(const char* name);
 extern "C" DARLING_APPKIT_GUEST_ABI int NSApplicationMain(int argc, char** argv);

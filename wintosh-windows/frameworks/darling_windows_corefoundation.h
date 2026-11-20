@@ -566,6 +566,8 @@ extern "C" DARLING_CF_GUEST_ABI std::int32_t CFRunLoopRunInMode(
 	darling_windows_CFStringRef mode, double seconds, std::uint8_t return_after_source);
 extern "C" DARLING_CF_GUEST_ABI void CFRunLoopStop(darling_windows_CFRunLoopRef loop);
 extern "C" DARLING_CF_GUEST_ABI void CFRunLoopWakeUp(darling_windows_CFRunLoopRef loop);
+extern "C" DARLING_CF_GUEST_ABI void CFRunLoopPerformBlock(
+	darling_windows_CFRunLoopRef loop, darling_windows_CFTypeRef modes, void* block);
 extern "C" DARLING_CF_GUEST_ABI void CFRunLoopAddCommonMode(
 	darling_windows_CFRunLoopRef loop, darling_windows_CFStringRef mode);
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeID CFStringGetTypeID();

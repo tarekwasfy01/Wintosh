@@ -293,9 +293,13 @@ turns, plus ordered `performSelector:target:argument:order:modes:` scheduling.
 The CoreFoundation callback queue preserves work for inactive modes and
 recognizes the default mode as a member of common modes. On the AppKit main
 thread, queued selector work wakes and is drained by `NSApplication.run`.
-Run-loop sources, observers, CF timers, recursive activations, selector
-cancellation, and arbitrary-mode `NSTimer` scheduling remain outside this
-subset; mode behavior has not yet been verified against a Mach-O guest.
+Version-0 `CFRunLoopSource` supports context ownership, order queries,
+add/remove/contains by mode, signal delivery, and invalidation. Signaling queues
+the source's ordered perform callback on each associated loop; the first
+eligible loop consumes the signal. CF timers and observers, native Windows
+input-source registration, recursive activations, selector cancellation, and
+arbitrary-mode `NSTimer` scheduling remain outside this subset; mode behavior
+has not yet been verified against a Mach-O guest.
 The keyed-archive decoder also recognizes Apple's `NSCustomView` placeholder,
 resolves its `NSClassName`, allocates a loaded `NSView` subclass, and calls
 `initWithFrame:` using `NSFrame` or `NSFrameSize`. It then restores selected

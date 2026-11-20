@@ -36,11 +36,12 @@
 #include <new>
 
 namespace {
-enum class Kind { String, Data, Array, Number, Real, Dictionary, Set, Date, URL, Boolean, Null, ImageSource, DataProvider, ImageDestination, DataConsumer, Bundle, PropertyListUID };
+enum class Kind { String, Data, Array, Number, Real, Dictionary, Set, Date, URL, Boolean, Null, ImageSource, DataProvider, ImageDestination, DataConsumer, Bundle, PropertyListUID, RunLoopSource };
 constexpr darling_windows_CFTypeID TypeId(Kind kind)
 {
 	return static_cast<darling_windows_CFTypeID>(kind) + 1;
 }
+struct RunLoopState;
 
 extern "C" int darling_windows_CFStringGetSystemEncoding()
 {
@@ -77,6 +78,20 @@ struct Object {
 	std::uint64_t property_list_uid = 0;
 	double real_number = 0;
 	std::vector<std::pair<const void*, const void*>> dictionary;
+	DarlingCFRunLoopSourceContext run_loop_source_context{};
+	const void* run_loop_source_info = nullptr;
+	const void* run_loop_source_allocator = nullptr;
+	darling_windows_CFIndex run_loop_source_order = 0;
+	bool run_loop_source_valid = false;
+	bool run_loop_source_signaled = false;
+	std::uint64_t run_loop_source_generation = 0;
+	std::mutex run_loop_source_mutex;
+	struct SourceSchedule final {
+		std::weak_ptr<RunLoopState> state;
+		void* loop{};
+		std::string mode;
+	};
+	std::vector<SourceSchedule> run_loop_source_schedules;
 	double date = 0;
 	bool boolean = false;
 	void* external_data_info = nullptr;
@@ -187,6 +202,11 @@ void ReleaseOwned(Object* object)
 }
 Object::~Object()
 {
+	if (kind == Kind::RunLoopSource && run_loop_source_context.release != nullptr &&
+		run_loop_source_info != nullptr) {
+		try { run_loop_source_context.release(run_loop_source_info); }
+		catch (...) { /* Guest callbacks must not unwind through CoreFoundation. */ }
+	}
 	if (opaque_destroy != nullptr) {
 		try { opaque_destroy(opaque_payload); }
 		catch (...) { /* C callbacks must not unwind through CoreFoundation. */ }
@@ -763,11 +783,111 @@ struct RunLoopState {
 		std::vector<std::string> modes;
 		std::uint64_t order{};
 	};
+	struct Source final {
+		Object* object{};
+		std::string mode;
+	};
 	std::vector<Block> blocks;
+	std::vector<Source> sources;
+	~RunLoopState()
+	{
+		for (const auto& source : sources) ReleaseOwned(source.object);
+	}
 };
 struct RunLoop {
 	std::shared_ptr<RunLoopState> state = std::make_shared<RunLoopState>();
 };
+extern RunLoop main_run_loop;
+struct RunLoopSourceInvocation final {
+	Object* source{};
+	std::uint64_t generation{};
+	std::weak_ptr<RunLoopState> loop_state;
+	~RunLoopSourceInvocation() { ReleaseOwned(source); }
+};
+const void* RunLoopModeObject(const std::string& mode)
+{
+	auto* object = new (std::nothrow) Object{};
+	if (object == nullptr) return nullptr;
+	try { object->kind = Kind::String; object->string = mode; }
+	catch (...) { delete object; return nullptr; }
+	return object;
+}
+bool DispatchSignaledRunLoopSource(Object* source)
+{
+	if (source == nullptr || source->kind != Kind::RunLoopSource) return false;
+	std::vector<std::pair<std::shared_ptr<RunLoopState>, std::vector<std::string>>> targets;
+	std::uint64_t generation{};
+	{
+		std::lock_guard lock(source->run_loop_source_mutex);
+		if (!source->run_loop_source_valid || !source->run_loop_source_signaled) return false;
+		generation = source->run_loop_source_generation;
+		try {
+			for (const auto& schedule : source->run_loop_source_schedules) {
+				auto state = schedule.state.lock();
+				if (state == nullptr) continue;
+				auto found = std::find_if(targets.begin(), targets.end(),
+					[&](const auto& target) { return target.first == state; });
+				if (found == targets.end()) {
+					targets.emplace_back(std::move(state), std::vector<std::string>{schedule.mode});
+				} else if (std::find(found->second.begin(), found->second.end(), schedule.mode) ==
+					found->second.end()) found->second.push_back(schedule.mode);
+			}
+		} catch (...) { return false; }
+	}
+	bool queued = false;
+	for (auto& target : targets) {
+		auto* invocation = new (std::nothrow) RunLoopSourceInvocation{};
+		if (invocation == nullptr) continue;
+		invocation->source = source;
+		invocation->generation = generation;
+		invocation->loop_state = target.first;
+		RetainOwned(source);
+		const auto order = static_cast<std::uint64_t>(source->run_loop_source_order);
+		{
+			std::lock_guard lock(target.first->mutex);
+			try {
+				target.first->blocks.push_back({
+					[](void* context) {
+						std::unique_ptr<RunLoopSourceInvocation> invocation(
+							static_cast<RunLoopSourceInvocation*>(context));
+						auto state = invocation->loop_state.lock();
+						if (state == nullptr) return;
+						bool still_scheduled = false;
+						{
+							std::lock_guard lock(state->mutex);
+							still_scheduled = std::any_of(state->sources.begin(), state->sources.end(),
+								[&](const RunLoopState::Source& entry) {
+									return entry.object == invocation->source;
+								});
+						}
+						if (!still_scheduled) return;
+						auto* source = invocation->source;
+						DarlingCFRunLoopSourcePerformCallback callback{};
+						void* info{};
+						{
+							std::lock_guard lock(source->run_loop_source_mutex);
+							if (!source->run_loop_source_valid || !source->run_loop_source_signaled ||
+								source->run_loop_source_generation != invocation->generation) return;
+							source->run_loop_source_signaled = false;
+							callback = source->run_loop_source_context.perform;
+							info = const_cast<void*>(source->run_loop_source_info);
+						}
+						if (callback != nullptr) {
+							try { callback(info); }
+							catch (...) { /* Guest callbacks must not unwind through CoreFoundation. */ }
+						}
+					}, invocation, std::move(target.second), order});
+				queued = true;
+			} catch (...) { delete invocation; }
+		}
+		if (queued) {
+			target.first->condition.notify_all();
+			if (target.first == main_run_loop.state)
+				darling_windows_appkit_wake_main_run_loop();
+		}
+	}
+	return queued;
+}
 // CoreFoundation associates the current run loop with the calling thread.
 // Keeping this object thread-local also prevents callbacks posted by one
 // thread from being consumed by an unrelated thread's run loop.
@@ -3500,6 +3620,239 @@ extern "C" void darling_windows_CFRunLoopAddCommonMode(
 	loop->state->condition.notify_all();
 }
 
+namespace {
+Object* AsRunLoopSource(const void* value)
+{
+	auto* object = As(value);
+	return object != nullptr && object->kind == Kind::RunLoopSource ? object : nullptr;
+}
+std::vector<std::string> RunLoopConcreteModes(const std::shared_ptr<RunLoopState>& state,
+	const std::string& mode)
+{
+	if (mode != "kCFRunLoopCommonModes") return {mode};
+	std::lock_guard lock(state->mutex);
+	return state->common_modes;
+}
+void InvokeRunLoopSourceModeCallback(Object* source, bool scheduling,
+	void* loop, const std::string& mode)
+{
+	auto callback = scheduling ? source->run_loop_source_context.schedule :
+		source->run_loop_source_context.cancel;
+	if (callback == nullptr) return;
+	const auto mode_object = RunLoopModeObject(mode);
+	if (mode_object == nullptr) return;
+	try { callback(const_cast<void*>(source->run_loop_source_info), loop, mode_object); }
+	catch (...) { /* Guest callbacks must not unwind through CoreFoundation. */ }
+	ReleaseOwned(As(mode_object));
+}
+bool AddRunLoopSourceMode(void* loop, const std::shared_ptr<RunLoopState>& state,
+	Object* source, const std::string& mode)
+{
+	{
+		std::lock_guard source_lock(source->run_loop_source_mutex);
+		if (!source->run_loop_source_valid) return false;
+		const auto found = std::find_if(source->run_loop_source_schedules.begin(),
+			source->run_loop_source_schedules.end(), [&](const Object::SourceSchedule& entry) {
+				return entry.state.lock() == state && entry.mode == mode;
+			});
+		if (found != source->run_loop_source_schedules.end()) return true;
+		try { source->run_loop_source_schedules.push_back({state, loop, mode}); }
+		catch (...) { return false; }
+	}
+	bool inserted = false;
+	{
+		std::lock_guard state_lock(state->mutex);
+		const auto found = std::find_if(state->sources.begin(), state->sources.end(),
+			[&](const RunLoopState::Source& entry) {
+				return entry.object == source && entry.mode == mode;
+			});
+		if (found == state->sources.end()) {
+			try {
+				RetainOwned(source);
+				state->sources.push_back({source, mode});
+				inserted = true;
+			} catch (...) { ReleaseOwned(source); }
+		}
+	}
+	if (!inserted) {
+		std::lock_guard source_lock(source->run_loop_source_mutex);
+		std::erase_if(source->run_loop_source_schedules,
+			[&](const Object::SourceSchedule& entry) {
+				return entry.state.lock() == state && entry.mode == mode;
+			});
+		return false;
+	}
+	InvokeRunLoopSourceModeCallback(source, true, loop, mode);
+	state->condition.notify_all();
+	DispatchSignaledRunLoopSource(source);
+	return true;
+}
+void RemoveRunLoopSourceMode(void* loop, const std::shared_ptr<RunLoopState>& state,
+	Object* source, const std::string& mode)
+{
+	bool removed = false;
+	{
+		std::lock_guard state_lock(state->mutex);
+		for (auto it = state->sources.begin(); it != state->sources.end(); ++it) {
+			if (it->object == source && it->mode == mode) {
+				state->sources.erase(it);
+				removed = true;
+				break;
+			}
+		}
+	}
+	{
+		std::lock_guard source_lock(source->run_loop_source_mutex);
+		std::erase_if(source->run_loop_source_schedules,
+			[&](const Object::SourceSchedule& entry) {
+				return entry.state.lock() == state && entry.mode == mode;
+			});
+	}
+	if (!removed) return;
+	InvokeRunLoopSourceModeCallback(source, false, loop, mode);
+	ReleaseOwned(source);
+}
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeID CFRunLoopSourceGetTypeID()
+{
+	return TypeId(Kind::RunLoopSource);
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeRef CFRunLoopSourceCreate(
+	const void* allocator, darling_windows_CFIndex order,
+	const DarlingCFRunLoopSourceContext* context)
+{
+	if (context == nullptr || context->version != 0 || context->perform == nullptr) return nullptr;
+	auto* source = new (std::nothrow) Object{};
+	if (source == nullptr) return nullptr;
+	source->kind = Kind::RunLoopSource;
+	source->run_loop_source_context = *context;
+	source->run_loop_source_allocator = allocator;
+	source->run_loop_source_order = order;
+	source->run_loop_source_valid = true;
+	if (context->info != nullptr && context->retain != nullptr) {
+		try { source->run_loop_source_info = context->retain(context->info); }
+		catch (...) { delete source; return nullptr; }
+		if (source->run_loop_source_info == nullptr) { delete source; return nullptr; }
+	} else source->run_loop_source_info = context->info;
+	source->run_loop_source_context.info = const_cast<void*>(source->run_loop_source_info);
+	return source;
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFIndex CFRunLoopSourceGetOrder(
+	darling_windows_CFTypeRef value)
+{
+	const auto* source = AsRunLoopSource(value);
+	return source == nullptr ? 0 : source->run_loop_source_order;
+}
+
+extern "C" DARLING_CF_GUEST_ABI void CFRunLoopSourceGetContext(
+	darling_windows_CFTypeRef value, DarlingCFRunLoopSourceContext* context)
+{
+	const auto* source = AsRunLoopSource(value);
+	if (source != nullptr && context != nullptr) {
+		*context = source->run_loop_source_context;
+		context->info = const_cast<void*>(source->run_loop_source_info);
+	}
+}
+
+extern "C" DARLING_CF_GUEST_ABI std::uint8_t CFRunLoopSourceIsValid(
+	darling_windows_CFTypeRef value)
+{
+	auto* source = AsRunLoopSource(value);
+	if (source == nullptr) return 0;
+	std::lock_guard lock(source->run_loop_source_mutex);
+	return source->run_loop_source_valid ? 1 : 0;
+}
+
+extern "C" DARLING_CF_GUEST_ABI void CFRunLoopSourceSignal(darling_windows_CFTypeRef value)
+{
+	auto* source = AsRunLoopSource(value);
+	if (source == nullptr) return;
+	{
+		std::lock_guard lock(source->run_loop_source_mutex);
+		if (!source->run_loop_source_valid) return;
+		source->run_loop_source_signaled = true;
+		++source->run_loop_source_generation;
+	}
+	DispatchSignaledRunLoopSource(source);
+}
+
+extern "C" DARLING_CF_GUEST_ABI void CFRunLoopSourceInvalidate(
+	darling_windows_CFTypeRef value)
+{
+	auto* source = AsRunLoopSource(value);
+	if (source == nullptr) return;
+	std::vector<Object::SourceSchedule> schedules;
+	{
+		std::lock_guard lock(source->run_loop_source_mutex);
+		if (!source->run_loop_source_valid) return;
+		source->run_loop_source_valid = false;
+		source->run_loop_source_signaled = false;
+		++source->run_loop_source_generation;
+		schedules.swap(source->run_loop_source_schedules);
+	}
+	for (const auto& schedule : schedules) {
+		auto state = schedule.state.lock();
+		if (state == nullptr) continue;
+		bool removed = false;
+		{
+			std::lock_guard lock(state->mutex);
+			for (auto it = state->sources.begin(); it != state->sources.end(); ++it) {
+				if (it->object == source && it->mode == schedule.mode) {
+					state->sources.erase(it); removed = true; break;
+				}
+			}
+		}
+		InvokeRunLoopSourceModeCallback(source, false, schedule.loop, schedule.mode);
+		if (removed) ReleaseOwned(source);
+	}
+}
+
+extern "C" DARLING_CF_GUEST_ABI std::uint8_t CFRunLoopContainsSource(
+	darling_windows_CFRunLoopRef value, darling_windows_CFTypeRef source_value,
+	darling_windows_CFStringRef mode_value)
+{
+	auto* source = AsRunLoopSource(source_value);
+	const auto* mode = static_cast<const Object*>(mode_value);
+	if (value == nullptr || source == nullptr || mode == nullptr || mode->kind != Kind::String)
+		return 0;
+	auto* loop = static_cast<RunLoop*>(value);
+	const auto modes = RunLoopConcreteModes(loop->state, mode->string);
+	std::lock_guard lock(loop->state->mutex);
+	return std::any_of(loop->state->sources.begin(), loop->state->sources.end(),
+		[&](const RunLoopState::Source& entry) {
+			return entry.object == source && std::find(modes.begin(), modes.end(), entry.mode) != modes.end();
+		}) ? 1 : 0;
+}
+
+extern "C" DARLING_CF_GUEST_ABI void CFRunLoopAddSource(
+	darling_windows_CFRunLoopRef value, darling_windows_CFTypeRef source_value,
+	darling_windows_CFStringRef mode_value)
+{
+	auto* source = AsRunLoopSource(source_value);
+	const auto* mode = static_cast<const Object*>(mode_value);
+	if (value == nullptr || source == nullptr || mode == nullptr || mode->kind != Kind::String) return;
+	auto* loop = static_cast<RunLoop*>(value);
+	const auto modes = RunLoopConcreteModes(loop->state, mode->string);
+	for (const auto& concrete_mode : modes)
+		(void)AddRunLoopSourceMode(value, loop->state, source, concrete_mode);
+}
+
+extern "C" DARLING_CF_GUEST_ABI void CFRunLoopRemoveSource(
+	darling_windows_CFRunLoopRef value, darling_windows_CFTypeRef source_value,
+	darling_windows_CFStringRef mode_value)
+{
+	auto* source = AsRunLoopSource(source_value);
+	const auto* mode = static_cast<const Object*>(mode_value);
+	if (value == nullptr || source == nullptr || mode == nullptr || mode->kind != Kind::String) return;
+	auto* loop = static_cast<RunLoop*>(value);
+	const auto modes = RunLoopConcreteModes(loop->state, mode->string);
+	for (const auto& concrete_mode : modes)
+		RemoveRunLoopSourceMode(value, loop->state, source, concrete_mode);
+}
+
 extern "C" void darling_windows_CFRunLoopWakeUp(darling_windows_CFRunLoopRef value)
 {
 	if (value == nullptr) return;
@@ -4715,6 +5068,26 @@ extern "C" std::uintptr_t darling_windows_corefoundation_symbol(const char* name
 		return reinterpret_cast<std::uintptr_t>(&CFRunLoopPerformBlock);
 	if (std::strcmp(name, "CFRunLoopAddCommonMode") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFRunLoopAddCommonMode);
+	if (std::strcmp(name, "CFRunLoopSourceGetTypeID") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFRunLoopSourceGetTypeID);
+	if (std::strcmp(name, "CFRunLoopSourceCreate") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFRunLoopSourceCreate);
+	if (std::strcmp(name, "CFRunLoopSourceGetOrder") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFRunLoopSourceGetOrder);
+	if (std::strcmp(name, "CFRunLoopSourceGetContext") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFRunLoopSourceGetContext);
+	if (std::strcmp(name, "CFRunLoopSourceSignal") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFRunLoopSourceSignal);
+	if (std::strcmp(name, "CFRunLoopSourceIsValid") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFRunLoopSourceIsValid);
+	if (std::strcmp(name, "CFRunLoopSourceInvalidate") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFRunLoopSourceInvalidate);
+	if (std::strcmp(name, "CFRunLoopContainsSource") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFRunLoopContainsSource);
+	if (std::strcmp(name, "CFRunLoopAddSource") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFRunLoopAddSource);
+	if (std::strcmp(name, "CFRunLoopRemoveSource") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFRunLoopRemoveSource);
 	if (std::strcmp(name, "CFStringGetTypeID") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFStringGetTypeID);
 	if (std::strcmp(name, "CFStringCreateWithCString") == 0)

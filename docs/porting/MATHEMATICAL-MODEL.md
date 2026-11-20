@@ -510,11 +510,19 @@ pending. The current default common set is `{kCFRunLoopDefaultMode}` until
 | Mode membership | Work runs only in registered modes | Mode-tagged callbacks; default and common modes | WSL1 offers Linux compatibility but does not define Cocoa run-loop modes | Clang Release build; no guest fixture |
 | Ordered selector queue | Process target selector on target thread in requested modes/order | `NSRunLoop.performSelector:target:argument:order:modes:` | No direct WSL1 equivalent | Source/build only |
 | Main AppKit loop | Cocoa loop dispatches AppKit input and Foundation work | Existing Win32 message loop pumps default-mode CF callback work | WSL1 cannot supply AppKit behavior | Source/build only |
-| CF sources/timers/observers | Register, invalidate, retain, and service by mode | Not implemented | Not supplied by WSL1 | Missing |
+| CF source version 0 | Register by mode, signal, retain, invalidate, and service in order | Mode-tagged callback queue; first eligible loop consumes a signal | Not supplied by WSL1 | Clang Release build; no guest fixture |
+| CF timers and observers | Fire at deadlines and report run-loop phases in registered modes | Not implemented | Not supplied by WSL1 | Missing |
 
-References: [Apple NSRunLoop `run(mode:before:)`](https://developer.apple.com/documentation/foundation/runloop/run%28mode%3Abefore%3A%29),
+For a source `s`, registered loops `L(s)` and generation `g`,
+`Signal(s,g)` queues at most one delivery token per loop across the union of
+its registered modes. Delivery is enabled only if `valid(s) ∧ signaled(s) ∧
+generation(s)=g`; the first eligible loop atomically clears `signaled(s)`, so
+remaining mode/loop tokens become no-ops. This models version-0 manual
+signaling but not native input-source integration or the complete run-loop
+state machine. References: [Apple CFRunLoopSource](https://developer.apple.com/documentation/corefoundation/cfrunloopsource),
+[source context](https://developer.apple.com/documentation/corefoundation/cfrunloopsourcecontext),
 [CFRunLoop mode contract](https://developer.apple.com/documentation/corefoundation/cfrunloop),
-and [CFRunLoopPerformBlock](https://developer.apple.com/documentation/corefoundation/cfrunloopperformblock%28_%3A_%3A_%3A%29). This is a callback-queue contract, not yet the full run-loop object graph.
+and [CFRunLoopPerformBlock](https://developer.apple.com/documentation/corefoundation/cfrunloopperformblock%28_%3A_%3A_%3A%29).
 
 ## CoreFoundation scalar bridge
 

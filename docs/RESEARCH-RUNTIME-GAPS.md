@@ -13,9 +13,11 @@ und mit klaren ABI-Grenzen erweitern.
 
 Seit der vorherigen Bestandsaufnahme existiert ein begrenzter `NSRunLoop`-
 Bridge mit mode-bewusster Callback-Warteschlange und AppKit-Main-Loop-Pump.
-Apples Dokumentation macht klar, dass ein vollständiges Modell zusätzlich
-quell-, timer- und observerbasierte Eingaben pro Modus sowie rekursive
-Aktivierungen verlangt; die aktuelle Bridge deckt diese Verträge noch nicht ab.
+Version-0-`CFRunLoopSource`-Objekte decken nun Kontextbesitz, Reihenfolge,
+Modusregistrierung, Signalisierung und Invalidierung ab. Das Signal reiht einen
+Callback auf den registrierten Loops ein; der erste passende Loop konsumiert
+es. Ein vollständiges Modell benötigt zusätzlich Timer und Observer pro Modus,
+native Eingabequellen sowie rekursive Aktivierungen; diese Teile bleiben offen.
 Referenzen: [Foundation `run(mode:before:)`](https://developer.apple.com/documentation/foundation/runloop/run%28mode%3Abefore%3A%29),
 [CoreFoundation `CFRunLoop`](https://developer.apple.com/documentation/corefoundation/cfrunloop),
 [`CFRunLoopPerformBlock`](https://developer.apple.com/documentation/corefoundation/cfrunloopperformblock%28_%3A_%3A_%3A%29).
@@ -31,9 +33,11 @@ String-ABI-Aufrufe akzeptieren nur die implementierte UTF-8-Darstellung.
 `CFRunLoopPerformBlock` ist nun angebunden: ein einzelner Modus
 oder ein Array von Modi wird kopiert, der Gast-Block bleibt bis zur Ausführung
 retained, und die AppKit-Hauptschleife wird aufgeweckt. Ein Längenlimit von
-4095 UTF-8-Bytes pro Modus gilt vorläufig. `CFRunLoopSource`/Timer/Observer
-und die vollständigen RunLoop-Rückgabestatus bleiben offen. Die ABI-Ausführung
-ist noch nicht durch einen Gast-Fixture-Lauf bestätigt.
+4095 UTF-8-Bytes pro Modus gilt vorläufig. `CFRunLoopSource` ist für Version 0
+mit Create/GetContext/GetOrder, Add/Remove/Contains, Signal, IsValid und
+Invalidate angebunden. Timer, Observer, native Eingabequellen und vollständige
+RunLoop-Rückgabestatus bleiben offen. Die ABI-Ausführung ist noch nicht durch
+einen Gast-Fixture-Lauf bestätigt.
 
 Die Dictionary-Schicht wurde danach erweitert: `CFDictionaryCreate`, mutable
 Erzeugung/Kopie, Set/Add/Replace/Remove sowie synchrone Enumeration sind jetzt

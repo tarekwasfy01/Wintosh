@@ -1122,8 +1122,10 @@ covered; each returned copy can be mutated independently while retaining the
 existing ownership behavior.
 
 The run-loop family also covers `CFRunLoopGetMain` on both target
-architectures. Full CoreFoundation mode/source and cross-thread scheduling
-semantics remain outside this minimal bridge.
+architectures. Version-0 `CFRunLoopSource` creation, mode registration,
+signaling, context/order queries, and invalidation are implemented at source
+and build level. Guest ABI behavior, native input sources, timers, observers,
+and complete cross-thread run-loop semantics remain unverified or missing.
 
 The CoreFoundation date family also covers
 `CFDateGetTimeIntervalSinceReferenceDate`; the bridge keeps one explicit

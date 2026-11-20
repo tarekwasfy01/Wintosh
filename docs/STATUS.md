@@ -51,12 +51,14 @@ fields are retained in the copied table for ABI fidelity.
 Comparator-based range sorting and binary search are also exported; binary
 search assumes the searched range is already sorted by the same ordering.
 
-This is a useful Foundation scheduling subset, not the complete CoreFoundation
-run-loop contract: CFRunLoopSource/Timer/Observer objects, true input-source
-integration for custom modes, full recursive run-loop activation, selector
-cancellation, and timer registration with arbitrary modes remain unimplemented.
-The Clang Release build completed successfully; no guest ABI fixture has
-exercised mode filtering or selector delivery.
+Version-0 `CFRunLoopSource` objects now support create/context/order queries,
+mode registration and removal, signal delivery, validity checks, and
+invalidation. A signal queues one ordered callback across the source's
+registered modes for each associated loop; the first eligible loop consumes
+that signal. The Clang Release build completes with this API surface. Timer and
+observer objects, native Windows input-source registration, full recursive
+activation semantics, and guest ABI fixture coverage remain open. No guest
+fixture has exercised source lifetime, mode filtering, or callback ordering.
 
 ### Foundation dates and AppKit event queue (2026-11-17)
 

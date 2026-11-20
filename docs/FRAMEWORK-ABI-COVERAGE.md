@@ -41,12 +41,14 @@ open.
 The current `NSRunLoop` bridge exposes current/main wrappers, its underlying
 CF loop, default/common modes, bounded run methods, and ordered selector
 delivery. The internal callback queue retains mode-tagged work and leaves it
-pending while another mode is active. This covers only scheduled callbacks:
-the `CFRunLoopSource`, `CFRunLoopTimer`, and `CFRunLoopObserver` object graphs,
-native Windows input-source registration, and run-loop phase observers are
-still missing. Apple documents that each thread owns one run loop and that
-sources, timers, and observers are activated by their registered modes; current
-evidence is source/build level only.
+pending while another mode is active. Version-0 `CFRunLoopSource` create,
+context/order reads, add/remove/contains, signal, validity, and invalidation
+are also exported. Signaled sources enqueue one ordered callback over their
+registered modes; the first eligible run loop consumes the pending signal.
+`CFRunLoopTimer` and `CFRunLoopObserver`, native Windows input-source
+registration, and run-loop phase observers remain missing. Apple documents
+that sources, timers, and observers are activated by their registered modes;
+current evidence is source/build level only, without guest ABI fixtures.
 
 The Mach-O host resolver exports a partial C ABI for run-loop control,
 `CFString` creation/read operations, and CFArray creation, copying, reads,

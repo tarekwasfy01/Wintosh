@@ -45,6 +45,28 @@ using darling_windows_CFBundleRef = const void*;
 using darling_windows_CFBooleanRef = const void*;
 using darling_windows_CFRunLoopRef = void*;
 using darling_windows_CFRunLoopBlock = void (*)(void* context);
+using DarlingCFRunLoopSourceRetainCallback = const void* (DARLING_CF_GUEST_ABI *)(const void* info);
+using DarlingCFRunLoopSourceReleaseCallback = void (DARLING_CF_GUEST_ABI *)(const void* info);
+using DarlingCFRunLoopSourceCopyDescriptionCallback = const void* (DARLING_CF_GUEST_ABI *)(const void* info);
+using DarlingCFRunLoopSourceEqualCallback = std::uint8_t (DARLING_CF_GUEST_ABI *)(const void* left, const void* right);
+using DarlingCFRunLoopSourceHashCallback = std::uintptr_t (DARLING_CF_GUEST_ABI *)(const void* info);
+using DarlingCFRunLoopSourceScheduleCallback = void (DARLING_CF_GUEST_ABI *)(void* info,
+	darling_windows_CFRunLoopRef loop, const void* mode);
+using DarlingCFRunLoopSourceCancelCallback = void (DARLING_CF_GUEST_ABI *)(void* info,
+	darling_windows_CFRunLoopRef loop, const void* mode);
+using DarlingCFRunLoopSourcePerformCallback = void (DARLING_CF_GUEST_ABI *)(void* info);
+struct DarlingCFRunLoopSourceContext {
+	darling_windows_CFIndex version;
+	void* info;
+	DarlingCFRunLoopSourceRetainCallback retain;
+	DarlingCFRunLoopSourceReleaseCallback release;
+	DarlingCFRunLoopSourceCopyDescriptionCallback copy_description;
+	DarlingCFRunLoopSourceEqualCallback equal;
+	DarlingCFRunLoopSourceHashCallback hash;
+	DarlingCFRunLoopSourceScheduleCallback schedule;
+	DarlingCFRunLoopSourceCancelCallback cancel;
+	DarlingCFRunLoopSourcePerformCallback perform;
+};
 using darling_windows_CFNotificationCallback = void (*)(const void* observer,
 	const char* name, const void* object);
 using darling_windows_CFArrayApplierFunction = void (*)(const void* value, void* context);
@@ -620,6 +642,26 @@ extern "C" DARLING_CF_GUEST_ABI void CFRunLoopPerformBlock(
 	darling_windows_CFRunLoopRef loop, darling_windows_CFTypeRef modes, void* block);
 extern "C" DARLING_CF_GUEST_ABI void CFRunLoopAddCommonMode(
 	darling_windows_CFRunLoopRef loop, darling_windows_CFStringRef mode);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeID CFRunLoopSourceGetTypeID();
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeRef CFRunLoopSourceCreate(
+	const void* allocator, darling_windows_CFIndex order,
+	const DarlingCFRunLoopSourceContext* context);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFIndex CFRunLoopSourceGetOrder(
+	darling_windows_CFTypeRef source);
+extern "C" DARLING_CF_GUEST_ABI void CFRunLoopSourceGetContext(
+	darling_windows_CFTypeRef source, DarlingCFRunLoopSourceContext* context);
+extern "C" DARLING_CF_GUEST_ABI void CFRunLoopSourceSignal(darling_windows_CFTypeRef source);
+extern "C" DARLING_CF_GUEST_ABI std::uint8_t CFRunLoopSourceIsValid(darling_windows_CFTypeRef source);
+extern "C" DARLING_CF_GUEST_ABI void CFRunLoopSourceInvalidate(darling_windows_CFTypeRef source);
+extern "C" DARLING_CF_GUEST_ABI std::uint8_t CFRunLoopContainsSource(
+	darling_windows_CFRunLoopRef loop, darling_windows_CFTypeRef source,
+	darling_windows_CFStringRef mode);
+extern "C" DARLING_CF_GUEST_ABI void CFRunLoopAddSource(
+	darling_windows_CFRunLoopRef loop, darling_windows_CFTypeRef source,
+	darling_windows_CFStringRef mode);
+extern "C" DARLING_CF_GUEST_ABI void CFRunLoopRemoveSource(
+	darling_windows_CFRunLoopRef loop, darling_windows_CFTypeRef source,
+	darling_windows_CFStringRef mode);
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeID CFStringGetTypeID();
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFStringCreateWithCString(
 	const void* allocator, const char* bytes, std::uint32_t encoding);

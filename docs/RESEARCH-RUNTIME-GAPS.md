@@ -51,7 +51,9 @@ Invalidate für sechs implementierte Loop-Phasen. Die Gast-ABI bildet
 `CFRunLoopRunInMode` auf Apples vier Run-Ergebnisse ab und exportiert
 `CFRunLoopRun`; leere Worker-Modi kehren als `Finished` zurück. Timer-Toleranz,
 native Mach-Port-Quellen, weitere Aktivitätsphasen und Gast-Fixture-Verifikation
-bleiben offen.
+bleiben offen. Run-Loop-Handles teilen das CF-Objektlayout und sind immortal;
+generisches `CFRetain`/`CFRelease` sowie `CFGetTypeID` arbeiten damit ohne
+Lifetime-Fehler.
 
 Die Dictionary-Schicht wurde danach erweitert: `CFDictionaryCreate`, mutable
 Erzeugung/Kopie, Set/Add/Replace/Remove sowie synchrone Enumeration sind jetzt

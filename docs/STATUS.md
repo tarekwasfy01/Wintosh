@@ -33,7 +33,9 @@ encodings. `CFRunLoopPerformBlock` accepts a string or array of modes, retains
 and queues the guest block, and wakes the AppKit main thread. The resolver now
 also exports `CFRunLoopGetTypeID`, `CFRunLoopCopyCurrentMode`, and
 `CFRunLoopCopyAllModes`. The mode-copy calls follow Create/Copy ownership;
-defined modes are collected from common modes, active modes, and registered
+run loops share the generic CF object header and are immortal handles, so
+`CFRetain`, `CFRelease`, and `CFGetTypeID` safely accept them.
+Defined modes are collected from common modes, active modes, and registered
 blocks, sources, timers, and observers. Mode names are currently bounded to
 4095 UTF-8 bytes. Guest import fixtures and edge-case status behavior still
 need coverage. Guest exports now

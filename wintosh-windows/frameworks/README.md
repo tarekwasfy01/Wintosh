@@ -317,7 +317,9 @@ build-verified only, without a Mach-O ABI fixture.
 Run-loop introspection also exports `CFRunLoopGetTypeID`,
 `CFRunLoopCopyCurrentMode`, and `CFRunLoopCopyAllModes`. The current mode is
 null while idle; the copied mode array lists known common, active, and
-registered modes. These new guest ABI calls compile and link, but still need
+registered modes. Run loops share the CF object header, have the run-loop type
+ID, and are immortal, so generic `CFRetain`/`CFRelease` is safe. These new
+guest ABI calls compile and link, but still need
 invocation from a Mach-O fixture.
 The keyed-archive decoder also recognizes Apple's `NSCustomView` placeholder,
 resolves its `NSClassName`, allocates a loaded `NSView` subclass, and calls

@@ -846,8 +846,13 @@ struct RunLoopState {
 		for (const auto& observer : observers) ReleaseOwned(observer.object);
 	}
 };
-struct RunLoop {
+struct RunLoop : Object {
 	std::shared_ptr<RunLoopState> state = std::make_shared<RunLoopState>();
+	RunLoop()
+	{
+		kind = Kind::RunLoop;
+		immortal = true;
+	}
 };
 extern RunLoop main_run_loop;
 struct RunLoopSourceInvocation final {

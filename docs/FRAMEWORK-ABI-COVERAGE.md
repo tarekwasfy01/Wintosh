@@ -71,6 +71,9 @@ array of modes and wakes AppKit. `CFRunLoopGetTypeID`,
 current-mode query returns null while idle; both copy functions return
 caller-owned CoreFoundation objects. The all-modes list is derived from common
 modes, active modes, and registered blocks, sources, timers, and observers.
+Run-loop handles share the CoreFoundation object header, report the run-loop
+type ID through `CFGetTypeID`, and are process/thread-owned immortal objects,
+so generic `CFRetain`/`CFRelease` is safe and does not destroy the loop.
 `CFRunLoopRunInMode` now maps the internal loop outcome to Apple's result codes
 1 (`Finished`), 2 (`Stopped`), 3 (`TimedOut`), and 4 (`HandledSource`), and the
 resolver exports `CFRunLoopRun`. Empty worker modes return `Finished`; the

@@ -577,6 +577,10 @@ observers. The common-mode pseudo-name itself is excluded because it is a
 registration set, not an executable mode. See Apple's
 [`CFRunLoopCopyCurrentMode`](https://developer.apple.com/documentation/corefoundation/cfrunloopcopycurrentmode%28_%3A%29)
 and [`CFRunLoopCopyAllModes`](https://developer.apple.com/documentation/corefoundation/cfrunloopcopyallmodes%28_%3A%29) contracts.
+The run-loop references embed the generic CF header, but their ownership stays
+with the runtime: `retain(L) = L` and `release(L)` is a no-op. This lets generic
+`CFRetain`, `CFRelease`, and `CFGetTypeID` operate without converting the
+thread-local or main-loop handle into a caller-owned allocation.
 
 ## CoreFoundation scalar bridge
 

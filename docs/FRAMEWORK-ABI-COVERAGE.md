@@ -79,7 +79,7 @@ constructors), `CFData`, `CFArray`,
 `CFDictionary`, `CFSet`, `CFNumber`, `CFDate`, and `CFMachPort` object blocks
 use the supplied allocator and retain it through object destruction. Guest
 CFURL string, filesystem-path, filesystem-path-relative-to-base, and
-filesystem-representation constructors use the requested allocator for their
+filesystem-representation constructors (including relative-to-base bytes) use the requested allocator for their
 URL object blocks. POSIX and Windows path
 styles are supported; HFS path conversion is not. The guest resolver also
 exports common URL type/string/path/scheme/authority/port/directory queries,

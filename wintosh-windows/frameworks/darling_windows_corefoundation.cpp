@@ -6048,6 +6048,26 @@ CFURLCreateFromFileSystemRepresentation(const void* allocator, const std::uint8_
 	return object;
 }
 
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFURLRef
+CFURLCreateFromFileSystemRepresentationRelativeToBase(const void* allocator,
+	const std::uint8_t* bytes, darling_windows_CFIndex length,
+	std::uint8_t is_directory, darling_windows_CFURLRef base_url)
+{
+	if (length < 0 || (length != 0 && bytes == nullptr)) return nullptr;
+	std::string path;
+	try {
+		if (length != 0) path.assign(reinterpret_cast<const char*>(bytes),
+			static_cast<std::size_t>(length));
+	} catch (...) { return nullptr; }
+	if (path.find('\0') != std::string::npos || !IsWellFormedUTF8(path)) return nullptr;
+	const auto path_string = darling_windows_CFStringCreateWithCString(path.c_str());
+	if (path_string == nullptr) return nullptr;
+	const auto result = CFURLCreateWithFileSystemPathRelativeToBase(allocator,
+		path_string, 0, is_directory, base_url);
+	ReleaseOwned(const_cast<Object*>(As(path_string)));
+	return result;
+}
+
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef
 CFURLCreateStringByReplacingPercentEscapes(const void* allocator,
 	darling_windows_CFStringRef original_string,
@@ -7484,6 +7504,8 @@ extern "C" std::uintptr_t darling_windows_corefoundation_symbol(const char* name
 		return reinterpret_cast<std::uintptr_t>(&CFURLCreateWithFileSystemPathRelativeToBase);
 	if (std::strcmp(name, "CFURLCreateFromFileSystemRepresentation") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFURLCreateFromFileSystemRepresentation);
+	if (std::strcmp(name, "CFURLCreateFromFileSystemRepresentationRelativeToBase") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFURLCreateFromFileSystemRepresentationRelativeToBase);
 	if (std::strcmp(name, "CFURLCreateStringByReplacingPercentEscapes") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFURLCreateStringByReplacingPercentEscapes);
 	if (std::strcmp(name, "CFURLCreateStringByReplacingPercentEscapesUsingEncoding") == 0)

@@ -115,8 +115,8 @@ and retain that allocator until destruction. Container, string, and data
 payload buffers still use the host C++ allocator; other CF constructors remain
 to be converted. Guest `CFURLCreateWithString`, `CFURLCreateWithFileSystemPath`,
 and `CFURLCreateFromFileSystemRepresentation` now follow the same object
-allocator rule. `CFURLCreateWithFileSystemPathRelativeToBase` resolves relative
-paths against a base URL, and `CFURLCanBeDecomposed` validates scheme syntax
+allocator rule. The string and byte relative-to-base constructors resolve
+relative paths against a base URL, and `CFURLCanBeDecomposed` validates scheme syntax
 and percent escapes for the supported URL representation. The guest ABI also
 resolves common CFURL type, string, path,
 scheme, authority, port, directory, absolute-URL, and filesystem-representation

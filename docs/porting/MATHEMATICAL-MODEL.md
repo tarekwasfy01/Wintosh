@@ -537,6 +537,11 @@ currently shares system-heap behavior. `CFAllocatorCreate` allocates its own
 object through its requested backing allocator and supports the context
 callbacks when `kCFAllocatorUseContext` is selected. Consistent use of custom
 allocators by every CF constructor remains outside the current implementation.
+Guest `CFString` (CString/characters), `CFData`, `CFArray`, `CFDictionary`,
+`CFSet`, `CFNumber`, `CFDate`, and `CFMachPort` object blocks use the allocator
+passed to their constructor and retain it until `Release(object)`. Their
+variable-length STL payloads still use the host heap, so full allocator
+control of collection and byte-buffer storage is not yet true.
 For a CFMachPort wrapper `p`, source delivery is `Deliver(p,m) = Valid(p) ∧
 Receive(GetPort(p),m)`, with the callback `Callout(p,m,size,info)` invoked once
 for each received message. `Invalidate(p)` performs the state transition

@@ -45,8 +45,12 @@ sowie den thread-lokalen Default. Default-Speicher nutzt den Wintosh-Gastheap;
 Standard-Allocator-Konstanten sind als Mach-O-Datensymbole verfügbar.
 `CFAllocatorCreate` nutzt nun den angeforderten Backing-Allocator für sein
 eigenes Objekt und bei `kCFAllocatorUseContext` die Allocate-/Deallocate-
-Callbacks aus dem Kontext. Separates malloc-zone-Verhalten und die Integration
-in alle CF-Konstruktoren fehlen noch.
+Callbacks aus dem Kontext. Guest-Create-Pfade für `CFString` (CString/characters),
+`CFData`, `CFArray`, `CFDictionary`, `CFSet`, `CFNumber`, `CFDate` und
+`CFMachPort` verwenden den angeforderten Allocator für ihre Objektblöcke und
+halten ihn bis zur Freigabe. Variable STL-Payloads wie String-, Data- und
+Container-Puffer liegen weiterhin auf dem Host-Heap. Separates malloc-zone-
+Verhalten und weitere CF-Konstruktoren bleiben offen.
 
 Der Mach-O-Hostresolver exportiert jetzt zusätzlich ausgewählte
 `CFString`-Erzeugungs- und Leseoperationen sowie `CFArray`-Typ-, Anzahl- und

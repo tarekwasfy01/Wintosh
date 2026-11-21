@@ -74,7 +74,11 @@ default allocator uses Wintosh's guest heap. `CFAllocatorCreate` allocates its
 own object through the requested backing allocator, including context
 allocate/deallocate callbacks for `kCFAllocatorUseContext`. Distinct malloc-zone
 behavior, complete behavior for missing callbacks, and guest ABI fixtures
-remain open. Standard allocator constants are exported for Mach-O data-symbol
+remain open. Guest `CFString` (CString/characters), `CFData`, `CFArray`,
+`CFDictionary`, `CFSet`, `CFNumber`, `CFDate`, and `CFMachPort` object blocks
+use the supplied allocator and retain it through object destruction. Their
+STL-backed payload storage and other CF constructors still use the host
+allocator. Standard allocator constants are exported for Mach-O data-symbol
 resolution.
 
 The Mach-O host resolver exports a partial C ABI for run-loop control,

@@ -111,6 +111,7 @@ struct Object {
 	std::vector<Object*> mach_port_sources;
 	DarlingCFAllocatorContext allocator_context{};
 	const void* allocator_info = nullptr;
+	const void* object_backing_allocator = nullptr;
 	const void* allocator_backing_allocator = nullptr;
 	bool allocator_storage_uses_context = false;
 	bool allocator_context_release_deferred = false;
@@ -177,6 +178,7 @@ std::unordered_map<darling_mach_port_name_t, Object*> cfmachport_registry;
 std::uint8_t allocator_use_context_sentinel{};
 Object* As(const void* value) { return const_cast<Object*>(static_cast<const Object*>(value)); }
 Object* AsCFAllocator(const void* value);
+Object* CreateObjectWithAllocator(const void* allocator, Kind kind);
 std::mutex bundle_state_mutex;
 std::string main_executable_path;
 Object* main_bundle_object = nullptr;
@@ -257,6 +259,16 @@ void ReleaseOwned(Object* object)
 {
 	if (object == nullptr || object->immortal) return;
 	if (object->references.fetch_sub(1, std::memory_order_acq_rel) != 1) return;
+	if (object->object_backing_allocator != nullptr) {
+		auto* backing = AsCFAllocator(object->object_backing_allocator);
+		object->object_backing_allocator = nullptr;
+		object->~Object();
+		if (backing != nullptr) {
+			CFAllocatorDeallocate(backing, object);
+			ReleaseOwned(backing);
+		} else ::operator delete(object);
+		return;
+	}
 	if (object->kind == Kind::Allocator && object->allocator_backing_allocator != nullptr) {
 		auto* backing = AsCFAllocator(object->allocator_backing_allocator);
 		object->allocator_backing_allocator = nullptr;
@@ -3494,21 +3506,38 @@ extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeID CFGetTypeID(const void*
 }
 
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFDataRef CFDataCreate(
-	const void*, const unsigned char* bytes, darling_windows_CFIndex length)
+	const void* allocator, const unsigned char* bytes, darling_windows_CFIndex length)
 {
-	return darling_windows_CFDataCreate(bytes, length);
+	if (length < 0 || (length != 0 && bytes == nullptr)) return nullptr;
+	auto* object = CreateObjectWithAllocator(allocator, Kind::Data);
+	if (object == nullptr) return nullptr;
+	try {
+		if (length != 0) object->data.assign(bytes, bytes + length);
+	} catch (...) { ReleaseOwned(object); return nullptr; }
+	return object;
 }
 
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFMutableDataRef CFDataCreateMutable(
-	const void*, darling_windows_CFIndex capacity)
+	const void* allocator, darling_windows_CFIndex capacity)
 {
-	return const_cast<void*>(darling_windows_CFDataCreateMutable(capacity));
+	if (capacity < 0) return nullptr;
+	auto* object = CreateObjectWithAllocator(allocator, Kind::Data);
+	if (object == nullptr) return nullptr;
+	try { object->data.reserve(static_cast<std::size_t>(capacity)); }
+	catch (...) { ReleaseOwned(object); return nullptr; }
+	return object;
 }
 
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFDataRef CFDataCreateCopy(
-	const void*, darling_windows_CFDataRef data)
+	const void* allocator, darling_windows_CFDataRef data)
 {
-	return darling_windows_CFDataCreateCopy(data);
+	const auto* source = static_cast<const Object*>(data);
+	if (source == nullptr || source->kind != Kind::Data) return nullptr;
+	auto* object = CreateObjectWithAllocator(allocator, Kind::Data);
+	if (object == nullptr) return nullptr;
+	try { object->data = source->data; }
+	catch (...) { ReleaseOwned(object); return nullptr; }
+	return object;
 }
 
 extern "C" DARLING_CF_GUEST_ABI const unsigned char* CFDataGetBytePtr(
@@ -4270,6 +4299,25 @@ Object* EffectiveCFAllocator(const void* value)
 	if (value != nullptr) return AsCFAllocator(value);
 	return thread_cf_allocator.value != nullptr ? thread_cf_allocator.value : SystemCFAllocator();
 }
+Object* CreateObjectWithAllocator(const void* allocator_value, Kind kind)
+{
+	auto* backing = allocator_value == nullptr ? EffectiveCFAllocator(nullptr) :
+		AsCFAllocator(allocator_value);
+	if (backing == nullptr) return nullptr;
+	void* storage = CFAllocatorAllocate(backing,
+		static_cast<darling_windows_CFIndex>(sizeof(Object)), 0);
+	if (storage == nullptr) return nullptr;
+	Object* object = nullptr;
+	try { object = new (storage) Object{}; }
+	catch (...) {
+		CFAllocatorDeallocate(backing, storage);
+		return nullptr;
+	}
+	object->kind = kind;
+	RetainOwned(backing);
+	object->object_backing_allocator = backing;
+	return object;
+}
 const void* DARLING_CF_GUEST_ABI CFMachPortRetainInfo(const void* info)
 {
 	if (auto* port = AsCFMachPort(info)) RetainOwned(port);
@@ -4716,9 +4764,8 @@ extern "C" DARLING_CF_GUEST_ABI darling_windows_CFMachPortRef CFMachPortCreateWi
 			return found->second;
 		}
 	}
-	auto* object = new (std::nothrow) Object{};
+	auto* object = CreateObjectWithAllocator(allocator, Kind::MachPort);
 	if (object == nullptr) return nullptr;
-	object->kind = Kind::MachPort;
 	object->mach_port_name = port_name;
 	object->mach_port_allocator = allocator;
 	object->mach_port_callout = callout;
@@ -4727,8 +4774,8 @@ extern "C" DARLING_CF_GUEST_ABI darling_windows_CFMachPortRef CFMachPortCreateWi
 	const void* info = context == nullptr ? nullptr : context->info;
 	if (info != nullptr && object->mach_port_context.retain != nullptr) {
 		try { object->mach_port_info = object->mach_port_context.retain(info); }
-		catch (...) { delete object; return nullptr; }
-		if (object->mach_port_info == nullptr) { delete object; return nullptr; }
+		catch (...) { ReleaseOwned(object); return nullptr; }
+		if (object->mach_port_info == nullptr) { ReleaseOwned(object); return nullptr; }
 	} else object->mach_port_info = info;
 	object->mach_port_context.info = const_cast<void*>(object->mach_port_info);
 	Object* existing = nullptr;
@@ -4742,11 +4789,11 @@ extern "C" DARLING_CF_GUEST_ABI darling_windows_CFMachPortRef CFMachPortCreateWi
 			RetainOwned(existing);
 		}
 	} catch (...) {
-		delete object;
+		ReleaseOwned(object);
 		return nullptr;
 	}
 	if (!inserted) {
-		delete object;
+		ReleaseOwned(object);
 		return existing;
 	}
 	if (should_free_info != nullptr) *should_free_info = 0;
@@ -5660,10 +5707,14 @@ extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeID CFStringGetTypeID()
 }
 
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFStringCreateWithCString(
-	const void*, const char* bytes, std::uint32_t encoding)
+	const void* allocator, const char* bytes, std::uint32_t encoding)
 {
-	return DarlingCfSupportsStringEncoding(encoding) ?
-		darling_windows_CFStringCreateWithCString(bytes) : nullptr;
+	if (!DarlingCfSupportsStringEncoding(encoding) || bytes == nullptr) return nullptr;
+	auto* object = CreateObjectWithAllocator(allocator, Kind::String);
+	if (object == nullptr) return nullptr;
+	try { object->string = bytes; }
+	catch (...) { ReleaseOwned(object); return nullptr; }
+	return object;
 }
 
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFIndex CFStringGetLength(
@@ -5681,9 +5732,16 @@ extern "C" DARLING_CF_GUEST_ABI std::uint8_t CFStringGetCString(
 }
 
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFStringCreateWithCharacters(
-	const void*, const std::uint16_t* characters, darling_windows_CFIndex length)
+	const void* allocator, const std::uint16_t* characters, darling_windows_CFIndex length)
 {
-	return darling_windows_CFStringCreateWithCharacters(characters, length);
+	const auto converted = As(darling_windows_CFStringCreateWithCharacters(characters, length));
+	if (converted == nullptr || converted->kind != Kind::String) return nullptr;
+	auto* object = CreateObjectWithAllocator(allocator, Kind::String);
+	if (object == nullptr) { ReleaseOwned(converted); return nullptr; }
+	try { object->string = converted->string; }
+	catch (...) { ReleaseOwned(converted); ReleaseOwned(object); return nullptr; }
+	ReleaseOwned(converted);
+	return object;
 }
 
 extern "C" DARLING_CF_GUEST_ABI const char* CFStringGetCStringPtr(
@@ -5755,9 +5813,8 @@ darling_windows_CFArrayRef DarlingCreateGuestArray(const void* const* values,
 	DarlingCFArrayCallbacks copied_callbacks{};
 	if (callbacks != nullptr) copied_callbacks = *callbacks;
 	if (copied_callbacks.version != 0) return nullptr;
-	auto* object = new (std::nothrow) Object{};
+	auto* object = CreateObjectWithAllocator(allocator, Kind::Array);
 	if (object == nullptr) return nullptr;
-	object->kind = Kind::Array;
 	object->mutable_array = mutable_array;
 	object->has_array_callback_table = true;
 	object->array_callbacks = copied_callbacks;
@@ -5765,13 +5822,13 @@ darling_windows_CFArrayRef DarlingCreateGuestArray(const void* const* values,
 	try {
 		object->array.reserve(static_cast<std::size_t>((std::max)(count, capacity)));
 		for (darling_windows_CFIndex index = 0; index < count; ++index) {
-			if (values[index] == nullptr) { delete object; return nullptr; }
+			if (values[index] == nullptr) { ReleaseOwned(object); return nullptr; }
 			const auto* retained = RetainArrayValue(object, values[index]);
-			if (retained == nullptr) { delete object; return nullptr; }
+			if (retained == nullptr) { ReleaseOwned(object); return nullptr; }
 			object->array.push_back(retained);
 		}
 	} catch (...) {
-		delete object;
+		ReleaseOwned(object);
 		return nullptr;
 	}
 	return object;
@@ -6083,19 +6140,29 @@ extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeID CFNumberGetTypeID()
 }
 
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeRef CFNumberCreate(
-	const void*, darling_windows_CFNumberType type, const void* value)
+	const void* allocator, darling_windows_CFNumberType type, const void* value)
 {
 	if (value == nullptr) return nullptr;
+	const void* converted = nullptr;
 	switch (type) {
-	case 1: case 7: return darling_windows_CFNumberCreateInteger(DarlingCfReadScalar<std::int8_t>(value));
-	case 2: case 8: return darling_windows_CFNumberCreateInteger(DarlingCfReadScalar<std::int16_t>(value));
-	case 3: case 9: return darling_windows_CFNumberCreateInteger(DarlingCfReadScalar<std::int32_t>(value));
+	case 1: case 7: converted = darling_windows_CFNumberCreateInteger(DarlingCfReadScalar<std::int8_t>(value)); break;
+	case 2: case 8: converted = darling_windows_CFNumberCreateInteger(DarlingCfReadScalar<std::int16_t>(value)); break;
+	case 3: case 9: converted = darling_windows_CFNumberCreateInteger(DarlingCfReadScalar<std::int32_t>(value)); break;
 	case 4: case 10: case 11: case 14: case 15:
-		return darling_windows_CFNumberCreateInteger(DarlingCfReadScalar<std::int64_t>(value));
-	case 5: case 12: return darling_windows_CFNumberCreateDouble(DarlingCfReadScalar<float>(value));
-	case 6: case 13: case 16: return darling_windows_CFNumberCreateDouble(DarlingCfReadScalar<double>(value));
+		converted = darling_windows_CFNumberCreateInteger(DarlingCfReadScalar<std::int64_t>(value)); break;
+	case 5: case 12: converted = darling_windows_CFNumberCreateDouble(DarlingCfReadScalar<float>(value)); break;
+	case 6: case 13: case 16: converted = darling_windows_CFNumberCreateDouble(DarlingCfReadScalar<double>(value)); break;
 	default: return nullptr;
 	}
+	auto* source = As(converted);
+	if (source == nullptr) return nullptr;
+	auto* object = CreateObjectWithAllocator(allocator, source->kind);
+	if (object != nullptr) {
+		object->number = source->number;
+		object->real_number = source->real_number;
+	}
+	ReleaseOwned(source);
+	return object;
 }
 
 extern "C" DARLING_CF_GUEST_ABI std::uint8_t CFNumberGetValue(
@@ -6130,9 +6197,14 @@ extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeID CFDateGetTypeID()
 	return darling_windows_CFDateGetTypeID();
 }
 
-extern "C" DARLING_CF_GUEST_ABI darling_windows_CFDateRef CFDateCreate(const void*, double absolute_time)
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFDateRef CFDateCreate(
+	const void* allocator, double absolute_time)
 {
-	return darling_windows_CFDateCreate(absolute_time);
+	if (!std::isfinite(absolute_time)) return nullptr;
+	auto* object = CreateObjectWithAllocator(allocator, Kind::Date);
+	if (object == nullptr) return nullptr;
+	object->date = absolute_time;
+	return object;
 }
 
 extern "C" DARLING_CF_GUEST_ABI double CFDateGetAbsoluteTime(darling_windows_CFDateRef value)
@@ -6227,9 +6299,8 @@ darling_windows_CFDictionaryRef DarlingCreateGuestDictionary(
 	if (key_callbacks != nullptr) copied_key_callbacks = *key_callbacks;
 	if (value_callbacks != nullptr) copied_value_callbacks = *value_callbacks;
 	if (copied_key_callbacks.version != 0 || copied_value_callbacks.version != 0) return nullptr;
-	auto* object = new (std::nothrow) Object{};
+	auto* object = CreateObjectWithAllocator(allocator, Kind::Dictionary);
 	if (object == nullptr) return nullptr;
-	object->kind = Kind::Dictionary;
 	object->mutable_dictionary = mutable_dictionary;
 	object->has_dictionary_callback_tables = true;
 	object->dictionary_key_callbacks = copied_key_callbacks;
@@ -6238,11 +6309,11 @@ darling_windows_CFDictionaryRef DarlingCreateGuestDictionary(
 	try {
 		object->dictionary.reserve(static_cast<std::size_t>((std::max)(count, capacity)));
 		for (darling_windows_CFIndex index = 0; index < count; ++index) {
-			if (keys[index] == nullptr || values[index] == nullptr) { delete object; return nullptr; }
+			if (keys[index] == nullptr || values[index] == nullptr) { ReleaseOwned(object); return nullptr; }
 			auto found = std::find_if(object->dictionary.begin(), object->dictionary.end(),
 				[&](const auto& entry) { return EqualDictionaryKeys(object, entry.first, keys[index]); });
 			const auto* retained_value = RetainDictionaryValue(object, values[index]);
-			if (retained_value == nullptr) { delete object; return nullptr; }
+			if (retained_value == nullptr) { ReleaseOwned(object); return nullptr; }
 			if (found != object->dictionary.end()) {
 				ReleaseDictionaryValue(object, found->second);
 				found->second = retained_value;
@@ -6251,7 +6322,7 @@ darling_windows_CFDictionaryRef DarlingCreateGuestDictionary(
 			const auto* retained_key = RetainDictionaryKey(object, keys[index]);
 			if (retained_key == nullptr) {
 				ReleaseDictionaryValue(object, retained_value);
-				delete object;
+				ReleaseOwned(object);
 				return nullptr;
 			}
 			try { object->dictionary.emplace_back(retained_key, retained_value); }
@@ -6262,7 +6333,7 @@ darling_windows_CFDictionaryRef DarlingCreateGuestDictionary(
 			}
 		}
 	} catch (...) {
-		delete object;
+		ReleaseOwned(object);
 		return nullptr;
 	}
 	return object;
@@ -6430,9 +6501,8 @@ darling_windows_CFSetRef DarlingCreateGuestSet(const void* const* values,
 	DarlingCFDictionaryKeyCallbacks copied_callbacks{};
 	if (callbacks != nullptr) copied_callbacks = *callbacks;
 	if (copied_callbacks.version != 0) return nullptr;
-	auto* object = new (std::nothrow) Object{};
+	auto* object = CreateObjectWithAllocator(allocator, Kind::Set);
 	if (object == nullptr) return nullptr;
-	object->kind = Kind::Set;
 	object->mutable_set = mutable_set;
 	object->has_set_callback_table = true;
 	object->set_callbacks = copied_callbacks;
@@ -6440,16 +6510,16 @@ darling_windows_CFSetRef DarlingCreateGuestSet(const void* const* values,
 	try {
 		object->set_entries.reserve(static_cast<std::size_t>((std::max)(count, capacity)));
 		for (darling_windows_CFIndex index = 0; index < count; ++index) {
-			if (values[index] == nullptr) { delete object; return nullptr; }
+			if (values[index] == nullptr) { ReleaseOwned(object); return nullptr; }
 			const auto hash = HashSetValue(object, values[index]);
 			if (FindSetEntry(object, values[index], hash) != object->set_entries.end()) continue;
 			const auto* retained = RetainSetValue(object, values[index]);
-			if (retained == nullptr) { delete object; return nullptr; }
+			if (retained == nullptr) { ReleaseOwned(object); return nullptr; }
 			try { object->set_entries.emplace(hash, retained); }
 			catch (...) { ReleaseSetValue(object, retained); throw; }
 		}
 	} catch (...) {
-		delete object;
+		ReleaseOwned(object);
 		return nullptr;
 	}
 	return object;

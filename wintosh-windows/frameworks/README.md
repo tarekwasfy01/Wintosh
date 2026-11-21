@@ -308,8 +308,11 @@ callbacks and full Mach right/message ownership still need a Mach-O fixture.
 `CFAllocator` supports custom context creation, allocation, reallocation,
 deallocation, preferred-size queries, and per-thread default selection.
 Default allocations use the guest heap. `CFAllocatorCreate` uses its requested
-backing allocator, including the supplied context for `kCFAllocatorUseContext`;
-broad allocator integration is not implemented. The default,
+backing allocator, including the supplied context for `kCFAllocatorUseContext`.
+Guest `CFString` (CString/characters), `CFData`, `CFArray`, `CFDictionary`,
+`CFSet`, `CFNumber`, `CFDate`, and `CFMachPort` object blocks also retain and
+use their requested allocator. Their STL-backed payload storage and other CF
+constructors still use the host allocator. The default,
 system-default, malloc, malloc-zone, null, and use-context constants are
 exported; malloc-zone currently uses the system allocator behavior.
 CF timers

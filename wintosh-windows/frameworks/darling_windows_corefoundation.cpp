@@ -6425,7 +6425,66 @@ extern "C" DARLING_CF_GUEST_ABI darling_windows_CFURLRef CFURLCreateCopyAppendin
 			} catch (...) { return nullptr; }
 		}
 	}
-	if (result.empty() || result.find('\\0') != std::string::npos || !IsWellFormedUTF8(result)) return nullptr;
+	if (result.empty() || result.find('\0') != std::string::npos || !IsWellFormedUTF8(result)) return nullptr;
+	auto* copy = CreateObjectWithAllocator(allocator, Kind::URL);
+	if (copy == nullptr) return nullptr;
+	try { copy->string = std::move(result); }
+	catch (...) { ReleaseOwned(copy); return nullptr; }
+	return copy;
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFURLRef CFURLCreateCopyDeletingLastPathComponent(
+	const void* allocator, darling_windows_CFURLRef value)
+{
+	const auto* url = As(value);
+	if (url == nullptr || url->kind != Kind::URL) return nullptr;
+	const auto parts = ParseURLPathParts(url->string);
+	const auto query_start = url->string.find_first_of("?#");
+	const auto resource_end = query_start == std::string::npos ? url->string.size() : query_start;
+	auto component_end = resource_end;
+	while (component_end > parts.path_start && url->string[component_end - 1] == '/') --component_end;
+	std::size_t new_end = resource_end;
+	if (component_end > parts.path_start) {
+		const auto slash = url->string.find_last_of('/', component_end - 1);
+		new_end = slash == std::string::npos || slash < parts.path_start ? parts.path_start : slash + 1;
+	} else if (parts.path_start < resource_end) {
+		// A path consisting only of its root separator remains unchanged.
+		new_end = resource_end;
+	}
+	std::string result;
+	try {
+		result.assign(url->string, 0, new_end);
+		if (query_start != std::string::npos) result.append(url->string, query_start, std::string::npos);
+	} catch (...) { return nullptr; }
+	if (result.empty()) return nullptr;
+	auto* copy = CreateObjectWithAllocator(allocator, Kind::URL);
+	if (copy == nullptr) return nullptr;
+	try { copy->string = std::move(result); }
+	catch (...) { ReleaseOwned(copy); return nullptr; }
+	return copy;
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFURLRef CFURLCreateCopyDeletingPathExtension(
+	const void* allocator, darling_windows_CFURLRef value)
+{
+	const auto* url = As(value);
+	if (url == nullptr || url->kind != Kind::URL) return nullptr;
+	const auto parts = ParseURLPathParts(url->string);
+	const auto separator = url->string.find_last_of('/', parts.path_end == 0 ? 0 : parts.path_end - 1);
+	const auto component_start = separator == std::string::npos || separator < parts.path_start ?
+		parts.path_start : separator + 1;
+	const auto dot = url->string.rfind('.', parts.path_end == 0 ? 0 : parts.path_end - 1);
+	const auto cut = dot != std::string::npos && dot > component_start && dot < parts.path_end ?
+		dot : url->string.size();
+	std::string result;
+	try {
+		if (cut == url->string.size()) result = url->string;
+		else {
+			result.assign(url->string, 0, cut);
+			result.append(url->string, parts.path_end, std::string::npos);
+		}
+	} catch (...) { return nullptr; }
+	if (result.empty()) return nullptr;
 	auto* copy = CreateObjectWithAllocator(allocator, Kind::URL);
 	if (copy == nullptr) return nullptr;
 	try { copy->string = std::move(result); }
@@ -7656,6 +7715,10 @@ extern "C" std::uintptr_t darling_windows_corefoundation_symbol(const char* name
 		return reinterpret_cast<std::uintptr_t>(&CFURLCreateCopyAppendingPathComponent);
 	if (std::strcmp(name, "CFURLCreateCopyAppendingPathExtension") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFURLCreateCopyAppendingPathExtension);
+	if (std::strcmp(name, "CFURLCreateCopyDeletingLastPathComponent") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFURLCreateCopyDeletingLastPathComponent);
+	if (std::strcmp(name, "CFURLCreateCopyDeletingPathExtension") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFURLCreateCopyDeletingPathExtension);
 	if (std::strcmp(name, "CFURLCopyPathExtension") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFURLCopyPathExtension);
 	if (std::strcmp(name, "CFURLCopyScheme") == 0)

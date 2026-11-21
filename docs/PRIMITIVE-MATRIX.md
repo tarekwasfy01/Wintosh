@@ -1155,6 +1155,9 @@ is not retained by the current flattened URL representation.
 `CFURLCreateCopyAppendingPathExtension` also retains the requested allocator,
 escapes extension delimiters, and inserts the extension before parameters and
 query/fragment suffixes; empty and directory paths are copied unchanged.
+The guest resolver also exposes `CFURLCreateCopyDeletingLastPathComponent` and
+`CFURLCreateCopyDeletingPathExtension`, retaining the requested allocator and
+preserving query/fragment suffixes.
 Both byte-string constructors accept UTF-8 only. Absolute-byte creation in
 compatibility mode preserves the base URL's final path component for query-,
 parameter-, and fragment-only references; other alternate RFC resolution rules

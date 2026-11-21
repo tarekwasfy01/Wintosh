@@ -938,6 +938,10 @@ extern "C" DARLING_CF_GUEST_ABI darling_windows_CFURLRef CFURLCreateCopyAppendin
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFURLRef CFURLCreateCopyAppendingPathExtension(
 	const void* allocator, darling_windows_CFURLRef value,
 	darling_windows_CFStringRef extension);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFURLRef CFURLCreateCopyDeletingLastPathComponent(
+	const void* allocator, darling_windows_CFURLRef value);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFURLRef CFURLCreateCopyDeletingPathExtension(
+	const void* allocator, darling_windows_CFURLRef value);
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFURLCopyPathExtension(
 	darling_windows_CFURLRef value);
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFURLCopyScheme(

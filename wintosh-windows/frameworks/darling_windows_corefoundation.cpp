@@ -6266,6 +6266,22 @@ extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFURLGetString(
 	return BorrowURLString(value);
 }
 
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFIndex CFURLGetBytes(
+	darling_windows_CFURLRef value, std::uint8_t* buffer,
+	darling_windows_CFIndex buffer_capacity)
+{
+	const auto* url = As(value);
+	if (url == nullptr || url->kind != Kind::URL || !IsWellFormedUTF8(url->string) ||
+		buffer_capacity < 0) return -1;
+	if (url->string.size() > static_cast<std::size_t>((std::numeric_limits<darling_windows_CFIndex>::max)()))
+		return -1;
+	const auto required = static_cast<darling_windows_CFIndex>(url->string.size());
+	if (buffer == nullptr) return required;
+	if (buffer_capacity < required) return -1;
+	if (required != 0) std::memcpy(buffer, url->string.data(), static_cast<std::size_t>(required));
+	return required;
+}
+
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFURLCopyFileSystemPath(
 	darling_windows_CFURLRef value, std::int32_t path_style)
 {
@@ -7701,6 +7717,8 @@ extern "C" std::uintptr_t darling_windows_corefoundation_symbol(const char* name
 		return reinterpret_cast<std::uintptr_t>(&CFURLCanBeDecomposed);
 	if (std::strcmp(name, "CFURLGetString") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFURLGetString);
+	if (std::strcmp(name, "CFURLGetBytes") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFURLGetBytes);
 	if (std::strcmp(name, "CFURLCopyFileSystemPath") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFURLCopyFileSystemPath);
 	if (std::strcmp(name, "CFURLCopyPath") == 0)

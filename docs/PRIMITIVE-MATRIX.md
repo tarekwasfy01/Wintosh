@@ -1158,6 +1158,8 @@ query/fragment suffixes; empty and directory paths are copied unchanged.
 The guest resolver also exposes `CFURLCreateCopyDeletingLastPathComponent` and
 `CFURLCreateCopyDeletingPathExtension`, retaining the requested allocator and
 preserving query/fragment suffixes.
+`CFURLGetBytes` exposes the URL's UTF-8 representation and fails without a
+partial write when the destination capacity is insufficient.
 Both byte-string constructors accept UTF-8 only. Absolute-byte creation in
 compatibility mode preserves the base URL's final path component for query-,
 parameter-, and fragment-only references; other alternate RFC resolution rules

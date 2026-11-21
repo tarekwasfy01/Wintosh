@@ -127,6 +127,9 @@ and percent escapes for the supported URL representation. The guest ABI also
 resolves common CFURL type, string, path,
 scheme, authority, port, directory, absolute-URL, and filesystem-representation
 queries. `CFURLGetString` caches its borrowed string until URL destruction.
+`CFURLGetBytes` returns the UTF-8 bytes backing the URL, reports the required
+length for a null buffer, and returns `-1` without writing when the supplied
+buffer is too small.
 `CFURLCreateCopyAppendingPathComponent` appends a UTF-8 component before any
 query or fragment, escapes component delimiters, preserves the resource suffix,
 and adds the trailing slash when `isDirectory` is true. The current URL object

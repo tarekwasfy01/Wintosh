@@ -132,9 +132,14 @@ three titled buttons, and blocking `runModal`. It maps the alert to a native
 Windows Task Dialog and returns AppKit's first/second/third button response;
 `MessageBoxW` provides a one-button fallback. Sheet presentation, suppression
 controls, accessory views, and completion-handler callbacks are not implemented.
-`NSURL` supports file URL construction, `path`, `absoluteString`, `isFileURL`,
-path appending/removal, `lastPathComponent`, `pathExtension`, and
-`standardizedFileURL`. `NSOpenPanel` uses the native Windows open-file dialog and supports
+`NSURL` stores a CoreFoundation URL object and supports file URL construction,
+`initWithString:`, `initWithString:relativeToURL:`, `relativeString`, `baseURL`,
+`absoluteURL`, `path`, `absoluteString`, and `isFileURL`. Path-component and
+extension copies use the CFURL transformations, preserving URL bases and
+query/fragment suffixes where the underlying CFURL operation supports them.
+`standardizedFileURL` remains file-path based. URL resolution is still partial,
+and no macOS guest application fixture verifies this surface. `NSOpenPanel`
+uses the native Windows open-file dialog and supports
 single or multiple file selection; `NSSavePanel` uses the Windows save-file
 dialog. Both expose `URL`, `URLs`, and the legacy filename accessors. Panel
 titles and the save panel's suggested name are passed through. A panel set to

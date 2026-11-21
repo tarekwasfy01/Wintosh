@@ -584,6 +584,8 @@ extern "C" darling_windows_CFURLRef darling_windows_CFURLCopyAbsoluteURL(
 	darling_windows_CFURLRef value);
 extern "C" darling_windows_CFStringRef darling_windows_CFURLGetString(
 	darling_windows_CFURLRef value);
+extern "C" darling_windows_CFURLRef darling_windows_CFURLGetBaseURL(
+	darling_windows_CFURLRef value);
 extern "C" bool darling_windows_CFURLHasDirectoryPath(darling_windows_CFURLRef value);
 extern "C" darling_windows_CFTypeID darling_windows_CFURLGetTypeID();
 extern "C" bool darling_windows_CFURLGetFileSystemRepresentation(

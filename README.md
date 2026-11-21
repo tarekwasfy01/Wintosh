@@ -50,6 +50,13 @@ cmake --build build-windows-clang
 Build configuration and available targets can vary by generator and host SDK.
 The CI packaging workflow is [`.github/workflows/wintosh-release.yml`](.github/workflows/wintosh-release.yml).
 
+The current Foundation URL slice connects `NSURL` to the Windows CoreFoundation
+URL objects. It supports file URLs, string and relative-to-base construction,
+relative and absolute URL strings, base URLs, and common path-component and
+extension copies. The resolver and framework behavior remain partial and have
+not yet been demonstrated with a real macOS guest application; see the
+[implementation status](docs/STATUS.md).
+
 ## Compatibility roadmap
 
 The work is layered: executable format and loader → calling conventions and

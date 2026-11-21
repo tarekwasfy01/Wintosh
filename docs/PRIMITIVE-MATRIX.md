@@ -1141,9 +1141,9 @@ dates; clock precision, adjustment, and calendar/time-zone behavior remain
 outside this bridge.
 
 The URL family also covers `CFURLCreateWithString` for non-empty absolute
-string values and simple relative paths against a base URL; escaping,
-including leading `../` parent segments, are covered; escaping, normalization,
-and full RFC authority parsing remain open.
+string values and simple relative paths against a base URL, including leading
+`../` parent segments. Full RFC escaping, normalization, and authority parsing
+remain open.
 Simple `/./` segments and a trailing `/.` are also covered.
 Guest-ABI `CFURLCreateWithString`, `CFURLCreateWithBytes`,
 `CFURLCreateWithFileSystemPath`, both relative-to-base path constructors, and
@@ -1159,6 +1159,11 @@ query/fragment suffixes; empty and directory paths are copied unchanged.
 The guest resolver also exposes `CFURLCreateCopyDeletingLastPathComponent` and
 `CFURLCreateCopyDeletingPathExtension`, retaining the requested allocator and
 preserving query/fragment suffixes.
+The AppKit `NSURL` wrapper retains its CFURL and exposes string and
+relative-to-base initialization, `relativeString`, `baseURL`, `absoluteURL`,
+file-URL detection, decoded paths, and common component/extension copy methods.
+The MSVC Release runner links with these selectors; guest-application
+compatibility and complete URL resolution remain unverified.
 `CFURLGetBytes` exposes the URL's UTF-8 representation and fails without a
 partial write when the destination capacity is insufficient.
 `CFURLGetByteRangeForComponent` maps common URL components and adjacent

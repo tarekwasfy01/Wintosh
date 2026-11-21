@@ -3311,9 +3311,10 @@ extern "C" darling_windows_CFURLRef darling_windows_CFURLCreateWithFileSystemPat
 extern "C" darling_windows_CFURLRef darling_windows_CFURLCreateWithString(
 	darling_windows_CFStringRef string, darling_windows_CFURLRef base_url)
 {
-	(void)base_url;
 	const auto* source = static_cast<const Object*>(string);
 	if (source == nullptr || source->kind != Kind::String || source->string.empty()) return nullptr;
+	const auto* base = As(base_url);
+	if (base_url != nullptr && (base == nullptr || base->kind != Kind::URL)) return nullptr;
 	std::string resolved;
 	try { resolved = source->string; }
 	catch (...) { return nullptr; }
@@ -3372,7 +3373,19 @@ extern "C" darling_windows_CFURLRef darling_windows_CFURLCreateWithString(
 		resolved.replace(marker, 2, "");
 	}
 	if (resolved.size() >= 2 && resolved.ends_with("/.")) resolved.resize(resolved.size() - 2);
-	return darling_windows_CFURLCreateWithFileSystemPath(resolved.c_str());
+	const bool has_relative_base = base != nullptr &&
+		source->string.find(':') == std::string::npos;
+	auto* object = CreateObjectWithAllocator(nullptr, Kind::URL);
+	if (object == nullptr) return nullptr;
+	try {
+		object->string = std::move(resolved);
+		if (has_relative_base) object->url_original_string = source->string;
+	} catch (...) { ReleaseOwned(object); return nullptr; }
+	if (has_relative_base) {
+		object->url_base = const_cast<Object*>(base);
+		RetainOwned(base);
+	}
+	return object;
 }
 
 extern "C" darling_windows_CFURLRef darling_windows_CFURLCreateFromFileSystemRepresentation(
@@ -3698,7 +3711,14 @@ extern "C" darling_windows_CFStringRef darling_windows_CFURLGetString(
 {
 	const auto* object = static_cast<const Object*>(value);
 	if (object == nullptr || object->kind != Kind::URL) return nullptr;
-	return darling_windows_CFStringCreateWithCString(object->string.c_str());
+	return darling_windows_CFStringCreateWithCString(URLStringForObject(object).c_str());
+}
+
+extern "C" darling_windows_CFURLRef darling_windows_CFURLGetBaseURL(
+	darling_windows_CFURLRef value)
+{
+	const auto* object = static_cast<const Object*>(value);
+	return object != nullptr && object->kind == Kind::URL ? object->url_base : nullptr;
 }
 
 namespace {
@@ -6368,8 +6388,7 @@ extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFURLGetString(
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFURLRef CFURLGetBaseURL(
 	darling_windows_CFURLRef value)
 {
-	const auto* object = As(value);
-	return object != nullptr && object->kind == Kind::URL ? object->url_base : nullptr;
+	return darling_windows_CFURLGetBaseURL(value);
 }
 
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFIndex CFURLGetBytes(

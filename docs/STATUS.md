@@ -11,6 +11,25 @@ map.
 
 Status date: 2026-11-21
 
+### Foundation NSURL and relative CFURL integration (2026-11-21)
+
+The AppKit `NSURL` host object now retains the CoreFoundation URL that backs
+it, instead of storing only a file path. It implements `initWithString:`,
+`initWithString:relativeToURL:`, `relativeString`, `baseURL`, and `absoluteURL`,
+plus the corresponding `URLWithString:` class constructors. File URLs are
+created from filesystem paths with URL escaping. Path-component and extension
+copy operations now call the CFURL adapters, so they keep URL schemes and
+query/fragment suffixes and preserve a relative URL's base when supported by
+the CFURL copy operation. `path`, `lastPathComponent`, and `pathExtension` read
+from the stored CFURL for URLs created from strings. Drive-letter file URLs
+are translated back to Windows drive paths for host filesystem use.
+
+The local Visual Studio 2026 Release `wintosh` target compiles and links after
+these changes. This is build evidence only: no guest Mach-O exercised the new
+Objective-C selectors. URL parsing and RFC resolution remain partial; security-
+scoped access, resource values, bookmark data, and complete macOS URL behavior
+are not implemented.
+
 ### Foundation run-loop modes and NSRunLoop bridge (2026-11-21)
 
 The CoreFoundation callback queue now stores requested run-loop modes and

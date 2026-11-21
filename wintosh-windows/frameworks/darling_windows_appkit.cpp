@@ -373,6 +373,7 @@ struct AppKitAlertState final {
 };
 struct AppKitURLState final {
 	id path{};
+	darling_windows_CFURLRef url{};
 };
 struct AppKitUTTypeState final {
 	id identifier{};
@@ -9147,14 +9148,100 @@ std::int64_t NSAlertRunModal(id self, SEL)
 void NSURLFinalize(id object)
 {
 	id path = nullptr;
+	darling_windows_CFURLRef url = nullptr;
 	{
 		std::lock_guard lock(g_urls_mutex);
 		const auto found = g_urls.find(object);
 		if (found == g_urls.end()) return;
 		path = std::exchange(found->second.path, nullptr);
+		url = std::exchange(found->second.url, nullptr);
 		g_urls.erase(found);
 	}
 	if (path != nullptr) objc_release(path);
+	if (url != nullptr) darling_windows_CFRelease(url);
+}
+
+darling_windows_CFStringRef NSURLCreateCFString(id value)
+{
+	const char* utf8 = NSStringUTF8String(value, nullptr);
+	return utf8 == nullptr ? nullptr : darling_windows_CFStringCreateWithCString(utf8);
+}
+
+bool NSURLSetState(id object, id path, darling_windows_CFURLRef url)
+{
+	if (object == nullptr || url == nullptr) return false;
+	id retained_path = path == nullptr ? nullptr : objc_retain(path);
+	const auto* retained_url = darling_windows_CFRetain(url);
+	if (retained_url == nullptr) {
+		if (retained_path != nullptr) objc_release(retained_path);
+		return false;
+	}
+	id previous_path = nullptr;
+	darling_windows_CFURLRef previous_url = nullptr;
+	try {
+		{
+			std::lock_guard lock(g_urls_mutex);
+			auto [found, inserted] = g_urls.try_emplace(object,
+				AppKitURLState{retained_path, retained_url});
+			if (!inserted) {
+				previous_path = std::exchange(found->second.path, retained_path);
+				previous_url = std::exchange(found->second.url,
+					retained_url);
+			}
+		}
+	} catch (...) {
+		if (retained_path != nullptr) objc_release(retained_path);
+		darling_windows_CFRelease(retained_url);
+		return false;
+	}
+	if (previous_path != nullptr) objc_release(previous_path);
+	if (previous_url != nullptr) darling_windows_CFRelease(previous_url);
+	if (!darling_objc_register_object_finalizer(object, &NSURLFinalize)) {
+		NSURLFinalize(object);
+		return false;
+	}
+	return true;
+}
+
+darling_windows_CFURLRef NSURLCopyCFURL(id object)
+{
+	std::lock_guard lock(g_urls_mutex);
+	const auto found = g_urls.find(object);
+	if (found == g_urls.end() || found->second.url == nullptr) return nullptr;
+	return darling_windows_CFRetain(found->second.url);
+}
+
+id NSURLCreateWithCFURL(Class cls, darling_windows_CFURLRef url, id path = nullptr)
+{
+	if (cls == nullptr || url == nullptr) return nullptr;
+	id object = class_createInstance(cls, 0);
+	if (object == nullptr) return nullptr;
+	if (!NSURLSetState(object, path, url)) {
+		objc_release(object);
+		return nullptr;
+	}
+	return objc_autorelease(object);
+}
+
+std::string NSURLFileStringFromPath(std::string_view path)
+{
+	static constexpr char hex[] = "0123456789ABCDEF";
+	const bool absolute_posix = !path.empty() && path.front() == '/';
+	std::string url = absolute_posix ? "file://" : "file:///";
+	for (const unsigned char character : path) {
+		const unsigned char value = character == '\\' ? '/' : character;
+		const bool unreserved = (value >= 'a' && value <= 'z') ||
+			(value >= 'A' && value <= 'Z') || (value >= '0' && value <= '9') ||
+			value == '/' || value == ':' || value == '-' || value == '.' ||
+			value == '_' || value == '~';
+		if (unreserved) url.push_back(static_cast<char>(value));
+		else {
+			url.push_back('%');
+			url.push_back(hex[value >> 4]);
+			url.push_back(hex[value & 0x0f]);
+		}
+	}
+	return url;
 }
 
 id NSURLInitWithFileSystemPath(id self, SEL, id path)
@@ -9162,24 +9249,22 @@ id NSURLInitWithFileSystemPath(id self, SEL, id path)
 	if (self == nullptr || path == nullptr) return nullptr;
 	const char* utf8 = NSStringUTF8String(path, nullptr);
 	if (utf8 == nullptr) return nullptr;
-	id retained_path = objc_retain(path);
-	id previous_path = nullptr;
 	try {
-		{
-			std::lock_guard lock(g_urls_mutex);
-			auto [found, inserted] = g_urls.try_emplace(self,
-				AppKitURLState{retained_path});
-			if (!inserted)
-				previous_path = std::exchange(found->second.path, retained_path);
-		}
-		if (previous_path != nullptr) objc_release(previous_path);
-		if (!darling_objc_register_object_finalizer(self, &NSURLFinalize)) {
-			NSURLFinalize(self);
-			return nullptr;
-		}
+		const std::string file_url = NSURLFileStringFromPath(utf8);
+		id url_string = NSStringStringWithUTF8String(objc_getClass("NSString"),
+			nullptr, file_url.c_str());
+		if (url_string == nullptr) return nullptr;
+		auto cf_string = NSURLCreateCFString(url_string);
+		objc_release(url_string);
+		if (cf_string == nullptr) return nullptr;
+		auto url = darling_windows_CFURLCreateWithString(cf_string, nullptr);
+		darling_windows_CFRelease(cf_string);
+		if (url == nullptr) return nullptr;
+		const bool stored = NSURLSetState(self, path, url);
+		darling_windows_CFRelease(url);
+		if (!stored) return nullptr;
 		return self;
 	} catch (...) {
-		objc_release(retained_path);
 		return nullptr;
 	}
 }
@@ -9215,51 +9300,161 @@ id NSURLFileURLWithPath(Class cls, SEL, id path)
 
 id NSURLPath(id self, SEL)
 {
-	std::lock_guard lock(g_urls_mutex);
-	const auto found = g_urls.find(self);
-	return found == g_urls.end() ? nullptr : found->second.path;
+	{
+		std::lock_guard lock(g_urls_mutex);
+		const auto found = g_urls.find(self);
+		if (found != g_urls.end() && found->second.path != nullptr)
+			return found->second.path;
+	}
+	auto url = NSURLCopyCFURL(self);
+	if (url == nullptr) return nullptr;
+	auto path = darling_windows_CFURLCopyPathDecoded(url);
+	darling_windows_CFRelease(url);
+	if (path == nullptr) return nullptr;
+	const char* decoded = darling_windows_CFStringGetCStringPtr(path);
+	const std::string_view decoded_view = decoded == nullptr ? std::string_view{} :
+		std::string_view(decoded);
+	if (decoded_view.size() >= 4 && decoded[0] == '/' &&
+		((decoded[1] >= 'A' && decoded[1] <= 'Z') ||
+		(decoded[1] >= 'a' && decoded[1] <= 'z')) &&
+		decoded[2] == ':' && decoded[3] == '/') {
+		try {
+			std::string windows_path(decoded + 1);
+			std::replace(windows_path.begin(), windows_path.end(), '/', '\\');
+			darling_windows_CFRelease(path);
+			return NSStringStringWithUTF8String(objc_getClass("NSString"), nullptr,
+				windows_path.c_str());
+		} catch (...) {
+			darling_windows_CFRelease(path);
+			return nullptr;
+		}
+	}
+	id result = NSStringFromCFString(path);
+	darling_windows_CFRelease(path);
+	return result;
 }
 
 id NSURLAbsoluteString(id self, SEL)
 {
-	id path = NSURLPath(self, nullptr);
-	const char* utf8 = NSStringUTF8String(path, nullptr);
-	if (utf8 == nullptr) return nullptr;
-	try {
-		static constexpr char hex[] = "0123456789ABCDEF";
-		std::string url = "file:///";
-		for (const unsigned char character : std::string_view(utf8)) {
-			const unsigned char value = character == '\\' ? '/' : character;
-			const bool unreserved = (value >= 'a' && value <= 'z') ||
-				(value >= 'A' && value <= 'Z') ||
-				(value >= '0' && value <= '9') || value == '/' || value == ':' ||
-				value == '-' || value == '.' || value == '_' || value == '~';
-			if (unreserved) url.push_back(static_cast<char>(value));
-			else {
-				url.push_back('%');
-				url.push_back(hex[value >> 4]);
-				url.push_back(hex[value & 0x0f]);
-			}
-		}
-		return NSStringStringWithUTF8String(objc_getClass("NSString"), nullptr,
-			url.c_str());
-	} catch (...) { return nullptr; }
+	auto url = NSURLCopyCFURL(self);
+	if (url == nullptr) return nullptr;
+	auto absolute = darling_windows_CFURLCopyAbsoluteURL(url);
+	darling_windows_CFRelease(url);
+	if (absolute == nullptr) return nullptr;
+	auto string = darling_windows_CFURLGetString(absolute);
+	darling_windows_CFRelease(absolute);
+	if (string == nullptr) return nullptr;
+	id result = NSStringFromCFString(string);
+	darling_windows_CFRelease(string);
+	return result;
+}
+
+id NSURLRelativeString(id self, SEL)
+{
+	auto url = NSURLCopyCFURL(self);
+	if (url == nullptr) return nullptr;
+	auto string = darling_windows_CFURLGetString(url);
+	darling_windows_CFRelease(url);
+	if (string == nullptr) return nullptr;
+	id result = NSStringFromCFString(string);
+	darling_windows_CFRelease(string);
+	return result;
+}
+
+id NSURLBaseURL(id self, SEL)
+{
+	auto url = NSURLCopyCFURL(self);
+	if (url == nullptr) return nullptr;
+	auto base = darling_windows_CFURLGetBaseURL(url);
+	const auto* retained_base = base == nullptr ? nullptr : darling_windows_CFRetain(base);
+	darling_windows_CFRelease(url);
+	if (retained_base == nullptr) return nullptr;
+	id result = NSURLCreateWithCFURL(objc_getClass("NSURL"),
+		const_cast<void*>(retained_base));
+	darling_windows_CFRelease(retained_base);
+	return result;
+}
+
+id NSURLAbsoluteURL(id self, SEL)
+{
+	auto url = NSURLCopyCFURL(self);
+	if (url == nullptr) return nullptr;
+	auto absolute = darling_windows_CFURLCopyAbsoluteURL(url);
+	darling_windows_CFRelease(url);
+	if (absolute == nullptr) return nullptr;
+	id result = NSURLCreateWithCFURL(objc_getClass("NSURL"), absolute);
+	darling_windows_CFRelease(absolute);
+	return result;
 }
 
 bool NSURLIsFileURL(id self, SEL)
 {
-	return NSURLPath(self, nullptr) != nullptr;
+	auto url = NSURLCopyCFURL(self);
+	if (url == nullptr) return false;
+	auto scheme = darling_windows_CFURLCopyScheme(url);
+	darling_windows_CFRelease(url);
+	if (scheme == nullptr) return false;
+	id scheme_string = NSStringFromCFString(scheme);
+	const char* value = NSStringUTF8String(scheme_string, nullptr);
+	const bool is_file = value != nullptr && _stricmp(value, "file") == 0;
+	if (scheme_string != nullptr) objc_release(scheme_string);
+	darling_windows_CFRelease(scheme);
+	return is_file;
+}
+
+id NSURLInitWithString(id self, SEL, id string, id base_url_object)
+{
+	if (self == nullptr || string == nullptr) return nullptr;
+	auto cf_string = NSURLCreateCFString(string);
+	if (cf_string == nullptr) return nullptr;
+	auto base = base_url_object == nullptr ? nullptr : NSURLCopyCFURL(base_url_object);
+	if (base_url_object != nullptr && base == nullptr) {
+		darling_windows_CFRelease(cf_string);
+		return nullptr;
+	}
+	auto url = darling_windows_CFURLCreateWithString(cf_string, base);
+	if (base != nullptr) darling_windows_CFRelease(base);
+	darling_windows_CFRelease(cf_string);
+	if (url == nullptr) return nullptr;
+	const bool stored = NSURLSetState(self, nullptr, url);
+	darling_windows_CFRelease(url);
+	return stored ? self : nullptr;
+}
+
+id NSURLInitWithString(id self, SEL selector, id string)
+{
+	return NSURLInitWithString(self, selector, string, nullptr);
+}
+
+id NSURLWithString(Class cls, SEL, id string)
+{
+	if (cls == nullptr) return nullptr;
+	id object = class_createInstance(cls, 0);
+	if (object == nullptr) return nullptr;
+	if (NSURLInitWithString(object, nullptr, string) == nullptr) {
+		objc_release(object);
+		return nullptr;
+	}
+	return objc_autorelease(object);
+}
+
+id NSURLWithStringRelativeToURL(Class cls, SEL, id string, id base_url)
+{
+	if (cls == nullptr) return nullptr;
+	id object = class_createInstance(cls, 0);
+	if (object == nullptr) return nullptr;
+	if (NSURLInitWithString(object, nullptr, string, base_url) == nullptr) {
+		objc_release(object);
+		return nullptr;
+	}
+	return objc_autorelease(object);
 }
 
 bool NSURLCopyWidePath(id self, std::wstring& path)
 {
-	id path_object = nullptr;
-	{
-		std::lock_guard lock(g_urls_mutex);
-		const auto found = g_urls.find(self);
-		if (found == g_urls.end() || found->second.path == nullptr) return false;
-		path_object = objc_retain(found->second.path);
-	}
+	id path_object = NSURLPath(self, nullptr);
+	if (path_object == nullptr) return false;
+	objc_retain(path_object);
 	const char* utf8 = NSStringUTF8String(path_object, nullptr);
 	try {
 		path = utf8 == nullptr ? std::wstring{} : Utf8ToWide(utf8);
@@ -9273,60 +9468,69 @@ bool NSURLCopyWidePath(id self, std::wstring& path)
 
 id NSURLByAppendingPathComponent(id self, SEL, id component)
 {
-	std::wstring base;
-	const char* utf8 = NSStringUTF8String(component, nullptr);
-	if (utf8 == nullptr || !NSURLCopyWidePath(self, base)) return nullptr;
-	try {
-		const std::filesystem::path combined = std::filesystem::path(base) /
-			std::filesystem::path(Utf8ToWide(utf8));
-		return NSURLCreateFileURLFromWidePath(combined.native());
-	} catch (...) { return nullptr; }
+	auto url = NSURLCopyCFURL(self);
+	auto component_string = NSURLCreateCFString(component);
+	if (url == nullptr || component_string == nullptr) {
+		if (url != nullptr) darling_windows_CFRelease(url);
+		if (component_string != nullptr) darling_windows_CFRelease(component_string);
+		return nullptr;
+	}
+	auto copy = darling_windows_CFURLCreateCopyAppendingPathComponent(nullptr,
+		url, component_string, false);
+	darling_windows_CFRelease(component_string);
+	darling_windows_CFRelease(url);
+	if (copy == nullptr) return nullptr;
+	id result = NSURLCreateWithCFURL(objc_getClass("NSURL"), copy);
+	darling_windows_CFRelease(copy);
+	return result;
 }
 
 id NSURLByDeletingLastPathComponent(id self, SEL)
 {
-	std::wstring path;
-	if (!NSURLCopyWidePath(self, path)) return nullptr;
-	try {
-		return NSURLCreateFileURLFromWidePath(
-			std::filesystem::path(path).parent_path().native());
-	} catch (...) { return nullptr; }
+	auto url = NSURLCopyCFURL(self);
+	if (url == nullptr) return nullptr;
+	auto copy = darling_windows_CFURLCreateCopyDeletingLastPathComponent(url);
+	darling_windows_CFRelease(url);
+	if (copy == nullptr) return nullptr;
+	id result = NSURLCreateWithCFURL(objc_getClass("NSURL"), copy);
+	darling_windows_CFRelease(copy);
+	return result;
 }
 
 id NSURLLastPathComponent(id self, SEL)
 {
-	std::wstring path;
-	if (!NSURLCopyWidePath(self, path)) return nullptr;
-	try {
-		const std::wstring component = std::filesystem::path(path).filename().native();
-		const std::string utf8 = WideToUtf8(component);
-		return NSStringStringWithUTF8String(objc_getClass("NSString"), nullptr,
-			utf8.c_str());
-	} catch (...) { return nullptr; }
+	auto url = NSURLCopyCFURL(self);
+	if (url == nullptr) return nullptr;
+	auto component = darling_windows_CFURLCopyLastPathComponent(url);
+	darling_windows_CFRelease(url);
+	if (component == nullptr) return nullptr;
+	id result = NSStringFromCFString(component);
+	darling_windows_CFRelease(component);
+	return result;
 }
 
 id NSURLPathExtension(id self, SEL)
 {
-	std::wstring path;
-	if (!NSURLCopyWidePath(self, path)) return nullptr;
-	try {
-		std::wstring extension = std::filesystem::path(path).extension().native();
-		if (!extension.empty() && extension.front() == L'.') extension.erase(0, 1);
-		const std::string utf8 = WideToUtf8(extension);
-		return NSStringStringWithUTF8String(objc_getClass("NSString"), nullptr,
-			utf8.c_str());
-	} catch (...) { return nullptr; }
+	auto url = NSURLCopyCFURL(self);
+	if (url == nullptr) return nullptr;
+	auto extension = darling_windows_CFURLCopyPathExtension(url);
+	darling_windows_CFRelease(url);
+	if (extension == nullptr) return nullptr;
+	id result = NSStringFromCFString(extension);
+	darling_windows_CFRelease(extension);
+	return result;
 }
 
 id NSURLByDeletingPathExtension(id self, SEL)
 {
-	std::wstring path;
-	if (!NSURLCopyWidePath(self, path)) return nullptr;
-	try {
-		std::filesystem::path without_extension(path);
-		without_extension.replace_extension();
-		return NSURLCreateFileURLFromWidePath(without_extension.native());
-	} catch (...) { return nullptr; }
+	auto url = NSURLCopyCFURL(self);
+	if (url == nullptr) return nullptr;
+	auto copy = darling_windows_CFURLCreateCopyDeletingPathExtension(url);
+	darling_windows_CFRelease(url);
+	if (copy == nullptr) return nullptr;
+	id result = NSURLCreateWithCFURL(objc_getClass("NSURL"), copy);
+	darling_windows_CFRelease(copy);
+	return result;
 }
 
 id NSURLStandardizedFileURL(id self, SEL)
@@ -19574,10 +19778,22 @@ void RegisterAppKitClasses()
 
 		Class url = RegisterHostClass("NSURL", root);
 		if (url == nullptr) return;
+		class_addMethod(url, sel_registerName("initWithString:"),
+			reinterpret_cast<IMP>(static_cast<id (*)(id, SEL, id)>(
+				&NSURLInitWithString)), "@@:@");
+		class_addMethod(url, sel_registerName("initWithString:relativeToURL:"),
+			reinterpret_cast<IMP>(static_cast<id (*)(id, SEL, id, id)>(
+				&NSURLInitWithString)), "@@:@@");
 		class_addMethod(url, sel_registerName("initFileURLWithPath:"),
 			reinterpret_cast<IMP>(&NSURLInitWithFileSystemPath), "@@:@");
 		class_addMethod(url, sel_registerName("path"),
 			reinterpret_cast<IMP>(&NSURLPath), "@@:");
+		class_addMethod(url, sel_registerName("relativeString"),
+			reinterpret_cast<IMP>(&NSURLRelativeString), "@@:");
+		class_addMethod(url, sel_registerName("baseURL"),
+			reinterpret_cast<IMP>(&NSURLBaseURL), "@@:");
+		class_addMethod(url, sel_registerName("absoluteURL"),
+			reinterpret_cast<IMP>(&NSURLAbsoluteURL), "@@:");
 		class_addMethod(url, sel_registerName("absoluteString"),
 			reinterpret_cast<IMP>(&NSURLAbsoluteString), "@@:");
 		class_addMethod(url, sel_registerName("isFileURL"),
@@ -19596,6 +19812,10 @@ void RegisterAppKitClasses()
 			reinterpret_cast<IMP>(&NSURLStandardizedFileURL), "@@:");
 		class_addClassMethod(url, sel_registerName("fileURLWithPath:"),
 			reinterpret_cast<IMP>(&NSURLFileURLWithPath), "@@:@");
+		class_addClassMethod(url, sel_registerName("URLWithString:"),
+			reinterpret_cast<IMP>(&NSURLWithString), "@@:@");
+		class_addClassMethod(url, sel_registerName("URLWithString:relativeToURL:"),
+			reinterpret_cast<IMP>(&NSURLWithStringRelativeToURL), "@@:@@");
 
 		Class ut_type = RegisterHostClass("UTType", root);
 		if (ut_type == nullptr) return;

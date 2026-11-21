@@ -1160,6 +1160,9 @@ The guest resolver also exposes `CFURLCreateCopyDeletingLastPathComponent` and
 preserving query/fragment suffixes.
 `CFURLGetBytes` exposes the URL's UTF-8 representation and fails without a
 partial write when the destination capacity is insufficient.
+`CFURLGetByteRangeForComponent` maps common URL components and adjacent
+separators to byte ranges in the same representation; malformed or unusual
+authority syntax remains a partial-coverage boundary.
 Both byte-string constructors accept UTF-8 only. Absolute-byte creation in
 compatibility mode preserves the base URL's final path component for query-,
 parameter-, and fragment-only references; other alternate RFC resolution rules

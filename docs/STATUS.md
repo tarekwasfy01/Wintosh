@@ -130,6 +130,11 @@ queries. `CFURLGetString` caches its borrowed string until URL destruction.
 `CFURLGetBytes` returns the UTF-8 bytes backing the URL, reports the required
 length for a null buffer, and returns `-1` without writing when the supplied
 buffer is too small.
+`CFURLGetByteRangeForComponent` reports byte offsets for scheme, authority,
+path, resource specifier, user info, host, port, parameters, query, and fragment,
+including optional ranges with adjacent separators. Offsets refer to the same
+UTF-8 byte sequence returned by `CFURLGetBytes`; malformed and unusual
+authority forms remain outside the supported subset.
 `CFURLCreateCopyAppendingPathComponent` appends a UTF-8 component before any
 query or fragment, escapes component delimiters, preserves the resource suffix,
 and adds the trailing slash when `isDirectory` is true. The current URL object

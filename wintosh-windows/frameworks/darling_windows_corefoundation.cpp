@@ -6282,6 +6282,163 @@ extern "C" DARLING_CF_GUEST_ABI darling_windows_CFIndex CFURLGetBytes(
 	return required;
 }
 
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFRange CFURLGetByteRangeForComponent(
+	darling_windows_CFURLRef value, darling_windows_CFURLComponentType component,
+	darling_windows_CFRange* range_including_separators)
+{
+	constexpr darling_windows_CFIndex not_found = -1;
+	darling_windows_CFRange missing{not_found, 0};
+	if (range_including_separators != nullptr) *range_including_separators = missing;
+	const auto* object = As(value);
+	if (object == nullptr || object->kind != Kind::URL || !IsWellFormedUTF8(object->string) ||
+		object->string.size() > static_cast<std::size_t>((std::numeric_limits<darling_windows_CFIndex>::max)()))
+		return missing;
+	const auto& url = object->string;
+	const auto length = url.size();
+	struct Bounds { std::size_t begin; std::size_t end; std::size_t all_begin; std::size_t all_end; };
+	std::optional<Bounds> bounds;
+	auto record = [&](std::size_t begin, std::size_t end,
+		std::size_t all_begin, std::size_t all_end) {
+		if (begin <= end && all_begin <= begin && end <= all_end && all_end <= length)
+			bounds = Bounds{begin, end, all_begin, all_end};
+	};
+	const auto colon = url.find(':');
+	const auto first_separator = url.find_first_of("/?#");
+	bool valid_scheme = colon != std::string::npos && colon > 0 &&
+		((url[0] >= 'A' && url[0] <= 'Z') || (url[0] >= 'a' && url[0] <= 'z'));
+	for (std::size_t index = 1; valid_scheme && index < colon; ++index) {
+		const auto character = static_cast<unsigned char>(url[index]);
+		valid_scheme = (character >= 'A' && character <= 'Z') ||
+			(character >= 'a' && character <= 'z') ||
+			(character >= '0' && character <= '9') || character == '+' ||
+			character == '-' || character == '.';
+	}
+	const bool windows_drive = colon == 1 && length > 2 &&
+		((url[0] >= 'A' && url[0] <= 'Z') || (url[0] >= 'a' && url[0] <= 'z')) &&
+		(url[2] == '/' || url[2] == '\\');
+	const bool has_scheme = valid_scheme &&
+		(first_separator == std::string::npos || colon < first_separator) && !windows_drive;
+	const auto scheme_end = has_scheme ? colon : std::string::npos;
+	const auto authority_marker = has_scheme ? colon + 1 : std::size_t{0};
+	const bool has_authority = authority_marker + 1 < length &&
+		url.compare(authority_marker, 2, "//") == 0;
+	const auto authority_begin = has_authority ? authority_marker + 2 : length;
+	const auto authority_end = has_authority ? url.find_first_of("/?#", authority_begin) : length;
+	const auto actual_authority_end = authority_end == std::string::npos ? length : authority_end;
+	const auto query = url.find('?');
+	const auto fragment = url.find('#');
+	const auto parts = ParseURLPathParts(url);
+	const auto parameter = parts.parameter_start == std::string::npos ? std::string::npos :
+		parts.parameter_start - 1;
+	const auto parameter_end = parameter == std::string::npos ? std::string::npos :
+		url.find_first_of("?#", parts.parameter_start);
+	const auto actual_parameter_end = parameter_end == std::string::npos ? length : parameter_end;
+	auto component_path_start = parts.path_start;
+	if (has_authority && !has_scheme)
+		component_path_start = actual_authority_end < length && url[actual_authority_end] == '/' ?
+			actual_authority_end : parts.resource_end;
+
+	switch (component) {
+	case darling_windows_kCFURLComponentScheme:
+		if (has_scheme) record(0, scheme_end, 0,
+			has_authority ? authority_begin : scheme_end + 1);
+		break;
+	case darling_windows_kCFURLComponentNetLocation:
+		if (has_authority && actual_authority_end > authority_begin)
+			record(authority_begin, actual_authority_end,
+				has_scheme ? scheme_end : authority_marker, actual_authority_end);
+		break;
+	case darling_windows_kCFURLComponentPath:
+		if (parts.path_end > component_path_start) {
+			auto all_end = parts.path_end;
+			if (parameter != std::string::npos && parameter == parts.path_end) ++all_end;
+			else if (parts.resource_end < length && parts.resource_end == parts.path_end) ++all_end;
+			record(component_path_start, parts.path_end, component_path_start, all_end);
+		}
+		break;
+	case darling_windows_kCFURLComponentResourceSpecifier:
+		if (parameter != std::string::npos) record(parts.parameter_start,
+			length, parameter, length);
+		else if (query != std::string::npos && (fragment == std::string::npos || query < fragment))
+			record(query + 1, length, query, length);
+		else if (fragment != std::string::npos) record(fragment + 1, length, fragment, length);
+		break;
+	case darling_windows_kCFURLComponentParameterString:
+		if (parameter != std::string::npos) record(parts.parameter_start,
+			actual_parameter_end, parameter,
+			actual_parameter_end < length ? actual_parameter_end + 1 : actual_parameter_end);
+		break;
+	case darling_windows_kCFURLComponentQuery:
+		if (query != std::string::npos && (fragment == std::string::npos || query < fragment))
+			record(query + 1, fragment == std::string::npos ? length : fragment,
+				query, fragment == std::string::npos ? length : fragment + 1);
+		break;
+	case darling_windows_kCFURLComponentFragment:
+		if (fragment != std::string::npos) record(fragment + 1, length, fragment, length);
+		break;
+	case darling_windows_kCFURLComponentUser:
+	case darling_windows_kCFURLComponentPassword:
+	case darling_windows_kCFURLComponentUserInfo:
+	case darling_windows_kCFURLComponentHost:
+	case darling_windows_kCFURLComponentPort:
+		if (has_authority) {
+			const auto at = url.rfind('@', actual_authority_end == 0 ? 0 : actual_authority_end - 1);
+			const bool has_user_info = at != std::string::npos && at >= authority_begin;
+			const auto user_info_end = has_user_info ? at : authority_begin;
+			const auto user_colon = has_user_info ? url.find(':', authority_begin) : std::string::npos;
+			const bool has_password = user_colon != std::string::npos && user_colon < user_info_end;
+			const auto host_begin = has_user_info ? at + 1 : authority_begin;
+			std::size_t port_colon = std::string::npos;
+			if (host_begin < actual_authority_end) {
+				if (url[host_begin] == '[') {
+					const auto close = url.find(']', host_begin);
+					if (close != std::string::npos && close < actual_authority_end &&
+						close + 1 < actual_authority_end && url[close + 1] == ':') port_colon = close + 1;
+				} else {
+					const auto found = url.rfind(':', actual_authority_end - 1);
+					if (found != std::string::npos && found >= host_begin) port_colon = found;
+				}
+			}
+			switch (component) {
+			case darling_windows_kCFURLComponentUser:
+				if (has_user_info) record(authority_begin, has_password ? user_colon : user_info_end,
+					has_scheme ? scheme_end : authority_marker,
+				has_password ? user_colon + 1 : user_info_end + 1);
+				break;
+			case darling_windows_kCFURLComponentPassword:
+				if (has_password) record(user_colon + 1, user_info_end, user_colon, user_info_end + 1);
+				break;
+			case darling_windows_kCFURLComponentUserInfo:
+				if (has_user_info) record(authority_begin, user_info_end,
+					has_scheme ? scheme_end : authority_marker, user_info_end);
+				break;
+			case darling_windows_kCFURLComponentHost:
+				if (host_begin < actual_authority_end)
+					record(host_begin, port_colon == std::string::npos ? actual_authority_end : port_colon,
+						has_user_info ? at : host_begin,
+						port_colon == std::string::npos ? actual_authority_end : port_colon + 1);
+				break;
+			case darling_windows_kCFURLComponentPort:
+				if (port_colon != std::string::npos && port_colon + 1 < actual_authority_end)
+					record(port_colon + 1, actual_authority_end, port_colon, actual_authority_end);
+				break;
+			default: break;
+			}
+		}
+		break;
+	default: break;
+	}
+	if (!bounds) return missing;
+	const auto result = darling_windows_CFRange{
+		static_cast<darling_windows_CFIndex>(bounds->begin),
+		static_cast<darling_windows_CFIndex>(bounds->end - bounds->begin)};
+	if (range_including_separators != nullptr)
+		*range_including_separators = darling_windows_CFRange{
+			static_cast<darling_windows_CFIndex>(bounds->all_begin),
+			static_cast<darling_windows_CFIndex>(bounds->all_end - bounds->all_begin)};
+	return result;
+}
+
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFURLCopyFileSystemPath(
 	darling_windows_CFURLRef value, std::int32_t path_style)
 {

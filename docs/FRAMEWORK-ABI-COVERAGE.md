@@ -90,7 +90,9 @@ decomposability validation,
 query/fragment copies with `charactersToLeaveEscaped`, username/password,
 parameter-string and strict-path queries, absolute-URL copy, byte extraction,
 and filesystem representation. `CFURLGetBytes` returns the backing UTF-8 bytes
-and reports insufficient buffer capacity without writing. `CFURLCreateCopyAppendingPathComponent` appends an escaped
+and reports insufficient buffer capacity without writing.
+`CFURLGetByteRangeForComponent` reports common component and separator ranges
+in that byte representation. `CFURLCreateCopyAppendingPathComponent` appends an escaped
 UTF-8 component and honors directory trailing slashes; URL base identity is
 flattened and not preserved. `CFURLCreateCopyAppendingPathExtension` appends an
 escaped extension to non-directory paths before the resource suffix. The

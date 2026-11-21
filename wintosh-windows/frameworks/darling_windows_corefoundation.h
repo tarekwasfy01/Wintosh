@@ -12,6 +12,20 @@
 
 using darling_windows_CFIndex = std::ptrdiff_t;
 struct darling_windows_CFRange { darling_windows_CFIndex location; darling_windows_CFIndex length; };
+enum darling_windows_CFURLComponentType : darling_windows_CFIndex {
+	darling_windows_kCFURLComponentScheme = 1,
+	darling_windows_kCFURLComponentNetLocation = 2,
+	darling_windows_kCFURLComponentPath = 3,
+	darling_windows_kCFURLComponentResourceSpecifier = 4,
+	darling_windows_kCFURLComponentUser = 5,
+	darling_windows_kCFURLComponentPassword = 6,
+	darling_windows_kCFURLComponentUserInfo = 7,
+	darling_windows_kCFURLComponentHost = 8,
+	darling_windows_kCFURLComponentPort = 9,
+	darling_windows_kCFURLComponentParameterString = 10,
+	darling_windows_kCFURLComponentQuery = 11,
+	darling_windows_kCFURLComponentFragment = 12
+};
 enum darling_windows_CFStringCompareFlags {
 	darling_windows_CFCompareCaseInsensitive = 1 << 0,
 	darling_windows_CFCompareBackwards = 1 << 1,
@@ -925,6 +939,9 @@ extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFURLGetString(
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFIndex CFURLGetBytes(
 	darling_windows_CFURLRef value, std::uint8_t* buffer,
 	darling_windows_CFIndex buffer_capacity);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFRange CFURLGetByteRangeForComponent(
+	darling_windows_CFURLRef value, darling_windows_CFURLComponentType component,
+	darling_windows_CFRange* range_including_separators);
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFURLCopyFileSystemPath(
 	darling_windows_CFURLRef value, std::int32_t path_style);
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFURLCopyPath(

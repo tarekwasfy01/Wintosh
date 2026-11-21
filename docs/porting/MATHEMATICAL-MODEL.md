@@ -527,6 +527,15 @@ reply messages returned by `perform` are sent through the Mach message ABI;
 default-allocator replies are released afterward, while custom-allocator
 reply deallocation and a native multi-port wait set remain unsupported.
 The source/port registry enforces one source per port for each live source.
+For a CFMachPort wrapper `p`, source delivery is `Deliver(p,m) = Valid(p) ∧
+Receive(GetPort(p),m)`, with the callback `Callout(p,m,size,info)` invoked once
+for each received message. `Invalidate(p)` performs the state transition
+`Valid: 1→0`, invalidates every registered source, invokes the optional
+invalidation callback, releases retained context once, and destroys only a
+port allocated by `CFMachPortCreate`; rights supplied by
+`CFMachPortCreateWithPort` remain caller-owned. Wrappers are unique by Mach
+port name. This models the API ownership boundary, while ABI callback details
+and complete message/reply rights transfer remain fixture-unverified.
 References: [Apple CFRunLoopSource](https://developer.apple.com/documentation/corefoundation/cfrunloopsource),
 [CFRunLoopSourceContext1.getPort](https://developer.apple.com/documentation/corefoundation/cfrunloopsourcecontext1/getport),
 [source context](https://developer.apple.com/documentation/corefoundation/cfrunloopsourcecontext),

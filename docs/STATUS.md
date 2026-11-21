@@ -90,6 +90,17 @@ Cross-thread block, source, common-mode, and observer changes also post a
 Win32 wake message when targeting the AppKit main loop, so its native wait
 reevaluates changed scheduler state.
 
+`CFMachPort` now wraps an existing receive right or allocates a receive/send
+right pair, retains its context, exposes port/context/validity and invalidation
+callbacks, and creates a version-1 run-loop source that dispatches received
+messages to the CFMachPort callout. Invalidating the wrapper invalidates its
+registered sources and releases context info once. Wrappers are uniqued by
+port name. This is a source-level implementation pending the local Release
+build; guest callback ABI behavior and message/reply ownership still need a
+Mach-O fixture. Existing rights passed to `CFMachPortCreateWithPort` remain
+caller-owned; only ports created by `CFMachPortCreate` are destroyed with the
+wrapper.
+
 ### Foundation dates and AppKit event queue (2026-11-17)
 
 `NSDate` now provides current, Unix-epoch, reference-date, distant-past/future,

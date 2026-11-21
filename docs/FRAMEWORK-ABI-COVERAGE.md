@@ -59,6 +59,14 @@ their first matching callback. Apple documents that sources, timers, and
 observers are activated by their registered modes; current evidence is
 source/build level only, without guest ABI fixtures.
 
+`CFMachPort` exports the type ID, create/create-with-port, run-loop source,
+port/context/validity queries, invalidation, and invalidation-callback accessors.
+Its source-1 adapter routes received messages to the CFMachPort callout and
+invalidates sources with the wrapper. Created ports are wrapper-owned;
+create-with-port rights remain caller-owned. Uniquing and context release are
+implemented, but guest callback ABI, edge-case rights accounting, and
+message/reply ownership need a Mach-O fixture.
+
 The Mach-O host resolver exports a partial C ABI for run-loop control,
 `CFString` creation/read operations, and CFArray creation, copying, reads,
 mutation, and synchronous callback enumeration. CFArray copies its callback

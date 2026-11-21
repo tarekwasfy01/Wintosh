@@ -31,6 +31,14 @@ Referenzen: [Foundation `run(mode:before:)`](https://developer.apple.com/documen
 [CoreFoundation `CFRunLoop`](https://developer.apple.com/documentation/corefoundation/cfrunloop),
 [`CFRunLoopPerformBlock`](https://developer.apple.com/documentation/corefoundation/cfrunloopperformblock%28_%3A_%3A_%3A%29).
 
+Die neue `CFMachPort`-Teilmenge verbindet Mach-Receive-Rechte mit diesem
+Source-1-Pfad: eingehende Nachrichten erreichen den CFMachPort-Callback,
+Invalidierung beendet registrierte Quellen und gibt Kontextinformationen
+einmal frei. Nur durch `CFMachPortCreate` erzeugte Ports gehören dem Wrapper;
+`CFMachPortCreateWithPort` lässt Rechte beim Aufrufer. Callback-ABI und
+vollständige Nachrichten-/Rechteübertragung sind noch nicht durch ein
+Mach-O-Gastfixture verifiziert.
+
 Der Mach-O-Hostresolver exportiert jetzt zusätzlich ausgewählte
 `CFString`-Erzeugungs- und Leseoperationen sowie `CFArray`-Typ-, Anzahl- und
 Indexabfragen. CFArray unterstützt nun Create/Copy, mutable Create/Copy,

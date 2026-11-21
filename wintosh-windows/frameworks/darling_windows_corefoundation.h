@@ -49,6 +49,7 @@ using darling_windows_CFDateRef = const void*;
 using darling_windows_CFURLRef = const void*;
 using darling_windows_CFBundleRef = const void*;
 using darling_windows_CFBooleanRef = const void*;
+using darling_windows_CFMachPortRef = const void*;
 using darling_windows_CFRunLoopRef = void*;
 using darling_windows_CFRunLoopBlock = void (*)(void* context);
 using DarlingCFRunLoopSourceRetainCallback = const void* (DARLING_CF_GUEST_ABI *)(const void* info);
@@ -85,6 +86,21 @@ struct DarlingCFRunLoopObserverContext {
 	DarlingCFRunLoopObserverReleaseCallback release;
 	DarlingCFRunLoopObserverCopyDescriptionCallback copy_description;
 };
+using DarlingCFMachPortRetainCallback = const void* (DARLING_CF_GUEST_ABI *)(const void* info);
+using DarlingCFMachPortReleaseCallback = void (DARLING_CF_GUEST_ABI *)(const void* info);
+using DarlingCFMachPortCopyDescriptionCallback = const void* (DARLING_CF_GUEST_ABI *)(const void* info);
+struct DarlingCFMachPortContext {
+	darling_windows_CFIndex version;
+	void* info;
+	DarlingCFMachPortRetainCallback retain;
+	DarlingCFMachPortReleaseCallback release;
+	DarlingCFMachPortCopyDescriptionCallback copy_description;
+};
+using DarlingCFMachPortCallout = void (DARLING_CF_GUEST_ABI *)(
+	darling_windows_CFMachPortRef port, void* message,
+	darling_windows_CFIndex size, void* info);
+using DarlingCFMachPortInvalidationCallout = void (DARLING_CF_GUEST_ABI *)(
+	darling_windows_CFMachPortRef port, void* info);
 struct DarlingCFRunLoopSourceContext {
 	darling_windows_CFIndex version;
 	void* info;
@@ -777,6 +793,28 @@ extern "C" DARLING_CF_GUEST_ABI void CFRunLoopAddObserver(
 extern "C" DARLING_CF_GUEST_ABI void CFRunLoopRemoveObserver(
 	darling_windows_CFRunLoopRef loop, darling_windows_CFTypeRef observer,
 	darling_windows_CFStringRef mode);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeID CFMachPortGetTypeID();
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFMachPortRef CFMachPortCreate(
+	const void* allocator, DarlingCFMachPortCallout callout,
+	const DarlingCFMachPortContext* context, std::uint8_t* should_free_info);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFMachPortRef CFMachPortCreateWithPort(
+	const void* allocator, std::uint32_t port, DarlingCFMachPortCallout callout,
+	const DarlingCFMachPortContext* context, std::uint8_t* should_free_info);
+extern "C" DARLING_CF_GUEST_ABI void CFMachPortGetContext(
+	darling_windows_CFMachPortRef port, DarlingCFMachPortContext* context);
+extern "C" DARLING_CF_GUEST_ABI std::uint32_t CFMachPortGetPort(
+	darling_windows_CFMachPortRef port);
+extern "C" DARLING_CF_GUEST_ABI std::uint8_t CFMachPortIsValid(
+	darling_windows_CFMachPortRef port);
+extern "C" DARLING_CF_GUEST_ABI void CFMachPortInvalidate(
+	darling_windows_CFMachPortRef port);
+extern "C" DARLING_CF_GUEST_ABI void CFMachPortSetInvalidationCallBack(
+	darling_windows_CFMachPortRef port, DarlingCFMachPortInvalidationCallout callout);
+extern "C" DARLING_CF_GUEST_ABI DarlingCFMachPortInvalidationCallout
+CFMachPortGetInvalidationCallBack(darling_windows_CFMachPortRef port);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeRef CFMachPortCreateRunLoopSource(
+	const void* allocator, darling_windows_CFMachPortRef port,
+	darling_windows_CFIndex order);
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeID CFStringGetTypeID();
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFStringCreateWithCString(
 	const void* allocator, const char* bytes, std::uint32_t encoding);

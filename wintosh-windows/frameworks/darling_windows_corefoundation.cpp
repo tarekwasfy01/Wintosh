@@ -38,7 +38,7 @@
 #include <new>
 
 namespace {
-enum class Kind { String, Data, Array, Number, Real, Dictionary, Set, Date, URL, Boolean, Null, ImageSource, DataProvider, ImageDestination, DataConsumer, Bundle, PropertyListUID, RunLoopSource, RunLoopTimer, RunLoopObserver, RunLoop };
+enum class Kind { String, Data, Array, Number, Real, Dictionary, Set, Date, URL, Boolean, Null, ImageSource, DataProvider, ImageDestination, DataConsumer, Bundle, PropertyListUID, RunLoopSource, RunLoopTimer, RunLoopObserver, RunLoop, MachPort };
 constexpr darling_windows_CFTypeID TypeId(Kind kind)
 {
 	return static_cast<darling_windows_CFTypeID>(kind) + 1;
@@ -97,6 +97,18 @@ struct Object {
 		std::string mode;
 	};
 	std::vector<SourceSchedule> run_loop_source_schedules;
+	Object* run_loop_source_cfmachport = nullptr;
+	DarlingCFMachPortContext mach_port_context{};
+	const void* mach_port_info = nullptr;
+	const void* mach_port_allocator = nullptr;
+	DarlingCFMachPortCallout mach_port_callout{};
+	DarlingCFMachPortInvalidationCallout mach_port_invalidation_callout{};
+	darling_mach_port_name_t mach_port_name = 0;
+	bool mach_port_valid = false;
+	bool mach_port_owns_name = false;
+	bool mach_port_context_released = false;
+	std::mutex mach_port_mutex;
+	std::vector<Object*> mach_port_sources;
 	DarlingCFRunLoopTimerContext run_loop_timer_context{};
 	const void* run_loop_timer_info = nullptr;
 	const void* run_loop_timer_allocator = nullptr;
@@ -155,6 +167,8 @@ struct Object {
 };
 std::mutex run_loop_source1_port_registry_mutex;
 std::unordered_map<darling_mach_port_name_t, Object*> run_loop_source1_port_registry;
+std::mutex cfmachport_registry_mutex;
+std::unordered_map<darling_mach_port_name_t, Object*> cfmachport_registry;
 Object* As(const void* value) { return const_cast<Object*>(static_cast<const Object*>(value)); }
 std::mutex bundle_state_mutex;
 std::string main_executable_path;
@@ -239,6 +253,10 @@ void ReleaseOwned(Object* object)
 }
 Object::~Object()
 {
+	if (kind == Kind::RunLoopSource && run_loop_source_cfmachport != nullptr) {
+		std::lock_guard port_lock(run_loop_source_cfmachport->mach_port_mutex);
+		std::erase(run_loop_source_cfmachport->mach_port_sources, this);
+	}
 	if (kind == Kind::RunLoopSource && run_loop_source_port != 0) {
 		std::lock_guard registry_lock(run_loop_source1_port_registry_mutex);
 		const auto found = run_loop_source1_port_registry.find(run_loop_source_port);
@@ -260,6 +278,21 @@ Object::~Object()
 		run_loop_observer_info != nullptr) {
 		try { run_loop_observer_context.release(run_loop_observer_info); }
 		catch (...) { /* Guest callbacks must not unwind through CoreFoundation. */ }
+	}
+	if (kind == Kind::MachPort) {
+		{
+			std::lock_guard registry_lock(cfmachport_registry_mutex);
+			const auto found = cfmachport_registry.find(mach_port_name);
+			if (found != cfmachport_registry.end() && found->second == this)
+				cfmachport_registry.erase(found);
+		}
+		if (mach_port_owns_name && mach_port_name != 0)
+			(void)darling_windows_mach_port_destroy(darling_windows_mach_task_self(), mach_port_name);
+		if (!mach_port_context_released && mach_port_info != nullptr &&
+			mach_port_context.release != nullptr) {
+			try { mach_port_context.release(mach_port_info); }
+			catch (...) { /* Guest callbacks must not unwind through CoreFoundation. */ }
+		}
 	}
 	if (opaque_destroy != nullptr) {
 		try { opaque_destroy(opaque_payload); }
@@ -4142,6 +4175,46 @@ Object* AsRunLoopObserver(const void* value)
 	auto* object = As(value);
 	return object != nullptr && object->kind == Kind::RunLoopObserver ? object : nullptr;
 }
+Object* AsCFMachPort(const void* value)
+{
+	auto* object = As(value);
+	return object != nullptr && object->kind == Kind::MachPort ? object : nullptr;
+}
+const void* DARLING_CF_GUEST_ABI CFMachPortRetainInfo(const void* info)
+{
+	if (auto* port = AsCFMachPort(info)) RetainOwned(port);
+	return info;
+}
+void DARLING_CF_GUEST_ABI CFMachPortReleaseInfo(const void* info)
+{
+	if (auto* port = AsCFMachPort(info)) ReleaseOwned(port);
+}
+std::uint32_t DARLING_CF_GUEST_ABI CFMachPortSourceGetPort(void* info)
+{
+	auto* port = AsCFMachPort(info);
+	if (port == nullptr) return 0;
+	std::lock_guard lock(port->mach_port_mutex);
+	return port->mach_port_valid ? port->mach_port_name : 0;
+}
+void* DARLING_CF_GUEST_ABI CFMachPortSourcePerform(void* message, darling_windows_CFIndex size,
+	const void*, void* info)
+{
+	auto* port = AsCFMachPort(info);
+	if (port == nullptr || message == nullptr || size < 0) return nullptr;
+	DarlingCFMachPortCallout callout = nullptr;
+	void* callback_info = nullptr;
+	{
+		std::lock_guard lock(port->mach_port_mutex);
+		if (!port->mach_port_valid) return nullptr;
+		callout = port->mach_port_callout;
+		callback_info = const_cast<void*>(port->mach_port_info);
+	}
+	if (callout != nullptr) {
+		try { callout(port, message, size, callback_info); }
+		catch (...) { /* Guest callbacks must not unwind through CoreFoundation. */ }
+	}
+	return nullptr;
+}
 std::vector<std::string> RunLoopConcreteModes(const std::shared_ptr<RunLoopState>& state,
 	const std::string& mode)
 {
@@ -4373,6 +4446,224 @@ extern "C" DARLING_CF_GUEST_ABI void CFRunLoopSourceInvalidate(
 		state->condition.notify_all();
 		if (state == main_run_loop.state) darling_windows_appkit_wake_main_run_loop();
 	}
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeID CFMachPortGetTypeID()
+{
+	return TypeId(Kind::MachPort);
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFMachPortRef CFMachPortCreateWithPort(
+	const void* allocator, std::uint32_t port_name, DarlingCFMachPortCallout callout,
+	const DarlingCFMachPortContext* context, std::uint8_t* should_free_info)
+{
+	if (should_free_info != nullptr) *should_free_info = 1;
+	if (port_name == 0 || callout == nullptr ||
+		(context != nullptr && context->version != 0)) return nullptr;
+	std::uint32_t receive_refs = 0;
+	if (darling_windows_mach_port_get_refs(darling_windows_mach_task_self(), port_name,
+		darling_mach_port_type_receive, &receive_refs) != 0 || receive_refs == 0) return nullptr;
+	{
+		std::lock_guard registry_lock(cfmachport_registry_mutex);
+		const auto found = cfmachport_registry.find(port_name);
+		if (found != cfmachport_registry.end()) {
+			RetainOwned(found->second);
+			return found->second;
+		}
+	}
+	auto* object = new (std::nothrow) Object{};
+	if (object == nullptr) return nullptr;
+	object->kind = Kind::MachPort;
+	object->mach_port_name = port_name;
+	object->mach_port_allocator = allocator;
+	object->mach_port_callout = callout;
+	object->mach_port_context = context == nullptr ? DarlingCFMachPortContext{} : *context;
+	object->mach_port_valid = true;
+	const void* info = context == nullptr ? nullptr : context->info;
+	if (info != nullptr && object->mach_port_context.retain != nullptr) {
+		try { object->mach_port_info = object->mach_port_context.retain(info); }
+		catch (...) { delete object; return nullptr; }
+		if (object->mach_port_info == nullptr) { delete object; return nullptr; }
+	} else object->mach_port_info = info;
+	object->mach_port_context.info = const_cast<void*>(object->mach_port_info);
+	Object* existing = nullptr;
+	bool inserted = false;
+	try {
+		std::lock_guard registry_lock(cfmachport_registry_mutex);
+		const auto [found, was_inserted] = cfmachport_registry.emplace(port_name, object);
+		inserted = was_inserted;
+		if (!was_inserted) {
+			existing = found->second;
+			RetainOwned(existing);
+		}
+	} catch (...) {
+		delete object;
+		return nullptr;
+	}
+	if (!inserted) {
+		delete object;
+		return existing;
+	}
+	if (should_free_info != nullptr) *should_free_info = 0;
+	return object;
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFMachPortRef CFMachPortCreate(
+	const void* allocator, DarlingCFMachPortCallout callout,
+	const DarlingCFMachPortContext* context, std::uint8_t* should_free_info)
+{
+	if (should_free_info != nullptr) *should_free_info = 1;
+	if (callout == nullptr) return nullptr;
+	darling_mach_port_name_t port_name = 0;
+	if (darling_windows_mach_port_allocate(darling_windows_mach_task_self(), &port_name) != 0 ||
+		port_name == 0) return nullptr;
+	if (darling_windows_mach_port_insert_right(darling_windows_mach_task_self(),
+		port_name, port_name, darling_mach_make_send) != 0) {
+		(void)darling_windows_mach_port_destroy(darling_windows_mach_task_self(), port_name);
+		return nullptr;
+	}
+	auto* result = const_cast<Object*>(AsCFMachPort(CFMachPortCreateWithPort(
+		allocator, port_name, callout, context, should_free_info)));
+	if (result == nullptr) {
+		(void)darling_windows_mach_port_destroy(darling_windows_mach_task_self(), port_name);
+		return nullptr;
+	}
+	{
+		std::lock_guard lock(result->mach_port_mutex);
+		result->mach_port_owns_name = true;
+	}
+	return result;
+}
+
+extern "C" DARLING_CF_GUEST_ABI void CFMachPortGetContext(
+	darling_windows_CFMachPortRef value, DarlingCFMachPortContext* context)
+{
+	auto* port = AsCFMachPort(value);
+	if (port == nullptr || context == nullptr) return;
+	std::lock_guard lock(port->mach_port_mutex);
+	*context = port->mach_port_context;
+	context->info = const_cast<void*>(port->mach_port_info);
+}
+
+extern "C" DARLING_CF_GUEST_ABI std::uint32_t CFMachPortGetPort(
+	darling_windows_CFMachPortRef value)
+{
+	auto* port = AsCFMachPort(value);
+	return port == nullptr ? 0 : port->mach_port_name;
+}
+
+extern "C" DARLING_CF_GUEST_ABI std::uint8_t CFMachPortIsValid(
+	darling_windows_CFMachPortRef value)
+{
+	auto* port = AsCFMachPort(value);
+	if (port == nullptr) return 0;
+	std::lock_guard lock(port->mach_port_mutex);
+	return port->mach_port_valid ? 1 : 0;
+}
+
+extern "C" DARLING_CF_GUEST_ABI void CFMachPortInvalidate(
+	darling_windows_CFMachPortRef value)
+{
+	auto* port = AsCFMachPort(value);
+	if (port == nullptr) return;
+	std::vector<Object*> sources;
+	DarlingCFMachPortInvalidationCallout invalidation_callout = nullptr;
+	DarlingCFMachPortReleaseCallback release_context = nullptr;
+	const void* info = nullptr;
+	const bool destroy_port = [&] {
+		std::lock_guard lock(port->mach_port_mutex);
+		if (!port->mach_port_valid) return false;
+		try { sources.reserve(port->mach_port_sources.size()); }
+		catch (...) { return false; }
+		port->mach_port_valid = false;
+		invalidation_callout = port->mach_port_invalidation_callout;
+		release_context = port->mach_port_context.release;
+		info = port->mach_port_info;
+		port->mach_port_info = nullptr;
+		port->mach_port_context.info = nullptr;
+		port->mach_port_context_released = true;
+		for (auto* source : port->mach_port_sources) {
+			RetainOwned(source);
+			try { sources.push_back(source); }
+			catch (...) { ReleaseOwned(source); break; }
+		}
+		const bool owns = port->mach_port_owns_name;
+		port->mach_port_owns_name = false;
+		return owns;
+	}();
+	if (port->mach_port_name != 0 && destroy_port)
+		(void)darling_windows_mach_port_destroy(darling_windows_mach_task_self(),
+			port->mach_port_name);
+	for (auto* source : sources) {
+		CFRunLoopSourceInvalidate(source);
+		ReleaseOwned(source);
+	}
+	if (invalidation_callout != nullptr) {
+		try { invalidation_callout(port, const_cast<void*>(info)); }
+		catch (...) { /* Guest callbacks must not unwind through CoreFoundation. */ }
+	}
+	if (info != nullptr && release_context != nullptr) {
+		try { release_context(info); }
+		catch (...) { /* Guest callbacks must not unwind through CoreFoundation. */ }
+	}
+}
+
+extern "C" DARLING_CF_GUEST_ABI void CFMachPortSetInvalidationCallBack(
+	darling_windows_CFMachPortRef value, DarlingCFMachPortInvalidationCallout callout)
+{
+	auto* port = AsCFMachPort(value);
+	if (port == nullptr) return;
+	std::lock_guard lock(port->mach_port_mutex);
+	if (port->mach_port_valid) port->mach_port_invalidation_callout = callout;
+}
+
+extern "C" DARLING_CF_GUEST_ABI DarlingCFMachPortInvalidationCallout
+CFMachPortGetInvalidationCallBack(darling_windows_CFMachPortRef value)
+{
+	auto* port = AsCFMachPort(value);
+	if (port == nullptr) return nullptr;
+	std::lock_guard lock(port->mach_port_mutex);
+	return port->mach_port_invalidation_callout;
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeRef CFMachPortCreateRunLoopSource(
+	const void* allocator, darling_windows_CFMachPortRef value,
+	darling_windows_CFIndex order)
+{
+	auto* port = AsCFMachPort(value);
+	if (port == nullptr) return nullptr;
+	{
+		std::lock_guard lock(port->mach_port_mutex);
+		if (!port->mach_port_valid) return nullptr;
+	}
+	DarlingCFRunLoopSourceContext1 context{};
+	context.version = 1;
+	context.info = port;
+	context.retain = &CFMachPortRetainInfo;
+	context.release = &CFMachPortReleaseInfo;
+	context.get_port = &CFMachPortSourceGetPort;
+	context.perform = &CFMachPortSourcePerform;
+	auto* source = AsRunLoopSource(CFRunLoopSourceCreate(allocator, 0,
+		reinterpret_cast<const DarlingCFRunLoopSourceContext*>(&context)));
+	if (source == nullptr) return nullptr;
+	bool registered = false;
+	{
+		std::lock_guard lock(port->mach_port_mutex);
+		if (port->mach_port_valid) {
+			try {
+				port->mach_port_sources.push_back(source);
+				source->run_loop_source_cfmachport = port;
+				registered = true;
+			} catch (...) { /* Release the source after dropping the port lock. */ }
+		}
+	}
+	if (!registered) {
+		CFRunLoopSourceInvalidate(source);
+		ReleaseOwned(source);
+		return nullptr;
+	}
+	(void)order; // Apple's CFMachPort sources currently ignore source order.
+	return source;
 }
 
 extern "C" DARLING_CF_GUEST_ABI std::uint8_t CFRunLoopContainsSource(
@@ -6152,6 +6443,26 @@ extern "C" std::uintptr_t darling_windows_corefoundation_symbol(const char* name
 		return reinterpret_cast<std::uintptr_t>(&CFRunLoopSourceIsValid);
 	if (std::strcmp(name, "CFRunLoopSourceInvalidate") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFRunLoopSourceInvalidate);
+	if (std::strcmp(name, "CFMachPortGetTypeID") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFMachPortGetTypeID);
+	if (std::strcmp(name, "CFMachPortCreate") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFMachPortCreate);
+	if (std::strcmp(name, "CFMachPortCreateWithPort") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFMachPortCreateWithPort);
+	if (std::strcmp(name, "CFMachPortCreateRunLoopSource") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFMachPortCreateRunLoopSource);
+	if (std::strcmp(name, "CFMachPortGetContext") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFMachPortGetContext);
+	if (std::strcmp(name, "CFMachPortGetPort") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFMachPortGetPort);
+	if (std::strcmp(name, "CFMachPortIsValid") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFMachPortIsValid);
+	if (std::strcmp(name, "CFMachPortInvalidate") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFMachPortInvalidate);
+	if (std::strcmp(name, "CFMachPortSetInvalidationCallBack") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFMachPortSetInvalidationCallBack);
+	if (std::strcmp(name, "CFMachPortGetInvalidationCallBack") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFMachPortGetInvalidationCallBack);
 	if (std::strcmp(name, "CFRunLoopContainsSource") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFRunLoopContainsSource);
 	if (std::strcmp(name, "CFRunLoopAddSource") == 0)

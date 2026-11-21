@@ -301,7 +301,12 @@ poll it in 10 ms slices while active; one received message is passed to the
 version-1 perform callback. Returned replies are sent through the Mach ABI;
 default-allocator replies are released, and each live source reserves its port.
 Custom-allocator reply deallocation and a native multi-port wait set remain
-unsupported. CF timers
+unsupported. `CFMachPort` wraps receive rights, owns rights allocated through
+`CFMachPortCreate`, exposes validity/context/invalidation callbacks, and creates
+a source-1 run-loop source that forwards messages to the wrapper callout.
+`CFMachPortCreateWithPort` leaves the supplied right caller-owned. Guest ABI
+callbacks and full Mach right/message ownership still need a Mach-O fixture.
+CF timers
 and observers, native Windows input-source registration, recursive activations, selector cancellation, and
 arbitrary-mode `NSTimer` scheduling remain outside this subset. CoreFoundation
 timers can be created, registered by mode, queried, rescheduled, invalidated,

@@ -6399,6 +6399,40 @@ extern "C" DARLING_CF_GUEST_ABI darling_windows_CFURLRef CFURLCreateCopyAppendin
 		component, is_directory != 0);
 }
 
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFURLRef CFURLCreateCopyAppendingPathExtension(
+	const void* allocator, darling_windows_CFURLRef value,
+	darling_windows_CFStringRef extension)
+{
+	const auto* url = As(value);
+	const auto* suffix = As(extension);
+	if (url == nullptr || url->kind != Kind::URL || suffix == nullptr ||
+		suffix->kind != Kind::String || !IsWellFormedUTF8(suffix->string)) return nullptr;
+	std::string result;
+	try { result = url->string; }
+	catch (...) { return nullptr; }
+	if (!suffix->string.empty()) {
+		const auto path = ParseURLPathParts(url->string);
+		if (path.path_start < path.path_end && url->string[path.path_end - 1] != '/') {
+			const std::string escaped_delimiters = "/?#%;";
+			std::string escaped_extension;
+			try { escaped_extension = PercentEncodeURLString(suffix->string, nullptr, &escaped_delimiters); }
+			catch (...) { return nullptr; }
+			try {
+				result.assign(url->string, 0, path.path_end);
+				result.push_back('.');
+				result += escaped_extension;
+				result.append(url->string, path.path_end, std::string::npos);
+			} catch (...) { return nullptr; }
+		}
+	}
+	if (result.empty() || result.find('\\0') != std::string::npos || !IsWellFormedUTF8(result)) return nullptr;
+	auto* copy = CreateObjectWithAllocator(allocator, Kind::URL);
+	if (copy == nullptr) return nullptr;
+	try { copy->string = std::move(result); }
+	catch (...) { ReleaseOwned(copy); return nullptr; }
+	return copy;
+}
+
 extern "C" DARLING_CF_GUEST_ABI std::int32_t CFURLGetPortNumber(
 	darling_windows_CFURLRef value)
 {
@@ -7620,6 +7654,8 @@ extern "C" std::uintptr_t darling_windows_corefoundation_symbol(const char* name
 		return reinterpret_cast<std::uintptr_t>(&CFURLCopyLastPathComponent);
 	if (std::strcmp(name, "CFURLCreateCopyAppendingPathComponent") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFURLCreateCopyAppendingPathComponent);
+	if (std::strcmp(name, "CFURLCreateCopyAppendingPathExtension") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFURLCreateCopyAppendingPathExtension);
 	if (std::strcmp(name, "CFURLCopyPathExtension") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFURLCopyPathExtension);
 	if (std::strcmp(name, "CFURLCopyScheme") == 0)

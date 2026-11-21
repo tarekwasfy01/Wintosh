@@ -1152,6 +1152,9 @@ Guest-ABI `CFURLCreateWithString`, `CFURLCreateWithBytes`,
 allocator, percent-escapes component delimiters, preserves query/fragment
 suffixes, and applies the directory trailing slash. URL base-object identity
 is not retained by the current flattened URL representation.
+`CFURLCreateCopyAppendingPathExtension` also retains the requested allocator,
+escapes extension delimiters, and inserts the extension before parameters and
+query/fragment suffixes; empty and directory paths are copied unchanged.
 Both byte-string constructors accept UTF-8 only. Absolute-byte creation in
 compatibility mode preserves the base URL's final path component for query-,
 parameter-, and fragment-only references; other alternate RFC resolution rules

@@ -131,6 +131,9 @@ queries. `CFURLGetString` caches its borrowed string until URL destruction.
 query or fragment, escapes component delimiters, preserves the resource suffix,
 and adds the trailing slash when `isDirectory` is true. The current URL object
 stores a flattened string, so original base-URL identity is not retained.
+`CFURLCreateCopyAppendingPathExtension` now adds an escaped UTF-8 extension to
+the final non-directory path component, before parameters, query, and fragment;
+URLs with an empty or directory path are copied unchanged.
 Query and fragment copies honor `charactersToLeaveEscaped`: null preserves
 percent escapes, while a string selectively preserves escapes for matching
 decoded bytes. Username and password copies are also exported.

@@ -91,7 +91,9 @@ query/fragment copies with `charactersToLeaveEscaped`, username/password,
 parameter-string and strict-path queries, absolute-URL copy, and filesystem
 representation. `CFURLCreateCopyAppendingPathComponent` appends an escaped
 UTF-8 component and honors directory trailing slashes; URL base identity is
-flattened and not preserved. Hierarchical paths omit their authority and strict paths
+flattened and not preserved. `CFURLCreateCopyAppendingPathExtension` appends an
+escaped extension to non-directory paths before the resource suffix. Hierarchical
+paths omit their authority and strict paths
 report whether they are absolute. The percent-escape
 replacement/addition string constructors retain their source if unchanged and
 use the requested allocator for changed output. The explicit-encoding

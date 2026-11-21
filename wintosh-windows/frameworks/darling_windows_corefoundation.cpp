@@ -666,6 +666,35 @@ std::string PercentDecodeLeaving(const std::string& input, const std::string* le
 	}
 	return output;
 }
+bool IsWellFormedUTF8(const std::string& value)
+{
+	for (std::size_t index = 0; index < value.size();) {
+		const auto first = static_cast<unsigned char>(value[index]);
+		if (first <= 0x7f) { ++index; continue; }
+		std::size_t continuation_count = 0;
+		unsigned char second_min = 0x80;
+		unsigned char second_max = 0xbf;
+		if (first >= 0xc2 && first <= 0xdf) continuation_count = 1;
+		else if (first >= 0xe0 && first <= 0xef) {
+			continuation_count = 2;
+			if (first == 0xe0) second_min = 0xa0;
+			if (first == 0xed) second_max = 0x9f;
+		} else if (first >= 0xf0 && first <= 0xf4) {
+			continuation_count = 3;
+			if (first == 0xf0) second_min = 0x90;
+			if (first == 0xf4) second_max = 0x8f;
+		} else return false;
+		if (index + continuation_count >= value.size()) return false;
+		const auto second = static_cast<unsigned char>(value[index + 1]);
+		if (second < second_min || second > second_max) return false;
+		for (std::size_t offset = 2; offset <= continuation_count; ++offset) {
+			const auto next = static_cast<unsigned char>(value[index + offset]);
+			if (next < 0x80 || next > 0xbf) return false;
+		}
+		index += continuation_count + 1;
+	}
+	return true;
+}
 std::string DecodeUTF16BE(const unsigned char* bytes, std::size_t units)
 {
 	std::string output;
@@ -5886,6 +5915,34 @@ CFURLCreateFromFileSystemRepresentation(const void* allocator, const std::uint8_
 	return object;
 }
 
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef
+CFURLCreateStringByReplacingPercentEscapes(const void* allocator,
+	darling_windows_CFStringRef original_string,
+	darling_windows_CFStringRef characters_to_leave_escaped)
+{
+	const auto* source = As(original_string);
+	if (source == nullptr || source->kind != Kind::String) return nullptr;
+	const std::string* leave_escaped = nullptr;
+	if (characters_to_leave_escaped != nullptr) {
+		const auto* leave = As(characters_to_leave_escaped);
+		if (leave == nullptr || leave->kind != Kind::String) return nullptr;
+		leave_escaped = &leave->string;
+	}
+	std::string decoded;
+	try { decoded = PercentDecodeLeaving(source->string, leave_escaped); }
+	catch (...) { return nullptr; }
+	if (decoded == source->string) {
+		RetainOwned(const_cast<Object*>(source));
+		return source;
+	}
+	if (!IsWellFormedUTF8(decoded)) return nullptr;
+	auto* object = CreateObjectWithAllocator(allocator, Kind::String);
+	if (object == nullptr) return nullptr;
+	try { object->string = std::move(decoded); }
+	catch (...) { ReleaseOwned(object); return nullptr; }
+	return object;
+}
+
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeID CFURLGetTypeID()
 {
 	return darling_windows_CFURLGetTypeID();
@@ -7190,6 +7247,8 @@ extern "C" std::uintptr_t darling_windows_corefoundation_symbol(const char* name
 		return reinterpret_cast<std::uintptr_t>(&CFURLCreateWithFileSystemPath);
 	if (std::strcmp(name, "CFURLCreateFromFileSystemRepresentation") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFURLCreateFromFileSystemRepresentation);
+	if (std::strcmp(name, "CFURLCreateStringByReplacingPercentEscapes") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFURLCreateStringByReplacingPercentEscapes);
 	if (std::strcmp(name, "CFURLGetTypeID") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFURLGetTypeID);
 	if (std::strcmp(name, "CFURLGetString") == 0)

@@ -121,6 +121,9 @@ queries. `CFURLGetString` caches its borrowed string until URL destruction.
 Query and fragment copies honor `charactersToLeaveEscaped`: null preserves
 percent escapes, while a string selectively preserves escapes for matching
 decoded bytes. Username and password copies are also exported.
+`CFURLCreateStringByReplacingPercentEscapes` uses the requested allocator,
+returns a retained input when no escape is replaced, and rejects replacement
+results that are not well-formed UTF-8.
 URL path-style conversion is limited to POSIX and Windows styles; HFS paths
 remain unsupported. Source-1 reply memory uses this deallocator path.
 

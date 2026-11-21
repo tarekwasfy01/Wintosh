@@ -1153,7 +1153,8 @@ resolver also exports path, component, scheme, authority, port, directory,
 string, and filesystem-representation queries for CFURL, including query and
 fragment extraction with selective percent-escape preservation, plus username
 and password extraction. `CFURLCreateStringByReplacingPercentEscapes` supports
-UTF-8 decoding, selective escape preservation, and allocator-aware creation.
+UTF-8 decoding, selective escape preservation, and allocator-aware creation;
+the adding-escapes counterpart supports UTF-8 RFC 2396 escaping.
 Bracketed IPv6 host and port extraction is covered as well; zone identifiers,
 authority escaping, and complete RFC URL normalization remain open.
 `CFURLCopyNetLocation` is covered for the same simple IPv4/IPv6 authority

@@ -123,7 +123,9 @@ percent escapes, while a string selectively preserves escapes for matching
 decoded bytes. Username and password copies are also exported.
 `CFURLCreateStringByReplacingPercentEscapes` uses the requested allocator,
 returns a retained input when no escape is replaced, and rejects replacement
-results that are not well-formed UTF-8.
+results that are not well-formed UTF-8. Its adding-escapes counterpart now
+escapes non-URL UTF-8 bytes and caller-forced legal URL characters, while
+preserving caller-allowed characters; other encodings are not supported.
 URL path-style conversion is limited to POSIX and Windows styles; HFS paths
 remain unsupported. Source-1 reply memory uses this deallocator path.
 

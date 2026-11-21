@@ -695,6 +695,42 @@ bool IsWellFormedUTF8(const std::string& value)
 	}
 	return true;
 }
+std::string PercentEncodeURLString(const std::string& input,
+	const std::string* characters_to_leave_unescaped,
+	const std::string* legal_characters_to_escape)
+{
+	static constexpr char hex[] = "0123456789ABCDEF";
+	std::string output;
+	for (std::size_t index = 0; index < input.size();) {
+		const auto first = static_cast<unsigned char>(input[index]);
+		const auto length = first <= 0x7f ? std::size_t{1} :
+			(first <= 0xdf ? std::size_t{2} : (first <= 0xef ? std::size_t{3} : std::size_t{4}));
+		const auto character = input.substr(index, length);
+		const bool leave = characters_to_leave_unescaped != nullptr &&
+			characters_to_leave_unescaped->find(character) != std::string::npos;
+		const bool force_escape = legal_characters_to_escape != nullptr &&
+			legal_characters_to_escape->find(character) != std::string::npos;
+		const bool alphanumeric = (first >= 'A' && first <= 'Z') ||
+			(first >= 'a' && first <= 'z') || (first >= '0' && first <= '9');
+		const bool mark = first == '-' || first == '_' || first == '.' || first == '!' ||
+			first == '~' || first == '*' || first == '\'' || first == '(' || first == ')';
+		const bool reserved = first == ';' || first == '/' || first == '?' || first == ':' ||
+			first == '@' || first == '&' || first == '=' || first == '+' || first == '$' ||
+			first == ',';
+		const bool legal = length == 1 && (alphanumeric || mark || reserved);
+		if (leave || (legal && !force_escape)) output.append(character);
+		else {
+			for (const auto byte : character) {
+				const auto value = static_cast<unsigned char>(byte);
+				output.push_back('%');
+				output.push_back(hex[value >> 4]);
+				output.push_back(hex[value & 0x0f]);
+			}
+		}
+		index += length;
+	}
+	return output;
+}
 std::string DecodeUTF16BE(const unsigned char* bytes, std::size_t units)
 {
 	std::string output;
@@ -5943,6 +5979,43 @@ CFURLCreateStringByReplacingPercentEscapes(const void* allocator,
 	return object;
 }
 
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef
+CFURLCreateStringByAddingPercentEscapes(const void* allocator,
+	darling_windows_CFStringRef original_string,
+	darling_windows_CFStringRef characters_to_leave_unescaped,
+	darling_windows_CFStringRef legal_url_characters_to_escape,
+	std::uint32_t encoding)
+{
+	if (encoding != kDarlingCfUtf8Encoding) return nullptr;
+	const auto* source = As(original_string);
+	if (source == nullptr || source->kind != Kind::String || !IsWellFormedUTF8(source->string))
+		return nullptr;
+	const std::string* leave = nullptr;
+	const std::string* force_escape = nullptr;
+	if (characters_to_leave_unescaped != nullptr) {
+		const auto* object = As(characters_to_leave_unescaped);
+		if (object == nullptr || object->kind != Kind::String) return nullptr;
+		leave = &object->string;
+	}
+	if (legal_url_characters_to_escape != nullptr) {
+		const auto* object = As(legal_url_characters_to_escape);
+		if (object == nullptr || object->kind != Kind::String) return nullptr;
+		force_escape = &object->string;
+	}
+	std::string escaped;
+	try { escaped = PercentEncodeURLString(source->string, leave, force_escape); }
+	catch (...) { return nullptr; }
+	if (escaped == source->string) {
+		RetainOwned(const_cast<Object*>(source));
+		return source;
+	}
+	auto* object = CreateObjectWithAllocator(allocator, Kind::String);
+	if (object == nullptr) return nullptr;
+	try { object->string = std::move(escaped); }
+	catch (...) { ReleaseOwned(object); return nullptr; }
+	return object;
+}
+
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeID CFURLGetTypeID()
 {
 	return darling_windows_CFURLGetTypeID();
@@ -7249,6 +7322,8 @@ extern "C" std::uintptr_t darling_windows_corefoundation_symbol(const char* name
 		return reinterpret_cast<std::uintptr_t>(&CFURLCreateFromFileSystemRepresentation);
 	if (std::strcmp(name, "CFURLCreateStringByReplacingPercentEscapes") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFURLCreateStringByReplacingPercentEscapes);
+	if (std::strcmp(name, "CFURLCreateStringByAddingPercentEscapes") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFURLCreateStringByAddingPercentEscapes);
 	if (std::strcmp(name, "CFURLGetTypeID") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFURLGetTypeID);
 	if (std::strcmp(name, "CFURLGetString") == 0)

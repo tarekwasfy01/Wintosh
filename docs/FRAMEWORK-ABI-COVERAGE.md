@@ -84,11 +84,11 @@ styles are supported; HFS path conversion is not. The guest resolver also
 exports common URL type/string/path/scheme/authority/port/directory queries,
 query/fragment copies with `charactersToLeaveEscaped`, username/password,
 absolute-URL copy, and filesystem representation. The percent-escape
-replacement string constructor retains its source if unchanged and uses the
-requested allocator when it creates a decoded string. `CFURLGetString` returns
-a URL-owned cached string. STL-backed payload storage and other CF
-constructors still use the host allocator. Standard allocator constants are
-exported for Mach-O data-symbol resolution.
+replacement/addition string constructors retain their source if unchanged and
+use the requested allocator for changed output. The addition path supports
+UTF-8 only. `CFURLGetString` returns a URL-owned cached string. STL-backed
+payload storage and other CF constructors still use the host allocator.
+Standard allocator constants are exported for Mach-O data-symbol resolution.
 
 The Mach-O host resolver exports a partial C ABI for run-loop control,
 `CFString` creation/copy/mutable construction and read operations, selected

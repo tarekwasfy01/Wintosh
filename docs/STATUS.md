@@ -127,6 +127,13 @@ and percent escapes for the supported URL representation. The guest ABI also
 resolves common CFURL type, string, path,
 scheme, authority, port, directory, absolute-URL, and filesystem-representation
 queries. `CFURLGetString` caches its borrowed string until URL destruction.
+Relative guest URLs created with a base now retain that base and their original
+relative string. `CFURLGetBaseURL` returns the borrowed base, while
+`CFURLGetString`, `CFURLGetBytes`, and component ranges use the relative string;
+path and filesystem operations continue using the resolved host string.
+`CFURLCopyAbsoluteURL` returns a flattened URL without a base. Relative query,
+fragment, and parameter references now resolve against the corresponding base
+URL resource, and absolute-path references retain the base scheme and authority.
 `CFURLGetBytes` returns the UTF-8 bytes backing the URL, reports the required
 length for a null buffer, and returns `-1` without writing when the supplied
 buffer is too small.
@@ -138,7 +145,8 @@ authority forms remain outside the supported subset.
 `CFURLCreateCopyAppendingPathComponent` appends a UTF-8 component before any
 query or fragment, escapes component delimiters, preserves the resource suffix,
 and adds the trailing slash when `isDirectory` is true. The current URL object
-stores a flattened string, so original base-URL identity is not retained.
+retains base identity for relative construction; path transformation copies
+still flatten and drop that identity.
 `CFURLCreateCopyAppendingPathExtension` now adds an escaped UTF-8 extension to
 the final non-directory path component, before parameters, query, and fragment;
 URLs with an empty or directory path are copied unchanged.

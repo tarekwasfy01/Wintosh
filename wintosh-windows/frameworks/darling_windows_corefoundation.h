@@ -936,6 +936,8 @@ extern "C" DARLING_CF_GUEST_ABI std::uint8_t CFURLCanBeDecomposed(
 	darling_windows_CFURLRef value);
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFURLGetString(
 	darling_windows_CFURLRef value);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFURLRef CFURLGetBaseURL(
+	darling_windows_CFURLRef value);
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFIndex CFURLGetBytes(
 	darling_windows_CFURLRef value, std::uint8_t* buffer,
 	darling_windows_CFIndex buffer_capacity);

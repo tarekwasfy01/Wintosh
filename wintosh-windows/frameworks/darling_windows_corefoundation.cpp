@@ -67,6 +67,8 @@ struct Object {
 	const void* set_allocator = nullptr;
 	Kind kind;
 	std::string string;
+	Object* url_base = nullptr;
+	std::string url_original_string;
 	mutable std::mutex url_string_mutex;
 	mutable const void* url_string_cache = nullptr;
 	std::string bundle_path;
@@ -179,6 +181,10 @@ std::mutex cfmachport_registry_mutex;
 std::unordered_map<darling_mach_port_name_t, Object*> cfmachport_registry;
 std::uint8_t allocator_use_context_sentinel{};
 Object* As(const void* value) { return const_cast<Object*>(static_cast<const Object*>(value)); }
+const std::string& URLStringForObject(const Object* object)
+{
+	return object->url_base == nullptr ? object->string : object->url_original_string;
+}
 Object* AsCFAllocator(const void* value);
 Object* CreateObjectWithAllocator(const void* allocator, Kind kind);
 std::mutex bundle_state_mutex;
@@ -423,6 +429,7 @@ Object::~Object()
 		ReleaseDictionaryKey(this, entry.first);
 		ReleaseDictionaryValue(this, entry.second);
 	}
+	ReleaseOwned(url_base);
 }
 void RetainOwned(const void* value)
 {
@@ -3307,25 +3314,58 @@ extern "C" darling_windows_CFURLRef darling_windows_CFURLCreateWithString(
 	(void)base_url;
 	const auto* source = static_cast<const Object*>(string);
 	if (source == nullptr || source->kind != Kind::String || source->string.empty()) return nullptr;
-	std::string resolved = source->string;
+	std::string resolved;
+	try { resolved = source->string; }
+	catch (...) { return nullptr; }
 	if (resolved.find(':') == std::string::npos && base_url != nullptr) {
 		const auto* base = static_cast<const Object*>(base_url);
 		if (base->kind != Kind::URL || base->string.empty()) return nullptr;
-		const auto query = base->string.find_first_of("?#");
-		const auto base_value = query == std::string::npos ? base->string : base->string.substr(0, query);
-		const auto slash = base_value.find_last_of('/');
-		if (slash == std::string::npos) return nullptr;
-		std::string directory = base_value.substr(0, slash + 1);
-		while (resolved.rfind("../", 0) == 0) {
-			resolved.erase(0, 3);
-			if (directory.size() > 1) {
-				directory.erase(directory.size() - 1);
-				const auto parent_slash = directory.find_last_of('/');
-				directory = parent_slash == std::string::npos ? std::string{} :
-					directory.substr(0, parent_slash + 1);
+		try {
+			const auto query_or_fragment = base->string.find_first_of("?#");
+			const auto base_resource = query_or_fragment == std::string::npos ?
+				base->string : base->string.substr(0, query_or_fragment);
+			if (resolved.front() == '#') {
+				const auto old_fragment = base->string.find('#');
+				resolved = (old_fragment == std::string::npos ? base->string :
+					base->string.substr(0, old_fragment)) + resolved;
+			} else if (resolved.front() == '?') {
+				resolved = base_resource + resolved;
+			} else if (resolved.front() == ';') {
+				auto base_path = base_resource;
+				const auto last_slash = base_path.find_last_of('/');
+				const auto old_parameter = base_path.rfind(';');
+				if (old_parameter != std::string::npos &&
+					(last_slash == std::string::npos || old_parameter > last_slash))
+					base_path.resize(old_parameter);
+				resolved = base_path + resolved;
+			} else if (resolved.rfind("//", 0) == 0) {
+				const auto scheme = base->string.find(':');
+				if (scheme != std::string::npos) resolved = base->string.substr(0, scheme + 1) + resolved;
+			} else if (resolved.front() == '/') {
+				const auto base_parts = ParseURLPathParts(base->string);
+				std::string prefix;
+				if (base->string.compare(0, 2, "//") == 0) {
+					const auto authority_end = base->string.find_first_of("/?#", 2);
+					prefix = base->string.substr(0, authority_end == std::string::npos ?
+						base_resource.size() : authority_end);
+				} else prefix = base->string.substr(0, base_parts.path_start);
+				resolved = prefix + resolved;
+			} else {
+				const auto slash = base_resource.find_last_of('/');
+				if (slash == std::string::npos) return nullptr;
+				std::string directory = base_resource.substr(0, slash + 1);
+				while (resolved.rfind("../", 0) == 0) {
+					resolved.erase(0, 3);
+					if (directory.size() > 1) {
+						directory.erase(directory.size() - 1);
+						const auto parent_slash = directory.find_last_of('/');
+						directory = parent_slash == std::string::npos ? std::string{} :
+							directory.substr(0, parent_slash + 1);
+					}
+				}
+				resolved = directory + resolved;
 			}
-		}
-		resolved = directory + resolved;
+		} catch (...) { return nullptr; }
 	}
 	for (std::size_t marker = resolved.find("/./"); marker != std::string::npos;
 		marker = resolved.find("/./")) {
@@ -3646,7 +3686,8 @@ darling_windows_CFStringRef BorrowURLString(darling_windows_CFURLRef value)
 	if (object == nullptr || object->kind != Kind::URL) return nullptr;
 	std::lock_guard lock(object->url_string_mutex);
 	if (object->url_string_cache == nullptr)
-		object->url_string_cache = darling_windows_CFStringCreateWithCString(object->string.c_str());
+		object->url_string_cache = darling_windows_CFStringCreateWithCString(
+			URLStringForObject(object).c_str());
 	return object->url_string_cache;
 }
 }
@@ -5984,6 +6025,10 @@ extern "C" DARLING_CF_GUEST_ABI darling_windows_CFURLRef CFURLCreateWithString(
 	const void* allocator, darling_windows_CFStringRef string,
 	darling_windows_CFURLRef base_url)
 {
+	const auto* base = As(base_url);
+	if (base_url != nullptr && (base == nullptr || base->kind != Kind::URL)) return nullptr;
+	const auto* input = As(string);
+	if (input == nullptr || input->kind != Kind::String) return nullptr;
 	const auto temporary = darling_windows_CFURLCreateWithString(string, base_url);
 	const auto* source = As(temporary);
 	if (source == nullptr || source->kind != Kind::URL) {
@@ -5992,8 +6037,15 @@ extern "C" DARLING_CF_GUEST_ABI darling_windows_CFURLRef CFURLCreateWithString(
 	}
 	auto* object = CreateObjectWithAllocator(allocator, Kind::URL);
 	if (object != nullptr) {
-		try { object->string = source->string; }
+		try {
+			object->string = source->string;
+			if (base != nullptr) object->url_original_string = input->string;
+		}
 		catch (...) { ReleaseOwned(object); object = nullptr; }
+		if (object != nullptr && base != nullptr) {
+			object->url_base = const_cast<Object*>(base);
+			RetainOwned(base);
+		}
 	}
 	ReleaseOwned(const_cast<Object*>(source));
 	return object;
@@ -6055,8 +6107,15 @@ CFURLCreateWithFileSystemPathRelativeToBase(const void* allocator,
 	}
 	auto* object = CreateObjectWithAllocator(allocator, Kind::URL);
 	if (object != nullptr) {
-		try { object->string = resolved_object->string; }
+		try {
+			object->string = resolved_object->string;
+			object->url_original_string = path;
+		}
 		catch (...) { ReleaseOwned(object); object = nullptr; }
+		if (object != nullptr) {
+			object->url_base = const_cast<Object*>(base);
+			RetainOwned(base);
+		}
 	}
 	ReleaseOwned(const_cast<Object*>(resolved_object));
 	return object;
@@ -6132,8 +6191,14 @@ extern "C" DARLING_CF_GUEST_ABI darling_windows_CFURLRef CFURLCreateAbsoluteURLW
 		try { relative.assign(reinterpret_cast<const char*>(bytes), static_cast<std::size_t>(length)); }
 		catch (...) { return nullptr; }
 		if (relative.find('\0') != std::string::npos || !IsWellFormedUTF8(relative)) return nullptr;
-		const auto suffix = base->string.find_first_of("?#");
+		const auto suffix = bytes[0] == '#' ? base->string.find('#') :
+			base->string.find_first_of("?#");
 		std::string absolute = suffix == std::string::npos ? base->string : base->string.substr(0, suffix);
+		if (bytes[0] == ';') {
+			const auto base_parts = ParseURLPathParts(absolute);
+			if (base_parts.parameter_start != std::string::npos)
+				absolute.resize(base_parts.parameter_start - 1);
+		}
 		try { absolute += relative; }
 		catch (...) { return nullptr; }
 		if (absolute.find('\0') != std::string::npos || !IsWellFormedUTF8(absolute)) return nullptr;
@@ -6143,7 +6208,19 @@ extern "C" DARLING_CF_GUEST_ABI darling_windows_CFURLRef CFURLCreateAbsoluteURLW
 		ReleaseOwned(const_cast<Object*>(As(string_object)));
 		return result;
 	}
-	return CFURLCreateWithBytes(allocator, bytes, length, encoding, base_url);
+	const auto relative = CFURLCreateWithBytes(allocator, bytes, length, encoding, base_url);
+	const auto* relative_object = As(relative);
+	if (relative_object == nullptr || relative_object->kind != Kind::URL) {
+		if (relative != nullptr) ReleaseOwned(const_cast<Object*>(relative_object));
+		return nullptr;
+	}
+	auto* absolute = CreateObjectWithAllocator(allocator, Kind::URL);
+	if (absolute != nullptr) {
+		try { absolute->string = relative_object->string; }
+		catch (...) { ReleaseOwned(absolute); absolute = nullptr; }
+	}
+	ReleaseOwned(const_cast<Object*>(relative_object));
+	return absolute;
 }
 
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef
@@ -6231,31 +6308,31 @@ extern "C" DARLING_CF_GUEST_ABI std::uint8_t CFURLCanBeDecomposed(
 	darling_windows_CFURLRef value)
 {
 	const auto* object = As(value);
-	if (object == nullptr || object->kind != Kind::URL || object->string.empty() ||
-		!IsWellFormedUTF8(object->string)) return 0;
-	const auto colon = object->string.find(':');
-	const auto first_delimiter = object->string.find_first_of("/?#");
-	const bool windows_drive = colon == 1 && object->string.size() > 2 &&
-		((object->string[0] >= 'A' && object->string[0] <= 'Z') ||
-		 (object->string[0] >= 'a' && object->string[0] <= 'z')) &&
-		(object->string[2] == '/' || object->string[2] == '\\');
+	if (object == nullptr || object->kind != Kind::URL) return 0;
+	const auto& url = URLStringForObject(object);
+	if (url.empty() || !IsWellFormedUTF8(url)) return 0;
+	const auto colon = url.find(':');
+	const auto first_delimiter = url.find_first_of("/?#");
+	const bool windows_drive = colon == 1 && url.size() > 2 &&
+		((url[0] >= 'A' && url[0] <= 'Z') || (url[0] >= 'a' && url[0] <= 'z')) &&
+		(url[2] == '/' || url[2] == '\\');
 	if (colon != std::string::npos && !windows_drive &&
 		(first_delimiter == std::string::npos || colon < first_delimiter)) {
-		if (colon == 0 || !((object->string[0] >= 'A' && object->string[0] <= 'Z') ||
-			(object->string[0] >= 'a' && object->string[0] <= 'z'))) return 0;
+		if (colon == 0 || !((url[0] >= 'A' && url[0] <= 'Z') ||
+			(url[0] >= 'a' && url[0] <= 'z'))) return 0;
 		for (std::size_t index = 1; index < colon; ++index) {
-			const auto character = static_cast<unsigned char>(object->string[index]);
+			const auto character = static_cast<unsigned char>(url[index]);
 			if (!((character >= 'A' && character <= 'Z') ||
 				(character >= 'a' && character <= 'z') ||
 				(character >= '0' && character <= '9') || character == '+' ||
 				character == '-' || character == '.')) return 0;
 		}
 	}
-	for (std::size_t index = 0; index < object->string.size(); ++index) {
-		if (object->string[index] == '%' && (index + 2 >= object->string.size() ||
-			!std::isxdigit(static_cast<unsigned char>(object->string[index + 1])) ||
-			!std::isxdigit(static_cast<unsigned char>(object->string[index + 2])))) return 0;
-		if (object->string[index] == '%') index += 2;
+	for (std::size_t index = 0; index < url.size(); ++index) {
+		if (url[index] == '%' && (index + 2 >= url.size() ||
+			!std::isxdigit(static_cast<unsigned char>(url[index + 1])) ||
+			!std::isxdigit(static_cast<unsigned char>(url[index + 2])))) return 0;
+		if (url[index] == '%') index += 2;
 	}
 	return 1;
 }
@@ -6266,19 +6343,27 @@ extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFURLGetString(
 	return BorrowURLString(value);
 }
 
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFURLRef CFURLGetBaseURL(
+	darling_windows_CFURLRef value)
+{
+	const auto* object = As(value);
+	return object != nullptr && object->kind == Kind::URL ? object->url_base : nullptr;
+}
+
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFIndex CFURLGetBytes(
 	darling_windows_CFURLRef value, std::uint8_t* buffer,
 	darling_windows_CFIndex buffer_capacity)
 {
 	const auto* url = As(value);
-	if (url == nullptr || url->kind != Kind::URL || !IsWellFormedUTF8(url->string) ||
+	if (url == nullptr || url->kind != Kind::URL || !IsWellFormedUTF8(URLStringForObject(url)) ||
 		buffer_capacity < 0) return -1;
-	if (url->string.size() > static_cast<std::size_t>((std::numeric_limits<darling_windows_CFIndex>::max)()))
+	const auto& string = URLStringForObject(url);
+	if (string.size() > static_cast<std::size_t>((std::numeric_limits<darling_windows_CFIndex>::max)()))
 		return -1;
-	const auto required = static_cast<darling_windows_CFIndex>(url->string.size());
+	const auto required = static_cast<darling_windows_CFIndex>(string.size());
 	if (buffer == nullptr) return required;
 	if (buffer_capacity < required) return -1;
-	if (required != 0) std::memcpy(buffer, url->string.data(), static_cast<std::size_t>(required));
+	if (required != 0) std::memcpy(buffer, string.data(), static_cast<std::size_t>(required));
 	return required;
 }
 
@@ -6290,10 +6375,10 @@ extern "C" DARLING_CF_GUEST_ABI darling_windows_CFRange CFURLGetByteRangeForComp
 	darling_windows_CFRange missing{not_found, 0};
 	if (range_including_separators != nullptr) *range_including_separators = missing;
 	const auto* object = As(value);
-	if (object == nullptr || object->kind != Kind::URL || !IsWellFormedUTF8(object->string) ||
-		object->string.size() > static_cast<std::size_t>((std::numeric_limits<darling_windows_CFIndex>::max)()))
+	if (object == nullptr || object->kind != Kind::URL || !IsWellFormedUTF8(URLStringForObject(object)) ||
+		URLStringForObject(object).size() > static_cast<std::size_t>((std::numeric_limits<darling_windows_CFIndex>::max)()))
 		return missing;
-	const auto& url = object->string;
+	const auto& url = URLStringForObject(object);
 	const auto length = url.size();
 	struct Bounds { std::size_t begin; std::size_t end; std::size_t all_begin; std::size_t all_end; };
 	std::optional<Bounds> bounds;
@@ -7874,6 +7959,8 @@ extern "C" std::uintptr_t darling_windows_corefoundation_symbol(const char* name
 		return reinterpret_cast<std::uintptr_t>(&CFURLCanBeDecomposed);
 	if (std::strcmp(name, "CFURLGetString") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFURLGetString);
+	if (std::strcmp(name, "CFURLGetBaseURL") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFURLGetBaseURL);
 	if (std::strcmp(name, "CFURLGetBytes") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFURLGetBytes);
 	if (std::strcmp(name, "CFURLCopyFileSystemPath") == 0)

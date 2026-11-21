@@ -1150,8 +1150,9 @@ Guest-ABI `CFURLCreateWithString`, `CFURLCreateWithBytes`,
 `CFURLCreateFromFileSystemRepresentation` retain their requested allocator.
 `CFURLCreateCopyAppendingPathComponent` is also exported, retains the requested
 allocator, percent-escapes component delimiters, preserves query/fragment
-suffixes, and applies the directory trailing slash. URL base-object identity
-is not retained by the current flattened URL representation.
+suffixes, and applies the directory trailing slash. Relative URL constructors
+retain their base and original string; path transformation copies still
+flatten and drop base identity.
 `CFURLCreateCopyAppendingPathExtension` also retains the requested allocator,
 escapes extension delimiters, and inserts the extension before parameters and
 query/fragment suffixes; empty and directory paths are copied unchanged.
@@ -1163,6 +1164,8 @@ partial write when the destination capacity is insufficient.
 `CFURLGetByteRangeForComponent` maps common URL components and adjacent
 separators to byte ranges in the same representation; malformed or unusual
 authority syntax remains a partial-coverage boundary.
+`CFURLGetBaseURL` returns the retained borrowed base for guest-created relative
+URLs; `CFURLGetString` and the byte/range queries preserve their lexical form.
 Both byte-string constructors accept UTF-8 only. Absolute-byte creation in
 compatibility mode preserves the base URL's final path component for query-,
 parameter-, and fragment-only references; other alternate RFC resolution rules

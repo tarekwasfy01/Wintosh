@@ -882,6 +882,34 @@ extern "C" DARLING_CF_GUEST_ABI darling_windows_CFURLRef CFURLCreateWithFileSyst
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFURLRef
 CFURLCreateFromFileSystemRepresentation(const void* allocator, const std::uint8_t* bytes,
 	darling_windows_CFIndex length, std::uint8_t is_directory);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeID CFURLGetTypeID();
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFURLGetString(
+	darling_windows_CFURLRef value);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFURLCopyFileSystemPath(
+	darling_windows_CFURLRef value, std::int32_t path_style);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFURLCopyPath(
+	darling_windows_CFURLRef value);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFURLCopyLastPathComponent(
+	darling_windows_CFURLRef value);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFURLCopyPathExtension(
+	darling_windows_CFURLRef value);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFURLCopyScheme(
+	darling_windows_CFURLRef value);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFURLCopyResourceSpecifier(
+	darling_windows_CFURLRef value);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFURLCopyHostName(
+	darling_windows_CFURLRef value);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFURLCopyNetLocation(
+	darling_windows_CFURLRef value);
+extern "C" DARLING_CF_GUEST_ABI std::int32_t CFURLGetPortNumber(
+	darling_windows_CFURLRef value);
+extern "C" DARLING_CF_GUEST_ABI std::uint8_t CFURLHasDirectoryPath(
+	darling_windows_CFURLRef value);
+extern "C" DARLING_CF_GUEST_ABI std::uint8_t CFURLGetFileSystemRepresentation(
+	darling_windows_CFURLRef value, std::uint8_t resolve_against_base,
+	std::uint8_t* buffer, darling_windows_CFIndex buffer_capacity);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFURLRef CFURLCopyAbsoluteURL(
+	darling_windows_CFURLRef value);
 extern "C" DARLING_CF_GUEST_ABI const char* CFStringGetCStringPtr(
 	darling_windows_CFStringRef value, std::uint32_t encoding);
 extern "C" DARLING_CF_GUEST_ABI std::uint16_t CFStringGetCharacterAtIndex(

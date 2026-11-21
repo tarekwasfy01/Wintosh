@@ -67,6 +67,8 @@ struct Object {
 	const void* set_allocator = nullptr;
 	Kind kind;
 	std::string string;
+	mutable std::mutex url_string_mutex;
+	mutable const void* url_string_cache = nullptr;
 	std::string bundle_path;
 	mutable const void* bundle_info_dictionary = nullptr;
 	std::vector<const void*> bundle_localized_info_values;
@@ -262,11 +264,15 @@ void ReleaseOwned(Object* object)
 	if (object->object_backing_allocator != nullptr) {
 		auto* backing = AsCFAllocator(object->object_backing_allocator);
 		object->object_backing_allocator = nullptr;
+		auto* cached_url_string = object->kind == Kind::URL
+			? const_cast<Object*>(static_cast<const Object*>(object->url_string_cache)) : nullptr;
+		object->url_string_cache = nullptr;
 		object->~Object();
 		if (backing != nullptr) {
 			CFAllocatorDeallocate(backing, object);
 			ReleaseOwned(backing);
 		} else ::operator delete(object);
+		ReleaseOwned(cached_url_string);
 		return;
 	}
 	if (object->kind == Kind::Allocator && object->allocator_backing_allocator != nullptr) {
@@ -3457,6 +3463,18 @@ extern "C" darling_windows_CFStringRef darling_windows_CFURLGetString(
 	return darling_windows_CFStringCreateWithCString(object->string.c_str());
 }
 
+namespace {
+darling_windows_CFStringRef BorrowURLString(darling_windows_CFURLRef value)
+{
+	auto* object = const_cast<Object*>(static_cast<const Object*>(value));
+	if (object == nullptr || object->kind != Kind::URL) return nullptr;
+	std::lock_guard lock(object->url_string_mutex);
+	if (object->url_string_cache == nullptr)
+		object->url_string_cache = darling_windows_CFStringCreateWithCString(object->string.c_str());
+	return object->url_string_cache;
+}
+}
+
 extern "C" bool darling_windows_CFURLHasDirectoryPath(darling_windows_CFURLRef value)
 {
 	const auto* object = static_cast<const Object*>(value);
@@ -5841,6 +5859,97 @@ CFURLCreateFromFileSystemRepresentation(const void* allocator, const std::uint8_
 	return object;
 }
 
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeID CFURLGetTypeID()
+{
+	return darling_windows_CFURLGetTypeID();
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFURLGetString(
+	darling_windows_CFURLRef value)
+{
+	return BorrowURLString(value);
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFURLCopyFileSystemPath(
+	darling_windows_CFURLRef value, std::int32_t path_style)
+{
+	if (path_style != 0 && path_style != 2) return nullptr;
+	const auto copied = darling_windows_CFURLCopyFileSystemPath(value);
+	auto* object = As(copied);
+	if (object == nullptr || object->kind != Kind::String) return copied;
+	if (path_style == 2)
+		std::replace(object->string.begin(), object->string.end(), '/', '\\');
+	return copied;
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFURLCopyPath(
+	darling_windows_CFURLRef value)
+{
+	return darling_windows_CFURLCopyPath(value);
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFURLCopyLastPathComponent(
+	darling_windows_CFURLRef value)
+{
+	return darling_windows_CFURLCopyLastPathComponent(value);
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFURLCopyPathExtension(
+	darling_windows_CFURLRef value)
+{
+	return darling_windows_CFURLCopyPathExtension(value);
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFURLCopyScheme(
+	darling_windows_CFURLRef value)
+{
+	return darling_windows_CFURLCopyScheme(value);
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFURLCopyResourceSpecifier(
+	darling_windows_CFURLRef value)
+{
+	return darling_windows_CFURLCopyResourceSpecifier(value);
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFURLCopyHostName(
+	darling_windows_CFURLRef value)
+{
+	return darling_windows_CFURLCopyHostName(value);
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFURLCopyNetLocation(
+	darling_windows_CFURLRef value)
+{
+	return darling_windows_CFURLCopyNetLocation(value);
+}
+
+extern "C" DARLING_CF_GUEST_ABI std::int32_t CFURLGetPortNumber(
+	darling_windows_CFURLRef value)
+{
+	return darling_windows_CFURLGetPortNumber(value);
+}
+
+extern "C" DARLING_CF_GUEST_ABI std::uint8_t CFURLHasDirectoryPath(
+	darling_windows_CFURLRef value)
+{
+	return darling_windows_CFURLHasDirectoryPath(value) ? 1 : 0;
+}
+
+extern "C" DARLING_CF_GUEST_ABI std::uint8_t CFURLGetFileSystemRepresentation(
+	darling_windows_CFURLRef value, std::uint8_t resolve_against_base,
+	std::uint8_t* buffer, darling_windows_CFIndex buffer_capacity)
+{
+	return darling_windows_CFURLGetFileSystemRepresentation(value,
+		resolve_against_base != 0, buffer, buffer_capacity) ? 1 : 0;
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFURLRef CFURLCopyAbsoluteURL(
+	darling_windows_CFURLRef value)
+{
+	return darling_windows_CFURLCopyAbsoluteURL(value);
+}
+
 extern "C" DARLING_CF_GUEST_ABI const char* CFStringGetCStringPtr(
 	darling_windows_CFStringRef value, std::uint32_t encoding)
 {
@@ -7004,6 +7113,34 @@ extern "C" std::uintptr_t darling_windows_corefoundation_symbol(const char* name
 		return reinterpret_cast<std::uintptr_t>(&CFURLCreateWithFileSystemPath);
 	if (std::strcmp(name, "CFURLCreateFromFileSystemRepresentation") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFURLCreateFromFileSystemRepresentation);
+	if (std::strcmp(name, "CFURLGetTypeID") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFURLGetTypeID);
+	if (std::strcmp(name, "CFURLGetString") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFURLGetString);
+	if (std::strcmp(name, "CFURLCopyFileSystemPath") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFURLCopyFileSystemPath);
+	if (std::strcmp(name, "CFURLCopyPath") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFURLCopyPath);
+	if (std::strcmp(name, "CFURLCopyLastPathComponent") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFURLCopyLastPathComponent);
+	if (std::strcmp(name, "CFURLCopyPathExtension") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFURLCopyPathExtension);
+	if (std::strcmp(name, "CFURLCopyScheme") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFURLCopyScheme);
+	if (std::strcmp(name, "CFURLCopyResourceSpecifier") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFURLCopyResourceSpecifier);
+	if (std::strcmp(name, "CFURLCopyHostName") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFURLCopyHostName);
+	if (std::strcmp(name, "CFURLCopyNetLocation") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFURLCopyNetLocation);
+	if (std::strcmp(name, "CFURLGetPortNumber") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFURLGetPortNumber);
+	if (std::strcmp(name, "CFURLHasDirectoryPath") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFURLHasDirectoryPath);
+	if (std::strcmp(name, "CFURLGetFileSystemRepresentation") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFURLGetFileSystemRepresentation);
+	if (std::strcmp(name, "CFURLCopyAbsoluteURL") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFURLCopyAbsoluteURL);
 	if (std::strcmp(name, "CFStringGetCStringPtr") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFStringGetCStringPtr);
 	if (std::strcmp(name, "CFStringGetCharacterAtIndex") == 0)

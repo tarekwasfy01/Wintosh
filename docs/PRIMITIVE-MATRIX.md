@@ -1148,7 +1148,9 @@ Simple `/./` segments and a trailing `/.` are also covered.
 Guest-ABI `CFURLCreateWithString`, `CFURLCreateWithFileSystemPath`, and
 `CFURLCreateFromFileSystemRepresentation` constructors now retain their
 requested allocator. POSIX and Windows path styles are accepted; HFS path
-conversion and full filesystem URL escaping remain unsupported.
+conversion and full filesystem URL escaping remain unsupported. The Mach-O
+resolver also exports path, component, scheme, authority, port, directory,
+string, and filesystem-representation queries for CFURL.
 Bracketed IPv6 host and port extraction is covered as well; zone identifiers,
 authority escaping, and complete RFC URL normalization remain open.
 `CFURLCopyNetLocation` is covered for the same simple IPv4/IPv6 authority

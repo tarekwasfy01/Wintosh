@@ -80,9 +80,12 @@ constructors), `CFData`, `CFArray`,
 use the supplied allocator and retain it through object destruction. Guest
 CFURL string, filesystem-path, and filesystem-representation constructors use
 the requested allocator for their URL object blocks. POSIX and Windows path
-styles are supported; HFS path conversion is not. STL-backed payload storage
-and other CF constructors still use the host allocator. Standard allocator
-constants are exported for Mach-O data-symbol resolution.
+styles are supported; HFS path conversion is not. The guest resolver also
+exports common URL type/string/path/scheme/authority/port/directory queries,
+absolute-URL copy, and filesystem representation. `CFURLGetString` returns a
+URL-owned cached string. STL-backed payload storage and other CF constructors
+still use the host allocator. Standard allocator constants are exported for
+Mach-O data-symbol resolution.
 
 The Mach-O host resolver exports a partial C ABI for run-loop control,
 `CFString` creation/copy/mutable construction and read operations, selected

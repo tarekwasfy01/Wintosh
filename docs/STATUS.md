@@ -118,6 +118,9 @@ and `CFURLCreateFromFileSystemRepresentation` now follow the same object
 allocator rule. The guest ABI also resolves common CFURL type, string, path,
 scheme, authority, port, directory, absolute-URL, and filesystem-representation
 queries. `CFURLGetString` caches its borrowed string until URL destruction.
+Query and fragment copies honor `charactersToLeaveEscaped`: null preserves
+percent escapes, while a string selectively preserves escapes for matching
+decoded bytes. Username and password copies are also exported.
 URL path-style conversion is limited to POSIX and Windows styles; HFS paths
 remain unsupported. Source-1 reply memory uses this deallocator path.
 

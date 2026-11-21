@@ -82,6 +82,7 @@ CFURL string, filesystem-path, and filesystem-representation constructors use
 the requested allocator for their URL object blocks. POSIX and Windows path
 styles are supported; HFS path conversion is not. The guest resolver also
 exports common URL type/string/path/scheme/authority/port/directory queries,
+query/fragment copies with `charactersToLeaveEscaped`, username/password,
 absolute-URL copy, and filesystem representation. `CFURLGetString` returns a
 URL-owned cached string. STL-backed payload storage and other CF constructors
 still use the host allocator. Standard allocator constants are exported for

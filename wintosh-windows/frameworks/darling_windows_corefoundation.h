@@ -901,6 +901,14 @@ extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFURLCopyHostName(
 	darling_windows_CFURLRef value);
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFURLCopyNetLocation(
 	darling_windows_CFURLRef value);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFURLCopyQueryString(
+	darling_windows_CFURLRef value, darling_windows_CFStringRef characters_to_leave_escaped);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFURLCopyFragment(
+	darling_windows_CFURLRef value, darling_windows_CFStringRef characters_to_leave_escaped);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFURLCopyUserName(
+	darling_windows_CFURLRef value);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFURLCopyPassword(
+	darling_windows_CFURLRef value);
 extern "C" DARLING_CF_GUEST_ABI std::int32_t CFURLGetPortNumber(
 	darling_windows_CFURLRef value);
 extern "C" DARLING_CF_GUEST_ABI std::uint8_t CFURLHasDirectoryPath(

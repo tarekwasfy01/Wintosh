@@ -313,8 +313,10 @@ Guest `CFString` (CString/characters and copy/mutable-copy/mutable
 constructors), `CFData`, `CFArray`, `CFDictionary`,
 `CFSet`, `CFNumber`, `CFDate`, `CFMachPort`, and the guest CFURL string/path
 constructors also retain and use their requested allocator for object blocks.
-The Mach-O resolver exposes CFURL type/string/path/scheme/authority/port and
-filesystem-representation queries; `CFURLGetString` is cached for URL lifetime.
+The Mach-O resolver exposes CFURL type/string/path/scheme/authority/port,
+query/fragment, username/password, directory, and filesystem-representation
+queries; `CFURLGetString` is cached for URL lifetime and query/fragment copies
+honor `charactersToLeaveEscaped`.
 Their STL-backed payload storage and other CF constructors still use the host
 allocator. HFS-style CFURL paths remain unsupported. The default,
 system-default, malloc, malloc-zone, null, and use-context constants are

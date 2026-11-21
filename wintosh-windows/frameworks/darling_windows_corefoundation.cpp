@@ -639,6 +639,33 @@ std::string PercentDecode(const std::string& input)
 	}
 	return output;
 }
+std::string PercentDecodeLeaving(const std::string& input, const std::string* leave_escaped)
+{
+	if (leave_escaped == nullptr) return input;
+	std::string output;
+	for (std::size_t index = 0; index < input.size(); ++index) {
+		if (input[index] == '%' && index + 2 < input.size()) {
+			const auto hex = [](char value) -> int {
+				if (value >= '0' && value <= '9') return value - '0';
+				if (value >= 'a' && value <= 'f') return value - 'a' + 10;
+				if (value >= 'A' && value <= 'F') return value - 'A' + 10;
+				return -1;
+			};
+			const auto high = hex(input[index + 1]);
+			const auto low = hex(input[index + 2]);
+			if (high >= 0 && low >= 0) {
+				const auto decoded = static_cast<char>((high << 4) | low);
+				if (leave_escaped->find(decoded) != std::string::npos)
+					output.append(input, index, 3);
+				else output.push_back(decoded);
+				index += 2;
+				continue;
+			}
+		}
+		output.push_back(input[index]);
+	}
+	return output;
+}
 std::string DecodeUTF16BE(const unsigned char* bytes, std::size_t units)
 {
 	std::string output;
@@ -5924,6 +5951,56 @@ extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFURLCopyNetLocation
 	return darling_windows_CFURLCopyNetLocation(value);
 }
 
+namespace {
+using DarlingCFURLStringCopy = darling_windows_CFStringRef (*)(darling_windows_CFURLRef);
+darling_windows_CFStringRef CopyURLComponentWithEscapeSet(
+	darling_windows_CFURLRef value, darling_windows_CFStringRef characters_to_leave_escaped,
+	DarlingCFURLStringCopy copy)
+{
+	const auto result = copy(value);
+	auto* copied = As(result);
+	if (copied == nullptr || copied->kind != Kind::String) return result;
+	const std::string* leave_escaped = nullptr;
+	if (characters_to_leave_escaped != nullptr) {
+		const auto* leave = As(characters_to_leave_escaped);
+		if (leave == nullptr || leave->kind != Kind::String) {
+			ReleaseOwned(copied);
+			return nullptr;
+		}
+		leave_escaped = &leave->string;
+	}
+	try { copied->string = PercentDecodeLeaving(copied->string, leave_escaped); }
+	catch (...) { ReleaseOwned(copied); return nullptr; }
+	return copied;
+}
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFURLCopyQueryString(
+	darling_windows_CFURLRef value, darling_windows_CFStringRef characters_to_leave_escaped)
+{
+	return CopyURLComponentWithEscapeSet(value, characters_to_leave_escaped,
+		&darling_windows_CFURLCopyQueryString);
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFURLCopyFragment(
+	darling_windows_CFURLRef value, darling_windows_CFStringRef characters_to_leave_escaped)
+{
+	return CopyURLComponentWithEscapeSet(value, characters_to_leave_escaped,
+		&darling_windows_CFURLCopyFragment);
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFURLCopyUserName(
+	darling_windows_CFURLRef value)
+{
+	return darling_windows_CFURLCopyUserName(value);
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFURLCopyPassword(
+	darling_windows_CFURLRef value)
+{
+	return darling_windows_CFURLCopyPassword(value);
+}
+
 extern "C" DARLING_CF_GUEST_ABI std::int32_t CFURLGetPortNumber(
 	darling_windows_CFURLRef value)
 {
@@ -7133,6 +7210,14 @@ extern "C" std::uintptr_t darling_windows_corefoundation_symbol(const char* name
 		return reinterpret_cast<std::uintptr_t>(&CFURLCopyHostName);
 	if (std::strcmp(name, "CFURLCopyNetLocation") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFURLCopyNetLocation);
+	if (std::strcmp(name, "CFURLCopyQueryString") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFURLCopyQueryString);
+	if (std::strcmp(name, "CFURLCopyFragment") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFURLCopyFragment);
+	if (std::strcmp(name, "CFURLCopyUserName") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFURLCopyUserName);
+	if (std::strcmp(name, "CFURLCopyPassword") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFURLCopyPassword);
 	if (std::strcmp(name, "CFURLGetPortNumber") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFURLGetPortNumber);
 	if (std::strcmp(name, "CFURLHasDirectoryPath") == 0)

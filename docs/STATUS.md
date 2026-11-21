@@ -121,6 +121,9 @@ queries. `CFURLGetString` caches its borrowed string until URL destruction.
 Query and fragment copies honor `charactersToLeaveEscaped`: null preserves
 percent escapes, while a string selectively preserves escapes for matching
 decoded bytes. Username and password copies are also exported.
+Hierarchical URL path extraction now separates the authority and resource
+suffix before returning the path; strict-path queries report whether that path
+is absolute. Parameter strings are extracted from the final path segment.
 `CFURLCreateStringByReplacingPercentEscapes` uses the requested allocator,
 returns a retained input when no escape is replaced, and rejects replacement
 results that are not well-formed UTF-8. Its adding-escapes counterpart now

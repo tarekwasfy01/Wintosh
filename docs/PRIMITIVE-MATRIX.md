@@ -1150,9 +1150,10 @@ Guest-ABI `CFURLCreateWithString`, `CFURLCreateWithFileSystemPath`, and
 requested allocator. POSIX and Windows path styles are accepted; HFS path
 conversion and full filesystem URL escaping remain unsupported. The Mach-O
 resolver also exports path, component, scheme, authority, port, directory,
-string, and filesystem-representation queries for CFURL, including query and
-fragment extraction with selective percent-escape preservation, plus username
-and password extraction. `CFURLCreateStringByReplacingPercentEscapes` supports
+string, strict-path, parameter, and filesystem-representation queries for
+CFURL, including query and fragment extraction with selective percent-escape
+preservation, plus username/password extraction. Hierarchical path extraction
+omits the URL authority. `CFURLCreateStringByReplacingPercentEscapes` supports
 UTF-8 decoding, selective escape preservation, and allocator-aware creation;
 the explicit-encoding replacement wrapper and adding-escapes counterpart
 support UTF-8 only, with the latter applying RFC 2396 escaping.

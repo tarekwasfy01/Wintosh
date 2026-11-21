@@ -526,6 +526,8 @@ extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyFileSystemPath(
 	darling_windows_CFURLRef value);
 extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyPath(
 	darling_windows_CFURLRef value);
+extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyParameterString(
+	darling_windows_CFURLRef value);
 // Wintosh additive bridge: returns the URL path after percent decoding.
 // Malformed escape sequences remain unchanged.
 extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyPathDecoded(
@@ -904,6 +906,10 @@ extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFURLCopyFileSystemP
 	darling_windows_CFURLRef value, std::int32_t path_style);
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFURLCopyPath(
 	darling_windows_CFURLRef value);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFURLCopyStrictPath(
+	darling_windows_CFURLRef value, std::uint8_t* is_absolute);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFURLCopyParameterString(
+	darling_windows_CFURLRef value, darling_windows_CFStringRef characters_to_leave_escaped);
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFURLCopyLastPathComponent(
 	darling_windows_CFURLRef value);
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFURLCopyPathExtension(

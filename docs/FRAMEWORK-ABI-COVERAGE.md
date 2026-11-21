@@ -83,7 +83,9 @@ the requested allocator for their URL object blocks. POSIX and Windows path
 styles are supported; HFS path conversion is not. The guest resolver also
 exports common URL type/string/path/scheme/authority/port/directory queries,
 query/fragment copies with `charactersToLeaveEscaped`, username/password,
-absolute-URL copy, and filesystem representation. The percent-escape
+parameter-string and strict-path queries, absolute-URL copy, and filesystem
+representation. Hierarchical paths omit their authority and strict paths
+report whether they are absolute. The percent-escape
 replacement/addition string constructors retain their source if unchanged and
 use the requested allocator for changed output. The explicit-encoding
 replacement wrapper accepts UTF-8 only; the addition path also supports UTF-8

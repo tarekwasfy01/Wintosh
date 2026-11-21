@@ -731,6 +731,45 @@ std::string PercentEncodeURLString(const std::string& input,
 	}
 	return output;
 }
+struct URLPathParts final {
+	std::size_t path_start{};
+	std::size_t path_end{};
+	std::size_t parameter_start{std::string::npos};
+	std::size_t resource_end{};
+	bool absolute{};
+};
+URLPathParts ParseURLPathParts(const std::string& url)
+{
+	URLPathParts parts{};
+	parts.resource_end = url.find_first_of("?#");
+	if (parts.resource_end == std::string::npos) parts.resource_end = url.size();
+	parts.path_end = parts.resource_end;
+	const auto colon = url.find(':');
+	const auto first_separator = url.find_first_of("/?#");
+	const bool windows_drive = colon == 1 && url.size() > 2 &&
+		((url[0] >= 'A' && url[0] <= 'Z') || (url[0] >= 'a' && url[0] <= 'z')) &&
+		(url[2] == '/' || url[2] == '\\');
+	if (colon != std::string::npos && !windows_drive &&
+		(first_separator == std::string::npos || colon < first_separator)) {
+		parts.path_start = colon + 1;
+		if (url.compare(parts.path_start, 2, "//") == 0) {
+			const auto authority_end = url.find_first_of("/?#", parts.path_start + 2);
+			if (authority_end == std::string::npos || url[authority_end] != '/')
+				parts.path_start = parts.resource_end;
+			else parts.path_start = authority_end;
+		}
+	}
+	parts.absolute = parts.path_start < parts.path_end && url[parts.path_start] == '/';
+	if (windows_drive) parts.absolute = true;
+	const auto slash = url.find_last_of("/\\", parts.path_end == 0 ? 0 : parts.path_end - 1);
+	const auto semicolon = url.rfind(';', parts.path_end == 0 ? 0 : parts.path_end - 1);
+	if (semicolon != std::string::npos && semicolon >= parts.path_start &&
+		(slash == std::string::npos || semicolon > slash)) {
+		parts.parameter_start = semicolon + 1;
+		parts.path_end = semicolon;
+	}
+	return parts;
+}
 std::string DecodeUTF16BE(const unsigned char* bytes, std::size_t units)
 {
 	std::string output;
@@ -3318,9 +3357,20 @@ extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyPath(
 {
 	const auto* object = static_cast<const Object*>(value);
 	if (object == nullptr || object->kind != Kind::URL) return nullptr;
-	const auto query = object->string.find_first_of("?#");
-	const auto path = query == std::string::npos ? object->string : object->string.substr(0, query);
-	return darling_windows_CFStringCreateWithCString(path.c_str());
+	const auto parts = ParseURLPathParts(object->string);
+	return darling_windows_CFStringCreateWithCString(
+		object->string.substr(parts.path_start, parts.path_end - parts.path_start).c_str());
+}
+
+extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyParameterString(
+	darling_windows_CFURLRef value)
+{
+	const auto* object = static_cast<const Object*>(value);
+	if (object == nullptr || object->kind != Kind::URL) return nullptr;
+	const auto parts = ParseURLPathParts(object->string);
+	if (parts.parameter_start == std::string::npos) return nullptr;
+	return darling_windows_CFStringCreateWithCString(object->string.substr(
+		parts.parameter_start, parts.resource_end - parts.parameter_start).c_str());
 }
 
 extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyPathDecoded(
@@ -3328,8 +3378,8 @@ extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyPathDecoded(
 {
 	const auto* object = static_cast<const Object*>(value);
 	if (object == nullptr || object->kind != Kind::URL) return nullptr;
-	const auto query = object->string.find_first_of("?#");
-	const auto path = query == std::string::npos ? object->string : object->string.substr(0, query);
+	const auto parts = ParseURLPathParts(object->string);
+	const auto path = object->string.substr(parts.path_start, parts.path_end - parts.path_start);
 	const auto decoded = PercentDecode(path);
 	return darling_windows_CFStringCreateWithCString(decoded.c_str());
 }
@@ -3492,11 +3542,13 @@ extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyLastPathComponen
 {
 	const auto* object = static_cast<const Object*>(value);
 	if (object == nullptr || object->kind != Kind::URL) return nullptr;
-	const auto end = object->string.find_last_not_of("/\\");
+	const auto parts = ParseURLPathParts(object->string);
+	const auto path = object->string.substr(parts.path_start, parts.path_end - parts.path_start);
+	const auto end = path.find_last_not_of("/\\");
 	if (end == std::string::npos) return darling_windows_CFStringCreateWithCString("");
-	const auto separator = object->string.find_last_of("/\\", end);
+	const auto separator = path.find_last_of("/\\", end);
 	const auto start = separator == std::string::npos ? 0 : separator + 1;
-	return darling_windows_CFStringCreateWithCString(object->string.substr(start, end - start + 1).c_str());
+	return darling_windows_CFStringCreateWithCString(path.substr(start, end - start + 1).c_str());
 }
 
 extern "C" darling_windows_CFURLRef darling_windows_CFURLCreateCopyDeletingLastPathComponent(
@@ -3516,13 +3568,15 @@ extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyPathExtension(
 {
 	const auto* object = static_cast<const Object*>(value);
 	if (object == nullptr || object->kind != Kind::URL) return nullptr;
-	const auto end = object->string.find_last_not_of("/\\");
+	const auto parts = ParseURLPathParts(object->string);
+	const auto path = object->string.substr(parts.path_start, parts.path_end - parts.path_start);
+	const auto end = path.find_last_not_of("/\\");
 	if (end == std::string::npos) return darling_windows_CFStringCreateWithCString("");
-	const auto separator = object->string.find_last_of("/\\", end);
-	const auto dot = object->string.find_last_of('.', end);
+	const auto separator = path.find_last_of("/\\", end);
+	const auto dot = path.find_last_of('.', end);
 	if (dot == std::string::npos || dot <= (separator == std::string::npos ? 0 : separator + 1) || dot == end)
 		return darling_windows_CFStringCreateWithCString("");
-	return darling_windows_CFStringCreateWithCString(object->string.substr(dot + 1, end - dot).c_str());
+	return darling_windows_CFStringCreateWithCString(path.substr(dot + 1, end - dot).c_str());
 }
 
 extern "C" darling_windows_CFURLRef darling_windows_CFURLCreateCopyDeletingPathExtension(
@@ -6056,6 +6110,20 @@ extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFURLCopyPath(
 	return darling_windows_CFURLCopyPath(value);
 }
 
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFURLCopyStrictPath(
+	darling_windows_CFURLRef value, std::uint8_t* is_absolute)
+{
+	const auto* url = As(value);
+	if (url == nullptr || url->kind != Kind::URL) return nullptr;
+	const auto parts = ParseURLPathParts(url->string);
+	const auto copied = darling_windows_CFURLCopyPath(value);
+	auto* path = As(copied);
+	if (path == nullptr || path->kind != Kind::String) return copied;
+	if (!path->string.empty() && path->string.front() == '/') path->string.erase(0, 1);
+	if (is_absolute != nullptr) *is_absolute = parts.absolute ? 1 : 0;
+	return copied;
+}
+
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFURLCopyLastPathComponent(
 	darling_windows_CFURLRef value)
 {
@@ -6114,6 +6182,13 @@ darling_windows_CFStringRef CopyURLComponentWithEscapeSet(
 	catch (...) { ReleaseOwned(copied); return nullptr; }
 	return copied;
 }
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFURLCopyParameterString(
+	darling_windows_CFURLRef value, darling_windows_CFStringRef characters_to_leave_escaped)
+{
+	return CopyURLComponentWithEscapeSet(value, characters_to_leave_escaped,
+		&darling_windows_CFURLCopyParameterString);
 }
 
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFURLCopyQueryString(
@@ -7345,6 +7420,10 @@ extern "C" std::uintptr_t darling_windows_corefoundation_symbol(const char* name
 		return reinterpret_cast<std::uintptr_t>(&CFURLCopyFileSystemPath);
 	if (std::strcmp(name, "CFURLCopyPath") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFURLCopyPath);
+	if (std::strcmp(name, "CFURLCopyStrictPath") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFURLCopyStrictPath);
+	if (std::strcmp(name, "CFURLCopyParameterString") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFURLCopyParameterString);
 	if (std::strcmp(name, "CFURLCopyLastPathComponent") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFURLCopyLastPathComponent);
 	if (std::strcmp(name, "CFURLCopyPathExtension") == 0)

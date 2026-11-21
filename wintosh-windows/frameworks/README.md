@@ -313,8 +313,8 @@ Guest `CFString` (CString/characters and copy/mutable-copy/mutable
 constructors), `CFData`, `CFArray`, `CFDictionary`,
 `CFSet`, `CFNumber`, `CFDate`, `CFMachPort`, and the guest CFURL string/path
 constructors also retain and use their requested allocator for object blocks.
-The Mach-O resolver exposes CFURL type/string/path/scheme/authority/port,
-query/fragment, username/password, directory, and filesystem-representation
+The Mach-O resolver exposes CFURL type/string/path/strict-path/parameter,
+scheme/authority/port, query/fragment, username/password, directory, and filesystem-representation
 queries; `CFURLGetString` is cached for URL lifetime and query/fragment copies
 honor `charactersToLeaveEscaped`. Percent-escape replacement creates a string
 with the requested allocator when decoding changes the value, otherwise it

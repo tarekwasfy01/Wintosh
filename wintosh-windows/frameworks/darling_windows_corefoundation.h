@@ -557,6 +557,9 @@ extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyPassword(
 extern "C" int darling_windows_CFURLGetPortNumber(darling_windows_CFURLRef value);
 extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyLastPathComponent(
 	darling_windows_CFURLRef value);
+extern "C" darling_windows_CFURLRef darling_windows_CFURLCreateCopyAppendingPathComponent(
+	const void* allocator, darling_windows_CFURLRef value,
+	darling_windows_CFStringRef component, bool is_directory);
 extern "C" darling_windows_CFURLRef darling_windows_CFURLCreateCopyDeletingLastPathComponent(
 	darling_windows_CFURLRef value);
 extern "C" darling_windows_CFStringRef darling_windows_CFURLCopyPathExtension(
@@ -929,6 +932,9 @@ extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFURLCopyParameterSt
 	darling_windows_CFURLRef value, darling_windows_CFStringRef characters_to_leave_escaped);
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFURLCopyLastPathComponent(
 	darling_windows_CFURLRef value);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFURLRef CFURLCreateCopyAppendingPathComponent(
+	const void* allocator, darling_windows_CFURLRef value,
+	darling_windows_CFStringRef component, std::uint8_t is_directory);
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFURLCopyPathExtension(
 	darling_windows_CFURLRef value);
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFURLCopyScheme(

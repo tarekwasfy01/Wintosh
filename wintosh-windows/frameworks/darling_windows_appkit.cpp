@@ -9244,13 +9244,18 @@ std::string NSURLFileStringFromPath(std::string_view path)
 	return url;
 }
 
-id NSURLInitWithFileSystemPath(id self, SEL, id path)
+id NSURLInitWithFileSystemPath(id self, SEL, id path, bool is_directory)
 {
 	if (self == nullptr || path == nullptr) return nullptr;
 	const char* utf8 = NSStringUTF8String(path, nullptr);
 	if (utf8 == nullptr) return nullptr;
 	try {
-		const std::string file_url = NSURLFileStringFromPath(utf8);
+		std::string filesystem_path(utf8);
+		if (is_directory && !filesystem_path.empty() &&
+			filesystem_path.back() != '/' && filesystem_path.back() != '\\')
+			filesystem_path.push_back(filesystem_path.find('\\') != std::string::npos ?
+				'\\' : '/');
+		const std::string file_url = NSURLFileStringFromPath(filesystem_path);
 		id url_string = NSStringStringWithUTF8String(objc_getClass("NSString"),
 			nullptr, file_url.c_str());
 		if (url_string == nullptr) return nullptr;
@@ -9267,6 +9272,11 @@ id NSURLInitWithFileSystemPath(id self, SEL, id path)
 	} catch (...) {
 		return nullptr;
 	}
+}
+
+id NSURLInitWithFileSystemPath(id self, SEL selector, id path)
+{
+	return NSURLInitWithFileSystemPath(self, selector, path, false);
 }
 
 id NSURLCreateFileURL(Class cls, id path)
@@ -9296,6 +9306,18 @@ id NSURLCreateFileURLFromWidePath(std::wstring_view path)
 id NSURLFileURLWithPath(Class cls, SEL, id path)
 {
 	return NSURLCreateFileURL(cls, path);
+}
+
+id NSURLFileURLWithPathAndDirectory(Class cls, SEL, id path, bool is_directory)
+{
+	if (cls == nullptr || path == nullptr) return nullptr;
+	id object = class_createInstance(cls, 0);
+	if (object == nullptr) return nullptr;
+	if (NSURLInitWithFileSystemPath(object, nullptr, path, is_directory) == nullptr) {
+		objc_release(object);
+		return nullptr;
+	}
+	return objc_autorelease(object);
 }
 
 id NSURLPath(id self, SEL)
@@ -9466,7 +9488,7 @@ bool NSURLCopyWidePath(id self, std::wstring& path)
 	return utf8 != nullptr;
 }
 
-id NSURLByAppendingPathComponent(id self, SEL, id component)
+id NSURLByAppendingPathComponent(id self, SEL, id component, bool is_directory)
 {
 	auto url = NSURLCopyCFURL(self);
 	auto component_string = NSURLCreateCFString(component);
@@ -9476,13 +9498,18 @@ id NSURLByAppendingPathComponent(id self, SEL, id component)
 		return nullptr;
 	}
 	auto copy = darling_windows_CFURLCreateCopyAppendingPathComponent(nullptr,
-		url, component_string, false);
+		url, component_string, is_directory);
 	darling_windows_CFRelease(component_string);
 	darling_windows_CFRelease(url);
 	if (copy == nullptr) return nullptr;
 	id result = NSURLCreateWithCFURL(objc_getClass("NSURL"), copy);
 	darling_windows_CFRelease(copy);
 	return result;
+}
+
+id NSURLByAppendingPathComponent(id self, SEL selector, id component)
+{
+	return NSURLByAppendingPathComponent(self, selector, component, false);
 }
 
 id NSURLByDeletingLastPathComponent(id self, SEL)
@@ -19785,7 +19812,11 @@ void RegisterAppKitClasses()
 			reinterpret_cast<IMP>(static_cast<id (*)(id, SEL, id, id)>(
 				&NSURLInitWithString)), "@@:@@");
 		class_addMethod(url, sel_registerName("initFileURLWithPath:"),
-			reinterpret_cast<IMP>(&NSURLInitWithFileSystemPath), "@@:@");
+			reinterpret_cast<IMP>(static_cast<id (*)(id, SEL, id)>(
+				&NSURLInitWithFileSystemPath)), "@@:@");
+		class_addMethod(url, sel_registerName("initFileURLWithPath:isDirectory:"),
+			reinterpret_cast<IMP>(static_cast<id (*)(id, SEL, id, bool)>(
+				&NSURLInitWithFileSystemPath)), "@@:@B");
 		class_addMethod(url, sel_registerName("path"),
 			reinterpret_cast<IMP>(&NSURLPath), "@@:");
 		class_addMethod(url, sel_registerName("relativeString"),
@@ -19799,7 +19830,12 @@ void RegisterAppKitClasses()
 		class_addMethod(url, sel_registerName("isFileURL"),
 			reinterpret_cast<IMP>(&NSURLIsFileURL), "B@:");
 		class_addMethod(url, sel_registerName("URLByAppendingPathComponent:"),
-			reinterpret_cast<IMP>(&NSURLByAppendingPathComponent), "@@:@");
+			reinterpret_cast<IMP>(static_cast<id (*)(id, SEL, id)>(
+				&NSURLByAppendingPathComponent)), "@@:@");
+		class_addMethod(url,
+			sel_registerName("URLByAppendingPathComponent:isDirectory:"),
+			reinterpret_cast<IMP>(static_cast<id (*)(id, SEL, id, bool)>(
+				&NSURLByAppendingPathComponent)), "@@:@B");
 		class_addMethod(url, sel_registerName("URLByDeletingLastPathComponent"),
 			reinterpret_cast<IMP>(&NSURLByDeletingLastPathComponent), "@@:");
 		class_addMethod(url, sel_registerName("lastPathComponent"),
@@ -19812,6 +19848,8 @@ void RegisterAppKitClasses()
 			reinterpret_cast<IMP>(&NSURLStandardizedFileURL), "@@:");
 		class_addClassMethod(url, sel_registerName("fileURLWithPath:"),
 			reinterpret_cast<IMP>(&NSURLFileURLWithPath), "@@:@");
+		class_addClassMethod(url, sel_registerName("fileURLWithPath:isDirectory:"),
+			reinterpret_cast<IMP>(&NSURLFileURLWithPathAndDirectory), "@@:@B");
 		class_addClassMethod(url, sel_registerName("URLWithString:"),
 			reinterpret_cast<IMP>(&NSURLWithString), "@@:@");
 		class_addClassMethod(url, sel_registerName("URLWithString:relativeToURL:"),

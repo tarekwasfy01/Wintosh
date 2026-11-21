@@ -53,7 +53,8 @@ The CI packaging workflow is [`.github/workflows/wintosh-release.yml`](.github/w
 The current Foundation URL slice connects `NSURL` to the Windows CoreFoundation
 URL objects. It supports file URLs, string and relative-to-base construction,
 relative and absolute URL strings, base URLs, and common path-component and
-extension copies. The resolver and framework behavior remain partial and have
+extension copies, including directory-aware file URL and path-component
+variants. The resolver and framework behavior remain partial and have
 not yet been demonstrated with a real macOS guest application; see the
 [implementation status](docs/STATUS.md).
 

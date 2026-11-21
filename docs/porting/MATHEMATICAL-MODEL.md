@@ -523,8 +523,11 @@ remaining mode/loop tokens become no-ops. This models version-0 manual
 signaling. Version-1 sources use `getPort` to poll the registered Mach port,
 receive one ready message, and call `perform` in source order. The polling
 bound is `Δt ≤ 10 ms` while an active-mode version-1 source is registered;
-reply messages returned by `perform`, port/source uniqueness, and a native
-multi-port wait set are not implemented. References: [Apple CFRunLoopSource](https://developer.apple.com/documentation/corefoundation/cfrunloopsource),
+reply messages returned by `perform` are sent through the Mach message ABI;
+default-allocator replies are released afterward, while custom-allocator
+reply deallocation and a native multi-port wait set remain unsupported.
+The source/port registry enforces one source per port for each live source.
+References: [Apple CFRunLoopSource](https://developer.apple.com/documentation/corefoundation/cfrunloopsource),
 [CFRunLoopSourceContext1.getPort](https://developer.apple.com/documentation/corefoundation/cfrunloopsourcecontext1/getport),
 [source context](https://developer.apple.com/documentation/corefoundation/cfrunloopsourcecontext),
 [CFRunLoop mode contract](https://developer.apple.com/documentation/corefoundation/cfrunloop),

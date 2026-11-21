@@ -298,8 +298,10 @@ add/remove/contains by mode, signal delivery, and invalidation. Signaling queues
 the source's ordered perform callback on each associated loop; the first
 eligible loop consumes the signal. Version-1 sources query their Mach port and
 poll it in 10 ms slices while active; one received message is passed to the
-version-1 perform callback. Returned reply messages, unique port/source
-enforcement, and a native multi-port wait set remain unsupported. CF timers
+version-1 perform callback. Returned replies are sent through the Mach ABI;
+default-allocator replies are released, and each live source reserves its port.
+Custom-allocator reply deallocation and a native multi-port wait set remain
+unsupported. CF timers
 and observers, native Windows input-source registration, recursive activations, selector cancellation, and
 arbitrary-mode `NSTimer` scheduling remain outside this subset. CoreFoundation
 timers can be created, registered by mode, queried, rescheduled, invalidated,

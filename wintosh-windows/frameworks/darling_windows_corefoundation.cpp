@@ -4,6 +4,7 @@
 #include "darling_windows_appkit.h"
 #include "../abi/darling_windows_objc.h"
 #include "../abi/darling_windows_mach.h"
+#include "../platform/darling_windows_stdio.h"
 
 #include <windows.h>
 
@@ -84,6 +85,7 @@ struct Object {
 	const void* run_loop_source_info = nullptr;
 	const void* run_loop_source_allocator = nullptr;
 	darling_windows_CFIndex run_loop_source_order = 0;
+	darling_mach_port_name_t run_loop_source_port = 0;
 	bool run_loop_source_valid = false;
 	bool run_loop_source_is_v1 = false;
 	bool run_loop_source_signaled = false;
@@ -151,6 +153,8 @@ struct Object {
 	darling_windows_CFOpaqueDestroyCallback opaque_destroy = nullptr;
 	~Object();
 };
+std::mutex run_loop_source1_port_registry_mutex;
+std::unordered_map<darling_mach_port_name_t, Object*> run_loop_source1_port_registry;
 Object* As(const void* value) { return const_cast<Object*>(static_cast<const Object*>(value)); }
 std::mutex bundle_state_mutex;
 std::string main_executable_path;
@@ -235,6 +239,12 @@ void ReleaseOwned(Object* object)
 }
 Object::~Object()
 {
+	if (kind == Kind::RunLoopSource && run_loop_source_port != 0) {
+		std::lock_guard registry_lock(run_loop_source1_port_registry_mutex);
+		const auto found = run_loop_source1_port_registry.find(run_loop_source_port);
+		if (found != run_loop_source1_port_registry.end() && found->second == this)
+			run_loop_source1_port_registry.erase(found);
+	}
 	if (kind == Kind::RunLoopSource && run_loop_source_info != nullptr) {
 		const auto release = run_loop_source_is_v1 ? run_loop_source_context1.release :
 			run_loop_source_context.release;
@@ -3681,6 +3691,7 @@ std::vector<RunLoopMachMessage> CollectRunLoopMachMessages(
 		DarlingCFRunLoopSource1Perform perform = nullptr;
 		void* info = nullptr;
 		const void* allocator = nullptr;
+		darling_mach_port_name_t registered_port = 0;
 		{
 			std::lock_guard source_lock(source->run_loop_source_mutex);
 			if (source->run_loop_source_valid && source->run_loop_source_is_v1) {
@@ -3688,11 +3699,12 @@ std::vector<RunLoopMachMessage> CollectRunLoopMachMessages(
 				perform = source->run_loop_source_context1.perform;
 				info = const_cast<void*>(source->run_loop_source_info);
 				allocator = source->run_loop_source_allocator;
+				registered_port = source->run_loop_source_port;
 			}
 		}
 		if (get_port == nullptr || perform == nullptr) { ReleaseOwned(source); continue; }
 		const auto port = get_port(info);
-		if (port == 0) { ReleaseOwned(source); continue; }
+		if (port == 0 || port != registered_port) { ReleaseOwned(source); continue; }
 		std::uint32_t sequence = 0, message_size = 0, trailer_size = 0;
 		darling_mach_msg_id_t message_id = 0;
 		const auto peek = darling_windows_mach_port_peek(darling_windows_mach_task_self(),
@@ -3872,10 +3884,17 @@ extern "C" int darling_windows_CFRunLoopRunInModeForLoop(
 						pending.source->run_loop_source_is_v1;
 				}
 				if (valid) {
-					try { (void)pending.perform(pending.bytes.data(),
+					try {
+						auto* reply = static_cast<darling_mach_msg_header*>(pending.perform(pending.bytes.data(),
 						static_cast<darling_windows_CFIndex>(pending.bytes.size()),
-						pending.allocator, pending.info); }
-					catch (...) { /* Guest callbacks must not unwind through CoreFoundation. */ }
+						pending.allocator, pending.info));
+						if (reply != nullptr) {
+							if (reply->msgh_size >= sizeof(darling_mach_msg_header))
+								(void)darling_windows_mach_msg(reply, darling_mach_send_msg,
+									reply->msgh_size, 0, 0, 0, 0);
+							if (pending.allocator == nullptr) darling_windows_free(reply);
+						}
+					} catch (...) { /* Guest callbacks must not unwind through CoreFoundation. */ }
 				}
 				ReleaseOwned(pending.source);
 			}
@@ -4154,7 +4173,19 @@ bool AddRunLoopSourceMode(void* loop, const std::shared_ptr<RunLoopState>& state
 			get_port = source->run_loop_source_context1.get_port;
 			info = const_cast<void*>(source->run_loop_source_info);
 		}
-		if (get_port == nullptr || get_port(info) == 0) return false;
+		if (get_port == nullptr) return false;
+		const auto port = get_port(info);
+		if (port == 0) return false;
+		std::lock_guard registry_lock(run_loop_source1_port_registry_mutex);
+		const auto owner = run_loop_source1_port_registry.find(port);
+		if (owner != run_loop_source1_port_registry.end() && owner->second != source)
+			return false;
+		std::lock_guard source_lock(source->run_loop_source_mutex);
+		if (source->run_loop_source_port != 0 && source->run_loop_source_port != port)
+			return false;
+		try { run_loop_source1_port_registry.emplace(port, source); }
+		catch (...) { return false; }
+		source->run_loop_source_port = port;
 	}
 	{
 		std::lock_guard source_lock(source->run_loop_source_mutex);

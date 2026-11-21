@@ -61,8 +61,10 @@ Version-0 `CFRunLoopSource` objects support create/context/order queries, mode
 registration/removal, signal delivery, validity, and invalidation. Version-1
 sources can register a Mach port through `getPort`; the active loop polls it on
 10 ms slices, receives one available message, and invokes `perform` in source
-order. Reply messages returned from `perform`, one-to-one port/source checks,
-and a native multi-port wait set remain open. Guest
+order. Returned replies are sent through the Mach message ABI; default
+allocator replies are released, while custom-allocator deallocation and a
+native multi-port wait set remain open. One source per registered port is
+enforced. Guest
 `CFRunLoopTimer` creation, context/order/interval/fire-date queries, repeat
 semantics, next-fire-date mutation, mode registration/removal, and invalidation
 are also wired into the run loop. Due timers fire on the active loop thread;

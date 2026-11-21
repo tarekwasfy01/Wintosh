@@ -55,8 +55,10 @@ Invalidate für sechs implementierte Loop-Phasen. Die Gast-ABI bildet
 Antwortnachrichten für Mach-Quellen, weitere Aktivitätsphasen und Gast-Fixture-Verifikation
 Version-1-Quellen können über `getPort` einen Mach-Port registrieren; der
 aktive Modus fragt Nachrichten in 10-ms-Intervallen ab und ruft `perform` auf.
-Antwortnachrichten, Port-/Quellen-Eindeutigkeit und ein nativer Multi-Port-Wait
-bleiben offen. Run-Loop-Handles teilen das CF-Objektlayout und sind immortal;
+Antwortnachrichten werden über die Mach-Send-ABI zurückgesendet; für den
+Default-Allocator wird der Reply danach freigegeben. Custom-Allocator-Freigabe
+und nativer Multi-Port-Wait bleiben offen. Ein eindeutiger Source-Port wird
+pro lebender Quelle erzwungen. Run-Loop-Handles teilen das CF-Objektlayout und sind immortal;
 generisches `CFRetain`/`CFRelease` sowie `CFGetTypeID` arbeiten damit ohne
 Lifetime-Fehler.
 

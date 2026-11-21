@@ -466,6 +466,16 @@ continue to use their live Mach-O objects. This change has build evidence only;
 there is no guest Mach-O fixture for `dladdr`, concurrent `dlclose`, or image
 unload races.
 
+The `dlopen` adapter now honors Darwin `RTLD_NOLOAD` for Mach-O images already
+registered in its dynamic-image path map: a hit adds a reference, while a miss
+returns an error without loading the image. `RTLD_NODELETE` pins an image with a
+synthetic reference after the caller closes its final handle, so later
+`dlopen`/`dlclose` pairs remain balanced while the image stays mapped. These
+flags are not yet applied to Win32 PE fallback modules; `RTLD_LOCAL`,
+`RTLD_GLOBAL`, and `RTLD_FIRST` symbol-visibility behavior is also unimplemented.
+The local Clang x64 Release `wintosh` target compiles and links; no dedicated
+guest fixture was run.
+
 ### NSApplication stop and termination replies (2026-11-17)
 
 The AppKit event loop now exposes `stop:` and exits after the current Win32

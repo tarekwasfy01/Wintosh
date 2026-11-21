@@ -745,6 +745,9 @@ std::mutex dynamic_image_mutex;
 std::unordered_map<void*, darling::windows_host::DarwinDynamicImage*> dynamic_images;
 std::unordered_map<void*, std::size_t> dynamic_image_references;
 std::unordered_map<std::wstring, void*> dynamic_image_paths;
+std::unordered_set<void*> dynamic_image_nodelete;
+constexpr int kDarwinRtldNoLoad = 0x10;
+constexpr int kDarwinRtldNoDelete = 0x80;
 struct DarwinDyldImageEntry final {
 	std::string path;
 	const void* header = nullptr;
@@ -7755,7 +7758,7 @@ extern "C" std::int64_t darling_windows_times(darling_tms* result)
 	return static_cast<std::int64_t>(GetTickCount64() / 10ull);
 }
 
-extern "C" void* darling_windows_dlopen(const char* path, int)
+extern "C" void* darling_windows_dlopen(const char* path, int mode)
 {
 	if (path == nullptr) {
 		dynamic_loader_error.clear();
@@ -7779,8 +7782,14 @@ extern "C" void* darling_windows_dlopen(const char* path, int)
 			const auto found = dynamic_image_paths.find(key);
 			if (found != dynamic_image_paths.end()) {
 				++dynamic_image_references[found->second];
+				if ((mode & kDarwinRtldNoDelete) != 0)
+					dynamic_image_nodelete.insert(found->second);
 				dynamic_loader_error.clear();
 				return found->second;
+			}
+			if ((mode & kDarwinRtldNoLoad) != 0) {
+				dynamic_loader_error = "dlopen: RTLD_NOLOAD image is not already loaded";
+				return nullptr;
 			}
 			const auto loading = dynamic_image_loads.find(key);
 			if (loading != dynamic_image_loads.end()) {
@@ -7809,12 +7818,16 @@ extern "C" void* darling_windows_dlopen(const char* path, int)
 			const auto found = dynamic_image_paths.find(key);
 			if (found != dynamic_image_paths.end()) {
 				++dynamic_image_references[found->second];
+				if ((mode & kDarwinRtldNoDelete) != 0)
+					dynamic_image_nodelete.insert(found->second);
 				duplicate_image = image;
 				duplicate_handle = found->second;
 			} else {
 				dynamic_images.emplace(image, image);
 				dynamic_image_references.emplace(image, 1);
 				dynamic_image_paths.emplace(key, image);
+				if ((mode & kDarwinRtldNoDelete) != 0)
+					dynamic_image_nodelete.insert(image);
 			}
 			const auto loading = dynamic_image_loads.find(key);
 			if (loading != dynamic_image_loads.end() &&
@@ -8392,9 +8405,18 @@ extern "C" int darling_windows_dlclose(void* handle)
 				dynamic_loader_error.clear();
 				return 0;
 			}
+			if (dynamic_image_nodelete.contains(handle)) {
+				// Keep one synthetic reference so later dlopen/dlclose pairs remain
+				// balanced while the image itself stays mapped until process exit.
+				if (reference != dynamic_image_references.end())
+					reference->second = 1;
+				dynamic_loader_error.clear();
+				return 0;
+			}
 			dynamic_image = found->second;
 			dynamic_images.erase(found);
 			dynamic_image_references.erase(handle);
+			dynamic_image_nodelete.erase(handle);
 			for (auto iterator = dynamic_image_paths.begin();
 				iterator != dynamic_image_paths.end(); ++iterator) {
 				if (iterator->second == handle) {

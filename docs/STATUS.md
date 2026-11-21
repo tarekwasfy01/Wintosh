@@ -19,7 +19,10 @@ it, instead of storing only a file path. It implements `initWithString:`,
 plus the corresponding `URLWithString:` class constructors. File URLs are
 created from filesystem paths with URL escaping. File URL construction and
 path-component appending include the `isDirectory` variants and preserve
-directory trailing slashes. Path-component and extension copy operations now
+directory trailing slashes. `initFileURLWithPath:relativeToURL:` and
+`fileURLWithPath:relativeToURL:` resolve encoded relative filesystem paths
+against a file URL base while preserving the relative URL form. Path-component
+and extension copy operations now
 call the CFURL adapters, so they keep URL schemes and query/fragment suffixes
 and preserve a relative URL's base when supported by the CFURL copy operation.
 `path`, `lastPathComponent`, and `pathExtension` read

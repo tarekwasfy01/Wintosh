@@ -134,8 +134,10 @@ Windows Task Dialog and returns AppKit's first/second/third button response;
 controls, accessory views, and completion-handler callbacks are not implemented.
 `NSURL` stores a CoreFoundation URL object and supports file URL construction,
 including the `isDirectory` initializer/factory variants, `initWithString:`,
-`initWithString:relativeToURL:`, `relativeString`, `baseURL`, `absoluteURL`,
-`path`, `absoluteString`, and `isFileURL`. Path-component copies support the
+`initFileURLWithPath:relativeToURL:`, `initWithString:relativeToURL:`,
+`relativeString`, `baseURL`, `absoluteURL`, `path`, `absoluteString`, and
+`isFileURL`. File-path URL construction supports a relative base file URL.
+Path-component copies support the
 `isDirectory` variant; component and extension copies use the CFURL
 transformations, preserving URL bases and query/fragment suffixes where the
 underlying CFURL operation supports them.

@@ -9260,7 +9260,6 @@ id NSURLInitWithFileSystemPath(id self, SEL, id path, bool is_directory)
 			nullptr, file_url.c_str());
 		if (url_string == nullptr) return nullptr;
 		auto cf_string = NSURLCreateCFString(url_string);
-		objc_release(url_string);
 		if (cf_string == nullptr) return nullptr;
 		auto url = darling_windows_CFURLCreateWithString(cf_string, nullptr);
 		darling_windows_CFRelease(cf_string);
@@ -9448,6 +9447,53 @@ id NSURLInitWithString(id self, SEL selector, id string)
 	return NSURLInitWithString(self, selector, string, nullptr);
 }
 
+std::string NSURLRelativeFilePathString(std::string_view path)
+{
+	static constexpr char hex[] = "0123456789ABCDEF";
+	std::string result;
+	for (const unsigned char byte : path) {
+		const unsigned char value = byte == '\\' ? '/' : byte;
+		const bool safe = (value >= 'a' && value <= 'z') ||
+			(value >= 'A' && value <= 'Z') || (value >= '0' && value <= '9') ||
+			value == '/' || value == ':' || value == '-' || value == '.' ||
+			value == '_' || value == '~';
+		if (safe) result.push_back(static_cast<char>(value));
+		else {
+			result.push_back('%');
+			result.push_back(hex[value >> 4]);
+			result.push_back(hex[value & 0x0f]);
+		}
+	}
+	return result;
+}
+
+id NSURLInitFileURLWithPathRelativeToURL(id self, SEL, id path, id base_url)
+{
+	if (self == nullptr || path == nullptr) return nullptr;
+	const char* utf8 = NSStringUTF8String(path, nullptr);
+	if (utf8 == nullptr) return nullptr;
+	const std::string_view path_view(utf8);
+	const bool absolute = (!path_view.empty() && path_view.front() == '/') ||
+		(path_view.size() >= 3 &&
+			((path_view[0] >= 'A' && path_view[0] <= 'Z') ||
+			 (path_view[0] >= 'a' && path_view[0] <= 'z')) &&
+			path_view[1] == ':' && (path_view[2] == '/' || path_view[2] == '\\'));
+	if (absolute)
+		return NSURLInitWithFileSystemPath(self, nullptr, path, false);
+	if (base_url == nullptr)
+		return NSURLInitWithFileSystemPath(self, nullptr, path, false);
+	if (!NSURLIsFileURL(base_url, nullptr)) return nullptr;
+	try {
+		const auto relative = NSURLRelativeFilePathString(path_view);
+		id relative_string = NSStringStringWithUTF8String(objc_getClass("NSString"),
+			nullptr, relative.c_str());
+		if (relative_string == nullptr) return nullptr;
+		const auto result = NSURLInitWithString(self, nullptr, relative_string,
+			base_url);
+		return result;
+	} catch (...) { return nullptr; }
+}
+
 id NSURLWithString(Class cls, SEL, id string)
 {
 	if (cls == nullptr) return nullptr;
@@ -9466,6 +9512,19 @@ id NSURLWithStringRelativeToURL(Class cls, SEL, id string, id base_url)
 	id object = class_createInstance(cls, 0);
 	if (object == nullptr) return nullptr;
 	if (NSURLInitWithString(object, nullptr, string, base_url) == nullptr) {
+		objc_release(object);
+		return nullptr;
+	}
+	return objc_autorelease(object);
+}
+
+id NSURLFileURLWithPathRelativeToURL(Class cls, SEL selector, id path, id base_url)
+{
+	if (cls == nullptr) return nullptr;
+	id object = class_createInstance(cls, 0);
+	if (object == nullptr) return nullptr;
+	if (NSURLInitFileURLWithPathRelativeToURL(object, selector, path,
+		base_url) == nullptr) {
 		objc_release(object);
 		return nullptr;
 	}
@@ -19817,6 +19876,8 @@ void RegisterAppKitClasses()
 		class_addMethod(url, sel_registerName("initFileURLWithPath:isDirectory:"),
 			reinterpret_cast<IMP>(static_cast<id (*)(id, SEL, id, bool)>(
 				&NSURLInitWithFileSystemPath)), "@@:@B");
+		class_addMethod(url, sel_registerName("initFileURLWithPath:relativeToURL:"),
+			reinterpret_cast<IMP>(&NSURLInitFileURLWithPathRelativeToURL), "@@:@@");
 		class_addMethod(url, sel_registerName("path"),
 			reinterpret_cast<IMP>(&NSURLPath), "@@:");
 		class_addMethod(url, sel_registerName("relativeString"),
@@ -19850,6 +19911,9 @@ void RegisterAppKitClasses()
 			reinterpret_cast<IMP>(&NSURLFileURLWithPath), "@@:@");
 		class_addClassMethod(url, sel_registerName("fileURLWithPath:isDirectory:"),
 			reinterpret_cast<IMP>(&NSURLFileURLWithPathAndDirectory), "@@:@B");
+		class_addClassMethod(url,
+			sel_registerName("fileURLWithPath:relativeToURL:"),
+			reinterpret_cast<IMP>(&NSURLFileURLWithPathRelativeToURL), "@@:@@");
 		class_addClassMethod(url, sel_registerName("URLWithString:"),
 			reinterpret_cast<IMP>(&NSURLWithString), "@@:@");
 		class_addClassMethod(url, sel_registerName("URLWithString:relativeToURL:"),

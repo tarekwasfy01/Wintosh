@@ -1162,7 +1162,8 @@ preserving query/fragment suffixes.
 The AppKit `NSURL` wrapper retains its CFURL and exposes string and
 relative-to-base initialization, `relativeString`, `baseURL`, `absoluteURL`,
 file-URL detection, decoded paths, directory-aware file URL construction and
-path-component appending, and common component/extension copy methods.
+path-component appending, relative file-path construction against a base URL,
+and common component/extension copy methods.
 The MSVC Release runner links with these selectors; guest-application
 compatibility and complete URL resolution remain unverified.
 `CFURLGetBytes` exposes the URL's UTF-8 representation and fails without a

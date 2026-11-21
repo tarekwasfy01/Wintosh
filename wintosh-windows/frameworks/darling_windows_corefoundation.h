@@ -895,6 +895,10 @@ CFURLCreateFromFileSystemRepresentationRelativeToBase(const void* allocator,
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFURLRef CFURLCreateWithBytes(
 	const void* allocator, const std::uint8_t* bytes, darling_windows_CFIndex length,
 	std::uint32_t encoding, darling_windows_CFURLRef base_url);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFURLRef CFURLCreateAbsoluteURLWithBytes(
+	const void* allocator, const std::uint8_t* bytes, darling_windows_CFIndex length,
+	std::uint32_t encoding, darling_windows_CFURLRef base_url,
+	std::uint8_t use_compatibility_mode);
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef
 CFURLCreateStringByReplacingPercentEscapes(const void* allocator,
 	darling_windows_CFStringRef original_string,

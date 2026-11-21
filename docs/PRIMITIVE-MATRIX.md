@@ -1148,7 +1148,8 @@ Simple `/./` segments and a trailing `/.` are also covered.
 Guest-ABI `CFURLCreateWithString`, `CFURLCreateWithBytes`,
 `CFURLCreateWithFileSystemPath`, both relative-to-base path constructors, and
 `CFURLCreateFromFileSystemRepresentation` retain their requested allocator.
-`CFURLCreateWithBytes` accepts UTF-8 only. POSIX and Windows path styles are accepted; HFS path
+Both byte-string constructors accept UTF-8 only; absolute-byte creation ignores
+the compatibility-mode flag. POSIX and Windows path styles are accepted; HFS path
 conversion and full filesystem URL escaping remain unsupported. The Mach-O
 resolver also exports URL decomposability and path, component, scheme,
 authority, port, directory,

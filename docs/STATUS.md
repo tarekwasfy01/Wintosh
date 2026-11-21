@@ -118,6 +118,8 @@ and `CFURLCreateFromFileSystemRepresentation` now follow the same object
 allocator rule. The string and byte relative-to-base constructors resolve
 relative paths against a base URL. `CFURLCreateWithBytes` accepts UTF-8 URL
 bytes and an optional base URL; other encodings are unsupported.
+`CFURLCreateAbsoluteURLWithBytes` also routes through that resolution path,
+but its compatibility-mode flag is currently ignored.
 `CFURLCanBeDecomposed` validates scheme syntax
 and percent escapes for the supported URL representation. The guest ABI also
 resolves common CFURL type, string, path,

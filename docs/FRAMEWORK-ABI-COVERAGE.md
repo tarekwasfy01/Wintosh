@@ -81,7 +81,8 @@ use the supplied allocator and retain it through object destruction. Guest
 CFURL string, byte-string, filesystem-path, filesystem-path-relative-to-base,
 and filesystem-representation constructors (including relative-to-base bytes)
 use the requested allocator for their URL object blocks. `CFURLCreateWithBytes`
-currently supports UTF-8 only. POSIX and Windows path
+and its absolute-resolution variant currently support UTF-8 only; the latter's
+compatibility-mode flag is ignored. POSIX and Windows path
 styles are supported; HFS path conversion is not. The guest resolver also
 exports common URL type/string/path/scheme/authority/port/directory queries,
 decomposability validation,

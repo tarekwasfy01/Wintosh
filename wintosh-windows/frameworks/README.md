@@ -315,6 +315,7 @@ constructors), `CFData`, `CFArray`, `CFDictionary`,
 constructors, including string- and byte-based relative-to-base paths, and
 `CFURLCreateWithBytes` also retain and use their requested allocator for URL
 object blocks. `CFURLCreateWithBytes` currently accepts UTF-8 only.
+The absolute-byte-URL variant also ignores its compatibility-mode flag.
 The Mach-O resolver exposes CFURL type/string/path/strict-path/parameter,
 scheme/authority/port, query/fragment, username/password, directory, and filesystem-representation
 queries; `CFURLGetString` is cached for URL lifetime and query/fragment copies

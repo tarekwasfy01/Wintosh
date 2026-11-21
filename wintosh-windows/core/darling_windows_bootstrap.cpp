@@ -393,6 +393,10 @@ int DarwinBootstrap::Run(const std::filesystem::path& image_path,
 		guest_image_paths.push_back(PathUtf8(provider.path));
 	std::vector<darling_dyld_image_info> guest_image_info;
 	guest_image_info.reserve(providers.size() + 1);
+	std::vector<std::vector<darling_dl_address_range>> guest_image_ranges;
+	std::vector<std::vector<darling_dl_symbol_info>> guest_image_symbols;
+	guest_image_ranges.reserve(providers.size() + 1);
+	guest_image_symbols.reserve(providers.size() + 1);
 	const auto header_address = [](const MachOImage::Mapping& image_mapping) -> const void* {
 		const auto& segments = image_mapping.Segments();
 		const auto text = std::find_if(segments.begin(), segments.end(),
@@ -403,18 +407,47 @@ int DarwinBootstrap::Run(const std::filesystem::path& image_path,
 		return loadable == segments.end() ? nullptr :
 			reinterpret_cast<const void*>(loadable->address);
 	};
-	const auto append_image = [&guest_image_info, &guest_image_paths, &header_address](
-		std::size_t index, const MachOImage::Mapping& image_mapping) {
+	const auto append_image = [&guest_image_info, &guest_image_paths,
+		&guest_image_ranges, &guest_image_symbols, &header_address](
+		std::size_t index, const MachOImage& image,
+		const MachOImage::Mapping& image_mapping) {
 		if (image_mapping.Segments().empty()) return;
 		const auto* header = header_address(image_mapping);
 		if (header == nullptr) return;
+		std::vector<darling_dl_address_range> ranges;
+		std::vector<darling_dl_symbol_info> symbols;
+		for (const auto& segment : image_mapping.Segments()) {
+			if (segment.size == 0 || segment.address == 0 ||
+				segment.address > (std::numeric_limits<std::uintptr_t>::max)() - segment.size)
+				continue;
+			ranges.push_back({segment.address, segment.address + segment.size});
+		}
+		for (const auto& symbol : image.Symbols()) {
+			if (symbol.name.empty() || (symbol.type & 0x0e) == 0 ||
+				(symbol.type & 0xe0) != 0) continue;
+			try {
+				const auto address = image.SymbolAddress(image_mapping, symbol.name);
+				if (address != 0)
+					symbols.push_back({address, symbol.name.c_str()});
+			} catch (...) {}
+		}
+		std::sort(symbols.begin(), symbols.end(),
+			[](const auto& left, const auto& right) {
+				return left.address < right.address;
+			});
+		guest_image_ranges.push_back(std::move(ranges));
+		guest_image_symbols.push_back(std::move(symbols));
+		const auto& image_ranges = guest_image_ranges.back();
+		const auto& image_symbols = guest_image_symbols.back();
 		guest_image_info.push_back({guest_image_paths[index].c_str(),
 			header,
-			image_mapping.Slide()});
+			image_mapping.Slide(),
+			image_ranges.data(), image_ranges.size(),
+			image_symbols.data(), image_symbols.size()});
 	};
-	append_image(0, mapping);
+	append_image(0, image, mapping);
 	for (std::size_t index = 0; index < providers.size(); ++index)
-		append_image(index + 1, providers[index].mapping);
+		append_image(index + 1, providers[index].image, providers[index].mapping);
 	struct GuestDyldImageListScope final {
 		explicit GuestDyldImageListScope(
 			const std::vector<darling_dyld_image_info>& images)

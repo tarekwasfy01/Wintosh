@@ -456,6 +456,16 @@ and guest code that races its own image use with `dlclose` remain open. MSVC
 and Clang x64 runner targets compile and link; the changed stdio unit also
 compiles for ARM64. No guest callback fixture or tests were run.
 
+`dladdr` now searches the live guest executable and its dependency providers
+before the Windows-module fallback. The bootstrap publishes each mapped Mach-O
+segment range and a sorted table of defined symbol addresses for the duration
+of the guest image scope. An address inside one of those ranges reports the
+guest image path and `__TEXT` header as its base, plus the nearest preceding
+defined symbol when one exists. Dynamic images already opened with `dlopen`
+continue to use their live Mach-O objects. This change has build evidence only;
+there is no guest Mach-O fixture for `dladdr`, concurrent `dlclose`, or image
+unload races.
+
 ### NSApplication stop and termination replies (2026-11-17)
 
 The AppKit event loop now exposes `stop:` and exits after the current Win32

@@ -749,6 +749,8 @@ struct DarwinDyldImageEntry final {
 	std::string path;
 	const void* header = nullptr;
 	std::intptr_t slide = 0;
+	std::vector<darling_dl_address_range> ranges;
+	std::vector<darling_dl_symbol_info> symbols;
 };
 std::mutex guest_dyld_image_mutex;
 std::vector<DarwinDyldImageEntry> guest_dyld_images;
@@ -825,7 +827,11 @@ std::vector<DarwinDyldImageEntry> CurrentDarwinImages()
 	{
 		std::lock_guard lock(guest_dyld_image_mutex);
 		guest_list_active = guest_dyld_image_list_active;
-		if (guest_list_active) images = guest_dyld_images;
+		if (guest_list_active) {
+			images.reserve(guest_dyld_images.size());
+			for (const auto& image : guest_dyld_images)
+				images.push_back({image.path, image.header, image.slide});
+		}
 	}
 	if (!guest_list_active) {
 		const auto modules = CurrentProcessModules();
@@ -8586,6 +8592,37 @@ extern "C" int darling_windows_dladdr(const void* address, darling_dl_info* info
 			return info->dli_fbase == nullptr ? 0 : 1;
 		}
 	}
+	const auto target = reinterpret_cast<std::uintptr_t>(address);
+	{
+		std::lock_guard lock(guest_dyld_image_mutex);
+		if (guest_dyld_image_list_active) {
+			for (const auto& image : guest_dyld_images) {
+				const auto range = std::find_if(image.ranges.begin(), image.ranges.end(),
+					[target](const auto& candidate) {
+						return target >= candidate.start && target < candidate.end;
+					});
+				if (range == image.ranges.end()) continue;
+				static thread_local std::string image_name;
+				static thread_local std::string symbol_name;
+				image_name = image.path;
+				const auto symbol = std::upper_bound(image.symbols.begin(),
+					image.symbols.end(), target,
+					[](std::uintptr_t value, const auto& candidate) {
+						return value < candidate.address;
+					});
+				const bool has_symbol = symbol != image.symbols.begin() &&
+					std::prev(symbol)->name != nullptr;
+				if (has_symbol) symbol_name = std::prev(symbol)->name;
+				else symbol_name.clear();
+				info->dli_fname = image_name.c_str();
+				info->dli_fbase = const_cast<void*>(image.header);
+				info->dli_sname = symbol_name.empty() ? nullptr : symbol_name.c_str();
+				info->dli_saddr = symbol_name.empty() ? nullptr :
+					reinterpret_cast<void*>(std::prev(symbol)->address);
+				return 1;
+			}
+		}
+	}
 	MEMORY_BASIC_INFORMATION memory{};
 	if (VirtualQuery(address, &memory, sizeof(memory)) != sizeof(memory) ||
 		memory.AllocationBase == nullptr) {
@@ -8677,8 +8714,17 @@ extern "C" void darling_windows_dyld_set_guest_image_list(
 		replacement.reserve(count);
 		for (std::size_t index = 0; index < count; ++index) {
 			if (images[index].path == nullptr || images[index].header == nullptr) continue;
-			replacement.push_back({images[index].path, images[index].header,
-				images[index].slide});
+			DarwinDyldImageEntry entry;
+			entry.path = images[index].path;
+			entry.header = images[index].header;
+			entry.slide = images[index].slide;
+			if (images[index].ranges != nullptr && images[index].range_count <= 65536)
+				entry.ranges.assign(images[index].ranges,
+					images[index].ranges + images[index].range_count);
+			if (images[index].symbols != nullptr && images[index].symbol_count <= 1'000'000)
+				entry.symbols.assign(images[index].symbols,
+					images[index].symbols + images[index].symbol_count);
+			replacement.push_back(std::move(entry));
 		}
 	}
 	{

@@ -71,10 +71,24 @@ struct darling_dl_info final {
 	void* dli_saddr = nullptr;
 };
 
+struct darling_dl_address_range final {
+	std::uintptr_t start = 0;
+	std::uintptr_t end = 0;
+};
+
+struct darling_dl_symbol_info final {
+	std::uintptr_t address = 0;
+	const char* name = nullptr;
+};
+
 struct darling_dyld_image_info final {
 	const char* path = nullptr;
 	const void* header = nullptr;
 	std::intptr_t slide = 0;
+	const darling_dl_address_range* ranges = nullptr;
+	std::size_t range_count = 0;
+	const darling_dl_symbol_info* symbols = nullptr;
+	std::size_t symbol_count = 0;
 };
 
 struct darling_siginfo final {

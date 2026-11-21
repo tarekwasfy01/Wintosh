@@ -1263,8 +1263,24 @@ bool DynamicImageContains(const DarwinDynamicImage& image, const void* address) 
 
 void* DynamicImageBase(const DarwinDynamicImage& image) noexcept
 {
-	return image.mapping.Segments().empty() ? nullptr :
-		reinterpret_cast<void*>(image.mapping.Segments().front().address);
+	const auto& segments = image.mapping.Segments();
+	const auto first_loadable = std::find_if(segments.begin(), segments.end(),
+		[](const MappedMachOSegment& segment) {
+			return segment.address != 0 && segment.size != 0 &&
+				segment.name != "__PAGEZERO";
+		});
+	if (first_loadable == segments.end()) return nullptr;
+	const auto lowest = std::min_element(first_loadable, segments.end(),
+		[](const MappedMachOSegment& left, const MappedMachOSegment& right) {
+			const bool left_loadable = left.address != 0 && left.size != 0 &&
+				left.name != "__PAGEZERO";
+			const bool right_loadable = right.address != 0 && right.size != 0 &&
+				right.name != "__PAGEZERO";
+			if (left_loadable != right_loadable) return left_loadable;
+			return left_loadable && left.address < right.address;
+		});
+	return lowest == segments.end() || lowest->address == 0 ? nullptr :
+		reinterpret_cast<void*>(lowest->address);
 }
 
 bool DynamicImageNearestSymbol(const DarwinDynamicImage& image, const void* address,

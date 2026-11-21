@@ -5980,6 +5980,17 @@ CFURLCreateStringByReplacingPercentEscapes(const void* allocator,
 }
 
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef
+CFURLCreateStringByReplacingPercentEscapesUsingEncoding(const void* allocator,
+	darling_windows_CFStringRef original_string,
+	darling_windows_CFStringRef characters_to_leave_escaped,
+	std::uint32_t encoding)
+{
+	if (encoding != kDarlingCfUtf8Encoding) return nullptr;
+	return CFURLCreateStringByReplacingPercentEscapes(allocator, original_string,
+		characters_to_leave_escaped);
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef
 CFURLCreateStringByAddingPercentEscapes(const void* allocator,
 	darling_windows_CFStringRef original_string,
 	darling_windows_CFStringRef characters_to_leave_unescaped,
@@ -7322,6 +7333,8 @@ extern "C" std::uintptr_t darling_windows_corefoundation_symbol(const char* name
 		return reinterpret_cast<std::uintptr_t>(&CFURLCreateFromFileSystemRepresentation);
 	if (std::strcmp(name, "CFURLCreateStringByReplacingPercentEscapes") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFURLCreateStringByReplacingPercentEscapes);
+	if (std::strcmp(name, "CFURLCreateStringByReplacingPercentEscapesUsingEncoding") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFURLCreateStringByReplacingPercentEscapesUsingEncoding);
 	if (std::strcmp(name, "CFURLCreateStringByAddingPercentEscapes") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFURLCreateStringByAddingPercentEscapes);
 	if (std::strcmp(name, "CFURLGetTypeID") == 0)

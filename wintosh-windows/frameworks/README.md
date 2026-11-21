@@ -320,6 +320,7 @@ honor `charactersToLeaveEscaped`. Percent-escape replacement creates a string
 with the requested allocator when decoding changes the value, otherwise it
 retains and returns the source string. The adding-escapes counterpart follows
 RFC 2396 character classes and supports UTF-8 only.
+The explicit-encoding replacement entry point likewise accepts UTF-8 only.
 Their STL-backed payload storage and other CF constructors still use the host
 allocator. HFS-style CFURL paths remain unsupported. The default,
 system-default, malloc, malloc-zone, null, and use-context constants are

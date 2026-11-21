@@ -85,8 +85,9 @@ exports common URL type/string/path/scheme/authority/port/directory queries,
 query/fragment copies with `charactersToLeaveEscaped`, username/password,
 absolute-URL copy, and filesystem representation. The percent-escape
 replacement/addition string constructors retain their source if unchanged and
-use the requested allocator for changed output. The addition path supports
-UTF-8 only. `CFURLGetString` returns a URL-owned cached string. STL-backed
+use the requested allocator for changed output. The explicit-encoding
+replacement wrapper accepts UTF-8 only; the addition path also supports UTF-8
+only. `CFURLGetString` returns a URL-owned cached string. STL-backed
 payload storage and other CF constructors still use the host allocator.
 Standard allocator constants are exported for Mach-O data-symbol resolution.
 

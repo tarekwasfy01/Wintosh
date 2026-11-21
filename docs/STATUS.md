@@ -125,7 +125,9 @@ decoded bytes. Username and password copies are also exported.
 returns a retained input when no escape is replaced, and rejects replacement
 results that are not well-formed UTF-8. Its adding-escapes counterpart now
 escapes non-URL UTF-8 bytes and caller-forced legal URL characters, while
-preserving caller-allowed characters; other encodings are not supported.
+preserving caller-allowed characters. The explicit-encoding replacement
+variant delegates to the UTF-8 implementation and returns null for any other
+encoding.
 URL path-style conversion is limited to POSIX and Windows styles; HFS paths
 remain unsupported. Source-1 reply memory uses this deallocator path.
 

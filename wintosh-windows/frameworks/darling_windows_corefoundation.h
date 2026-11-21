@@ -887,6 +887,11 @@ CFURLCreateStringByReplacingPercentEscapes(const void* allocator,
 	darling_windows_CFStringRef original_string,
 	darling_windows_CFStringRef characters_to_leave_escaped);
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef
+CFURLCreateStringByReplacingPercentEscapesUsingEncoding(const void* allocator,
+	darling_windows_CFStringRef original_string,
+	darling_windows_CFStringRef characters_to_leave_escaped,
+	std::uint32_t encoding);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef
 CFURLCreateStringByAddingPercentEscapes(const void* allocator,
 	darling_windows_CFStringRef original_string,
 	darling_windows_CFStringRef characters_to_leave_unescaped,

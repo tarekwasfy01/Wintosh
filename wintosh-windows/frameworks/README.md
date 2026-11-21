@@ -312,8 +312,9 @@ backing allocator, including the supplied context for `kCFAllocatorUseContext`.
 Guest `CFString` (CString/characters and copy/mutable-copy/mutable
 constructors), `CFData`, `CFArray`, `CFDictionary`,
 `CFSet`, `CFNumber`, `CFDate`, `CFMachPort`, and the guest CFURL string/path
-constructors, including string- and byte-based relative-to-base paths, also
-retain and use their requested allocator for object blocks.
+constructors, including string- and byte-based relative-to-base paths, and
+`CFURLCreateWithBytes` also retain and use their requested allocator for URL
+object blocks. `CFURLCreateWithBytes` currently accepts UTF-8 only.
 The Mach-O resolver exposes CFURL type/string/path/strict-path/parameter,
 scheme/authority/port, query/fragment, username/password, directory, and filesystem-representation
 queries; `CFURLGetString` is cached for URL lifetime and query/fragment copies

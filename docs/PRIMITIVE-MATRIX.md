@@ -1145,11 +1145,12 @@ string values and simple relative paths against a base URL; escaping,
 including leading `../` parent segments, are covered; escaping, normalization,
 and full RFC authority parsing remain open.
 Simple `/./` segments and a trailing `/.` are also covered.
-Guest-ABI `CFURLCreateWithString`, `CFURLCreateWithFileSystemPath`, and
-`CFURLCreateFromFileSystemRepresentation` constructors now retain their
-requested allocator. POSIX and Windows path styles are accepted; HFS path
+Guest-ABI `CFURLCreateWithString`, `CFURLCreateWithFileSystemPath`, relative-
+to-base path creation, and `CFURLCreateFromFileSystemRepresentation`
+constructors now retain their requested allocator. POSIX and Windows path styles are accepted; HFS path
 conversion and full filesystem URL escaping remain unsupported. The Mach-O
-resolver also exports path, component, scheme, authority, port, directory,
+resolver also exports URL decomposability and path, component, scheme,
+authority, port, directory,
 string, strict-path, parameter, and filesystem-representation queries for
 CFURL, including query and fragment extraction with selective percent-escape
 preservation, plus username/password extraction. Hierarchical path extraction

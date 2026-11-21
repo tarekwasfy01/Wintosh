@@ -882,6 +882,10 @@ extern "C" DARLING_CF_GUEST_ABI darling_windows_CFURLRef CFURLCreateWithFileSyst
 	const void* allocator, darling_windows_CFStringRef file_path, std::int32_t path_style,
 	std::uint8_t is_directory);
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFURLRef
+CFURLCreateWithFileSystemPathRelativeToBase(const void* allocator,
+	darling_windows_CFStringRef file_path, std::int32_t path_style,
+	std::uint8_t is_directory, darling_windows_CFURLRef base_url);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFURLRef
 CFURLCreateFromFileSystemRepresentation(const void* allocator, const std::uint8_t* bytes,
 	darling_windows_CFIndex length, std::uint8_t is_directory);
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef
@@ -900,6 +904,8 @@ CFURLCreateStringByAddingPercentEscapes(const void* allocator,
 	darling_windows_CFStringRef legal_url_characters_to_escape,
 	std::uint32_t encoding);
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeID CFURLGetTypeID();
+extern "C" DARLING_CF_GUEST_ABI std::uint8_t CFURLCanBeDecomposed(
+	darling_windows_CFURLRef value);
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFURLGetString(
 	darling_windows_CFURLRef value);
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFURLCopyFileSystemPath(

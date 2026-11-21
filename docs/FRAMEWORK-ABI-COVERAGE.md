@@ -78,10 +78,12 @@ remain open. Guest `CFString` (CString/characters and copy/mutable-copy/mutable
 constructors), `CFData`, `CFArray`,
 `CFDictionary`, `CFSet`, `CFNumber`, `CFDate`, and `CFMachPort` object blocks
 use the supplied allocator and retain it through object destruction. Guest
-CFURL string, filesystem-path, and filesystem-representation constructors use
-the requested allocator for their URL object blocks. POSIX and Windows path
+CFURL string, filesystem-path, filesystem-path-relative-to-base, and
+filesystem-representation constructors use the requested allocator for their
+URL object blocks. POSIX and Windows path
 styles are supported; HFS path conversion is not. The guest resolver also
 exports common URL type/string/path/scheme/authority/port/directory queries,
+decomposability validation,
 query/fragment copies with `charactersToLeaveEscaped`, username/password,
 parameter-string and strict-path queries, absolute-URL copy, and filesystem
 representation. Hierarchical paths omit their authority and strict paths

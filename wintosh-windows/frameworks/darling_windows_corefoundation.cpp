@@ -5990,6 +5990,49 @@ extern "C" DARLING_CF_GUEST_ABI darling_windows_CFURLRef CFURLCreateWithFileSyst
 }
 
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFURLRef
+CFURLCreateWithFileSystemPathRelativeToBase(const void* allocator,
+	darling_windows_CFStringRef file_path, std::int32_t path_style,
+	std::uint8_t is_directory, darling_windows_CFURLRef base_url)
+{
+	if (path_style != 0 && path_style != 2) return nullptr;
+	const auto* source = As(file_path);
+	if (source == nullptr || source->kind != Kind::String) return nullptr;
+	std::string path;
+	try {
+		path = source->string;
+		if (path_style == 2) std::replace(path.begin(), path.end(), '\\', '/');
+		if (is_directory != 0 && !path.empty() && path.back() != '/') path.push_back('/');
+	} catch (...) { return nullptr; }
+	const bool absolute = (!path.empty() && path.front() == '/') ||
+		(path.size() >= 3 && path[1] == ':' && path[2] == '/');
+	if (absolute || base_url == nullptr) {
+		auto* object = CreateObjectWithAllocator(allocator, Kind::URL);
+		if (object == nullptr) return nullptr;
+		try { object->string = std::move(path); }
+		catch (...) { ReleaseOwned(object); return nullptr; }
+		return object;
+	}
+	const auto* base = As(base_url);
+	if (base == nullptr || base->kind != Kind::URL) return nullptr;
+	const auto relative = darling_windows_CFStringCreateWithCString(path.c_str());
+	if (relative == nullptr) return nullptr;
+	const auto resolved = darling_windows_CFURLCreateWithString(relative, base_url);
+	ReleaseOwned(const_cast<Object*>(As(relative)));
+	const auto* resolved_object = As(resolved);
+	if (resolved_object == nullptr || resolved_object->kind != Kind::URL) {
+		if (resolved != nullptr) ReleaseOwned(const_cast<Object*>(resolved_object));
+		return nullptr;
+	}
+	auto* object = CreateObjectWithAllocator(allocator, Kind::URL);
+	if (object != nullptr) {
+		try { object->string = resolved_object->string; }
+		catch (...) { ReleaseOwned(object); object = nullptr; }
+	}
+	ReleaseOwned(const_cast<Object*>(resolved_object));
+	return object;
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFURLRef
 CFURLCreateFromFileSystemRepresentation(const void* allocator, const std::uint8_t* bytes,
 	darling_windows_CFIndex length, std::uint8_t is_directory)
 {
@@ -6084,6 +6127,39 @@ CFURLCreateStringByAddingPercentEscapes(const void* allocator,
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeID CFURLGetTypeID()
 {
 	return darling_windows_CFURLGetTypeID();
+}
+
+extern "C" DARLING_CF_GUEST_ABI std::uint8_t CFURLCanBeDecomposed(
+	darling_windows_CFURLRef value)
+{
+	const auto* object = As(value);
+	if (object == nullptr || object->kind != Kind::URL || object->string.empty() ||
+		!IsWellFormedUTF8(object->string)) return 0;
+	const auto colon = object->string.find(':');
+	const auto first_delimiter = object->string.find_first_of("/?#");
+	const bool windows_drive = colon == 1 && object->string.size() > 2 &&
+		((object->string[0] >= 'A' && object->string[0] <= 'Z') ||
+		 (object->string[0] >= 'a' && object->string[0] <= 'z')) &&
+		(object->string[2] == '/' || object->string[2] == '\\');
+	if (colon != std::string::npos && !windows_drive &&
+		(first_delimiter == std::string::npos || colon < first_delimiter)) {
+		if (colon == 0 || !((object->string[0] >= 'A' && object->string[0] <= 'Z') ||
+			(object->string[0] >= 'a' && object->string[0] <= 'z'))) return 0;
+		for (std::size_t index = 1; index < colon; ++index) {
+			const auto character = static_cast<unsigned char>(object->string[index]);
+			if (!((character >= 'A' && character <= 'Z') ||
+				(character >= 'a' && character <= 'z') ||
+				(character >= '0' && character <= '9') || character == '+' ||
+				character == '-' || character == '.')) return 0;
+		}
+	}
+	for (std::size_t index = 0; index < object->string.size(); ++index) {
+		if (object->string[index] == '%' && (index + 2 >= object->string.size() ||
+			!std::isxdigit(static_cast<unsigned char>(object->string[index + 1])) ||
+			!std::isxdigit(static_cast<unsigned char>(object->string[index + 2])))) return 0;
+		if (object->string[index] == '%') index += 2;
+	}
+	return 1;
 }
 
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFURLGetString(
@@ -7404,6 +7480,8 @@ extern "C" std::uintptr_t darling_windows_corefoundation_symbol(const char* name
 		return reinterpret_cast<std::uintptr_t>(&CFURLCreateWithString);
 	if (std::strcmp(name, "CFURLCreateWithFileSystemPath") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFURLCreateWithFileSystemPath);
+	if (std::strcmp(name, "CFURLCreateWithFileSystemPathRelativeToBase") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFURLCreateWithFileSystemPathRelativeToBase);
 	if (std::strcmp(name, "CFURLCreateFromFileSystemRepresentation") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFURLCreateFromFileSystemRepresentation);
 	if (std::strcmp(name, "CFURLCreateStringByReplacingPercentEscapes") == 0)
@@ -7414,6 +7492,8 @@ extern "C" std::uintptr_t darling_windows_corefoundation_symbol(const char* name
 		return reinterpret_cast<std::uintptr_t>(&CFURLCreateStringByAddingPercentEscapes);
 	if (std::strcmp(name, "CFURLGetTypeID") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFURLGetTypeID);
+	if (std::strcmp(name, "CFURLCanBeDecomposed") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFURLCanBeDecomposed);
 	if (std::strcmp(name, "CFURLGetString") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFURLGetString);
 	if (std::strcmp(name, "CFURLCopyFileSystemPath") == 0)

@@ -6089,7 +6089,30 @@ extern "C" DARLING_CF_GUEST_ABI darling_windows_CFURLRef CFURLCreateAbsoluteURLW
 	std::uint32_t encoding, darling_windows_CFURLRef base_url,
 	std::uint8_t use_compatibility_mode)
 {
-	(void)use_compatibility_mode;
+	// In web-compatibility mode a reference made only of resource specifiers
+	// (query, parameters, or fragment) attaches to the base URL itself. The
+	// general relative resolver treats it as a new path component and would
+	// otherwise drop the base's final path segment.
+	if (use_compatibility_mode != 0 && bytes != nullptr && length > 0 &&
+		encoding == kDarlingCfUtf8Encoding && base_url != nullptr &&
+		(bytes[0] == '?' || bytes[0] == ';' || bytes[0] == '#')) {
+		const auto* base = As(base_url);
+		if (base == nullptr || base->kind != Kind::URL || base->string.empty()) return nullptr;
+		std::string relative;
+		try { relative.assign(reinterpret_cast<const char*>(bytes), static_cast<std::size_t>(length)); }
+		catch (...) { return nullptr; }
+		if (relative.find('\0') != std::string::npos || !IsWellFormedUTF8(relative)) return nullptr;
+		const auto suffix = base->string.find_first_of("?#");
+		std::string absolute = suffix == std::string::npos ? base->string : base->string.substr(0, suffix);
+		try { absolute += relative; }
+		catch (...) { return nullptr; }
+		if (absolute.find('\0') != std::string::npos || !IsWellFormedUTF8(absolute)) return nullptr;
+		const auto string_object = darling_windows_CFStringCreateWithCString(absolute.c_str());
+		if (string_object == nullptr) return nullptr;
+		const auto result = CFURLCreateWithString(allocator, string_object, nullptr);
+		ReleaseOwned(const_cast<Object*>(As(string_object)));
+		return result;
+	}
 	return CFURLCreateWithBytes(allocator, bytes, length, encoding, base_url);
 }
 

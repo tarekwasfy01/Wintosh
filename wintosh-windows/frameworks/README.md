@@ -148,7 +148,9 @@ single or multiple file selection; `NSSavePanel` uses the Windows save-file
 dialog. Both expose `URL`, `URLs`, and the legacy filename accessors. Panel
 titles and the save panel's suggested name are passed through. A panel set to
 directory-only selection uses the Windows folder browser; mixed file/folder
-selection is unavailable. `allowedFileTypes` maps extension strings to a
+selection is unavailable. `directoryURL` and `setDirectoryURL:` initialize the
+Windows dialog's starting folder, and a successful selection updates the
+panel's directory URL. `allowedFileTypes` maps extension strings to a
 Windows file filter. `allowedContentTypes` accepts Objective-C `UTType`
 instances and uses their preferred extension; the virtual
 `UniformTypeIdentifiers` provider implements `typeWithIdentifier:`,

@@ -402,6 +402,7 @@ struct AppKitFileHandleState final {
 struct AppKitFilePanelState final {
 	std::wstring title;
 	std::wstring name;
+	std::wstring directory;
 	std::vector<std::wstring> allowed_file_types;
 	std::vector<std::wstring> paths;
 	bool allows_multiple{};
@@ -10909,6 +10910,29 @@ void NSFilePanelSetTitle(id self, SEL, id value)
 	} catch (...) {}
 }
 
+void NSSavePanelSetDirectoryURL(id self, SEL, id url)
+{
+	std::wstring directory;
+	if (url != nullptr && !NSURLCopyWidePath(url, directory)) return;
+	std::lock_guard lock(g_file_panels_mutex);
+	const auto found = g_file_panels.find(self);
+	if (found != g_file_panels.end())
+		found->second.directory = std::move(directory);
+}
+
+id NSSavePanelDirectoryURL(id self, SEL)
+{
+	std::wstring directory;
+	{
+		std::lock_guard lock(g_file_panels_mutex);
+		const auto found = g_file_panels.find(self);
+		if (found == g_file_panels.end() || found->second.directory.empty())
+			return nullptr;
+		directory = found->second.directory;
+	}
+	return NSURLCreateFileURLFromWidePath(directory);
+}
+
 void NSFilePanelSetAllowedFileTypes(id self, SEL, id value)
 {
 	std::vector<std::wstring> file_types;
@@ -11082,7 +11106,13 @@ std::int64_t NSFilePanelRunModal(id self, SEL)
 		browser.lpszTitle = state.title.empty() ? L"Choose a folder" :
 			state.title.c_str();
 		browser.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE;
+		PIDLIST_ABSOLUTE root = nullptr;
+		if (!state.directory.empty() &&
+			SUCCEEDED(SHParseDisplayName(state.directory.c_str(), nullptr,
+				&root, 0, nullptr)))
+			browser.pidlRoot = root;
 		PIDLIST_ABSOLUTE selected = SHBrowseForFolderW(&browser);
+		if (root != nullptr) CoTaskMemFree(root);
 		if (selected == nullptr) return 0;
 		wchar_t path[MAX_PATH]{};
 		const bool got_path = SHGetPathFromIDListW(selected, path) != FALSE;
@@ -11093,6 +11123,7 @@ std::int64_t NSFilePanelRunModal(id self, SEL)
 			const auto found = g_file_panels.find(self);
 			if (found == g_file_panels.end()) return 0;
 			found->second.paths.assign(1, path);
+			found->second.directory = path;
 			return 1;
 		} catch (...) { return 0; }
 	}
@@ -11103,6 +11134,7 @@ std::int64_t NSFilePanelRunModal(id self, SEL)
 	config.lStructSize = sizeof(config);
 	config.hwndOwner = GetActiveWindow();
 	config.lpstrTitle = title.c_str();
+	config.lpstrInitialDir = state.directory.empty() ? nullptr : state.directory.c_str();
 	config.lpstrFile = buffer.data();
 	config.nMaxFile = static_cast<DWORD>(buffer.size());
 	config.lpstrFilter = filter.data();
@@ -11139,6 +11171,12 @@ std::int64_t NSFilePanelRunModal(id self, SEL)
 		const auto found = g_file_panels.find(self);
 		if (found == g_file_panels.end()) return 0;
 		found->second.paths = std::move(paths);
+		if (!found->second.paths.empty()) {
+			const std::filesystem::path selected(found->second.paths.front());
+			found->second.directory = state.can_choose_directories &&
+				!state.can_choose_files ? selected.wstring() :
+				selected.parent_path().wstring();
+		}
 	}
 	return 1;
 }
@@ -11164,6 +11202,7 @@ std::int64_t NSSavePanelRunModal(id self, SEL)
 	config.lStructSize = sizeof(config);
 	config.hwndOwner = GetActiveWindow();
 	config.lpstrTitle = title.c_str();
+	config.lpstrInitialDir = state.directory.empty() ? nullptr : state.directory.c_str();
 	config.lpstrFile = buffer.data();
 	config.nMaxFile = static_cast<DWORD>(buffer.size());
 	config.lpstrFilter = filter.data();
@@ -11175,7 +11214,9 @@ std::int64_t NSSavePanelRunModal(id self, SEL)
 		const auto found = g_file_panels.find(self);
 		if (found == g_file_panels.end()) return 0;
 		found->second.paths.assign(1, buffer.data());
-		found->second.name = std::filesystem::path(buffer.data()).filename().wstring();
+		const std::filesystem::path selected(buffer.data());
+		found->second.name = selected.filename().wstring();
+		found->second.directory = selected.parent_path().wstring();
 	} catch (...) { return 0; }
 	return 1;
 }
@@ -20079,6 +20120,10 @@ void RegisterAppKitClasses()
 			reinterpret_cast<IMP>(&NSFilePanelInit), "@@:");
 		class_addMethod(save_panel, sel_registerName("setTitle:"),
 			reinterpret_cast<IMP>(&NSFilePanelSetTitle), "v@:@");
+		class_addMethod(save_panel, sel_registerName("setDirectoryURL:"),
+			reinterpret_cast<IMP>(&NSSavePanelSetDirectoryURL), "v@:@");
+		class_addMethod(save_panel, sel_registerName("directoryURL"),
+			reinterpret_cast<IMP>(&NSSavePanelDirectoryURL), "@@:");
 		class_addMethod(save_panel, sel_registerName("setAllowedFileTypes:"),
 			reinterpret_cast<IMP>(&NSFilePanelSetAllowedFileTypes), "v@:@");
 		class_addMethod(save_panel, sel_registerName("setAllowedContentTypes:"),

@@ -1151,8 +1151,8 @@ Guest-ABI `CFURLCreateWithString`, `CFURLCreateWithBytes`,
 `CFURLCreateCopyAppendingPathComponent` is also exported, retains the requested
 allocator, percent-escapes component delimiters, preserves query/fragment
 suffixes, and applies the directory trailing slash. Relative URL constructors
-retain their base and original string; path transformation copies still
-flatten and drop base identity.
+retain their base and original string; append/delete component and extension
+copies preserve that base and transform the relative string too.
 `CFURLCreateCopyAppendingPathExtension` also retains the requested allocator,
 escapes extension delimiters, and inserts the extension before parameters and
 query/fragment suffixes; empty and directory paths are copied unchanged.

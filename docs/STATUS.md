@@ -144,9 +144,8 @@ UTF-8 byte sequence returned by `CFURLGetBytes`; malformed and unusual
 authority forms remain outside the supported subset.
 `CFURLCreateCopyAppendingPathComponent` appends a UTF-8 component before any
 query or fragment, escapes component delimiters, preserves the resource suffix,
-and adds the trailing slash when `isDirectory` is true. The current URL object
-retains base identity for relative construction; path transformation copies
-still flatten and drop that identity.
+and adds the trailing slash when `isDirectory` is true. Relative append/delete
+copies retain their base and independently transform the relative string.
 `CFURLCreateCopyAppendingPathExtension` now adds an escaped UTF-8 extension to
 the final non-directory path component, before parameters, query, and fragment;
 URLs with an empty or directory path are copied unchanged.

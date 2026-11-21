@@ -96,8 +96,9 @@ in that byte representation. `CFURLGetBaseURL` returns the borrowed base
 retained by relative constructors; string and byte queries preserve the
 relative form while filesystem operations use the resolved host string.
 `CFURLCreateCopyAppendingPathComponent` appends an escaped UTF-8 component and
-honors directory trailing slashes; path transformation copies currently drop
-base identity. `CFURLCreateCopyAppendingPathExtension` appends an
+honors directory trailing slashes while preserving the base. Append/delete
+component and extension copies transform the relative string too.
+`CFURLCreateCopyAppendingPathExtension` appends an
 escaped extension to non-directory paths before the resource suffix. The
 delete-last-component and delete-path-extension constructors are also exported
 and preserve query/fragment suffixes. Hierarchical paths omit their authority and strict paths

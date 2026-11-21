@@ -61,10 +61,10 @@ Version-0 `CFRunLoopSource` objects support create/context/order queries, mode
 registration/removal, signal delivery, validity, and invalidation. Version-1
 sources can register a Mach port through `getPort`; the active loop polls it on
 10 ms slices, receives one available message, and invokes `perform` in source
-order. Returned replies are sent through the Mach message ABI; default
-allocator replies are released, while custom-allocator deallocation and a
-native multi-port wait set remain open. One source per registered port is
-enforced. Guest
+order. Returned replies are sent through the Mach message ABI and deallocated
+through the allocator passed to `perform`, including context-backed custom
+allocators created by this adapter. Native multi-port waiting remains open.
+One source per registered port is enforced. Guest
 `CFRunLoopTimer` creation, context/order/interval/fire-date queries, repeat
 semantics, next-fire-date mutation, mode registration/removal, and invalidation
 are also wired into the run loop. Due timers fire on the active loop thread;
@@ -95,11 +95,19 @@ right pair, retains its context, exposes port/context/validity and invalidation
 callbacks, and creates a version-1 run-loop source that dispatches received
 messages to the CFMachPort callout. Invalidating the wrapper invalidates its
 registered sources and releases context info once. Wrappers are uniqued by
-port name. This is a source-level implementation pending the local Release
-build; guest callback ABI behavior and message/reply ownership still need a
-Mach-O fixture. Existing rights passed to `CFMachPortCreateWithPort` remain
+port name. Guest callback ABI behavior and message/reply ownership still need
+a Mach-O fixture. Existing rights passed to `CFMachPortCreateWithPort` remain
 caller-owned; only ports created by `CFMachPortCreate` are destroyed with the
 wrapper.
+
+The `CFAllocator` subset now supports custom context creation, context reads,
+allocation, reallocation, deallocation, preferred-size queries, and a retained
+per-thread default allocator. Default allocations use the guest heap. The
+default, system-default, malloc, malloc-zone, null, and use-context constants
+are exported. The allocator used to allocate the allocator object, full
+use-context creation semantics, distinct malloc-zone behavior, and broader
+allocator integration across every CF object remain outside this subset.
+Source-1 reply memory uses this deallocator path.
 
 ### Foundation dates and AppKit event queue (2026-11-17)
 

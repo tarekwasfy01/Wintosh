@@ -50,6 +50,7 @@ using darling_windows_CFURLRef = const void*;
 using darling_windows_CFBundleRef = const void*;
 using darling_windows_CFBooleanRef = const void*;
 using darling_windows_CFMachPortRef = const void*;
+using darling_windows_CFAllocatorRef = const void*;
 using darling_windows_CFRunLoopRef = void*;
 using darling_windows_CFRunLoopBlock = void (*)(void* context);
 using DarlingCFRunLoopSourceRetainCallback = const void* (DARLING_CF_GUEST_ABI *)(const void* info);
@@ -95,6 +96,28 @@ struct DarlingCFMachPortContext {
 	DarlingCFMachPortRetainCallback retain;
 	DarlingCFMachPortReleaseCallback release;
 	DarlingCFMachPortCopyDescriptionCallback copy_description;
+};
+using DarlingCFAllocatorRetainCallback = const void* (DARLING_CF_GUEST_ABI *)(const void* info);
+using DarlingCFAllocatorReleaseCallback = void (DARLING_CF_GUEST_ABI *)(const void* info);
+using DarlingCFAllocatorCopyDescriptionCallback = const void* (DARLING_CF_GUEST_ABI *)(const void* info);
+using DarlingCFAllocatorAllocateCallback = void* (DARLING_CF_GUEST_ABI *)(
+	darling_windows_CFIndex size, std::uint64_t hint, void* info);
+using DarlingCFAllocatorReallocateCallback = void* (DARLING_CF_GUEST_ABI *)(
+	void* address, darling_windows_CFIndex size, std::uint64_t hint, void* info);
+using DarlingCFAllocatorDeallocateCallback = void (DARLING_CF_GUEST_ABI *)(
+	void* address, void* info);
+using DarlingCFAllocatorPreferredSizeCallback = darling_windows_CFIndex (DARLING_CF_GUEST_ABI *)(
+	darling_windows_CFIndex size, std::uint64_t hint, void* info);
+struct DarlingCFAllocatorContext {
+	darling_windows_CFIndex version;
+	void* info;
+	DarlingCFAllocatorRetainCallback retain;
+	DarlingCFAllocatorReleaseCallback release;
+	DarlingCFAllocatorCopyDescriptionCallback copy_description;
+	DarlingCFAllocatorAllocateCallback allocate;
+	DarlingCFAllocatorReallocateCallback reallocate;
+	DarlingCFAllocatorDeallocateCallback deallocate;
+	DarlingCFAllocatorPreferredSizeCallback preferred_size;
 };
 using DarlingCFMachPortCallout = void (DARLING_CF_GUEST_ABI *)(
 	darling_windows_CFMachPortRef port, void* message,
@@ -812,6 +835,23 @@ extern "C" DARLING_CF_GUEST_ABI void CFMachPortSetInvalidationCallBack(
 	darling_windows_CFMachPortRef port, DarlingCFMachPortInvalidationCallout callout);
 extern "C" DARLING_CF_GUEST_ABI DarlingCFMachPortInvalidationCallout
 CFMachPortGetInvalidationCallBack(darling_windows_CFMachPortRef port);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeID CFAllocatorGetTypeID();
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFAllocatorRef CFAllocatorCreate(
+	const void* allocator, const DarlingCFAllocatorContext* context);
+extern "C" DARLING_CF_GUEST_ABI void CFAllocatorGetContext(
+	darling_windows_CFAllocatorRef allocator, DarlingCFAllocatorContext* context);
+extern "C" DARLING_CF_GUEST_ABI void* CFAllocatorAllocate(
+	darling_windows_CFAllocatorRef allocator, darling_windows_CFIndex size, std::uint64_t hint);
+extern "C" DARLING_CF_GUEST_ABI void CFAllocatorDeallocate(
+	darling_windows_CFAllocatorRef allocator, void* address);
+extern "C" DARLING_CF_GUEST_ABI void* CFAllocatorReallocate(
+	darling_windows_CFAllocatorRef allocator, void* address,
+	darling_windows_CFIndex size, std::uint64_t hint);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFIndex CFAllocatorGetPreferredSizeForSize(
+	darling_windows_CFAllocatorRef allocator, darling_windows_CFIndex size, std::uint64_t hint);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFAllocatorRef CFAllocatorGetDefault();
+extern "C" DARLING_CF_GUEST_ABI void CFAllocatorSetDefault(
+	darling_windows_CFAllocatorRef allocator);
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeRef CFMachPortCreateRunLoopSource(
 	const void* allocator, darling_windows_CFMachPortRef port,
 	darling_windows_CFIndex order);

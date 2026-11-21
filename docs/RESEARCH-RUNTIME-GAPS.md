@@ -39,6 +39,14 @@ einmal frei. Nur durch `CFMachPortCreate` erzeugte Ports gehören dem Wrapper;
 vollständige Nachrichten-/Rechteübertragung sind noch nicht durch ein
 Mach-O-Gastfixture verifiziert.
 
+Die `CFAllocator`-Teilmenge erstellt Allocator-Kontexte mit Retain-/Release-
+Lebensdauer und exportiert Allocate, Reallocate, Deallocate, Preferred-Size
+sowie den thread-lokalen Default. Default-Speicher nutzt den Wintosh-Gastheap;
+Standard-Allocator-Konstanten sind als Mach-O-Datensymbole verfügbar. Der
+Allocator für die Allocator-Erzeugung, vollständige Use-Context-Semantik,
+separates malloc-zone-Verhalten und die Integration in alle CF-Konstruktoren
+fehlen noch.
+
 Der Mach-O-Hostresolver exportiert jetzt zusätzlich ausgewählte
 `CFString`-Erzeugungs- und Leseoperationen sowie `CFArray`-Typ-, Anzahl- und
 Indexabfragen. CFArray unterstützt nun Create/Copy, mutable Create/Copy,
@@ -63,9 +71,9 @@ Invalidate für sechs implementierte Loop-Phasen. Die Gast-ABI bildet
 Antwortnachrichten für Mach-Quellen, weitere Aktivitätsphasen und Gast-Fixture-Verifikation
 Version-1-Quellen können über `getPort` einen Mach-Port registrieren; der
 aktive Modus fragt Nachrichten in 10-ms-Intervallen ab und ruft `perform` auf.
-Antwortnachrichten werden über die Mach-Send-ABI zurückgesendet; für den
-Default-Allocator wird der Reply danach freigegeben. Custom-Allocator-Freigabe
-und nativer Multi-Port-Wait bleiben offen. Ein eindeutiger Source-Port wird
+Antwortnachrichten werden über die Mach-Send-ABI zurückgesendet und mit dem
+an `perform` übergebenen Allocator freigegeben. Der native Multi-Port-Wait
+bleibt offen. Ein eindeutiger Source-Port wird
 pro lebender Quelle erzwungen. Run-Loop-Handles teilen das CF-Objektlayout und sind immortal;
 generisches `CFRetain`/`CFRelease` sowie `CFGetTypeID` arbeiten damit ohne
 Lifetime-Fehler.

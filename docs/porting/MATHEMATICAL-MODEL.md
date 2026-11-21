@@ -523,10 +523,19 @@ remaining mode/loop tokens become no-ops. This models version-0 manual
 signaling. Version-1 sources use `getPort` to poll the registered Mach port,
 receive one ready message, and call `perform` in source order. The polling
 bound is `Δt ≤ 10 ms` while an active-mode version-1 source is registered;
-reply messages returned by `perform` are sent through the Mach message ABI;
-default-allocator replies are released afterward, while custom-allocator
-reply deallocation and a native multi-port wait set remain unsupported.
+reply messages returned by `perform` are sent through the Mach message ABI and
+then deallocated using the callback's allocator. A native multi-port wait set
+remains unsupported.
 The source/port registry enforces one source per port for each live source.
+For an allocator `a` with context `c`, allocation is `A(a,n,h) = c.allocate(n,h,c.info)`;
+deallocation is `D(a,p) = c.deallocate(p,c.info)`. When `a = null`, both
+operations use Wintosh's guest heap. `CFAllocatorCreate` retains context info
+once and releases it with the allocator; the per-thread default holds a CF
+reference. Source-1 reply handling now sends the reply and applies `D(a,p)`.
+Standard allocator constants are resolved as Mach-O data symbols; malloc-zone
+currently shares system-heap behavior. The allocator parameter to allocator
+creation and consistent use of custom allocators by every CF constructor remain
+outside the current implementation.
 For a CFMachPort wrapper `p`, source delivery is `Deliver(p,m) = Valid(p) ∧
 Receive(GetPort(p),m)`, with the callback `Callout(p,m,size,info)` invoked once
 for each received message. `Invalidate(p)` performs the state transition

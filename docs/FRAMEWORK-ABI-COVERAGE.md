@@ -67,6 +67,15 @@ create-with-port rights remain caller-owned. Uniquing and context release are
 implemented, but guest callback ABI, edge-case rights accounting, and
 message/reply ownership need a Mach-O fixture.
 
+`CFAllocator` exports create/context, allocate/reallocate/deallocate,
+preferred-size, type-ID, and per-thread default operations. Custom allocator
+contexts retain/release their info and route guest allocation callbacks; the
+default allocator uses Wintosh's guest heap. The allocator argument used to
+create allocator objects, full use-context semantics, distinct malloc-zone
+behavior, complete behavior for missing callbacks, and guest ABI fixtures
+remain open. Standard allocator constants are exported for Mach-O data-symbol
+resolution.
+
 The Mach-O host resolver exports a partial C ABI for run-loop control,
 `CFString` creation/read operations, and CFArray creation, copying, reads,
 mutation, and synchronous callback enumeration. CFArray copies its callback

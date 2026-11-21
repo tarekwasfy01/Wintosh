@@ -38,7 +38,7 @@
 #include <new>
 
 namespace {
-enum class Kind { String, Data, Array, Number, Real, Dictionary, Set, Date, URL, Boolean, Null, ImageSource, DataProvider, ImageDestination, DataConsumer, Bundle, PropertyListUID, RunLoopSource, RunLoopTimer, RunLoopObserver, RunLoop, MachPort };
+enum class Kind { String, Data, Array, Number, Real, Dictionary, Set, Date, URL, Boolean, Null, ImageSource, DataProvider, ImageDestination, DataConsumer, Bundle, PropertyListUID, RunLoopSource, RunLoopTimer, RunLoopObserver, RunLoop, MachPort, Allocator };
 constexpr darling_windows_CFTypeID TypeId(Kind kind)
 {
 	return static_cast<darling_windows_CFTypeID>(kind) + 1;
@@ -109,6 +109,8 @@ struct Object {
 	bool mach_port_context_released = false;
 	std::mutex mach_port_mutex;
 	std::vector<Object*> mach_port_sources;
+	DarlingCFAllocatorContext allocator_context{};
+	const void* allocator_info = nullptr;
 	DarlingCFRunLoopTimerContext run_loop_timer_context{};
 	const void* run_loop_timer_info = nullptr;
 	const void* run_loop_timer_allocator = nullptr;
@@ -251,6 +253,47 @@ void ReleaseOwned(Object* object)
 	if (object == nullptr || object->immortal) return;
 	if (object->references.fetch_sub(1, std::memory_order_acq_rel) == 1) delete object;
 }
+struct ThreadCFAllocator final {
+	Object* value{};
+	~ThreadCFAllocator() { ReleaseOwned(value); }
+};
+thread_local ThreadCFAllocator thread_cf_allocator;
+void* DARLING_CF_GUEST_ABI CFSystemAllocatorAllocate(
+	darling_windows_CFIndex size, std::uint64_t, void*)
+{
+	return size <= 0 ? nullptr : darling_windows_malloc(static_cast<std::size_t>(size));
+}
+void* DARLING_CF_GUEST_ABI CFSystemAllocatorReallocate(
+	void* address, darling_windows_CFIndex size, std::uint64_t, void*)
+{
+	if (size < 0) return nullptr;
+	if (size == 0) { darling_windows_free(address); return nullptr; }
+	return darling_windows_realloc(address, static_cast<std::size_t>(size));
+}
+void DARLING_CF_GUEST_ABI CFSystemAllocatorDeallocate(void* address, void*)
+{
+	darling_windows_free(address);
+}
+darling_windows_CFIndex DARLING_CF_GUEST_ABI CFSystemAllocatorPreferredSize(
+	darling_windows_CFIndex size, std::uint64_t, void*)
+{
+	return (std::max)(size, darling_windows_CFIndex{0});
+}
+Object* SystemCFAllocator()
+{
+	static Object allocator{};
+	static const bool initialized = [&] {
+		allocator.kind = Kind::Allocator;
+		allocator.immortal = true;
+		allocator.allocator_context.allocate = &CFSystemAllocatorAllocate;
+		allocator.allocator_context.reallocate = &CFSystemAllocatorReallocate;
+		allocator.allocator_context.deallocate = &CFSystemAllocatorDeallocate;
+		allocator.allocator_context.preferred_size = &CFSystemAllocatorPreferredSize;
+		return true;
+	}();
+	(void)initialized;
+	return &allocator;
+}
 Object::~Object()
 {
 	if (kind == Kind::RunLoopSource && run_loop_source_cfmachport != nullptr) {
@@ -293,6 +336,11 @@ Object::~Object()
 			try { mach_port_context.release(mach_port_info); }
 			catch (...) { /* Guest callbacks must not unwind through CoreFoundation. */ }
 		}
+	}
+	if (kind == Kind::Allocator && allocator_info != nullptr &&
+		allocator_context.release != nullptr) {
+		try { allocator_context.release(allocator_info); }
+		catch (...) { /* Guest callbacks must not unwind through CoreFoundation. */ }
 	}
 	if (opaque_destroy != nullptr) {
 		try { opaque_destroy(opaque_payload); }
@@ -3925,7 +3973,7 @@ extern "C" int darling_windows_CFRunLoopRunInModeForLoop(
 							if (reply->msgh_size >= sizeof(darling_mach_msg_header))
 								(void)darling_windows_mach_msg(reply, darling_mach_send_msg,
 									reply->msgh_size, 0, 0, 0, 0);
-							if (pending.allocator == nullptr) darling_windows_free(reply);
+							CFAllocatorDeallocate(pending.allocator, reply);
 						}
 					} catch (...) { /* Guest callbacks must not unwind through CoreFoundation. */ }
 				}
@@ -4179,6 +4227,16 @@ Object* AsCFMachPort(const void* value)
 {
 	auto* object = As(value);
 	return object != nullptr && object->kind == Kind::MachPort ? object : nullptr;
+}
+Object* AsCFAllocator(const void* value)
+{
+	auto* object = As(value);
+	return object != nullptr && object->kind == Kind::Allocator ? object : nullptr;
+}
+Object* EffectiveCFAllocator(const void* value)
+{
+	if (value != nullptr) return AsCFAllocator(value);
+	return thread_cf_allocator.value != nullptr ? thread_cf_allocator.value : SystemCFAllocator();
 }
 const void* DARLING_CF_GUEST_ABI CFMachPortRetainInfo(const void* info)
 {
@@ -4446,6 +4504,122 @@ extern "C" DARLING_CF_GUEST_ABI void CFRunLoopSourceInvalidate(
 		state->condition.notify_all();
 		if (state == main_run_loop.state) darling_windows_appkit_wake_main_run_loop();
 	}
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeID CFAllocatorGetTypeID()
+{
+	return TypeId(Kind::Allocator);
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFAllocatorRef CFAllocatorCreate(
+	const void*, const DarlingCFAllocatorContext* context)
+{
+	if (context == nullptr || context->version != 0 || context->allocate == nullptr)
+		return nullptr;
+	auto* allocator = new (std::nothrow) Object{};
+	if (allocator == nullptr) return nullptr;
+	allocator->kind = Kind::Allocator;
+	allocator->allocator_context = *context;
+	if (context->info != nullptr && context->retain != nullptr) {
+		try { allocator->allocator_info = context->retain(context->info); }
+		catch (...) { delete allocator; return nullptr; }
+	} else allocator->allocator_info = context->info;
+	allocator->allocator_context.info = const_cast<void*>(allocator->allocator_info);
+	return allocator;
+}
+
+extern "C" DARLING_CF_GUEST_ABI void CFAllocatorGetContext(
+	darling_windows_CFAllocatorRef value, DarlingCFAllocatorContext* context)
+{
+	if (context == nullptr) return;
+	const auto* allocator = value == nullptr ? EffectiveCFAllocator(nullptr) : AsCFAllocator(value);
+	if (allocator == nullptr) { *context = {}; return; }
+	*context = allocator->allocator_context;
+	context->info = const_cast<void*>(allocator->allocator_info);
+}
+
+extern "C" DARLING_CF_GUEST_ABI void* CFAllocatorAllocate(
+	darling_windows_CFAllocatorRef value, darling_windows_CFIndex size, std::uint64_t hint)
+{
+	if (size <= 0) return nullptr;
+	auto* allocator = EffectiveCFAllocator(value);
+	if (value != nullptr && allocator == nullptr) return nullptr;
+	if (allocator == nullptr) return darling_windows_malloc(static_cast<std::size_t>(size));
+	if (allocator->allocator_context.allocate == nullptr) return nullptr;
+	try { return allocator->allocator_context.allocate(size, hint,
+		const_cast<void*>(allocator->allocator_info)); }
+	catch (...) { return nullptr; }
+}
+
+extern "C" DARLING_CF_GUEST_ABI void CFAllocatorDeallocate(
+	darling_windows_CFAllocatorRef value, void* address)
+{
+	if (address == nullptr) return;
+	auto* allocator = EffectiveCFAllocator(value);
+	if (value != nullptr && allocator == nullptr) return;
+	if (allocator == nullptr) { darling_windows_free(address); return; }
+	if (allocator->allocator_context.deallocate == nullptr) return;
+	try { allocator->allocator_context.deallocate(address,
+		const_cast<void*>(allocator->allocator_info)); }
+	catch (...) { /* Guest callbacks must not unwind through CoreFoundation. */ }
+}
+
+extern "C" DARLING_CF_GUEST_ABI void* CFAllocatorReallocate(
+	darling_windows_CFAllocatorRef value, void* address,
+	darling_windows_CFIndex size, std::uint64_t hint)
+{
+	if (size < 0) return nullptr;
+	auto* allocator = EffectiveCFAllocator(value);
+	if (value != nullptr && allocator == nullptr) return nullptr;
+	if (allocator == nullptr) {
+		if (size == 0) { darling_windows_free(address); return nullptr; }
+		return darling_windows_realloc(address, static_cast<std::size_t>(size));
+	}
+	const auto info = const_cast<void*>(allocator->allocator_info);
+	if (address == nullptr) {
+		if (size == 0 || allocator->allocator_context.allocate == nullptr) return nullptr;
+		try { return allocator->allocator_context.allocate(size, hint, info); }
+		catch (...) { return nullptr; }
+	}
+	if (size == 0) {
+		if (allocator->allocator_context.deallocate != nullptr) {
+			try { allocator->allocator_context.deallocate(address, info); }
+			catch (...) { /* Guest callbacks must not unwind through CoreFoundation. */ }
+		}
+		return nullptr;
+	}
+	if (allocator->allocator_context.reallocate == nullptr) return nullptr;
+	try { return allocator->allocator_context.reallocate(address, size, hint, info); }
+	catch (...) { return nullptr; }
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFIndex CFAllocatorGetPreferredSizeForSize(
+	darling_windows_CFAllocatorRef value, darling_windows_CFIndex size, std::uint64_t hint)
+{
+	if (size < 0) return 0;
+	auto* allocator = EffectiveCFAllocator(value);
+	if (value != nullptr && allocator == nullptr) return 0;
+	if (allocator == nullptr || allocator->allocator_context.preferred_size == nullptr)
+		return size;
+	try { return allocator->allocator_context.preferred_size(size, hint,
+		const_cast<void*>(allocator->allocator_info)); }
+	catch (...) { return 0; }
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFAllocatorRef CFAllocatorGetDefault()
+{
+	return thread_cf_allocator.value != nullptr ? thread_cf_allocator.value : SystemCFAllocator();
+}
+
+extern "C" DARLING_CF_GUEST_ABI void CFAllocatorSetDefault(
+	darling_windows_CFAllocatorRef value)
+{
+	auto* allocator = value == nullptr ? SystemCFAllocator() : AsCFAllocator(value);
+	if (value != nullptr && allocator == nullptr) return;
+	if (thread_cf_allocator.value == allocator) return;
+	if (allocator != nullptr) RetainOwned(allocator);
+	ReleaseOwned(thread_cf_allocator.value);
+	thread_cf_allocator.value = allocator;
 }
 
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeID CFMachPortGetTypeID()
@@ -5387,6 +5561,28 @@ extern "C" const DarlingCFDictionaryKeyCallbacks kCFTypeSetCallBacks = {
 extern "C" const DarlingCFArrayCallbacks kCFTypeArrayCallBacks = {
 	0, &DarlingCFTypeRetain, &DarlingCFTypeRelease,
 	&DarlingCFTypeCopyDescription, &DarlingCFTypeEqual};
+
+namespace {
+Object* NullCFAllocator()
+{
+	static Object allocator{};
+	static const bool initialized = [&] {
+		allocator.kind = Kind::Allocator;
+		allocator.immortal = true;
+		return true;
+	}();
+	(void)initialized;
+	return &allocator;
+}
+std::uint8_t allocator_use_context_sentinel{};
+}
+extern "C" const darling_windows_CFAllocatorRef kCFAllocatorDefault = nullptr;
+extern "C" const darling_windows_CFAllocatorRef kCFAllocatorSystemDefault = SystemCFAllocator();
+extern "C" const darling_windows_CFAllocatorRef kCFAllocatorMalloc = SystemCFAllocator();
+extern "C" const darling_windows_CFAllocatorRef kCFAllocatorMallocZone = SystemCFAllocator();
+extern "C" const darling_windows_CFAllocatorRef kCFAllocatorNull = NullCFAllocator();
+extern "C" const darling_windows_CFAllocatorRef kCFAllocatorUseContext =
+	&allocator_use_context_sentinel;
 
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeID CFStringGetTypeID()
 {
@@ -6463,6 +6659,36 @@ extern "C" std::uintptr_t darling_windows_corefoundation_symbol(const char* name
 		return reinterpret_cast<std::uintptr_t>(&CFMachPortSetInvalidationCallBack);
 	if (std::strcmp(name, "CFMachPortGetInvalidationCallBack") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFMachPortGetInvalidationCallBack);
+	if (std::strcmp(name, "CFAllocatorGetTypeID") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFAllocatorGetTypeID);
+	if (std::strcmp(name, "CFAllocatorCreate") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFAllocatorCreate);
+	if (std::strcmp(name, "CFAllocatorGetContext") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFAllocatorGetContext);
+	if (std::strcmp(name, "CFAllocatorAllocate") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFAllocatorAllocate);
+	if (std::strcmp(name, "CFAllocatorDeallocate") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFAllocatorDeallocate);
+	if (std::strcmp(name, "CFAllocatorReallocate") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFAllocatorReallocate);
+	if (std::strcmp(name, "CFAllocatorGetPreferredSizeForSize") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFAllocatorGetPreferredSizeForSize);
+	if (std::strcmp(name, "CFAllocatorGetDefault") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFAllocatorGetDefault);
+	if (std::strcmp(name, "CFAllocatorSetDefault") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFAllocatorSetDefault);
+	if (std::strcmp(name, "kCFAllocatorDefault") == 0)
+		return reinterpret_cast<std::uintptr_t>(&kCFAllocatorDefault);
+	if (std::strcmp(name, "kCFAllocatorSystemDefault") == 0)
+		return reinterpret_cast<std::uintptr_t>(&kCFAllocatorSystemDefault);
+	if (std::strcmp(name, "kCFAllocatorMalloc") == 0)
+		return reinterpret_cast<std::uintptr_t>(&kCFAllocatorMalloc);
+	if (std::strcmp(name, "kCFAllocatorMallocZone") == 0)
+		return reinterpret_cast<std::uintptr_t>(&kCFAllocatorMallocZone);
+	if (std::strcmp(name, "kCFAllocatorNull") == 0)
+		return reinterpret_cast<std::uintptr_t>(&kCFAllocatorNull);
+	if (std::strcmp(name, "kCFAllocatorUseContext") == 0)
+		return reinterpret_cast<std::uintptr_t>(&kCFAllocatorUseContext);
 	if (std::strcmp(name, "CFRunLoopContainsSource") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFRunLoopContainsSource);
 	if (std::strcmp(name, "CFRunLoopAddSource") == 0)

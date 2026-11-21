@@ -866,6 +866,22 @@ extern "C" DARLING_CF_GUEST_ABI std::uint8_t CFStringGetCString(
 	std::uint32_t encoding);
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFStringCreateWithCharacters(
 	const void* allocator, const std::uint16_t* characters, darling_windows_CFIndex length);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFStringCreateCopy(
+	const void* allocator, darling_windows_CFStringRef value);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFMutableStringRef CFStringCreateMutable(
+	const void* allocator, darling_windows_CFIndex max_length);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFMutableStringRef CFStringCreateMutableCopy(
+	const void* allocator, darling_windows_CFIndex max_length,
+	darling_windows_CFStringRef value);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFURLRef CFURLCreateWithString(
+	const void* allocator, darling_windows_CFStringRef string,
+	darling_windows_CFURLRef base_url);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFURLRef CFURLCreateWithFileSystemPath(
+	const void* allocator, darling_windows_CFStringRef file_path, std::int32_t path_style,
+	std::uint8_t is_directory);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFURLRef
+CFURLCreateFromFileSystemRepresentation(const void* allocator, const std::uint8_t* bytes,
+	darling_windows_CFIndex length, std::uint8_t is_directory);
 extern "C" DARLING_CF_GUEST_ABI const char* CFStringGetCStringPtr(
 	darling_windows_CFStringRef value, std::uint32_t encoding);
 extern "C" DARLING_CF_GUEST_ABI std::uint16_t CFStringGetCharacterAtIndex(

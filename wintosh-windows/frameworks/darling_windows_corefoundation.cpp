@@ -3157,9 +3157,10 @@ extern "C" double darling_windows_CFDateGetTimeIntervalSinceDate(
 extern "C" darling_windows_CFURLRef darling_windows_CFURLCreateWithFileSystemPath(const char* path)
 {
 	if (path == nullptr || path[0] == '\0') return nullptr;
-	auto* object = new Object{};
-	object->kind = Kind::URL;
-	object->string = path;
+	auto* object = CreateObjectWithAllocator(nullptr, Kind::URL);
+	if (object == nullptr) return nullptr;
+	try { object->string = path; }
+	catch (...) { ReleaseOwned(object); return nullptr; }
 	return object;
 }
 
@@ -5785,6 +5786,61 @@ extern "C" DARLING_CF_GUEST_ABI darling_windows_CFMutableStringRef CFStringCreat
 	return object;
 }
 
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFURLRef CFURLCreateWithString(
+	const void* allocator, darling_windows_CFStringRef string,
+	darling_windows_CFURLRef base_url)
+{
+	const auto temporary = darling_windows_CFURLCreateWithString(string, base_url);
+	const auto* source = As(temporary);
+	if (source == nullptr || source->kind != Kind::URL) {
+		if (temporary != nullptr) ReleaseOwned(const_cast<Object*>(source));
+		return nullptr;
+	}
+	auto* object = CreateObjectWithAllocator(allocator, Kind::URL);
+	if (object != nullptr) {
+		try { object->string = source->string; }
+		catch (...) { ReleaseOwned(object); object = nullptr; }
+	}
+	ReleaseOwned(const_cast<Object*>(source));
+	return object;
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFURLRef CFURLCreateWithFileSystemPath(
+	const void* allocator, darling_windows_CFStringRef file_path, std::int32_t path_style,
+	std::uint8_t is_directory)
+{
+	if (path_style != 0 && path_style != 2) return nullptr;
+	const auto* source = As(file_path);
+	if (source == nullptr || source->kind != Kind::String) return nullptr;
+	auto* object = CreateObjectWithAllocator(allocator, Kind::URL);
+	if (object == nullptr) return nullptr;
+	try {
+		object->string = source->string;
+		if (path_style == 2)
+			std::replace(object->string.begin(), object->string.end(), '\\', '/');
+		if (is_directory != 0 && !object->string.empty() && object->string.back() != '/')
+			object->string.push_back('/');
+	}
+	catch (...) { ReleaseOwned(object); return nullptr; }
+	return object;
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFURLRef
+CFURLCreateFromFileSystemRepresentation(const void* allocator, const std::uint8_t* bytes,
+	darling_windows_CFIndex length, std::uint8_t is_directory)
+{
+	if (length < 0 || (length != 0 && bytes == nullptr)) return nullptr;
+	auto* object = CreateObjectWithAllocator(allocator, Kind::URL);
+	if (object == nullptr) return nullptr;
+	try {
+		if (length != 0) object->string.assign(reinterpret_cast<const char*>(bytes),
+			static_cast<std::size_t>(length));
+		if (is_directory != 0 && !object->string.empty() && object->string.back() != '/')
+			object->string.push_back('/');
+	} catch (...) { ReleaseOwned(object); return nullptr; }
+	return object;
+}
+
 extern "C" DARLING_CF_GUEST_ABI const char* CFStringGetCStringPtr(
 	darling_windows_CFStringRef value, std::uint32_t encoding)
 {
@@ -6936,6 +6992,18 @@ extern "C" std::uintptr_t darling_windows_corefoundation_symbol(const char* name
 		return reinterpret_cast<std::uintptr_t>(&CFStringGetCString);
 	if (std::strcmp(name, "CFStringCreateWithCharacters") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFStringCreateWithCharacters);
+	if (std::strcmp(name, "CFStringCreateCopy") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFStringCreateCopy);
+	if (std::strcmp(name, "CFStringCreateMutable") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFStringCreateMutable);
+	if (std::strcmp(name, "CFStringCreateMutableCopy") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFStringCreateMutableCopy);
+	if (std::strcmp(name, "CFURLCreateWithString") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFURLCreateWithString);
+	if (std::strcmp(name, "CFURLCreateWithFileSystemPath") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFURLCreateWithFileSystemPath);
+	if (std::strcmp(name, "CFURLCreateFromFileSystemRepresentation") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFURLCreateFromFileSystemRepresentation);
 	if (std::strcmp(name, "CFStringGetCStringPtr") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFStringGetCStringPtr);
 	if (std::strcmp(name, "CFStringGetCharacterAtIndex") == 0)

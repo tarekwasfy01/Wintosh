@@ -311,9 +311,10 @@ Default allocations use the guest heap. `CFAllocatorCreate` uses its requested
 backing allocator, including the supplied context for `kCFAllocatorUseContext`.
 Guest `CFString` (CString/characters and copy/mutable-copy/mutable
 constructors), `CFData`, `CFArray`, `CFDictionary`,
-`CFSet`, `CFNumber`, `CFDate`, and `CFMachPort` object blocks also retain and
-use their requested allocator. Their STL-backed payload storage and other CF
-constructors still use the host allocator. The default,
+`CFSet`, `CFNumber`, `CFDate`, `CFMachPort`, and the guest CFURL string/path
+constructors also retain and use their requested allocator for object blocks.
+Their STL-backed payload storage and other CF constructors still use the host
+allocator. HFS-style CFURL paths remain unsupported. The default,
 system-default, malloc, malloc-zone, null, and use-context constants are
 exported; malloc-zone currently uses the system allocator behavior.
 CF timers

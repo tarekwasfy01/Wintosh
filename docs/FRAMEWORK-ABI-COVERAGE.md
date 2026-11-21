@@ -77,13 +77,16 @@ behavior, complete behavior for missing callbacks, and guest ABI fixtures
 remain open. Guest `CFString` (CString/characters and copy/mutable-copy/mutable
 constructors), `CFData`, `CFArray`,
 `CFDictionary`, `CFSet`, `CFNumber`, `CFDate`, and `CFMachPort` object blocks
-use the supplied allocator and retain it through object destruction. Their
-STL-backed payload storage and other CF constructors still use the host
-allocator. Standard allocator constants are exported for Mach-O data-symbol
-resolution.
+use the supplied allocator and retain it through object destruction. Guest
+CFURL string, filesystem-path, and filesystem-representation constructors use
+the requested allocator for their URL object blocks. POSIX and Windows path
+styles are supported; HFS path conversion is not. STL-backed payload storage
+and other CF constructors still use the host allocator. Standard allocator
+constants are exported for Mach-O data-symbol resolution.
 
 The Mach-O host resolver exports a partial C ABI for run-loop control,
-`CFString` creation/read operations, and CFArray creation, copying, reads,
+`CFString` creation/copy/mutable construction and read operations, selected
+CFURL constructors, and CFArray creation, copying, reads,
 mutation, and synchronous callback enumeration. CFArray copies its callback
 structure and allocator at creation and applies retain/release/equality
 callbacks to stored values. Range queries, range append, and index exchange

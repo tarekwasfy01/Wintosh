@@ -1145,6 +1145,10 @@ string values and simple relative paths against a base URL; escaping,
 including leading `../` parent segments, are covered; escaping, normalization,
 and full RFC authority parsing remain open.
 Simple `/./` segments and a trailing `/.` are also covered.
+Guest-ABI `CFURLCreateWithString`, `CFURLCreateWithFileSystemPath`, and
+`CFURLCreateFromFileSystemRepresentation` constructors now retain their
+requested allocator. POSIX and Windows path styles are accepted; HFS path
+conversion and full filesystem URL escaping remain unsupported.
 Bracketed IPv6 host and port extraction is covered as well; zone identifiers,
 authority escaping, and complete RFC URL normalization remain open.
 `CFURLCopyNetLocation` is covered for the same simple IPv4/IPv6 authority

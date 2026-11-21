@@ -113,7 +113,11 @@ copy/mutable-copy/mutable constructors), `CFData`,
 constructors now allocate their object blocks through the requested allocator
 and retain that allocator until destruction. Container, string, and data
 payload buffers still use the host C++ allocator; other CF constructors remain
-to be converted. Source-1 reply memory uses this deallocator path.
+to be converted. Guest `CFURLCreateWithString`, `CFURLCreateWithFileSystemPath`,
+and `CFURLCreateFromFileSystemRepresentation` now follow the same object
+allocator rule. URL path-style conversion is limited to POSIX and Windows
+styles; HFS paths remain unsupported. Source-1 reply memory uses this
+deallocator path.
 
 ### Foundation dates and AppKit event queue (2026-11-17)
 

@@ -40,6 +40,7 @@ using darling_windows_CFDataProviderReleaseBytePointerCallback = void (DARLING_C
 using darling_windows_CFDataProviderGetBytesAtPositionCallback = std::size_t (DARLING_CF_GUEST_ABI *)(
 	void* info, std::int64_t position, void* buffer, std::size_t count);
 using darling_windows_CFStringRef = const void*;
+using darling_windows_CFMutableStringRef = void*;
 using darling_windows_CFDataRef = const void*;
 using darling_windows_CFMutableDataRef = void*;
 using darling_windows_CFArrayRef = const void*;

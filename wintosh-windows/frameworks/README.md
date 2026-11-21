@@ -309,7 +309,8 @@ callbacks and full Mach right/message ownership still need a Mach-O fixture.
 deallocation, preferred-size queries, and per-thread default selection.
 Default allocations use the guest heap. `CFAllocatorCreate` uses its requested
 backing allocator, including the supplied context for `kCFAllocatorUseContext`.
-Guest `CFString` (CString/characters), `CFData`, `CFArray`, `CFDictionary`,
+Guest `CFString` (CString/characters and copy/mutable-copy/mutable
+constructors), `CFData`, `CFArray`, `CFDictionary`,
 `CFSet`, `CFNumber`, `CFDate`, and `CFMachPort` object blocks also retain and
 use their requested allocator. Their STL-backed payload storage and other CF
 constructors still use the host allocator. The default,

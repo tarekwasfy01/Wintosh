@@ -107,7 +107,8 @@ default, system-default, malloc, malloc-zone, null, and use-context constants
 are exported. `CFAllocatorCreate` allocates its own object through the
 requested backing allocator; `kCFAllocatorUseContext` uses the supplied
 context's allocate and deallocate callbacks. Distinct malloc-zone behavior
-remains outside this subset. Guest `CFString` (CString/characters), `CFData`,
+remains outside this subset. Guest `CFString` (CString/characters and
+copy/mutable-copy/mutable constructors), `CFData`,
 `CFArray`, `CFDictionary`, `CFSet`, `CFNumber`, `CFDate`, and `CFMachPort`
 constructors now allocate their object blocks through the requested allocator
 and retain that allocator until destruction. Container, string, and data

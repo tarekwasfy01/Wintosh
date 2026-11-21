@@ -5744,6 +5744,47 @@ extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFStringCreateWithCh
 	return object;
 }
 
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFStringCreateCopy(
+	const void* allocator, darling_windows_CFStringRef value)
+{
+	const auto* source = As(value);
+	if (source == nullptr || source->kind != Kind::String) return nullptr;
+	auto* object = CreateObjectWithAllocator(allocator, Kind::String);
+	if (object == nullptr) return nullptr;
+	try { object->string = source->string; }
+	catch (...) { ReleaseOwned(object); return nullptr; }
+	return object;
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFMutableStringRef CFStringCreateMutable(
+	const void* allocator, darling_windows_CFIndex max_length)
+{
+	if (max_length < 0) return nullptr;
+	auto* object = CreateObjectWithAllocator(allocator, Kind::String);
+	if (object == nullptr) return nullptr;
+	try {
+		if (max_length > 0) object->string.reserve(static_cast<std::size_t>(max_length));
+	} catch (...) { ReleaseOwned(object); return nullptr; }
+	return object;
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFMutableStringRef CFStringCreateMutableCopy(
+	const void* allocator, darling_windows_CFIndex max_length,
+	darling_windows_CFStringRef value)
+{
+	if (max_length < 0) return nullptr;
+	const auto* source = As(value);
+	if (source == nullptr || source->kind != Kind::String) return nullptr;
+	auto* object = CreateObjectWithAllocator(allocator, Kind::String);
+	if (object == nullptr) return nullptr;
+	try {
+		object->string = source->string;
+		if (max_length > 0 && static_cast<std::size_t>(max_length) > object->string.capacity())
+			object->string.reserve(static_cast<std::size_t>(max_length));
+	} catch (...) { ReleaseOwned(object); return nullptr; }
+	return object;
+}
+
 extern "C" DARLING_CF_GUEST_ABI const char* CFStringGetCStringPtr(
 	darling_windows_CFStringRef value, std::uint32_t encoding)
 {

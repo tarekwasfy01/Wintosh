@@ -42,10 +42,11 @@ Mach-O-Gastfixture verifiziert.
 Die `CFAllocator`-Teilmenge erstellt Allocator-Kontexte mit Retain-/Release-
 Lebensdauer und exportiert Allocate, Reallocate, Deallocate, Preferred-Size
 sowie den thread-lokalen Default. Default-Speicher nutzt den Wintosh-Gastheap;
-Standard-Allocator-Konstanten sind als Mach-O-Datensymbole verfügbar. Der
-Allocator für die Allocator-Erzeugung, vollständige Use-Context-Semantik,
-separates malloc-zone-Verhalten und die Integration in alle CF-Konstruktoren
-fehlen noch.
+Standard-Allocator-Konstanten sind als Mach-O-Datensymbole verfügbar.
+`CFAllocatorCreate` nutzt nun den angeforderten Backing-Allocator für sein
+eigenes Objekt und bei `kCFAllocatorUseContext` die Allocate-/Deallocate-
+Callbacks aus dem Kontext. Separates malloc-zone-Verhalten und die Integration
+in alle CF-Konstruktoren fehlen noch.
 
 Der Mach-O-Hostresolver exportiert jetzt zusätzlich ausgewählte
 `CFString`-Erzeugungs- und Leseoperationen sowie `CFArray`-Typ-, Anzahl- und

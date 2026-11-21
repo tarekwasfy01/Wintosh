@@ -70,8 +70,9 @@ message/reply ownership need a Mach-O fixture.
 `CFAllocator` exports create/context, allocate/reallocate/deallocate,
 preferred-size, type-ID, and per-thread default operations. Custom allocator
 contexts retain/release their info and route guest allocation callbacks; the
-default allocator uses Wintosh's guest heap. The allocator argument used to
-create allocator objects, full use-context semantics, distinct malloc-zone
+default allocator uses Wintosh's guest heap. `CFAllocatorCreate` allocates its
+own object through the requested backing allocator, including context
+allocate/deallocate callbacks for `kCFAllocatorUseContext`. Distinct malloc-zone
 behavior, complete behavior for missing callbacks, and guest ABI fixtures
 remain open. Standard allocator constants are exported for Mach-O data-symbol
 resolution.

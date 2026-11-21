@@ -111,6 +111,9 @@ struct Object {
 	std::vector<Object*> mach_port_sources;
 	DarlingCFAllocatorContext allocator_context{};
 	const void* allocator_info = nullptr;
+	const void* allocator_backing_allocator = nullptr;
+	bool allocator_storage_uses_context = false;
+	bool allocator_context_release_deferred = false;
 	DarlingCFRunLoopTimerContext run_loop_timer_context{};
 	const void* run_loop_timer_info = nullptr;
 	const void* run_loop_timer_allocator = nullptr;
@@ -171,7 +174,9 @@ std::mutex run_loop_source1_port_registry_mutex;
 std::unordered_map<darling_mach_port_name_t, Object*> run_loop_source1_port_registry;
 std::mutex cfmachport_registry_mutex;
 std::unordered_map<darling_mach_port_name_t, Object*> cfmachport_registry;
+std::uint8_t allocator_use_context_sentinel{};
 Object* As(const void* value) { return const_cast<Object*>(static_cast<const Object*>(value)); }
+Object* AsCFAllocator(const void* value);
 std::mutex bundle_state_mutex;
 std::string main_executable_path;
 Object* main_bundle_object = nullptr;
@@ -251,7 +256,34 @@ bool EqualSetValues(const Object* set, const void* left, const void* right);
 void ReleaseOwned(Object* object)
 {
 	if (object == nullptr || object->immortal) return;
-	if (object->references.fetch_sub(1, std::memory_order_acq_rel) == 1) delete object;
+	if (object->references.fetch_sub(1, std::memory_order_acq_rel) != 1) return;
+	if (object->kind == Kind::Allocator && object->allocator_backing_allocator != nullptr) {
+		auto* backing = AsCFAllocator(object->allocator_backing_allocator);
+		object->allocator_backing_allocator = nullptr;
+		object->~Object();
+		if (backing != nullptr) {
+			CFAllocatorDeallocate(backing, object);
+			ReleaseOwned(backing);
+		} else ::operator delete(object);
+		return;
+	}
+	if (object->kind == Kind::Allocator && object->allocator_storage_uses_context) {
+		const auto deallocate = object->allocator_context.deallocate;
+		const auto release = object->allocator_context.release;
+		const auto info = object->allocator_info;
+		object->allocator_context_release_deferred = true;
+		object->~Object();
+		if (deallocate != nullptr) {
+			try { deallocate(object, const_cast<void*>(info)); }
+			catch (...) { /* Guest callbacks must not unwind through CoreFoundation. */ }
+		}
+		if (info != nullptr && release != nullptr) {
+			try { release(info); }
+			catch (...) { /* Guest callbacks must not unwind through CoreFoundation. */ }
+		}
+		return;
+	}
+	delete object;
 }
 struct ThreadCFAllocator final {
 	Object* value{};
@@ -337,7 +369,7 @@ Object::~Object()
 			catch (...) { /* Guest callbacks must not unwind through CoreFoundation. */ }
 		}
 	}
-	if (kind == Kind::Allocator && allocator_info != nullptr &&
+	if (kind == Kind::Allocator && !allocator_context_release_deferred && allocator_info != nullptr &&
 		allocator_context.release != nullptr) {
 		try { allocator_context.release(allocator_info); }
 		catch (...) { /* Guest callbacks must not unwind through CoreFoundation. */ }
@@ -4512,19 +4544,58 @@ extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeID CFAllocatorGetTypeID()
 }
 
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFAllocatorRef CFAllocatorCreate(
-	const void*, const DarlingCFAllocatorContext* context)
+	const void* object_allocator, const DarlingCFAllocatorContext* context)
 {
 	if (context == nullptr || context->version != 0 || context->allocate == nullptr)
 		return nullptr;
-	auto* allocator = new (std::nothrow) Object{};
-	if (allocator == nullptr) return nullptr;
+	const bool use_context = object_allocator == &allocator_use_context_sentinel;
+	const void* retained_info = context->info;
+	if (retained_info != nullptr && context->retain != nullptr) {
+		try { retained_info = context->retain(retained_info); }
+		catch (...) { return nullptr; }
+	}
+	Object* backing = nullptr;
+	void* storage = nullptr;
+	if (use_context) {
+		try { storage = context->allocate(static_cast<darling_windows_CFIndex>(sizeof(Object)),
+			0, const_cast<void*>(retained_info)); }
+		catch (...) { storage = nullptr; }
+	} else {
+		backing = object_allocator == nullptr ? EffectiveCFAllocator(nullptr) :
+			AsCFAllocator(object_allocator);
+		if (backing != nullptr)
+			storage = CFAllocatorAllocate(backing,
+				static_cast<darling_windows_CFIndex>(sizeof(Object)), 0);
+	}
+	if (storage == nullptr) {
+		if (retained_info != nullptr && context->release != nullptr) {
+			try { context->release(retained_info); }
+			catch (...) { /* Guest callbacks must not unwind through CoreFoundation. */ }
+		}
+		return nullptr;
+	}
+	Object* allocator = nullptr;
+	try { allocator = new (storage) Object{}; }
+	catch (...) {
+		if (use_context) {
+			try { context->deallocate(storage, const_cast<void*>(retained_info)); }
+			catch (...) { /* Guest callbacks must not unwind through CoreFoundation. */ }
+		} else if (backing != nullptr) CFAllocatorDeallocate(backing, storage);
+		if (retained_info != nullptr && context->release != nullptr) {
+			try { context->release(retained_info); }
+			catch (...) { /* Guest callbacks must not unwind through CoreFoundation. */ }
+		}
+		return nullptr;
+	}
 	allocator->kind = Kind::Allocator;
 	allocator->allocator_context = *context;
-	if (context->info != nullptr && context->retain != nullptr) {
-		try { allocator->allocator_info = context->retain(context->info); }
-		catch (...) { delete allocator; return nullptr; }
-	} else allocator->allocator_info = context->info;
+	allocator->allocator_info = retained_info;
 	allocator->allocator_context.info = const_cast<void*>(allocator->allocator_info);
+	allocator->allocator_storage_uses_context = use_context;
+	if (!use_context) {
+		RetainOwned(backing);
+		allocator->allocator_backing_allocator = backing;
+	}
 	return allocator;
 }
 
@@ -5574,7 +5645,6 @@ Object* NullCFAllocator()
 	(void)initialized;
 	return &allocator;
 }
-std::uint8_t allocator_use_context_sentinel{};
 }
 extern "C" const darling_windows_CFAllocatorRef kCFAllocatorDefault = nullptr;
 extern "C" const darling_windows_CFAllocatorRef kCFAllocatorSystemDefault = SystemCFAllocator();

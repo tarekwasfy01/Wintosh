@@ -307,8 +307,9 @@ a source-1 run-loop source that forwards messages to the wrapper callout.
 callbacks and full Mach right/message ownership still need a Mach-O fixture.
 `CFAllocator` supports custom context creation, allocation, reallocation,
 deallocation, preferred-size queries, and per-thread default selection.
-Default allocations use the guest heap; the allocator used to create allocator
-objects and broad allocator integration are not implemented. The default,
+Default allocations use the guest heap. `CFAllocatorCreate` uses its requested
+backing allocator, including the supplied context for `kCFAllocatorUseContext`;
+broad allocator integration is not implemented. The default,
 system-default, malloc, malloc-zone, null, and use-context constants are
 exported; malloc-zone currently uses the system allocator behavior.
 CF timers

@@ -533,9 +533,10 @@ operations use Wintosh's guest heap. `CFAllocatorCreate` retains context info
 once and releases it with the allocator; the per-thread default holds a CF
 reference. Source-1 reply handling now sends the reply and applies `D(a,p)`.
 Standard allocator constants are resolved as Mach-O data symbols; malloc-zone
-currently shares system-heap behavior. The allocator parameter to allocator
-creation and consistent use of custom allocators by every CF constructor remain
-outside the current implementation.
+currently shares system-heap behavior. `CFAllocatorCreate` allocates its own
+object through its requested backing allocator and supports the context
+callbacks when `kCFAllocatorUseContext` is selected. Consistent use of custom
+allocators by every CF constructor remains outside the current implementation.
 For a CFMachPort wrapper `p`, source delivery is `Deliver(p,m) = Valid(p) ∧
 Receive(GetPort(p),m)`, with the callback `Callout(p,m,size,info)` invoked once
 for each received message. `Invalidate(p)` performs the state transition

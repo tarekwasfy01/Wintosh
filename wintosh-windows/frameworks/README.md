@@ -75,7 +75,8 @@ minimal `NSObject`,
 `NSString`, `NSConstantString`, `NSMutableString`, `NSArray`, `NSMutableArray`,
 `NSDictionary`, `NSMutableDictionary`, `NSSet`, `NSMutableSet`, `NSData`,
 `NSMutableData`, `NSNumber`, `NSDate`, `NSNull`, `NSBundle`,
-`NSAutoreleasePool`, `NSProcessInfo`, `NSApplication`, `NSMenu`, `NSMenuItem`,
+`NSAutoreleasePool`, `NSProcessInfo`, `NSApplication`, `NSPasteboard`,
+`NSMenu`, `NSMenuItem`,
 `NSAlert`, `NSURL`, `NSSavePanel`, `NSOpenPanel`, `NSError`, `NSFileManager`,
 `NSFileHandle`,
 `NSWindow`,
@@ -746,6 +747,14 @@ name/object filters, removal, and name- or object-based posting. Application
 launch posts will-finish and did-finish notifications and passes those objects to
 the corresponding delegate callbacks. Block observers, operation queues,
 delivery queue policies, and most AppKit event notifications remain absent.
+`NSPasteboard.generalPasteboard` and the legacy general pasteboard name map to
+the Windows Unicode text clipboard. The adapter supports string read/write,
+available string-type queries, clearing, type declaration, and the native
+clipboard change sequence number. `setString:forType:` requires a prior string
+type declaration and fails if another process changes the clipboard before the
+write. Rich text, images, promised data, multiple
+simultaneous types, pasteboard ownership callbacks, and named pasteboards other
+than the general clipboard are not implemented.
 Basic Win32 mouse, keyboard, and wheel messages become `NSEvent` objects.
 `NSApplication -nextEventMatchingMask:untilDate:inMode:dequeue:` pumps the Win32
 queue and returns matching events; with `dequeue:NO`, the event remains queued.

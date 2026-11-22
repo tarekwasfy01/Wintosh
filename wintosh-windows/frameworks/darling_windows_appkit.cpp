@@ -50,6 +50,9 @@ extern "C" {
 HANDLE darling_windows_dispatch_duplicate_descriptor_handle(int descriptor);
 id NSFontAttributeName = nullptr;
 id NSForegroundColorAttributeName = nullptr;
+id NSPasteboardTypeString = nullptr;
+id NSStringPboardType = nullptr;
+id NSPasteboardNameGeneral = nullptr;
 id NSApplicationWillFinishLaunchingNotification = nullptr;
 id NSApplicationDidFinishLaunchingNotification = nullptr;
 id NSApplicationWillTerminateNotification = nullptr;
@@ -454,6 +457,12 @@ std::mutex g_file_handles_mutex;
 std::unordered_map<id, std::shared_ptr<AppKitFileHandleState>> g_file_handles;
 std::mutex g_file_panels_mutex;
 std::unordered_map<id, AppKitFilePanelState> g_file_panels;
+std::mutex g_pasteboard_mutex;
+id g_general_pasteboard = nullptr;
+std::mutex g_pasteboard_owner_mutex;
+HWND g_pasteboard_owner_window = nullptr;
+bool g_pasteboard_declared_string = false;
+DWORD g_pasteboard_declared_change_count = 0;
 std::unordered_map<UINT, id> g_menu_commands;
 std::unordered_map<HMENU, id> g_native_menu_objects;
 UINT g_next_menu_command = 0x4000;
@@ -11221,6 +11230,206 @@ std::int64_t NSSavePanelRunModal(id self, SEL)
 	return 1;
 }
 
+bool NSPasteboardIsStringType(id type)
+{
+	const char* value = NSStringUTF8String(type, nullptr);
+	return value != nullptr &&
+		(std::strcmp(value, "public.utf8-plain-text") == 0 ||
+		 std::strcmp(value, "NSStringPboardType") == 0);
+}
+
+bool NSPasteboardHasString()
+{
+	return IsClipboardFormatAvailable(CF_UNICODETEXT) != FALSE;
+}
+
+bool NSPasteboardHasDeclaredString()
+{
+	std::lock_guard lock(g_pasteboard_owner_mutex);
+	return g_pasteboard_declared_string &&
+		g_pasteboard_declared_change_count == GetClipboardSequenceNumber();
+}
+
+HWND NSPasteboardClipboardOwner()
+{
+	HWND active = GetActiveWindow();
+	if (active != nullptr) return active;
+	std::lock_guard lock(g_pasteboard_owner_mutex);
+	if (g_pasteboard_owner_window == nullptr ||
+		!IsWindow(g_pasteboard_owner_window)) {
+		g_pasteboard_owner_window = CreateWindowExW(0, L"STATIC", L"",
+			WS_POPUP, 0, 0, 0, 0, nullptr, nullptr,
+			GetModuleHandleW(nullptr), nullptr);
+	}
+	return g_pasteboard_owner_window;
+}
+
+bool NSPasteboardCopyString(std::string& result)
+{
+	result.clear();
+	const HWND owner = NSPasteboardClipboardOwner();
+	if (owner == nullptr || !OpenClipboard(owner)) return false;
+	bool succeeded = false;
+	HANDLE data = GetClipboardData(CF_UNICODETEXT);
+	if (data != nullptr) {
+		const SIZE_T bytes = GlobalSize(data);
+		const auto* wide = static_cast<const wchar_t*>(GlobalLock(data));
+		if (wide != nullptr) {
+			const std::size_t count = static_cast<std::size_t>(bytes / sizeof(wchar_t));
+			const auto end = std::find(wide, wide + count, L'\0');
+			try {
+				result = WideToUtf8(std::wstring_view(wide,
+					static_cast<std::size_t>(end - wide)));
+				succeeded = true;
+			} catch (...) {
+				result.clear();
+			}
+			GlobalUnlock(data);
+		}
+	}
+	CloseClipboard();
+	return succeeded;
+}
+
+bool NSPasteboardWriteString(std::wstring_view value)
+{
+	DWORD expected_change_count = 0;
+	{
+		std::lock_guard lock(g_pasteboard_owner_mutex);
+		expected_change_count = g_pasteboard_declared_change_count;
+		if (!g_pasteboard_declared_string ||
+			expected_change_count != GetClipboardSequenceNumber()) return false;
+	}
+	if (value.size() >= (std::numeric_limits<SIZE_T>::max)() /
+		sizeof(wchar_t) - 1) return false;
+	const SIZE_T bytes = static_cast<SIZE_T>((value.size() + 1) * sizeof(wchar_t));
+	HGLOBAL storage = GlobalAlloc(GMEM_MOVEABLE, bytes);
+	if (storage == nullptr) return false;
+	auto* destination = static_cast<wchar_t*>(GlobalLock(storage));
+	if (destination == nullptr) {
+		GlobalFree(storage);
+		return false;
+	}
+	std::copy(value.begin(), value.end(), destination);
+	destination[value.size()] = L'\0';
+	GlobalUnlock(storage);
+	const HWND owner = NSPasteboardClipboardOwner();
+	if (owner == nullptr || !OpenClipboard(owner)) {
+		GlobalFree(storage);
+		return false;
+	}
+	if (GetClipboardSequenceNumber() != expected_change_count) {
+		CloseClipboard();
+		GlobalFree(storage);
+		return false;
+	}
+	const bool succeeded = EmptyClipboard() != FALSE &&
+		SetClipboardData(CF_UNICODETEXT, storage) != nullptr;
+	if (!succeeded) GlobalFree(storage);
+	CloseClipboard();
+	return succeeded;
+}
+
+id NSPasteboardGeneral(Class cls, SEL)
+{
+	std::lock_guard lock(g_pasteboard_mutex);
+	if (g_general_pasteboard == nullptr && cls != nullptr)
+		g_general_pasteboard = class_createInstance(cls, 0);
+	return g_general_pasteboard == nullptr ? nullptr :
+		objc_retainAutorelease(g_general_pasteboard);
+}
+
+id NSPasteboardWithName(Class cls, SEL selector, id name)
+{
+	const char* utf8 = NSStringUTF8String(name, nullptr);
+	if (utf8 == nullptr || std::strcmp(utf8, "NSGeneralPboard") != 0)
+		return nullptr;
+	return NSPasteboardGeneral(cls, selector);
+}
+
+id NSPasteboardName(id, SEL)
+{
+	return NSPasteboardNameGeneral == nullptr ? nullptr :
+		objc_retainAutorelease(NSPasteboardNameGeneral);
+}
+
+id NSPasteboardTypes(id, SEL)
+{
+	if (!NSPasteboardHasString() && !NSPasteboardHasDeclaredString())
+		return objc_autorelease(CreateNSArray(objc_getClass("NSArray"), nullptr, 0));
+	id type = NSPasteboardTypeString;
+	return objc_autorelease(CreateNSArray(objc_getClass("NSArray"), &type, 1));
+}
+
+id NSPasteboardAvailableTypeFromArray(id, SEL, id types)
+{
+	if (!NSPasteboardHasString() && !NSPasteboardHasDeclaredString()) return nullptr;
+	const auto count = types == nullptr ? 0 : NSArrayCount(types, nullptr);
+	for (std::uint64_t index = 0; index < count; ++index) {
+		id type = NSArrayObjectAtIndex(types, nullptr, index);
+		if (NSPasteboardIsStringType(type)) return objc_retainAutorelease(type);
+	}
+	return nullptr;
+}
+
+id NSPasteboardStringForType(id, SEL, id type)
+{
+	if (!NSPasteboardIsStringType(type)) return nullptr;
+	std::string utf8;
+	if (!NSPasteboardCopyString(utf8)) return nullptr;
+	return NSStringStringWithUTF8String(objc_getClass("NSString"), nullptr,
+		utf8.c_str());
+}
+
+std::uint8_t NSPasteboardSetStringForType(id, SEL, id string, id type)
+{
+	if (!NSPasteboardIsStringType(type) || string == nullptr ||
+		!NSPasteboardHasDeclaredString()) return 0;
+	const char* utf8 = NSStringUTF8String(string, nullptr);
+	if (utf8 == nullptr) return 0;
+	try { return NSPasteboardWriteString(Utf8ToWide(utf8)) ? 1 : 0; }
+	catch (...) { return 0; }
+}
+
+std::int64_t NSPasteboardClearContents(id, SEL)
+{
+	const HWND owner = NSPasteboardClipboardOwner();
+	if (owner == nullptr || !OpenClipboard(owner)) return 0;
+	const bool cleared = EmptyClipboard() != FALSE;
+	CloseClipboard();
+	if (cleared) {
+		std::lock_guard lock(g_pasteboard_owner_mutex);
+		g_pasteboard_declared_string = false;
+		g_pasteboard_declared_change_count = 0;
+	}
+	return cleared ? static_cast<std::int64_t>(GetClipboardSequenceNumber()) : 0;
+}
+
+std::int64_t NSPasteboardChangeCount(id, SEL)
+{
+	return static_cast<std::int64_t>(GetClipboardSequenceNumber());
+}
+
+std::int64_t NSPasteboardDeclareTypes(id self, SEL, id types, id)
+{
+	const auto change_count = NSPasteboardClearContents(self, nullptr);
+	if (change_count == 0) return 0;
+	const auto count = types == nullptr ? 0 : NSArrayCount(types, nullptr);
+	bool declares_string = false;
+	for (std::uint64_t index = 0; index < count; ++index) {
+		if (NSPasteboardIsStringType(NSArrayObjectAtIndex(types, nullptr, index))) {
+			declares_string = true;
+			break;
+		}
+	}
+	if (declares_string) {
+		std::lock_guard lock(g_pasteboard_owner_mutex);
+		g_pasteboard_declared_string = true;
+		g_pasteboard_declared_change_count = GetClipboardSequenceNumber();
+	}
+	return change_count;
+}
+
 id NSFilePanelURL(id self, SEL)
 {
 	std::wstring path;
@@ -18647,6 +18856,18 @@ void RegisterAppKitClasses()
 		NSForegroundColorAttributeName = objc_retain(NSStringStringWithUTF8String(
 			string, nullptr, "NSColor"));
 	}
+	if (NSPasteboardTypeString == nullptr) {
+		NSPasteboardTypeString = objc_retain(NSStringStringWithUTF8String(
+			string, nullptr, "public.utf8-plain-text"));
+	}
+	if (NSStringPboardType == nullptr) {
+		NSStringPboardType = objc_retain(NSStringStringWithUTF8String(
+			string, nullptr, "NSStringPboardType"));
+	}
+	if (NSPasteboardNameGeneral == nullptr) {
+		NSPasteboardNameGeneral = objc_retain(NSStringStringWithUTF8String(
+			string, nullptr, "NSGeneralPboard"));
+	}
 		class_addMethod(string, sel_registerName("UTF8String"),
 		reinterpret_cast<IMP>(&NSStringUTF8String), "*@:");
 		class_addMethod(string, sel_registerName("length"),
@@ -20147,6 +20368,30 @@ void RegisterAppKitClasses()
 		class_addClassMethod(save_panel, sel_registerName("savePanel"),
 			reinterpret_cast<IMP>(&NSFilePanelFactory), "@@:");
 
+		Class pasteboard = RegisterHostClass("NSPasteboard", root);
+		if (pasteboard == nullptr) return;
+		class_addClassMethod(pasteboard, sel_registerName("generalPasteboard"),
+			reinterpret_cast<IMP>(&NSPasteboardGeneral), "@@:");
+		class_addClassMethod(pasteboard, sel_registerName("pasteboardWithName:"),
+			reinterpret_cast<IMP>(&NSPasteboardWithName), "@@:@");
+		class_addMethod(pasteboard, sel_registerName("name"),
+			reinterpret_cast<IMP>(&NSPasteboardName), "@@:");
+		class_addMethod(pasteboard, sel_registerName("types"),
+			reinterpret_cast<IMP>(&NSPasteboardTypes), "@@:");
+		class_addMethod(pasteboard,
+			sel_registerName("availableTypeFromArray:"),
+			reinterpret_cast<IMP>(&NSPasteboardAvailableTypeFromArray), "@@:@");
+		class_addMethod(pasteboard, sel_registerName("stringForType:"),
+			reinterpret_cast<IMP>(&NSPasteboardStringForType), "@@:@");
+		class_addMethod(pasteboard, sel_registerName("setString:forType:"),
+			reinterpret_cast<IMP>(&NSPasteboardSetStringForType), "B@:@@");
+		class_addMethod(pasteboard, sel_registerName("clearContents"),
+			reinterpret_cast<IMP>(&NSPasteboardClearContents), "q@:");
+		class_addMethod(pasteboard, sel_registerName("changeCount"),
+			reinterpret_cast<IMP>(&NSPasteboardChangeCount), "q@:");
+		class_addMethod(pasteboard, sel_registerName("declareTypes:owner:"),
+			reinterpret_cast<IMP>(&NSPasteboardDeclareTypes), "q@:@:@");
+
 		Class open_panel = RegisterHostClass("NSOpenPanel", save_panel);
 		if (open_panel == nullptr) return;
 		class_addMethod(open_panel,
@@ -20429,6 +20674,12 @@ extern "C" std::uintptr_t darling_windows_appkit_symbol(const char* name)
 	}
 	if (std::strcmp(name, "NSFontAttributeName") == 0)
 		return reinterpret_cast<std::uintptr_t>(&NSFontAttributeName);
+	if (std::strcmp(name, "NSPasteboardTypeString") == 0)
+		return reinterpret_cast<std::uintptr_t>(&NSPasteboardTypeString);
+	if (std::strcmp(name, "NSStringPboardType") == 0)
+		return reinterpret_cast<std::uintptr_t>(&NSStringPboardType);
+	if (std::strcmp(name, "NSPasteboardNameGeneral") == 0)
+		return reinterpret_cast<std::uintptr_t>(&NSPasteboardNameGeneral);
 	if (std::strcmp(name, "NSForegroundColorAttributeName") == 0)
 		return reinterpret_cast<std::uintptr_t>(&NSForegroundColorAttributeName);
 	if (std::strcmp(name, "NSCocoaErrorDomain") == 0)

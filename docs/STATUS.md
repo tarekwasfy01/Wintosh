@@ -9,7 +9,7 @@ each section. Begin with the [repository README](../README.md) for build
 entry points and the [documentation index](DOCUMENTATION-INDEX.md) for the full
 map.
 
-Status date: 2026-11-21
+Status date: 2026-11-22
 
 ### Foundation NSURL and relative CFURL integration (2026-11-21)
 
@@ -797,6 +797,21 @@ notification object to the matching delegate callback. Block observers,
 operation queues, thread/queue delivery policies, and the full set of AppKit
 events remain unsupported. These changes have build evidence only; there is no
 Mach-O guest fixture for observer lifetime or callback delivery.
+
+### Windows text pasteboard bridge (2026-11-22)
+
+`NSPasteboard.generalPasteboard` and `pasteboardWithName:` for the general
+pasteboard now map to the Win32 Unicode text clipboard. The bridge exposes
+`stringForType:`, `setString:forType:`, `types`, `availableTypeFromArray:`,
+`declareTypes:owner:`, `clearContents`, `changeCount`, and the string/general
+pasteboard type constants. `setString:forType:` requires the string type to
+have been declared first, and returns failure if another process has changed
+the clipboard since declaration. Clipboard writes allocate transferable global
+memory and preserve Unicode through `CF_UNICODETEXT`; reads bound the scan by
+the clipboard allocation size. Rich formats, multiple simultaneous types,
+ownership callbacks, and non-general named pasteboards remain open. The local
+Clang x64 Release build is the validation evidence; no guest copy/paste fixture
+was run.
 
 ### Host/guest architecture boundary (2026-11-16)
 

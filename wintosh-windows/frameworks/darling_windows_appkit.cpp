@@ -195,6 +195,8 @@ struct AppKitViewState final {
 	std::uint64_t button_type{};
 	std::int64_t button_state{};
 	bool button_allows_mixed_state{};
+	std::uint64_t image_scaling{};
+	std::uint64_t image_alignment{};
 	DarlingObjcRange selected_range{};
 	double progress_min_value{};
 	double progress_max_value{100.0};
@@ -757,6 +759,10 @@ void NSImageDrawAtPoint(id self, SEL selector, DarlingObjcPoint point);
 void NSImageDrawInRect(id self, SEL selector, DarlingObjcRect rect);
 id NSImageViewImage(id self, SEL selector);
 void NSImageViewSetImage(id self, SEL selector, id image);
+std::int64_t NSImageViewImageScaling(id self, SEL selector);
+void NSImageViewSetImageScaling(id self, SEL selector, std::int64_t scaling);
+std::int64_t NSImageViewImageAlignment(id self, SEL selector);
+void NSImageViewSetImageAlignment(id self, SEL selector, std::int64_t alignment);
 id NSImageViewInitWithCoder(id self, SEL selector, id coder);
 void NSImageViewDrawRect(id self, SEL selector, DarlingObjcRect rect);
 
@@ -3788,6 +3794,52 @@ id NSImageViewImage(id self, SEL)
 		objc_autorelease(objc_retain(found->second.image));
 }
 
+std::int64_t NSImageViewImageScaling(id self, SEL)
+{
+	std::lock_guard lock(g_windows_mutex);
+	const auto found = g_views.find(self);
+	return found == g_views.end() ? 0 :
+		static_cast<std::int64_t>(found->second.image_scaling);
+}
+
+void NSImageViewSetImageScaling(id self, SEL, std::int64_t scaling)
+{
+	if (scaling < 0 || scaling > 3) return;
+	id window = nullptr;
+	{
+		std::lock_guard lock(g_windows_mutex);
+		const auto found = g_views.find(self);
+		if (found == g_views.end() || found->second.image_scaling ==
+			static_cast<std::uint64_t>(scaling)) return;
+		found->second.image_scaling = static_cast<std::uint64_t>(scaling);
+		window = found->second.window;
+	}
+	if (window != nullptr) InvalidateAppKitWindow(window);
+}
+
+std::int64_t NSImageViewImageAlignment(id self, SEL)
+{
+	std::lock_guard lock(g_windows_mutex);
+	const auto found = g_views.find(self);
+	return found == g_views.end() ? 0 :
+		static_cast<std::int64_t>(found->second.image_alignment);
+}
+
+void NSImageViewSetImageAlignment(id self, SEL, std::int64_t alignment)
+{
+	if (alignment < 0 || alignment > 8) return;
+	id window = nullptr;
+	{
+		std::lock_guard lock(g_windows_mutex);
+		const auto found = g_views.find(self);
+		if (found == g_views.end() || found->second.image_alignment ==
+			static_cast<std::uint64_t>(alignment)) return;
+		found->second.image_alignment = static_cast<std::uint64_t>(alignment);
+		window = found->second.window;
+	}
+	if (window != nullptr) InvalidateAppKitWindow(window);
+}
+
 void NSImageViewSetImage(id self, SEL, id image)
 {
 	if (image != nullptr) objc_retain(image);
@@ -3822,6 +3874,16 @@ id NSImageViewInitWithCoder(id self, SEL, id coder)
 		objc_release(image);
 		break;
 	}
+	for (const auto& [field, setter] : {
+		std::pair{"NSImageScaling", &NSImageViewSetImageScaling},
+		std::pair{"NSImageAlignment", &NSImageViewSetImageAlignment}}) {
+		id key = objc_autorelease(CreateDynamicNSString(objc_getClass("NSString"),
+			field));
+		if (darling_objc_msgSend_bool_object1(coder, sel_registerName(
+			"containsValueForKey:"), key))
+			setter(self, nullptr, darling_objc_msgSend_int64_object1(coder,
+				sel_registerName("decodeIntegerForKey:"), key));
+	}
 	return self;
 }
 
@@ -3830,6 +3892,8 @@ void NSImageViewDrawRect(id self, SEL, DarlingObjcRect)
 	if (g_current_cg_context == nullptr) return;
 	id image_object = nullptr;
 	DarlingObjcRect bounds{};
+	std::uint64_t scaling = 0;
+	std::uint64_t alignment = 0;
 	{
 		std::lock_guard lock(g_windows_mutex);
 		const auto found = g_views.find(self);
@@ -3837,6 +3901,8 @@ void NSImageViewDrawRect(id self, SEL, DarlingObjcRect)
 		image_object = found->second.image == nullptr ? nullptr :
 			objc_retain(found->second.image);
 		bounds = found->second.bounds;
+		scaling = found->second.image_scaling;
+		alignment = found->second.image_alignment;
 	}
 	if (image_object == nullptr) return;
 	darling_windows_CGImageRef image = nullptr;
@@ -3849,9 +3915,37 @@ void NSImageViewDrawRect(id self, SEL, DarlingObjcRect)
 		}
 	}
 	if (image != nullptr) {
+		const DarlingObjcPoint image_size = NSImageSize(image_object, nullptr);
+		if (bounds.width > 0.0 && bounds.height > 0.0 && image_size.x > 0.0 &&
+			image_size.y > 0.0 && std::isfinite(bounds.width) &&
+			std::isfinite(bounds.height) && std::isfinite(image_size.x) &&
+			std::isfinite(image_size.y)) {
+			double width = image_size.x;
+			double height = image_size.y;
+			if (scaling == 1) {
+				width = bounds.width;
+				height = bounds.height;
+			} else if (scaling == 0 || scaling == 3) {
+				double factor = std::min(bounds.width / width,
+					bounds.height / height);
+				if (scaling == 0) factor = std::min(1.0, factor);
+				width *= factor;
+				height *= factor;
+			}
+			const bool align_left = alignment == 2 || alignment == 4 ||
+				alignment == 6;
+			const bool align_right = alignment == 3 || alignment == 7 ||
+				alignment == 8;
+			const bool align_top = alignment == 1 || alignment == 2 || alignment == 3;
+			const bool align_bottom = alignment == 5 || alignment == 6 ||
+				alignment == 7;
+			const double x = bounds.x + (align_left ? 0.0 : align_right ?
+				bounds.width - width : (bounds.width - width) / 2.0);
+			const double y = bounds.y + (align_bottom ? 0.0 : align_top ?
+				bounds.height - height : (bounds.height - height) / 2.0);
 		CGContextDrawImage(g_current_cg_context,
-			darling_windows_CGRect{{bounds.x, bounds.y},
-				{bounds.width, bounds.height}}, image);
+				darling_windows_CGRect{{x, y}, {width, height}}, image);
+		}
 		CGImageRelease(image);
 	}
 	objc_release(image_object);
@@ -21222,6 +21316,14 @@ void RegisterAppKitClasses()
 			reinterpret_cast<IMP>(&NSImageViewImage), "@@:");
 		class_addMethod(image_view, sel_registerName("setImage:"),
 			reinterpret_cast<IMP>(&NSImageViewSetImage), "v@:@");
+		class_addMethod(image_view, sel_registerName("imageScaling"),
+			reinterpret_cast<IMP>(&NSImageViewImageScaling), "q@:");
+		class_addMethod(image_view, sel_registerName("setImageScaling:"),
+			reinterpret_cast<IMP>(&NSImageViewSetImageScaling), "v@:q");
+		class_addMethod(image_view, sel_registerName("imageAlignment"),
+			reinterpret_cast<IMP>(&NSImageViewImageAlignment), "q@:");
+		class_addMethod(image_view, sel_registerName("setImageAlignment:"),
+			reinterpret_cast<IMP>(&NSImageViewSetImageAlignment), "v@:q");
 		class_addMethod(image_view, sel_registerName("drawRect:"),
 			reinterpret_cast<IMP>(&NSImageViewDrawRect),
 			"v@:{CGRect={CGPoint=dd}{CGSize=dd}}");

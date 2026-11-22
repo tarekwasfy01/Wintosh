@@ -564,8 +564,11 @@ and exposes pixel dimensions, logical size, `CGImage`, and basic drawing;
 `NSImage.representations` exposes decoded archived reps or a synthesized bitmap
 rep for file/data-backed images. Keyed `NSImage` archives
 can select a decoded bitmap rep from their `NSReps` array or use a direct NSData payload.
-`NSImageView` retains an image, decodes its archived image reference, and draws
-the image scaled to its view bounds. Multi-frame selection, vector/PDF
+`NSImageView` retains an image, decodes its archived image reference and
+scaling/alignment settings, and draws using all four `NSImageScaling` modes
+(proportional down, independent axes, native size, and proportional up/down)
+plus the nine standard image alignments. The default is proportional-down and
+centered. Multi-frame selection, vector/PDF
 decoding, template rendering, full compositing options, and most archived image
 representations remain unsupported. Image APIs compile, but no Mach-O image-view
 fixture verifies pixels.

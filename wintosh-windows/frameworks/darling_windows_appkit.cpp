@@ -1692,6 +1692,94 @@ std::vector<BezierCommand> NSBezierPathRoundedRectCommands(
 	return commands;
 }
 
+std::vector<BezierCommand> NSBezierPathElementSnapshot(id self)
+{
+	std::vector<BezierCommand> commands;
+	{
+		std::lock_guard lock(g_bezier_mutex);
+		const auto found = g_bezier_paths.find(self);
+		if (found == g_bezier_paths.end()) return commands;
+		commands = found->second.commands;
+	}
+	std::vector<BezierCommand> elements;
+	for (const auto& command : commands) {
+		if (command.kind == BezierCommandKind::Rect) {
+			const auto& rect = command.rect;
+			const double x0 = (std::min)(rect.x, rect.x + rect.width);
+			const double y0 = (std::min)(rect.y, rect.y + rect.height);
+			const double x1 = (std::max)(rect.x, rect.x + rect.width);
+			const double y1 = (std::max)(rect.y, rect.y + rect.height);
+			elements.push_back({BezierCommandKind::Move,
+				{{x0, y0}, {}, {}}});
+			elements.push_back({BezierCommandKind::Line,
+				{{x1, y0}, {}, {}}});
+			elements.push_back({BezierCommandKind::Line,
+				{{x1, y1}, {}, {}}});
+			elements.push_back({BezierCommandKind::Line,
+				{{x0, y1}, {}, {}}});
+			elements.push_back({BezierCommandKind::Close});
+		} else if (command.kind == BezierCommandKind::Oval) {
+			const auto& rect = command.rect;
+			const double x0 = (std::min)(rect.x, rect.x + rect.width);
+			const double y0 = (std::min)(rect.y, rect.y + rect.height);
+			const double x1 = (std::max)(rect.x, rect.x + rect.width);
+			const double y1 = (std::max)(rect.y, rect.y + rect.height);
+			const double rx = (x1 - x0) / 2.0;
+			const double ry = (y1 - y0) / 2.0;
+			const double cx = (x0 + x1) / 2.0;
+			const double cy = (y0 + y1) / 2.0;
+			constexpr double kappa = 0.5522847498307936;
+			elements.push_back({BezierCommandKind::Move,
+				{{cx, y0}, {}, {}}});
+			elements.push_back({BezierCommandKind::Curve,
+				{{x1, cy}, {cx + kappa * rx, y0}, {x1, cy - kappa * ry}}});
+			elements.push_back({BezierCommandKind::Curve,
+				{{cx, y1}, {x1, cy + kappa * ry}, {cx + kappa * rx, y1}}});
+			elements.push_back({BezierCommandKind::Curve,
+				{{x0, cy}, {cx - kappa * rx, y1}, {x0, cy + kappa * ry}}});
+			elements.push_back({BezierCommandKind::Curve,
+				{{cx, y0}, {x0, cy - kappa * ry}, {cx - kappa * rx, y0}}});
+			elements.push_back({BezierCommandKind::Close});
+		} else elements.push_back(command);
+	}
+	return elements;
+}
+
+std::int64_t NSBezierPathElementCount(id self, SEL)
+{
+	try { return static_cast<std::int64_t>(NSBezierPathElementSnapshot(self).size()); }
+	catch (...) { return 0; }
+}
+
+std::int64_t NSBezierPathElementAtIndex(id self, SEL,
+	std::int64_t index, DarlingObjcPoint* associated_points)
+{
+	try {
+		const auto elements = NSBezierPathElementSnapshot(self);
+		if (index < 0 || static_cast<std::uint64_t>(index) >= elements.size())
+			return -1;
+		const auto& element = elements[static_cast<std::size_t>(index)];
+		if (associated_points != nullptr) {
+			switch (element.kind) {
+			case BezierCommandKind::Move:
+			case BezierCommandKind::Line:
+				associated_points[0] = element.points[0];
+				break;
+			case BezierCommandKind::Curve:
+				associated_points[0] = element.points[1];
+				associated_points[1] = element.points[2];
+				associated_points[2] = element.points[0];
+				break;
+			case BezierCommandKind::Close:
+			case BezierCommandKind::Rect:
+			case BezierCommandKind::Oval:
+				break;
+			}
+		}
+		return static_cast<std::int64_t>(element.kind);
+	} catch (...) { return -1; }
+}
+
 id NSBezierPathRoundedRectFactory(Class cls, SEL, DarlingObjcRect rect,
 	double x_radius, double y_radius)
 {
@@ -20355,6 +20443,12 @@ void RegisterAppKitClasses()
 			"{CGRect={CGPoint=dd}{CGSize=dd}}@:");
 		class_addMethod(bezier_path, sel_registerName("isEmpty"),
 			reinterpret_cast<IMP>(&NSBezierPathIsEmpty), "B@:");
+		class_addMethod(bezier_path, sel_registerName("elementCount"),
+			reinterpret_cast<IMP>(&NSBezierPathElementCount), "q@:");
+		class_addMethod(bezier_path,
+			sel_registerName("elementAtIndex:associatedPoints:"),
+			reinterpret_cast<IMP>(&NSBezierPathElementAtIndex),
+			"q@:q^{CGPoint=dd}");
 		class_addMethod(bezier_path, sel_registerName("fill"),
 			reinterpret_cast<IMP>(&NSBezierPathFill), "v@:");
 		class_addMethod(bezier_path, sel_registerName("evenOddFill"),

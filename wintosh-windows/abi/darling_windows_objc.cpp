@@ -1225,6 +1225,15 @@ std::uintptr_t DispatchSysVObjcCall(DarlingSysVObjcCallFrame* input,
 		using Function = std::int64_t (*)(id, SEL, std::int64_t);
 		return static_cast<std::uintptr_t>(reinterpret_cast<Function>(imp)(receiver, selector, argument));
 	}
+	if (types == "q@:q^{CGPoint=dd}") {
+		const auto index = static_cast<std::int64_t>(frame->gp[argument_index]);
+		auto* points = reinterpret_cast<DarlingObjcPoint*>(
+			frame->gp[argument_index + 1]);
+		return static_cast<std::uintptr_t>(
+			InvokeObjcImplementation<std::int64_t, std::int64_t,
+				DarlingObjcPoint*>(imp, method.guest_abi, receiver, selector,
+				index, points));
+	}
 	if (types == "q@:@") {
 		const id argument = reinterpret_cast<id>(frame->gp[argument_index]);
 		return static_cast<std::uintptr_t>(InvokeObjcImplementation<std::int64_t, id>(

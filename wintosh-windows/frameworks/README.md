@@ -781,7 +781,13 @@ is normalized to the pattern period. CoreGraphics carries this pattern in the
 graphics state, and NSBezierPath passes it through when stroking. The software
 rasterizer splits flattened contours into painted runs before applying caps
 and joins; antialiasing and exact closed-seam cap behavior remain approximate.
-Element inspection and many additional path operations remain unimplemented.
+`elementCount` and `elementAtIndex:associatedPoints:` expose the path's move,
+line, cubic-curve, and close elements. Rectangles expand to a move, three lines,
+and close; ovals expand to one move, four cubic curves, and close. Associated
+curve points are returned in Cocoa order (first control point, second control
+point, end point); the optional output pointer is honored. Out-of-range indices return
+`-1` because Objective-C exception unwinding is not implemented. Winding-rule
+properties and many additional path operations remain unimplemented.
 
 The Objective-C resolver routes no-argument CGRect getters through the
 `objc_msgSend_stret` family, including legacy and Super2 variants, which write

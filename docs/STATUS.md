@@ -798,19 +798,20 @@ operation queues, thread/queue delivery policies, and the full set of AppKit
 events remain unsupported. These changes have build evidence only; there is no
 Mach-O guest fixture for observer lifetime or callback delivery.
 
-### Windows text pasteboard bridge (2026-11-22)
+### Windows typed pasteboard bridge (2026-11-22)
 
 `NSPasteboard.generalPasteboard` and `pasteboardWithName:` for the general
-pasteboard now map to the Win32 Unicode text clipboard. The bridge exposes
-`stringForType:`, `setString:forType:`, `types`, `availableTypeFromArray:`,
-`declareTypes:owner:`, `clearContents`, `changeCount`, and the string/general
-pasteboard type constants. `setString:forType:` requires the string type to
-have been declared first, and returns failure if another process has changed
-the clipboard since declaration; successful writes refresh the declared
-clipboard sequence so repeated writes remain valid. Clipboard writes allocate
-transferable global memory and preserve Unicode through `CF_UNICODETEXT`; reads
-bound the scan by the clipboard allocation size. Rich formats, multiple simultaneous types,
-ownership callbacks, and non-general named pasteboards remain open. The local
+pasteboard map to the Win32 clipboard. The bridge exposes string and `NSData`
+read/write, type queries/declarations, clearing, change counts, and text, PNG,
+TIFF, RTF, and HTML type constants. Text uses `CF_UNICODETEXT`; the other types
+use registered Windows clipboard formats. HTML data is wrapped in or extracted
+from the Windows CF_HTML fragment envelope. Writes require the same type to
+have been declared first, and fail if another process has changed the clipboard
+since declaration; successful writes refresh the declared clipboard sequence.
+Clipboard writes allocate transferable global memory and bound reads by the
+clipboard allocation size. Each write supplies one format eagerly; simultaneous
+format ownership, ownership callbacks, and non-general named pasteboards remain
+open. The local
 Clang x64 Release build is the validation evidence; no guest copy/paste fixture
 was run.
 

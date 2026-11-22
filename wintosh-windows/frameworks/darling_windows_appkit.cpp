@@ -51,7 +51,14 @@ HANDLE darling_windows_dispatch_duplicate_descriptor_handle(int descriptor);
 id NSFontAttributeName = nullptr;
 id NSForegroundColorAttributeName = nullptr;
 id NSPasteboardTypeString = nullptr;
+id NSPasteboardTypePNG = nullptr;
+id NSPasteboardTypeTIFF = nullptr;
+id NSPasteboardTypeRTF = nullptr;
+id NSPasteboardTypeHTML = nullptr;
 id NSStringPboardType = nullptr;
+id NSTIFFPboardType = nullptr;
+id NSRTFPboardType = nullptr;
+id NSHTMLPboardType = nullptr;
 id NSPasteboardNameGeneral = nullptr;
 id NSApplicationWillFinishLaunchingNotification = nullptr;
 id NSApplicationDidFinishLaunchingNotification = nullptr;
@@ -463,6 +470,7 @@ std::mutex g_pasteboard_owner_mutex;
 HWND g_pasteboard_owner_window = nullptr;
 bool g_pasteboard_declared_string = false;
 DWORD g_pasteboard_declared_change_count = 0;
+std::unordered_set<std::string> g_pasteboard_declared_types;
 std::unordered_map<UINT, id> g_menu_commands;
 std::unordered_map<HMENU, id> g_native_menu_objects;
 UINT g_next_menu_command = 0x4000;
@@ -11230,12 +11238,59 @@ std::int64_t NSSavePanelRunModal(id self, SEL)
 	return 1;
 }
 
-bool NSPasteboardIsStringType(id type)
+const char* NSPasteboardCanonicalType(const char* type) noexcept
+{
+	if (type == nullptr) return nullptr;
+	if (std::strcmp(type, "NSStringPboardType") == 0)
+		return "public.utf8-plain-text";
+	if (std::strcmp(type, "NSTIFFPboardType") == 0) return "public.tiff";
+	if (std::strcmp(type, "NSRTFPboardType") == 0) return "public.rtf";
+	if (std::strcmp(type, "NSHTMLPboardType") == 0) return "public.html";
+	return type;
+}
+
+bool NSPasteboardTypeName(id type, std::string& name)
 {
 	const char* value = NSStringUTF8String(type, nullptr);
-	return value != nullptr &&
-		(std::strcmp(value, "public.utf8-plain-text") == 0 ||
-		 std::strcmp(value, "NSStringPboardType") == 0);
+	if (value == nullptr) return false;
+	try { name = NSPasteboardCanonicalType(value); }
+	catch (...) { return false; }
+	return true;
+}
+
+bool NSPasteboardIsStringType(id type)
+{
+	std::string name;
+	return NSPasteboardTypeName(type, name) &&
+		name == "public.utf8-plain-text";
+}
+
+std::wstring NSPasteboardClipboardFormatName(std::string_view type)
+{
+	if (type == "public.png") return L"PNG";
+	if (type == "public.tiff") return L"TIFF";
+	if (type == "public.rtf") return L"Rich Text Format";
+	if (type == "public.html") return L"HTML Format";
+	return {};
+}
+
+UINT NSPasteboardClipboardFormat(std::string_view type)
+{
+	const auto format_name = NSPasteboardClipboardFormatName(type);
+	return format_name.empty() ? 0 : RegisterClipboardFormatW(format_name.c_str());
+}
+
+bool NSPasteboardIsSupportedType(const std::string& name)
+{
+	return name == "public.utf8-plain-text" ||
+		NSPasteboardClipboardFormat(name) != 0;
+}
+
+bool NSPasteboardHasDeclaredType(const std::string& name)
+{
+	std::lock_guard lock(g_pasteboard_owner_mutex);
+	return g_pasteboard_declared_change_count == GetClipboardSequenceNumber() &&
+		g_pasteboard_declared_types.contains(name);
 }
 
 bool NSPasteboardHasString()
@@ -11245,9 +11300,7 @@ bool NSPasteboardHasString()
 
 bool NSPasteboardHasDeclaredString()
 {
-	std::lock_guard lock(g_pasteboard_owner_mutex);
-	return g_pasteboard_declared_string &&
-		g_pasteboard_declared_change_count == GetClipboardSequenceNumber();
+	return NSPasteboardHasDeclaredType("public.utf8-plain-text");
 }
 
 HWND NSPasteboardClipboardOwner()
@@ -11338,6 +11391,207 @@ bool NSPasteboardWriteString(std::wstring_view value)
 	return succeeded;
 }
 
+UINT NSPasteboardFormatForName(std::string_view type)
+{
+	return type == "public.utf8-plain-text" ? CF_UNICODETEXT :
+		NSPasteboardClipboardFormat(type);
+}
+
+bool NSPasteboardWrapHtml(const void* bytes, std::size_t length,
+	std::vector<std::uint8_t>& result)
+{
+	if (bytes == nullptr && length != 0) return false;
+	try {
+		const std::string fragment = length == 0 ? std::string{} :
+			std::string(static_cast<const char*>(bytes), length);
+		const std::string body_prefix = "<html><body><!--StartFragment-->";
+		const std::string body_suffix = "<!--EndFragment--></body></html>";
+		std::string header =
+			"Version:0.9\r\nStartHTML:0000000000\r\nEndHTML:0000000000\r\n"
+			"StartFragment:0000000000\r\nEndFragment:0000000000\r\n";
+		const std::size_t start_html = header.size();
+		const std::size_t start_fragment = start_html + body_prefix.size();
+		const std::size_t end_fragment = start_fragment + fragment.size();
+		const std::size_t end_html = end_fragment + body_suffix.size();
+		const auto write_offset = [&header](const char* field, std::size_t value) {
+			const auto position = header.find(field);
+			if (position == std::string::npos) return false;
+			char digits[11]{};
+			const int written = std::snprintf(digits, sizeof(digits), "%010zu", value);
+			if (written != 10) return false;
+			header.replace(position + std::strlen(field), 10, digits, 10);
+			return true;
+		};
+		if (!write_offset("StartHTML:", start_html) ||
+			!write_offset("EndHTML:", end_html) ||
+			!write_offset("StartFragment:", start_fragment) ||
+			!write_offset("EndFragment:", end_fragment)) return false;
+		result.clear();
+		result.reserve(end_html);
+		result.insert(result.end(), header.begin(), header.end());
+		result.insert(result.end(), body_prefix.begin(), body_prefix.end());
+		result.insert(result.end(), fragment.begin(), fragment.end());
+		result.insert(result.end(), body_suffix.begin(), body_suffix.end());
+		return true;
+	} catch (...) { return false; }
+}
+
+bool NSPasteboardExtractHtml(const std::vector<std::uint8_t>& source,
+	std::vector<std::uint8_t>& result)
+{
+	const std::string_view document = source.empty() ? std::string_view{} :
+		std::string_view(reinterpret_cast<const char*>(source.data()), source.size());
+	const auto parse_offset = [document](const char* field,
+		std::size_t& offset) {
+		const auto position = document.find(field);
+		if (position == std::string_view::npos) return false;
+		const auto value_start = position + std::strlen(field);
+		const auto value_end = document.find_first_of("\r\n", value_start);
+		if (value_end == std::string_view::npos) return false;
+		const auto parsed = std::from_chars(document.data() + value_start,
+			document.data() + value_end, offset);
+		return parsed.ec == std::errc{} && parsed.ptr == document.data() + value_end;
+	};
+	std::size_t start = 0;
+	std::size_t end = 0;
+	if (parse_offset("StartFragment:", start) &&
+		parse_offset("EndFragment:", end) && start <= end &&
+		end <= source.size()) {
+		try { result.assign(source.begin() + start, source.begin() + end); }
+		catch (...) { return false; }
+		return true;
+	}
+	constexpr std::string_view start_marker = "<!--StartFragment-->";
+	constexpr std::string_view end_marker = "<!--EndFragment-->";
+	const auto marker_start = document.find(start_marker);
+	if (marker_start == std::string_view::npos) return false;
+	const auto fragment_start = marker_start + start_marker.size();
+	const auto fragment_end = document.find(end_marker, fragment_start);
+	if (fragment_end == std::string_view::npos) return false;
+	try {
+		result.assign(source.begin() + fragment_start, source.begin() + fragment_end);
+	} catch (...) { return false; }
+	return true;
+}
+
+bool NSPasteboardWriteData(UINT format, const void* bytes, std::size_t length)
+{
+	if (format == 0 || (bytes == nullptr && length != 0) ||
+		length > 256ull * 1024 * 1024) return false;
+	DWORD expected_change_count = 0;
+	{
+		std::lock_guard lock(g_pasteboard_owner_mutex);
+		expected_change_count = g_pasteboard_declared_change_count;
+		if (expected_change_count != GetClipboardSequenceNumber()) return false;
+	}
+	const SIZE_T allocation_size = std::max<SIZE_T>(length, 1);
+	HGLOBAL storage = GlobalAlloc(GMEM_MOVEABLE, allocation_size);
+	if (storage == nullptr) return false;
+	void* destination = GlobalLock(storage);
+	if (destination == nullptr) {
+		GlobalFree(storage);
+		return false;
+	}
+	if (length != 0) std::memcpy(destination, bytes, length);
+	GlobalUnlock(storage);
+	const HWND owner = NSPasteboardClipboardOwner();
+	if (owner == nullptr || !OpenClipboard(owner)) {
+		GlobalFree(storage);
+		return false;
+	}
+	if (GetClipboardSequenceNumber() != expected_change_count) {
+		CloseClipboard();
+		GlobalFree(storage);
+		return false;
+	}
+	const bool succeeded = EmptyClipboard() != FALSE &&
+		SetClipboardData(format, storage) != nullptr;
+	if (!succeeded) GlobalFree(storage);
+	CloseClipboard();
+	if (succeeded) {
+		const DWORD written_change_count = GetClipboardSequenceNumber();
+		if (GetClipboardOwner() == owner) {
+			std::lock_guard lock(g_pasteboard_owner_mutex);
+			g_pasteboard_declared_change_count = written_change_count;
+		}
+	}
+	return succeeded;
+}
+
+bool NSPasteboardCopyData(UINT format, std::vector<std::uint8_t>& result)
+{
+	result.clear();
+	if (format == 0 || !OpenClipboard(NSPasteboardClipboardOwner())) return false;
+	bool succeeded = false;
+	HANDLE data = GetClipboardData(format);
+	if (data != nullptr) {
+		const SIZE_T size = GlobalSize(data);
+		if (size <= 256ull * 1024 * 1024) {
+			const auto* source = static_cast<const std::uint8_t*>(GlobalLock(data));
+			if (source != nullptr) {
+				try {
+					result.assign(source, source + static_cast<std::size_t>(size));
+					succeeded = true;
+				} catch (...) { result.clear(); }
+				GlobalUnlock(data);
+			}
+		}
+	}
+	CloseClipboard();
+	return succeeded;
+}
+
+id NSPasteboardTypeObject(const std::string& name)
+{
+	if (name == "public.utf8-plain-text") return NSPasteboardTypeString;
+	if (name == "public.png") return NSPasteboardTypePNG;
+	if (name == "public.tiff") return NSPasteboardTypeTIFF;
+	if (name == "public.rtf") return NSPasteboardTypeRTF;
+	if (name == "public.html") return NSPasteboardTypeHTML;
+	return nullptr;
+}
+
+id NSPasteboardDataForType(id, SEL, id type)
+{
+	std::string name;
+	if (!NSPasteboardTypeName(type, name)) return nullptr;
+	std::vector<std::uint8_t> bytes;
+	if (!NSPasteboardCopyData(NSPasteboardFormatForName(name), bytes)) return nullptr;
+	if (name == "public.utf8-plain-text") {
+		std::string text;
+		if (!NSPasteboardCopyString(text)) return nullptr;
+		return CreateNSData(objc_getClass("NSData"), text.data(), text.size());
+	}
+	if (name == "public.html") {
+		std::vector<std::uint8_t> fragment;
+		if (NSPasteboardExtractHtml(bytes, fragment)) bytes = std::move(fragment);
+	}
+	return CreateNSData(objc_getClass("NSData"), bytes.data(), bytes.size());
+}
+
+std::uint8_t NSPasteboardSetDataForType(id, SEL, id data, id type)
+{
+	std::string name;
+	if (data == nullptr || !NSPasteboardTypeName(type, name) ||
+		!NSPasteboardHasDeclaredType(name)) return 0;
+	const auto* bytes = static_cast<const std::uint8_t*>(NSDataBytes(data, nullptr));
+	std::size_t length = static_cast<std::size_t>(NSDataLength(data, nullptr));
+	if (bytes == nullptr && length != 0) return 0;
+	if (name == "public.utf8-plain-text") {
+		try {
+			const std::string utf8(reinterpret_cast<const char*>(bytes), length);
+			return NSPasteboardWriteString(Utf8ToWide(utf8.c_str())) ? 1 : 0;
+		} catch (...) { return 0; }
+	}
+	std::vector<std::uint8_t> html;
+	if (name == "public.html") {
+		if (!NSPasteboardWrapHtml(bytes, length, html)) return 0;
+		bytes = html.data();
+		length = html.size();
+	}
+	return NSPasteboardWriteData(NSPasteboardFormatForName(name), bytes, length) ? 1 : 0;
+}
+
 id NSPasteboardGeneral(Class cls, SEL)
 {
 	std::lock_guard lock(g_pasteboard_mutex);
@@ -11363,19 +11617,37 @@ id NSPasteboardName(id, SEL)
 
 id NSPasteboardTypes(id, SEL)
 {
-	if (!NSPasteboardHasString() && !NSPasteboardHasDeclaredString())
-		return objc_autorelease(CreateNSArray(objc_getClass("NSArray"), nullptr, 0));
-	id type = NSPasteboardTypeString;
-	return objc_autorelease(CreateNSArray(objc_getClass("NSArray"), &type, 1));
+	std::vector<id> types;
+	{
+		std::lock_guard lock(g_pasteboard_owner_mutex);
+		if (g_pasteboard_declared_change_count == GetClipboardSequenceNumber()) {
+			for (const auto& name : g_pasteboard_declared_types) {
+				if (id type = NSPasteboardTypeObject(name)) types.push_back(type);
+			}
+		}
+	}
+	if (NSPasteboardHasString() && NSPasteboardTypeString != nullptr &&
+		std::find(types.begin(), types.end(), NSPasteboardTypeString) == types.end())
+		types.push_back(NSPasteboardTypeString);
+	for (const char* name : {"public.png", "public.tiff", "public.rtf", "public.html"}) {
+		if (IsClipboardFormatAvailable(NSPasteboardFormatForName(name))) {
+			if (id type = NSPasteboardTypeObject(name); type != nullptr &&
+				std::find(types.begin(), types.end(), type) == types.end()) types.push_back(type);
+		}
+	}
+	return objc_autorelease(CreateNSArray(objc_getClass("NSArray"), types.data(), types.size()));
 }
 
 id NSPasteboardAvailableTypeFromArray(id, SEL, id types)
 {
-	if (!NSPasteboardHasString() && !NSPasteboardHasDeclaredString()) return nullptr;
 	const auto count = types == nullptr ? 0 : NSArrayCount(types, nullptr);
 	for (std::uint64_t index = 0; index < count; ++index) {
 		id type = NSArrayObjectAtIndex(types, nullptr, index);
-		if (NSPasteboardIsStringType(type)) return objc_retainAutorelease(type);
+		std::string name;
+		if (!NSPasteboardTypeName(type, name)) continue;
+		const bool available = name == "public.utf8-plain-text" ? NSPasteboardHasString() :
+			IsClipboardFormatAvailable(NSPasteboardFormatForName(name)) != FALSE;
+		if (available || NSPasteboardHasDeclaredType(name)) return objc_retainAutorelease(type);
 	}
 	return nullptr;
 }
@@ -11409,6 +11681,7 @@ std::int64_t NSPasteboardClearContents(id, SEL)
 		std::lock_guard lock(g_pasteboard_owner_mutex);
 		g_pasteboard_declared_string = false;
 		g_pasteboard_declared_change_count = 0;
+		g_pasteboard_declared_types.clear();
 	}
 	return cleared ? static_cast<std::int64_t>(GetClipboardSequenceNumber()) : 0;
 }
@@ -11423,17 +11696,20 @@ std::int64_t NSPasteboardDeclareTypes(id self, SEL, id types, id)
 	const auto change_count = NSPasteboardClearContents(self, nullptr);
 	if (change_count == 0) return 0;
 	const auto count = types == nullptr ? 0 : NSArrayCount(types, nullptr);
-	bool declares_string = false;
+	std::unordered_set<std::string> declared_types;
 	for (std::uint64_t index = 0; index < count; ++index) {
-		if (NSPasteboardIsStringType(NSArrayObjectAtIndex(types, nullptr, index))) {
-			declares_string = true;
-			break;
-		}
+		std::string name;
+		if (NSPasteboardTypeName(
+			NSArrayObjectAtIndex(types, nullptr, index), name) &&
+			NSPasteboardIsSupportedType(name))
+			declared_types.insert(std::move(name));
 	}
-	if (declares_string) {
+	{
 		std::lock_guard lock(g_pasteboard_owner_mutex);
-		g_pasteboard_declared_string = true;
+		g_pasteboard_declared_string =
+			declared_types.contains("public.utf8-plain-text");
 		g_pasteboard_declared_change_count = GetClipboardSequenceNumber();
+		g_pasteboard_declared_types = std::move(declared_types);
 	}
 	return change_count;
 }
@@ -18868,6 +19144,20 @@ void RegisterAppKitClasses()
 		NSPasteboardTypeString = objc_retain(NSStringStringWithUTF8String(
 			string, nullptr, "public.utf8-plain-text"));
 	}
+	if (NSPasteboardTypePNG == nullptr) NSPasteboardTypePNG = objc_retain(
+		NSStringStringWithUTF8String(string, nullptr, "public.png"));
+	if (NSPasteboardTypeTIFF == nullptr) NSPasteboardTypeTIFF = objc_retain(
+		NSStringStringWithUTF8String(string, nullptr, "public.tiff"));
+	if (NSPasteboardTypeRTF == nullptr) NSPasteboardTypeRTF = objc_retain(
+		NSStringStringWithUTF8String(string, nullptr, "public.rtf"));
+	if (NSPasteboardTypeHTML == nullptr) NSPasteboardTypeHTML = objc_retain(
+		NSStringStringWithUTF8String(string, nullptr, "public.html"));
+	if (NSTIFFPboardType == nullptr) NSTIFFPboardType = objc_retain(
+		NSStringStringWithUTF8String(string, nullptr, "NSTIFFPboardType"));
+	if (NSRTFPboardType == nullptr) NSRTFPboardType = objc_retain(
+		NSStringStringWithUTF8String(string, nullptr, "NSRTFPboardType"));
+	if (NSHTMLPboardType == nullptr) NSHTMLPboardType = objc_retain(
+		NSStringStringWithUTF8String(string, nullptr, "NSHTMLPboardType"));
 	if (NSStringPboardType == nullptr) {
 		NSStringPboardType = objc_retain(NSStringStringWithUTF8String(
 			string, nullptr, "NSStringPboardType"));
@@ -20391,8 +20681,12 @@ void RegisterAppKitClasses()
 			reinterpret_cast<IMP>(&NSPasteboardAvailableTypeFromArray), "@@:@");
 		class_addMethod(pasteboard, sel_registerName("stringForType:"),
 			reinterpret_cast<IMP>(&NSPasteboardStringForType), "@@:@");
+		class_addMethod(pasteboard, sel_registerName("dataForType:"),
+			reinterpret_cast<IMP>(&NSPasteboardDataForType), "@@:@");
 		class_addMethod(pasteboard, sel_registerName("setString:forType:"),
 			reinterpret_cast<IMP>(&NSPasteboardSetStringForType), "B@:@@");
+		class_addMethod(pasteboard, sel_registerName("setData:forType:"),
+			reinterpret_cast<IMP>(&NSPasteboardSetDataForType), "B@:@@");
 		class_addMethod(pasteboard, sel_registerName("clearContents"),
 			reinterpret_cast<IMP>(&NSPasteboardClearContents), "q@:");
 		class_addMethod(pasteboard, sel_registerName("changeCount"),
@@ -20684,8 +20978,22 @@ extern "C" std::uintptr_t darling_windows_appkit_symbol(const char* name)
 		return reinterpret_cast<std::uintptr_t>(&NSFontAttributeName);
 	if (std::strcmp(name, "NSPasteboardTypeString") == 0)
 		return reinterpret_cast<std::uintptr_t>(&NSPasteboardTypeString);
+	if (std::strcmp(name, "NSPasteboardTypePNG") == 0)
+		return reinterpret_cast<std::uintptr_t>(&NSPasteboardTypePNG);
+	if (std::strcmp(name, "NSPasteboardTypeTIFF") == 0)
+		return reinterpret_cast<std::uintptr_t>(&NSPasteboardTypeTIFF);
+	if (std::strcmp(name, "NSPasteboardTypeRTF") == 0)
+		return reinterpret_cast<std::uintptr_t>(&NSPasteboardTypeRTF);
+	if (std::strcmp(name, "NSPasteboardTypeHTML") == 0)
+		return reinterpret_cast<std::uintptr_t>(&NSPasteboardTypeHTML);
 	if (std::strcmp(name, "NSStringPboardType") == 0)
 		return reinterpret_cast<std::uintptr_t>(&NSStringPboardType);
+	if (std::strcmp(name, "NSTIFFPboardType") == 0)
+		return reinterpret_cast<std::uintptr_t>(&NSTIFFPboardType);
+	if (std::strcmp(name, "NSRTFPboardType") == 0)
+		return reinterpret_cast<std::uintptr_t>(&NSRTFPboardType);
+	if (std::strcmp(name, "NSHTMLPboardType") == 0)
+		return reinterpret_cast<std::uintptr_t>(&NSHTMLPboardType);
 	if (std::strcmp(name, "NSPasteboardNameGeneral") == 0)
 		return reinterpret_cast<std::uintptr_t>(&NSPasteboardNameGeneral);
 	if (std::strcmp(name, "NSForegroundColorAttributeName") == 0)

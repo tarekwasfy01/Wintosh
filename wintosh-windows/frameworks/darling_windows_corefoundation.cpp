@@ -33,6 +33,7 @@
 #include <cstdarg>
 #include <cstdio>
 #include <limits>
+#include <map>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -7817,6 +7818,11 @@ extern "C" darling_windows_CFStringRef
 
 namespace {
 
+using CFPreferencePendingKey = std::pair<std::string, std::string>;
+std::mutex g_cf_preferences_mutex;
+std::map<CFPreferencePendingKey, std::optional<std::string>>
+	g_cf_preferences_pending;
+
 std::string CFPreferencesApplicationDomain(
 	darling_windows_CFStringRef application_id)
 {
@@ -7866,6 +7872,18 @@ extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeRef CFPreferencesCopyAppVa
 	std::string key_text;
 	const std::string domain = CFPreferencesApplicationDomain(application_id);
 	if (!CFPreferencesString(key, key_text) || domain.empty()) return nullptr;
+	std::optional<std::string> pending_xml;
+	bool has_pending = false;
+	{
+		std::lock_guard lock(g_cf_preferences_mutex);
+		const auto pending = g_cf_preferences_pending.find({domain, key_text});
+		if (pending != g_cf_preferences_pending.end()) {
+			has_pending = true;
+			pending_xml = pending->second;
+		}
+	}
+	if (has_pending) return pending_xml ?
+		darling_windows_CFPropertyListCreateFromXML(pending_xml->c_str()) : nullptr;
 	auto store = darling_windows_preferences_open(domain.c_str());
 	if (store == nullptr) return nullptr;
 	std::vector<char> xml(16 * 1024 * 1024);
@@ -7882,22 +7900,31 @@ extern "C" DARLING_CF_GUEST_ABI void CFPreferencesSetAppValue(
 	std::string key_text;
 	const std::string domain = CFPreferencesApplicationDomain(application_id);
 	if (!CFPreferencesString(key, key_text) || domain.empty()) return;
-	auto store = darling_windows_preferences_open(domain.c_str());
-	if (store == nullptr) return;
-	if (value == nullptr) {
-		darling_windows_preferences_remove(store, key_text.c_str());
-	} else {
+	std::optional<std::string> xml;
+	if (value != nullptr) {
 		const auto xml_value = darling_windows_CFPropertyListCreateXML(value);
-		if (xml_value != nullptr) {
-			std::vector<char> xml(16 * 1024 * 1024);
-			if (darling_windows_CFStringGetCString(xml_value, xml.data(),
-				static_cast<darling_windows_CFIndex>(xml.size())))
-				darling_windows_preferences_set_property_list_xml(store,
-					key_text.c_str(), xml.data());
+		if (xml_value == nullptr) return;
+		try {
+			std::vector<char> buffer(16 * 1024 * 1024);
+			if (!darling_windows_CFStringGetCString(xml_value, buffer.data(),
+				static_cast<darling_windows_CFIndex>(buffer.size()))) {
+				darling_windows_CFRelease(xml_value);
+				return;
+			}
+			xml = std::string(buffer.data());
+		} catch (...) {
 			darling_windows_CFRelease(xml_value);
+			return;
 		}
+		darling_windows_CFRelease(xml_value);
+		const auto parsed = darling_windows_CFPropertyListCreateFromXML(xml->c_str());
+		if (parsed == nullptr) return;
+		darling_windows_CFRelease(parsed);
 	}
-	darling_windows_preferences_close(store);
+	try {
+		std::lock_guard lock(g_cf_preferences_mutex);
+		g_cf_preferences_pending.insert_or_assign({domain, key_text}, std::move(xml));
+	} catch (...) {}
 }
 
 extern "C" DARLING_CF_GUEST_ABI bool CFPreferencesAppSynchronize(
@@ -7907,7 +7934,32 @@ extern "C" DARLING_CF_GUEST_ABI bool CFPreferencesAppSynchronize(
 	if (domain.empty()) return false;
 	auto store = darling_windows_preferences_open(domain.c_str());
 	if (store == nullptr) return false;
-	const bool result = darling_windows_preferences_synchronize(store);
+	std::vector<std::pair<std::string, std::optional<std::string>>> pending;
+	try {
+		std::lock_guard lock(g_cf_preferences_mutex);
+		for (const auto& entry : g_cf_preferences_pending)
+			if (entry.first.first == domain)
+				pending.emplace_back(entry.first.second, entry.second);
+	} catch (...) {
+		darling_windows_preferences_close(store);
+		return false;
+	}
+	bool result = true;
+	for (const auto& [key, xml] : pending) {
+		const bool applied = xml ? darling_windows_preferences_set_property_list_xml(
+			store, key.c_str(), xml->c_str()) :
+			darling_windows_preferences_remove(store, key.c_str());
+		if (!applied) { result = false; break; }
+	}
+	if (result) result = darling_windows_preferences_synchronize(store);
+	if (result && !pending.empty()) {
+		std::lock_guard lock(g_cf_preferences_mutex);
+		for (const auto& [key, xml] : pending) {
+			const auto found = g_cf_preferences_pending.find({domain, key});
+			if (found != g_cf_preferences_pending.end() && found->second == xml)
+				g_cf_preferences_pending.erase(found);
+		}
+	}
 	darling_windows_preferences_close(store);
 	return result;
 }

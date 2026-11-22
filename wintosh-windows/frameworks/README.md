@@ -235,8 +235,9 @@ configured domains in lookup order and retains the earliest value for duplicate
 keys. CoreFoundation guest code can also use `CFPreferencesCopyAppValue`,
 `CFPreferencesSetAppValue`, and `CFPreferencesAppSynchronize` for the same
 application-domain XML plist store. `kCFPreferencesCurrentApplication` resolves
-to the main bundle identifier; the other user/host/global and suite-search
-variants remain unavailable.
+to the main bundle identifier. Writes remain process-local until
+`CFPreferencesAppSynchronize`, and reads see pending writes in the current
+process. User/host/global and suite-search variants remain unavailable.
 `NSMutableString` adds `+string`, UTF-8/string constructors, `-appendString:`,
 `-setString:`, `-deleteCharactersInRange:`, `-replaceCharactersInRange:withString:`,
 and `-insertString:atIndex:`. Range operations and indices use UTF-16 code units

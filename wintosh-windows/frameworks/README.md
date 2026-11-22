@@ -824,10 +824,13 @@ composition, translation, uniform and per-axis scaling, rotation by
 degrees/radians, inversion for nonsingular matrices, `isIdentity`,
 `transformPoint:`, and `transformSize:`. Each Objective-C instance owns an
 independent six-value affine matrix, and point/size values cross the guest ABI
-in XMM registers. This subset does not yet transform rectangles, expose the
-transform struct, apply transforms to paths or view drawing, or reproduce
-Cocoa's singular-matrix exception behavior. It has local compile/link evidence
-only; no guest Mach-O fixture verifies the selectors or matrix results.
+in XMM registers. `transform` concatenates into the active graphics context;
+`transformBezierPath:` returns a transformed copy and
+`NSBezierPath -transformUsingAffineTransform:` mutates a path. Rectangles and
+ovals expand to line/cubic segments before path transformation. `transformRect:`,
+transform-struct accessors, and Cocoa's singular-matrix exception behavior are
+not implemented. This has local compile/link evidence only; no guest Mach-O
+fixture verifies the selectors or matrix results.
 
 The Objective-C resolver routes no-argument CGRect getters through the
 `objc_msgSend_stret` family, including legacy and Super2 variants, which write

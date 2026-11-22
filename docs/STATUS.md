@@ -9,9 +9,9 @@ each section. Begin with the [repository README](../README.md) for build
 entry points and the [documentation index](DOCUMENTATION-INDEX.md) for the full
 map.
 
-Status date: 2026-11-22
+Status date: 2026-11-23
 
-### AppKit NSAffineTransform subset (2026-11-22)
+### AppKit NSAffineTransform subset (2026-11-23)
 
 `NSAffineTransform` now creates an identity matrix and supports reset, ordered
 append/prepend composition, translation, uniform and per-axis scaling, rotation
@@ -20,8 +20,11 @@ and affine transformation of `CGPoint` and `CGSize` values. Matrix state is
 held per Objective-C object and removed by its runtime finalizer. The point and
 size arguments and results use explicit x86_64 guest ABI paths. The local Clang
 Release build compiles and links this implementation; no Mach-O guest fixture
-verifies selector dispatch or numeric results. `transformRect:`, transform-
-struct accessors, integration with `NSBezierPath`/view drawing, and
+verifies selector dispatch or numeric results. `transform` concatenates the
+matrix into the active graphics context. `transformBezierPath:` creates a
+transformed path, and `NSBezierPath -transformUsingAffineTransform:` mutates an
+existing path; rectangles and ovals expand to line/cubic elements before
+transformation. `transformRect:`, transform-struct accessors, and
 platform-specific singular-matrix exceptions remain unimplemented.
 
 ### Foundation NSURL and relative CFURL integration (2026-11-21)

@@ -1763,6 +1763,15 @@ DarlingObjcPoint NSAffineTransformSize(id self, SEL, DarlingObjcPoint size)
 		value.b * size.x + value.d * size.y};
 }
 
+void NSAffineTransformApplyToContext(id self, SEL)
+{
+	if (g_current_cg_context == nullptr) return;
+	const auto value = NSAffineTransformSnapshot(self);
+	CGContextConcatCTM(g_current_cg_context,
+		darling_windows_CGAffineTransform{value.a, value.b, value.c, value.d,
+			value.tx, value.ty});
+}
+
 void NSBezierPathFinalize(id object)
 {
 	std::lock_guard lock(g_bezier_mutex);
@@ -2607,6 +2616,70 @@ BezierPathState NSBezierPathSnapshotForRender(id self)
 	const auto found = g_bezier_paths.find(self);
 	if (found != g_bezier_paths.end()) path = found->second;
 	return path;
+}
+
+bool NSBezierPathTransformState(BezierPathState& path,
+	const NSAffineTransformState& transform)
+{
+	try {
+		for (auto& command : path.commands) {
+			const std::size_t count = command.kind == BezierCommandKind::Curve ? 3 :
+				(command.kind == BezierCommandKind::Move ||
+				 command.kind == BezierCommandKind::Line ? 1 : 0);
+			for (std::size_t index = 0; index < count; ++index) {
+				const auto source = command.points[index];
+				const DarlingObjcPoint result{
+					transform.a * source.x + transform.c * source.y + transform.tx,
+					transform.b * source.x + transform.d * source.y + transform.ty};
+				if (!std::isfinite(result.x) || !std::isfinite(result.y)) return false;
+				command.points[index] = result;
+			}
+		}
+		return true;
+	} catch (...) { return false; }
+}
+
+void NSBezierPathTransformUsingAffineTransform(id self, SEL, id transform)
+{
+	const auto matrix = NSAffineTransformSnapshot(transform);
+	BezierPathState path;
+	try {
+		path = NSBezierPathSnapshotForRender(self);
+		path.commands = NSBezierPathElementSnapshot(self);
+	} catch (...) { return; }
+	if (!NSBezierPathTransformState(path, matrix)) return;
+	try {
+		std::lock_guard lock(g_bezier_mutex);
+		const auto found = g_bezier_paths.find(self);
+		if (found != g_bezier_paths.end()) found->second = std::move(path);
+	} catch (...) {}
+}
+
+id NSAffineTransformTransformBezierPath(id self, SEL, id source)
+{
+	Class path_class = objc_getClass("NSBezierPath");
+	id result = NSBezierPathCreate(path_class);
+	if (result == nullptr) return nullptr;
+	BezierPathState path;
+	try {
+		path = NSBezierPathSnapshotForRender(source);
+		path.commands = NSBezierPathElementSnapshot(source);
+	} catch (...) {
+		objc_release(result);
+		return nullptr;
+	}
+	if (!NSBezierPathTransformState(path, NSAffineTransformSnapshot(self))) {
+		objc_release(result);
+		return nullptr;
+	}
+	try {
+		std::lock_guard lock(g_bezier_mutex);
+		g_bezier_paths[result] = std::move(path);
+	} catch (...) {
+		objc_release(result);
+		return nullptr;
+	}
+	return objc_autorelease(result);
 }
 
 void NSBezierPathRender(id self, bool fill, bool even_odd)
@@ -20941,6 +21014,8 @@ void RegisterAppKitClasses()
 			reinterpret_cast<IMP>(&NSAffineTransformInit), "@@:");
 		class_addMethod(affine_transform, sel_registerName("set"),
 			reinterpret_cast<IMP>(&NSAffineTransformSet), "v@:");
+		class_addMethod(affine_transform, sel_registerName("transform"),
+			reinterpret_cast<IMP>(&NSAffineTransformApplyToContext), "v@:");
 		class_addMethod(affine_transform, sel_registerName("appendTransform:"),
 			reinterpret_cast<IMP>(&NSAffineTransformAppend), "v@:@");
 		class_addMethod(affine_transform, sel_registerName("prependTransform:"),
@@ -20968,6 +21043,9 @@ void RegisterAppKitClasses()
 		class_addMethod(affine_transform, sel_registerName("transformSize:"),
 			reinterpret_cast<IMP>(&NSAffineTransformSize),
 			"{CGSize=dd}@:{CGSize=dd}");
+		class_addMethod(affine_transform,
+			sel_registerName("transformBezierPath:"),
+			reinterpret_cast<IMP>(&NSAffineTransformTransformBezierPath), "@@:@");
 
 		Class color = RegisterHostClass("NSColor", root);
 		if (color == nullptr) return;
@@ -21133,6 +21211,10 @@ void RegisterAppKitClasses()
 			"v@:{CGRect={CGPoint=dd}{CGSize=dd}}dd");
 		class_addMethod(bezier_path, sel_registerName("appendBezierPath:"),
 			reinterpret_cast<IMP>(&NSBezierPathAppendPath), "v@:@");
+		class_addMethod(bezier_path,
+			sel_registerName("transformUsingAffineTransform:"),
+			reinterpret_cast<IMP>(&NSBezierPathTransformUsingAffineTransform),
+			"v@:@");
 		class_addMethod(bezier_path, sel_registerName("removeAllPoints"),
 			reinterpret_cast<IMP>(&NSBezierPathRemoveAllPoints), "v@:");
 		class_addMethod(bezier_path, sel_registerName("setLineWidth:"),

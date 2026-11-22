@@ -799,8 +799,9 @@ The corresponding `defaultLineWidth`, `defaultLineCapStyle`,
 `defaultWindingRule` class properties have setters; newly created paths copy
 the current defaults. The initial values are width 1, butt cap, miter join,
 miter limit 10, flatness 0.6, and nonzero winding. Dash patterns have no class
-default. Other path attributes and many additional operations remain
-unimplemented.
+default. The `fillRect:` and `strokeRect:` class conveniences construct and
+render a temporary path, so their stroke attributes use the same defaults.
+Other path attributes and many additional operations remain unimplemented.
 
 The Objective-C resolver routes no-argument CGRect getters through the
 `objc_msgSend_stret` family, including legacy and Super2 variants, which write

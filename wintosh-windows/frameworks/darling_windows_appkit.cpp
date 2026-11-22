@@ -1922,9 +1922,29 @@ void NSBezierPathClose(id self, SEL)
 	NSBezierPathAppend(self, BezierCommand{BezierCommandKind::Close});
 }
 
+void NSBezierPathRender(id self, bool fill, bool even_odd = false);
+
 void NSBezierPathAppendRect(id self, SEL, DarlingObjcRect rect)
 {
 	NSBezierPathAppend(self, BezierCommand{BezierCommandKind::Rect, {}, rect});
+}
+
+void NSBezierPathFillRect(Class cls, SEL, DarlingObjcRect rect)
+{
+	id path = NSBezierPathCreate(cls);
+	if (path == nullptr) return;
+	NSBezierPathAppend(path, BezierCommand{BezierCommandKind::Rect, {}, rect});
+	NSBezierPathRender(path, true);
+	objc_release(path);
+}
+
+void NSBezierPathStrokeRect(Class cls, SEL, DarlingObjcRect rect)
+{
+	id path = NSBezierPathCreate(cls);
+	if (path == nullptr) return;
+	NSBezierPathAppend(path, BezierCommand{BezierCommandKind::Rect, {}, rect});
+	NSBezierPathRender(path, false);
+	objc_release(path);
 }
 
 void NSBezierPathAppendOval(id self, SEL, DarlingObjcRect rect)
@@ -2080,7 +2100,7 @@ void NSBezierPathGetLineDash(id self, SEL, double* pattern,
 	*count = actual;
 }
 
-void NSBezierPathRender(id self, bool fill, bool even_odd = false)
+void NSBezierPathRender(id self, bool fill, bool even_odd)
 {
 	if (g_current_cg_context == nullptr) return;
 	BezierPathState path;
@@ -20519,6 +20539,12 @@ void RegisterAppKitClasses()
 			reinterpret_cast<IMP>(&NSBezierPathSetDefaultWindingRule), "v@:q");
 		class_addClassMethod(bezier_path, sel_registerName("bezierPath"),
 			reinterpret_cast<IMP>(&NSBezierPathFactory), "@@:");
+		class_addClassMethod(bezier_path, sel_registerName("fillRect:"),
+			reinterpret_cast<IMP>(&NSBezierPathFillRect),
+			"v@:{CGRect={CGPoint=dd}{CGSize=dd}}");
+		class_addClassMethod(bezier_path, sel_registerName("strokeRect:"),
+			reinterpret_cast<IMP>(&NSBezierPathStrokeRect),
+			"v@:{CGRect={CGPoint=dd}{CGSize=dd}}");
 		class_addClassMethod(bezier_path,
 			sel_registerName("bezierPathWithRect:"),
 			reinterpret_cast<IMP>(&NSBezierPathRectPathFactory),

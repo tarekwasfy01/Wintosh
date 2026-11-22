@@ -5182,6 +5182,7 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 		{"_CGContextSetLineCap", reinterpret_cast<std::uintptr_t>(&CGContextSetLineCap)},
 		{"_CGContextSetLineJoin", reinterpret_cast<std::uintptr_t>(&CGContextSetLineJoin)},
 		{"_CGContextSetMiterLimit", reinterpret_cast<std::uintptr_t>(&CGContextSetMiterLimit)},
+		{"_CGContextSetFlatness", reinterpret_cast<std::uintptr_t>(&CGContextSetFlatness)},
 		{"_CGContextSetLineDash", reinterpret_cast<std::uintptr_t>(&CGContextSetLineDash)},
 		{"_CGContextSetAlpha", reinterpret_cast<std::uintptr_t>(&CGContextSetAlpha)},
 		{"_CGContextSetBlendMode", reinterpret_cast<std::uintptr_t>(&CGContextSetBlendMode)},

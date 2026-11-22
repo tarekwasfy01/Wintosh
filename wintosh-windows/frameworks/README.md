@@ -789,8 +789,12 @@ point, end point); the optional output pointer is honored. Out-of-range indices 
 `-1` because Objective-C exception unwinding is not implemented. Winding-rule
 `windingRule` reads/sets nonzero (0) or even-odd (1); ordinary `fill` honors
 that setting while `evenOddFill` always uses even-odd. Unsupported rule values
-are ignored. Other path attributes and many additional operations remain
-unimplemented.
+are ignored. `flatness` defaults to 0.6 and controls recursive De Casteljau
+curve subdivision when the path is replayed into CoreGraphics. The context's
+flatness value is saved/restored around path rendering. Subdivision uses a
+device-scale-adjusted point-to-segment tolerance, depth 12, and a 4096-point
+contour cap; extreme curves can therefore exceed the requested error bound.
+Other path attributes and many additional operations remain unimplemented.
 
 The Objective-C resolver routes no-argument CGRect getters through the
 `objc_msgSend_stret` family, including legacy and Super2 variants, which write

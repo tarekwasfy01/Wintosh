@@ -44,6 +44,7 @@ struct darling_windows_CGContextObject final {
 		darling_windows_CGLineCap line_cap = darling_windows_kCGLineCapButt;
 		darling_windows_CGLineJoin line_join = darling_windows_kCGLineJoinMiter;
 		double miter_limit = 10;
+		double flatness = 0.6;
 		std::vector<double> line_dash;
 		double line_dash_phase = 0;
 		double alpha = 1;
@@ -70,6 +71,7 @@ struct darling_windows_CGContextObject final {
 	darling_windows_CGLineCap line_cap = darling_windows_kCGLineCapButt;
 	darling_windows_CGLineJoin line_join = darling_windows_kCGLineJoinMiter;
 	double miter_limit = 10;
+	double flatness = 0.6;
 	std::vector<double> line_dash;
 	double line_dash_phase = 0;
 	double alpha = 1;
@@ -1253,6 +1255,48 @@ void StrokeCurrentPath(darling_windows_CGContextRef context)
 	context->ctm = saved_ctm;
 }
 
+double DistanceFromChord(darling_windows_CGPoint point,
+	darling_windows_CGPoint start, darling_windows_CGPoint end)
+{
+	const double dx = end.x - start.x;
+	const double dy = end.y - start.y;
+	const double length_squared = dx * dx + dy * dy;
+	if (length_squared <= 1e-24)
+		return std::hypot(point.x - start.x, point.y - start.y);
+	const double projection = std::clamp(((point.x - start.x) * dx +
+		(point.y - start.y) * dy) / length_squared, 0.0, 1.0);
+	return std::hypot(point.x - (start.x + projection * dx),
+		point.y - (start.y + projection * dy));
+}
+
+void FlattenCubic(darling_windows_CGContextObject::Contour& contour,
+	darling_windows_CGPoint start, darling_windows_CGPoint control1,
+	darling_windows_CGPoint control2, darling_windows_CGPoint end,
+	double tolerance, unsigned depth = 0)
+{
+	const bool flat = (std::max)(DistanceFromChord(control1, start, end),
+		DistanceFromChord(control2, start, end)) <= tolerance;
+	if (flat || depth >= 12 || contour.points.size() >= 4096) {
+		if (contour.points.size() < 4096) contour.points.push_back(end);
+		else if (!contour.points.empty()) contour.points.back() = end;
+		return;
+	}
+	const darling_windows_CGPoint first{(start.x + control1.x) * 0.5,
+		(start.y + control1.y) * 0.5};
+	const darling_windows_CGPoint middle{(control1.x + control2.x) * 0.5,
+		(control1.y + control2.y) * 0.5};
+	const darling_windows_CGPoint last{(control2.x + end.x) * 0.5,
+		(control2.y + end.y) * 0.5};
+	const darling_windows_CGPoint left_middle{(first.x + middle.x) * 0.5,
+		(first.y + middle.y) * 0.5};
+	const darling_windows_CGPoint right_middle{(middle.x + last.x) * 0.5,
+		(middle.y + last.y) * 0.5};
+	const darling_windows_CGPoint split{(left_middle.x + right_middle.x) * 0.5,
+		(left_middle.y + right_middle.y) * 0.5};
+	FlattenCubic(contour, start, first, left_middle, split, tolerance, depth + 1);
+	FlattenCubic(contour, split, right_middle, last, end, tolerance, depth + 1);
+}
+
 template <typename T>
 void ReleaseReference(T* value)
 {
@@ -2309,6 +2353,13 @@ extern "C" DARLING_CG_GUEST_ABI void CGContextSetMiterLimit(
 		context->miter_limit = limit;
 }
 
+extern "C" DARLING_CG_GUEST_ABI void CGContextSetFlatness(
+	darling_windows_CGContextRef context, double flatness)
+{
+	if (context != nullptr && std::isfinite(flatness) && flatness > 0)
+		context->flatness = flatness;
+}
+
 extern "C" DARLING_CG_GUEST_ABI void CGContextSetLineDash(
 	darling_windows_CGContextRef context, double phase, const double* lengths,
 	std::size_t count)
@@ -2384,7 +2435,8 @@ extern "C" DARLING_CG_GUEST_ABI void CGContextSaveGState(
 	try {
 		context->saved_states.push_back({context->fill, context->stroke,
 			context->line_width, context->line_cap, context->line_join,
-			context->miter_limit, context->line_dash, context->line_dash_phase,
+			context->miter_limit, context->flatness, context->line_dash,
+			context->line_dash_phase,
 			context->alpha, context->blend_mode,
 			context->ctm, context->clip_mask});
 	} catch (...) {
@@ -2403,6 +2455,7 @@ extern "C" DARLING_CG_GUEST_ABI void CGContextRestoreGState(
 	context->line_cap = saved.line_cap;
 	context->line_join = saved.line_join;
 	context->miter_limit = saved.miter_limit;
+	context->flatness = saved.flatness;
 	context->line_dash = std::move(saved.line_dash);
 	context->line_dash_phase = saved.line_dash_phase;
 	context->alpha = saved.alpha;
@@ -2592,18 +2645,13 @@ extern "C" DARLING_CG_GUEST_ABI void CGContextAddCurveToPoint(
 		!std::isfinite(control2_y) || !std::isfinite(x) || !std::isfinite(y)) return;
 	try {
 		const auto start = context->path.back().points.back();
-		constexpr std::size_t segments = 32;
-		for (std::size_t index = 1; index <= segments; ++index) {
-			const double t = static_cast<double>(index) / segments;
-			const double u = 1 - t;
-			const double a = u * u * u;
-			const double b = 3 * u * u * t;
-			const double c = 3 * u * t * t;
-			const double d = t * t * t;
-			context->path.back().points.push_back({
-				a * start.x + b * control1_x + c * control2_x + d * x,
-				a * start.y + b * control1_y + c * control2_y + d * y});
-		}
+		const double scale = (std::max)(
+			std::hypot(context->ctm.a, context->ctm.b),
+			std::hypot(context->ctm.c, context->ctm.d));
+		const double tolerance = context->flatness /
+			(std::isfinite(scale) && scale > 1e-12 ? scale : 1.0);
+		FlattenCubic(context->path.back(), start,
+			{control1_x, control1_y}, {control2_x, control2_y}, {x, y}, tolerance);
 	} catch (...) {
 		context->path.clear();
 	}
@@ -2618,14 +2666,18 @@ extern "C" DARLING_CG_GUEST_ABI void CGContextAddQuadCurveToPoint(
 		!std::isfinite(control_y) || !std::isfinite(x) || !std::isfinite(y)) return;
 	try {
 		const auto start = context->path.back().points.back();
-		constexpr std::size_t segments = 32;
-		for (std::size_t index = 1; index <= segments; ++index) {
-			const double t = static_cast<double>(index) / segments;
-			const double u = 1 - t;
-			context->path.back().points.push_back({
-				u * u * start.x + 2 * u * t * control_x + t * t * x,
-				u * u * start.y + 2 * u * t * control_y + t * t * y});
-		}
+		const darling_windows_CGPoint control{control_x, control_y};
+		const darling_windows_CGPoint end{x, y};
+		const double scale = (std::max)(
+			std::hypot(context->ctm.a, context->ctm.b),
+			std::hypot(context->ctm.c, context->ctm.d));
+		const double tolerance = context->flatness /
+			(std::isfinite(scale) && scale > 1e-12 ? scale : 1.0);
+		FlattenCubic(context->path.back(), start,
+			{start.x + (control.x - start.x) * (2.0 / 3.0),
+			 start.y + (control.y - start.y) * (2.0 / 3.0)},
+			{end.x + (control.x - end.x) * (2.0 / 3.0),
+			 end.y + (control.y - end.y) * (2.0 / 3.0)}, end, tolerance);
 	} catch (...) {
 		context->path.clear();
 	}

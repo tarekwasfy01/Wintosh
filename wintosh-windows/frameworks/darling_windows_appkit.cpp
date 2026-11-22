@@ -565,6 +565,7 @@ struct BezierPathState final {
 	std::vector<double> line_dash;
 	double line_dash_phase{};
 	std::int64_t winding_rule{};
+	double flatness{0.6};
 };
 std::mutex g_bezier_mutex;
 std::unordered_map<id, BezierPathState> g_bezier_paths;
@@ -1949,6 +1950,20 @@ std::int64_t NSBezierPathWindingRule(id self, SEL)
 	return found == g_bezier_paths.end() ? 0 : found->second.winding_rule;
 }
 
+void NSBezierPathSetFlatness(id self, SEL, double flatness)
+{
+	if (!std::isfinite(flatness) || flatness <= 0.0) return;
+	std::lock_guard lock(g_bezier_mutex);
+	g_bezier_paths[self].flatness = flatness;
+}
+
+double NSBezierPathFlatness(id self, SEL)
+{
+	std::lock_guard lock(g_bezier_mutex);
+	const auto found = g_bezier_paths.find(self);
+	return found == g_bezier_paths.end() ? 0.6 : found->second.flatness;
+}
+
 void NSBezierPathSetLineDash(id self, SEL, const double* pattern,
 	std::int64_t count, double phase)
 {
@@ -1997,6 +2012,8 @@ void NSBezierPathRender(id self, bool fill, bool even_odd = false)
 		try { path = found->second; }
 		catch (...) { return; }
 	}
+	CGContextSaveGState(g_current_cg_context);
+	CGContextSetFlatness(g_current_cg_context, path.flatness);
 	CGContextBeginPath(g_current_cg_context);
 	for (const BezierCommand& command : path.commands) {
 		switch (command.kind) {
@@ -2045,6 +2062,7 @@ void NSBezierPathRender(id self, bool fill, bool even_odd = false)
 		CGContextStrokePath(g_current_cg_context);
 		CGContextRestoreGState(g_current_cg_context);
 	}
+	CGContextRestoreGState(g_current_cg_context);
 }
 
 void NSBezierPathFill(id self, SEL) { NSBezierPathRender(self, true); }
@@ -20447,6 +20465,10 @@ void RegisterAppKitClasses()
 			reinterpret_cast<IMP>(&NSBezierPathSetWindingRule), "v@:q");
 		class_addMethod(bezier_path, sel_registerName("windingRule"),
 			reinterpret_cast<IMP>(&NSBezierPathWindingRule), "q@:");
+		class_addMethod(bezier_path, sel_registerName("setFlatness:"),
+			reinterpret_cast<IMP>(&NSBezierPathSetFlatness), "v@:d");
+		class_addMethod(bezier_path, sel_registerName("flatness"),
+			reinterpret_cast<IMP>(&NSBezierPathFlatness), "d@:");
 		class_addMethod(bezier_path,
 			sel_registerName("setLineDash:count:phase:"),
 			reinterpret_cast<IMP>(&NSBezierPathSetLineDash),

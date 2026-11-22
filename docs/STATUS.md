@@ -806,9 +806,10 @@ pasteboard now map to the Win32 Unicode text clipboard. The bridge exposes
 `declareTypes:owner:`, `clearContents`, `changeCount`, and the string/general
 pasteboard type constants. `setString:forType:` requires the string type to
 have been declared first, and returns failure if another process has changed
-the clipboard since declaration. Clipboard writes allocate transferable global
-memory and preserve Unicode through `CF_UNICODETEXT`; reads bound the scan by
-the clipboard allocation size. Rich formats, multiple simultaneous types,
+the clipboard since declaration; successful writes refresh the declared
+clipboard sequence so repeated writes remain valid. Clipboard writes allocate
+transferable global memory and preserve Unicode through `CF_UNICODETEXT`; reads
+bound the scan by the clipboard allocation size. Rich formats, multiple simultaneous types,
 ownership callbacks, and non-general named pasteboards remain open. The local
 Clang x64 Release build is the validation evidence; no guest copy/paste fixture
 was run.

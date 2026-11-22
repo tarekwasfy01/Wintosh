@@ -11327,6 +11327,14 @@ bool NSPasteboardWriteString(std::wstring_view value)
 		SetClipboardData(CF_UNICODETEXT, storage) != nullptr;
 	if (!succeeded) GlobalFree(storage);
 	CloseClipboard();
+	if (succeeded) {
+		const DWORD written_change_count = GetClipboardSequenceNumber();
+		if (GetClipboardOwner() == owner) {
+			std::lock_guard lock(g_pasteboard_owner_mutex);
+			g_pasteboard_declared_string = true;
+			g_pasteboard_declared_change_count = written_change_count;
+		}
+	}
 	return succeeded;
 }
 

@@ -227,7 +227,10 @@ languages when the key is absent; a region domain precedes its base language.
 `volatileDomainNames` and `volatileDomainForName:` expose the argument,
 language, explicitly registered volatile, and registration domains. Live
 language-list refresh, change notifications, and configurable Foundation
-search-list behavior remain unimplemented.
+search-list behavior remain unimplemented. `objectIsForcedForKey:` and
+`objectIsForcedForKey:inDomain:` check administrator-managed keys in the
+application domain. `dictionaryRepresentation` merges all configured domains
+in lookup order and retains the earliest value for duplicate keys.
 `NSMutableString` adds `+string`, UTF-8/string constructors, `-appendString:`,
 `-setString:`, `-deleteCharactersInRange:`, `-replaceCharactersInRange:withString:`,
 and `-insertString:atIndex:`. Range operations and indices use UTF-16 code units

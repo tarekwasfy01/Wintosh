@@ -8107,6 +8107,110 @@ id NSUserDefaultsDictionaryForKey(id self, SEL selector, id key)
 		NSUserDefaultsObjectHasClassName(value, "NSMutableDictionary") ? value : nullptr;
 }
 
+bool NSUserDefaultsObjectIsForced(id self, id key_object, id domain_object)
+{
+	const char* key = key_object == nullptr ? nullptr :
+		NSStringUTF8String(key_object, nullptr);
+	if (key == nullptr) return false;
+	const char* domain = domain_object == nullptr ? nullptr :
+		NSStringUTF8String(domain_object, nullptr);
+	const std::string application_domain = NSUserDefaultsApplicationDomain();
+	if (domain != nullptr && application_domain != domain) return false;
+	std::lock_guard lock(g_user_defaults_mutex);
+	const auto found = g_user_defaults.find(self);
+	return found != g_user_defaults.end() &&
+		NSUserDefaultsObjectForStore(found->second.managed_store, key) != nullptr;
+}
+
+BOOL NSUserDefaultsObjectIsForcedForKey(id self, SEL, id key)
+{
+	return NSUserDefaultsObjectIsForced(self, key, nullptr) ? 1 : 0;
+}
+
+BOOL NSUserDefaultsObjectIsForcedForKeyInDomain(id self, SEL, id key, id domain)
+{
+	return NSUserDefaultsObjectIsForced(self, key, domain) ? 1 : 0;
+}
+
+id NSUserDefaultsDictionaryRepresentation(id self, SEL)
+{
+	std::unordered_map<std::string, std::pair<id, id>> entries;
+	std::lock_guard defaults_lock(g_user_defaults_mutex);
+	const auto found = g_user_defaults.find(self);
+	if (found == g_user_defaults.end()) return nullptr;
+	const auto& state = found->second;
+	const auto add_dictionary = [&entries](id dictionary) {
+		if (dictionary == nullptr) return;
+		std::lock_guard dictionary_lock(g_dictionary_mutex);
+		const auto stored = g_dictionaries.find(dictionary);
+		if (stored == g_dictionaries.end()) return;
+		for (const auto& [key, value] : stored->second) {
+			const char* name = NSStringUTF8String(key, nullptr);
+			if (name == nullptr || entries.find(name) != entries.end()) continue;
+			entries.emplace(name, std::make_pair(objc_retain(key), objc_retain(value)));
+		}
+	};
+	const auto add_store = [&add_dictionary](darling_windows_preferences_ref store) {
+		if (store == nullptr) return;
+		try {
+			std::vector<char> xml(16 * 1024 * 1024);
+			if (!darling_windows_preferences_get_domain_property_list_xml(
+				store, xml.data(), xml.size())) return;
+			id dictionary = ObjcObjectFromPropertyListXml(xml.data());
+			add_dictionary(dictionary);
+			if (dictionary != nullptr) objc_release(dictionary);
+		} catch (...) {}
+	};
+	const auto add_values = [&entries](const auto& domain) {
+		for (const auto& [name, xml] : domain) {
+			if (entries.find(name) != entries.end()) continue;
+			id key = CreateDynamicNSString(objc_getClass("NSString"), name.c_str());
+			id value = ObjcObjectFromPropertyListXml(xml.c_str());
+			if (key == nullptr || value == nullptr) {
+				if (key != nullptr) objc_release(key);
+				if (value != nullptr) objc_release(value);
+				continue;
+			}
+			entries.emplace(name, std::make_pair(key, value));
+		}
+	};
+	try {
+		add_store(state.argument_store);
+		add_store(state.managed_store);
+		add_store(state.store);
+		for (const auto& suite : state.suite_stores) add_store(suite.second);
+		add_store(state.global_store);
+		for (const auto& language : state.language_stores) add_store(language.second);
+		for (const auto& name : state.volatile_domain_order) {
+			if (name == "NSRegistrationDomain") continue;
+			const auto domain = state.volatile_domains.find(name);
+			if (domain != state.volatile_domains.end()) add_values(domain->second);
+		}
+		const auto registration = state.volatile_domains.find("NSRegistrationDomain");
+		if (registration != state.volatile_domains.end()) add_values(registration->second);
+		std::vector<id> keys, values;
+		keys.reserve(entries.size());
+		values.reserve(entries.size());
+		for (const auto& entry : entries) {
+			keys.push_back(entry.second.first);
+			values.push_back(entry.second.second);
+		}
+		id result = CreateNSDictionary(objc_getClass("NSDictionary"), values.data(),
+			keys.data(), keys.size());
+		for (const auto& entry : entries) {
+			objc_release(entry.second.first);
+			objc_release(entry.second.second);
+		}
+		return objc_autorelease(result);
+	} catch (...) {
+		for (const auto& entry : entries) {
+			objc_release(entry.second.first);
+			objc_release(entry.second.second);
+		}
+		return nullptr;
+	}
+}
+
 id NSUserDefaultsDataForKey(id self, SEL selector, id key)
 {
 	id value = NSUserDefaultsObjectForKey(self, selector, key);
@@ -19185,6 +19289,12 @@ void RegisterAppKitClasses()
 			reinterpret_cast<IMP>(&NSUserDefaultsArrayForKey), "@@:@");
 		class_addMethod(user_defaults, sel_registerName("dictionaryForKey:"),
 			reinterpret_cast<IMP>(&NSUserDefaultsDictionaryForKey), "@@:@");
+		class_addMethod(user_defaults, sel_registerName("dictionaryRepresentation"),
+			reinterpret_cast<IMP>(&NSUserDefaultsDictionaryRepresentation), "@@:");
+		class_addMethod(user_defaults, sel_registerName("objectIsForcedForKey:"),
+			reinterpret_cast<IMP>(&NSUserDefaultsObjectIsForcedForKey), "B@:@");
+		class_addMethod(user_defaults, sel_registerName("objectIsForcedForKey:inDomain:"),
+			reinterpret_cast<IMP>(&NSUserDefaultsObjectIsForcedForKeyInDomain), "B@:@@");
 		class_addMethod(user_defaults, sel_registerName("dataForKey:"),
 			reinterpret_cast<IMP>(&NSUserDefaultsDataForKey), "@@:@");
 		class_addMethod(user_defaults, sel_registerName("stringForKey:"),

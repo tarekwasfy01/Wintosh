@@ -224,9 +224,10 @@ added suites are searched in insertion order between the app/suite and global
 domains. After the global domain, language-specific defaults are checked in the
 order of its `AppleLanguages` value, falling back to Windows preferred UI
 languages when the key is absent; a region domain precedes its base language.
-Language values are not yet exposed through volatile-domain enumeration and
-lookup. Change notifications and configurable Foundation search-list behavior
-remain unimplemented.
+`volatileDomainNames` and `volatileDomainForName:` expose the argument,
+language, explicitly registered volatile, and registration domains. Live
+language-list refresh, change notifications, and configurable Foundation
+search-list behavior remain unimplemented.
 `NSMutableString` adds `+string`, UTF-8/string constructors, `-appendString:`,
 `-setString:`, `-deleteCharactersInRange:`, `-replaceCharactersInRange:withString:`,
 and `-insertString:atIndex:`. Range operations and indices use UTF-16 code units

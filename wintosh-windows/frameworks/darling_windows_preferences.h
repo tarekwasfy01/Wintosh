@@ -19,6 +19,7 @@ extern "C" bool darling_windows_preferences_register_boolean(darling_windows_pre
 extern "C" bool darling_windows_preferences_get_integer(darling_windows_preferences_ref, const char*, std::int64_t*);
 extern "C" bool darling_windows_preferences_get_double(darling_windows_preferences_ref, const char*, double*);
 extern "C" bool darling_windows_preferences_get_property_list_xml(darling_windows_preferences_ref, const char*, char*, std::size_t);
+extern "C" bool darling_windows_preferences_get_domain_property_list_xml(darling_windows_preferences_ref, char*, std::size_t);
 extern "C" bool darling_windows_preferences_get_boolean(darling_windows_preferences_ref, const char*, bool*);
 extern "C" bool darling_windows_preferences_set_string(darling_windows_preferences_ref, const char*, const char*);
 extern "C" bool darling_windows_preferences_set_integer(darling_windows_preferences_ref, const char*, std::int64_t);

@@ -577,9 +577,11 @@ After `NSGlobalDomain`, reads consult language domains in the order from its
 `AppleLanguages` array; if that key is absent, Windows preferred UI languages
 provide the ordered locale fallback. Region-specific domains are checked before
 their base language. Language-domain values participate in `objectForKey:`
-lookups but are not yet exposed through volatile-domain enumeration or lookup.
-Full configurable search-list controls and change notifications remain open.
-Builds validate compile/link only; no guest fixture was run.
+lookups and are available through `volatileDomainForName:` and
+`volatileDomainNames`. Those APIs also expose the argument and registration
+domains. Full configurable search-list controls, live language-list refresh,
+and change notifications remain open. Builds validate compile/link only; no
+guest fixture was run.
 
 ### NSApplication lifecycle selectors (2026-11-16)
 

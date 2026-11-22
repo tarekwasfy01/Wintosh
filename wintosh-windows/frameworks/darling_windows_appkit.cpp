@@ -8120,13 +8120,32 @@ id NSUserDefaultsVolatileDomainForName(id self, SEL, id name_object)
 		NSStringUTF8String(name_object, nullptr);
 	if (name == nullptr) return nullptr;
 	std::unordered_map<std::string, std::string> values;
+	darling_windows_preferences_ref store = nullptr;
 	{
 		std::lock_guard lock(g_user_defaults_mutex);
 		const auto state = g_user_defaults.find(self);
 		if (state == g_user_defaults.end()) return nullptr;
 		const auto domain = state->second.volatile_domains.find(name);
-		if (domain == state->second.volatile_domains.end()) return nullptr;
-		values = domain->second;
+		if (domain != state->second.volatile_domains.end()) {
+			values = domain->second;
+		} else if (std::strcmp(name, "NSArgumentDomain") == 0) {
+			store = state->second.argument_store;
+		} else {
+			const auto language = std::find_if(state->second.language_stores.begin(),
+				state->second.language_stores.end(), [name](const auto& candidate) {
+					return candidate.first == name;
+				});
+			if (language == state->second.language_stores.end()) return nullptr;
+			store = language->second;
+		}
+	}
+	if (store != nullptr) {
+		try {
+			std::vector<char> xml(16 * 1024 * 1024);
+			if (!darling_windows_preferences_get_domain_property_list_xml(
+				store, xml.data(), xml.size())) return nullptr;
+			return ObjcObjectFromPropertyListXml(xml.data());
+		} catch (...) { return nullptr; }
 	}
 	std::vector<id> keys;
 	std::vector<id> objects;
@@ -8233,8 +8252,19 @@ id NSUserDefaultsVolatileDomainNames(id self, SEL)
 		std::lock_guard lock(g_user_defaults_mutex);
 		const auto state = g_user_defaults.find(self);
 		if (state == g_user_defaults.end()) return nullptr;
-		for (const auto& [name, values] : state->second.volatile_domains)
-			names.push_back(name);
+		const auto append_unique = [&names](const std::string& name) {
+			if (std::find(names.begin(), names.end(), name) == names.end())
+				names.push_back(name);
+		};
+		if (state->second.argument_store != nullptr)
+			append_unique("NSArgumentDomain");
+		for (const auto& language : state->second.language_stores)
+			append_unique(language.first);
+		for (auto domain = state->second.volatile_domain_order.rbegin();
+			domain != state->second.volatile_domain_order.rend(); ++domain)
+			if (*domain != "NSRegistrationDomain") append_unique(*domain);
+		if (state->second.volatile_domains.contains("NSRegistrationDomain"))
+			append_unique("NSRegistrationDomain");
 	}
 	std::vector<id> objects;
 	try {

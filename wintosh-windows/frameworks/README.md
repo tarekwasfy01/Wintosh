@@ -804,6 +804,8 @@ render a temporary path, so their stroke attributes use the same defaults.
 `addClip` replays the stored path into the active graphics context and
 intersects it with the existing clip, using the path's winding rule without
 mutating the NSBezierPath. The context flatness is restored before clipping.
+`currentPoint` returns the last endpoint (or the start point after close), and
+`relativeMoveToPoint:` / `relativeLineToPoint:` add offsets to that point.
 Other path attributes and many additional operations remain unimplemented.
 
 The Objective-C resolver routes no-argument CGRect getters through the

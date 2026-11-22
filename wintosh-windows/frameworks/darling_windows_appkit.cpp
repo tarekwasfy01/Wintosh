@@ -570,6 +570,7 @@ struct BezierPathState final {
 std::mutex g_bezier_mutex;
 std::unordered_map<id, BezierPathState> g_bezier_paths;
 BezierPathState g_bezier_defaults;
+void NSBezierPathAppend(id self, BezierCommand command);
 std::mutex g_date_mutex;
 std::unordered_map<id, double> g_dates;
 std::mutex g_nsrunloop_mutex;
@@ -1859,6 +1860,49 @@ std::int64_t NSBezierPathElementAtIndex(id self, SEL,
 		}
 		return static_cast<std::int64_t>(element.kind);
 	} catch (...) { return -1; }
+}
+
+DarlingObjcPoint NSBezierPathCurrentPoint(id self, SEL)
+{
+	DarlingObjcPoint current{};
+	DarlingObjcPoint subpath_start{};
+	try {
+		for (const auto& element : NSBezierPathElementSnapshot(self)) {
+			switch (element.kind) {
+			case BezierCommandKind::Move:
+				current = element.points[0];
+				subpath_start = current;
+				break;
+			case BezierCommandKind::Line:
+				current = element.points[0];
+				break;
+			case BezierCommandKind::Curve:
+				current = element.points[0];
+				break;
+			case BezierCommandKind::Close:
+				current = subpath_start;
+				break;
+			case BezierCommandKind::Rect:
+			case BezierCommandKind::Oval:
+				break;
+			}
+		}
+	} catch (...) {}
+	return current;
+}
+
+void NSBezierPathRelativeMoveToPoint(id self, SEL, DarlingObjcPoint offset)
+{
+	const auto current = NSBezierPathCurrentPoint(self, nullptr);
+	NSBezierPathAppend(self, BezierCommand{BezierCommandKind::Move,
+		{{current.x + offset.x, current.y + offset.y}}});
+}
+
+void NSBezierPathRelativeLineToPoint(id self, SEL, DarlingObjcPoint offset)
+{
+	const auto current = NSBezierPathCurrentPoint(self, nullptr);
+	NSBezierPathAppend(self, BezierCommand{BezierCommandKind::Line,
+		{{current.x + offset.x, current.y + offset.y}}});
 }
 
 id NSBezierPathRoundedRectFactory(Class cls, SEL, DarlingObjcRect rect,
@@ -20593,6 +20637,14 @@ void RegisterAppKitClasses()
 			reinterpret_cast<IMP>(&NSBezierPathLineToPoint),
 			"v@:{CGPoint=dd}");
 		class_addMethod(bezier_path,
+			sel_registerName("relativeMoveToPoint:"),
+			reinterpret_cast<IMP>(&NSBezierPathRelativeMoveToPoint),
+			"v@:{CGPoint=dd}");
+		class_addMethod(bezier_path,
+			sel_registerName("relativeLineToPoint:"),
+			reinterpret_cast<IMP>(&NSBezierPathRelativeLineToPoint),
+			"v@:{CGPoint=dd}");
+		class_addMethod(bezier_path,
 			sel_registerName("curveToPoint:controlPoint1:controlPoint2:"),
 			reinterpret_cast<IMP>(&NSBezierPathCurveToPoint),
 			"v@:{CGPoint=dd}{CGPoint=dd}{CGPoint=dd}");
@@ -20656,6 +20708,9 @@ void RegisterAppKitClasses()
 			reinterpret_cast<IMP>(&NSBezierPathIsEmpty), "B@:");
 		class_addMethod(bezier_path, sel_registerName("elementCount"),
 			reinterpret_cast<IMP>(&NSBezierPathElementCount), "q@:");
+		class_addMethod(bezier_path, sel_registerName("currentPoint"),
+			reinterpret_cast<IMP>(&NSBezierPathCurrentPoint),
+			"{CGPoint=dd}@:");
 		class_addMethod(bezier_path,
 			sel_registerName("elementAtIndex:associatedPoints:"),
 			reinterpret_cast<IMP>(&NSBezierPathElementAtIndex),

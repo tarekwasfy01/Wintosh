@@ -569,6 +569,7 @@ struct BezierPathState final {
 };
 std::mutex g_bezier_mutex;
 std::unordered_map<id, BezierPathState> g_bezier_paths;
+BezierPathState g_bezier_defaults;
 std::mutex g_date_mutex;
 std::unordered_map<id, double> g_dates;
 std::mutex g_nsrunloop_mutex;
@@ -1600,7 +1601,7 @@ id NSBezierPathCreate(Class cls)
 	if (object == nullptr) return nullptr;
 	try {
 		std::lock_guard lock(g_bezier_mutex);
-		g_bezier_paths.emplace(object, BezierPathState{});
+		g_bezier_paths.emplace(object, g_bezier_defaults);
 	} catch (...) {
 		objc_release(object);
 		return nullptr;
@@ -1611,6 +1612,84 @@ id NSBezierPathCreate(Class cls)
 		return nullptr;
 	}
 	return object;
+}
+
+double NSBezierPathDefaultLineWidth(Class, SEL)
+{
+	std::lock_guard lock(g_bezier_mutex);
+	return g_bezier_defaults.line_width;
+}
+
+void NSBezierPathSetDefaultLineWidth(Class, SEL, double value)
+{
+	if (!std::isfinite(value) || value < 0) return;
+	std::lock_guard lock(g_bezier_mutex);
+	g_bezier_defaults.line_width = value;
+}
+
+std::uint64_t NSBezierPathDefaultLineCapStyle(Class, SEL)
+{
+	std::lock_guard lock(g_bezier_mutex);
+	return g_bezier_defaults.line_cap_style;
+}
+
+void NSBezierPathSetDefaultLineCapStyle(Class, SEL, std::uint64_t value)
+{
+	if (value > darling_windows_kCGLineCapSquare) return;
+	std::lock_guard lock(g_bezier_mutex);
+	g_bezier_defaults.line_cap_style = value;
+}
+
+std::uint64_t NSBezierPathDefaultLineJoinStyle(Class, SEL)
+{
+	std::lock_guard lock(g_bezier_mutex);
+	return g_bezier_defaults.line_join_style;
+}
+
+void NSBezierPathSetDefaultLineJoinStyle(Class, SEL, std::uint64_t value)
+{
+	if (value > darling_windows_kCGLineJoinBevel) return;
+	std::lock_guard lock(g_bezier_mutex);
+	g_bezier_defaults.line_join_style = value;
+}
+
+double NSBezierPathDefaultMiterLimit(Class, SEL)
+{
+	std::lock_guard lock(g_bezier_mutex);
+	return g_bezier_defaults.miter_limit;
+}
+
+void NSBezierPathSetDefaultMiterLimit(Class, SEL, double value)
+{
+	if (!std::isfinite(value) || value < 0) return;
+	std::lock_guard lock(g_bezier_mutex);
+	g_bezier_defaults.miter_limit = value;
+}
+
+double NSBezierPathDefaultFlatness(Class, SEL)
+{
+	std::lock_guard lock(g_bezier_mutex);
+	return g_bezier_defaults.flatness;
+}
+
+void NSBezierPathSetDefaultFlatness(Class, SEL, double value)
+{
+	if (!std::isfinite(value) || value <= 0) return;
+	std::lock_guard lock(g_bezier_mutex);
+	g_bezier_defaults.flatness = value;
+}
+
+std::int64_t NSBezierPathDefaultWindingRule(Class, SEL)
+{
+	std::lock_guard lock(g_bezier_mutex);
+	return g_bezier_defaults.winding_rule;
+}
+
+void NSBezierPathSetDefaultWindingRule(Class, SEL, std::int64_t value)
+{
+	if (value != 0 && value != 1) return;
+	std::lock_guard lock(g_bezier_mutex);
+	g_bezier_defaults.winding_rule = value;
 }
 
 id NSBezierPathFactory(Class cls, SEL)
@@ -20403,6 +20482,41 @@ void RegisterAppKitClasses()
 
 		Class bezier_path = RegisterHostClass("NSBezierPath", root);
 		if (bezier_path == nullptr) return;
+		class_addClassMethod(bezier_path, sel_registerName("defaultLineWidth"),
+			reinterpret_cast<IMP>(&NSBezierPathDefaultLineWidth), "d@:");
+		class_addClassMethod(bezier_path,
+			sel_registerName("setDefaultLineWidth:"),
+			reinterpret_cast<IMP>(&NSBezierPathSetDefaultLineWidth), "v@:d");
+		class_addClassMethod(bezier_path,
+			sel_registerName("defaultLineCapStyle"),
+			reinterpret_cast<IMP>(&NSBezierPathDefaultLineCapStyle), "Q@:");
+		class_addClassMethod(bezier_path,
+			sel_registerName("setDefaultLineCapStyle:"),
+			reinterpret_cast<IMP>(&NSBezierPathSetDefaultLineCapStyle), "v@:Q");
+		class_addClassMethod(bezier_path,
+			sel_registerName("defaultLineJoinStyle"),
+			reinterpret_cast<IMP>(&NSBezierPathDefaultLineJoinStyle), "Q@:");
+		class_addClassMethod(bezier_path,
+			sel_registerName("setDefaultLineJoinStyle:"),
+			reinterpret_cast<IMP>(&NSBezierPathSetDefaultLineJoinStyle), "v@:Q");
+		class_addClassMethod(bezier_path,
+			sel_registerName("defaultMiterLimit"),
+			reinterpret_cast<IMP>(&NSBezierPathDefaultMiterLimit), "d@:");
+		class_addClassMethod(bezier_path,
+			sel_registerName("setDefaultMiterLimit:"),
+			reinterpret_cast<IMP>(&NSBezierPathSetDefaultMiterLimit), "v@:d");
+		class_addClassMethod(bezier_path,
+			sel_registerName("defaultFlatness"),
+			reinterpret_cast<IMP>(&NSBezierPathDefaultFlatness), "d@:");
+		class_addClassMethod(bezier_path,
+			sel_registerName("setDefaultFlatness:"),
+			reinterpret_cast<IMP>(&NSBezierPathSetDefaultFlatness), "v@:d");
+		class_addClassMethod(bezier_path,
+			sel_registerName("defaultWindingRule"),
+			reinterpret_cast<IMP>(&NSBezierPathDefaultWindingRule), "q@:");
+		class_addClassMethod(bezier_path,
+			sel_registerName("setDefaultWindingRule:"),
+			reinterpret_cast<IMP>(&NSBezierPathSetDefaultWindingRule), "v@:q");
 		class_addClassMethod(bezier_path, sel_registerName("bezierPath"),
 			reinterpret_cast<IMP>(&NSBezierPathFactory), "@@:");
 		class_addClassMethod(bezier_path,

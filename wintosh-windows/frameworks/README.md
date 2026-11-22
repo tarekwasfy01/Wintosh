@@ -794,7 +794,13 @@ curve subdivision when the path is replayed into CoreGraphics. The context's
 flatness value is saved/restored around path rendering. Subdivision uses a
 device-scale-adjusted point-to-segment tolerance, depth 12, and a 4096-point
 contour cap; extreme curves can therefore exceed the requested error bound.
-Other path attributes and many additional operations remain unimplemented.
+The corresponding `defaultLineWidth`, `defaultLineCapStyle`,
+`defaultLineJoinStyle`, `defaultMiterLimit`, `defaultFlatness`, and
+`defaultWindingRule` class properties have setters; newly created paths copy
+the current defaults. The initial values are width 1, butt cap, miter join,
+miter limit 10, flatness 0.6, and nonzero winding. Dash patterns have no class
+default. Other path attributes and many additional operations remain
+unimplemented.
 
 The Objective-C resolver routes no-argument CGRect getters through the
 `objc_msgSend_stret` family, including legacy and Super2 variants, which write

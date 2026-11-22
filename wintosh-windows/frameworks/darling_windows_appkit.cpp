@@ -561,6 +561,7 @@ struct BezierPathState final {
 	double line_width{1.0};
 	std::uint64_t line_cap_style{darling_windows_kCGLineCapButt};
 	std::uint64_t line_join_style{darling_windows_kCGLineJoinMiter};
+	double miter_limit{10.0};
 };
 std::mutex g_bezier_mutex;
 std::unordered_map<id, BezierPathState> g_bezier_paths;
@@ -1829,6 +1830,20 @@ std::uint64_t NSBezierPathLineJoinStyle(id self, SEL)
 		found->second.line_join_style;
 }
 
+void NSBezierPathSetMiterLimit(id self, SEL, double limit)
+{
+	if (!std::isfinite(limit) || limit < 0.0) return;
+	std::lock_guard lock(g_bezier_mutex);
+	g_bezier_paths[self].miter_limit = limit;
+}
+
+double NSBezierPathMiterLimit(id self, SEL)
+{
+	std::lock_guard lock(g_bezier_mutex);
+	const auto found = g_bezier_paths.find(self);
+	return found == g_bezier_paths.end() ? 10.0 : found->second.miter_limit;
+}
+
 void NSBezierPathRender(id self, bool fill, bool even_odd = false)
 {
 	if (g_current_cg_context == nullptr) return;
@@ -1880,6 +1895,7 @@ void NSBezierPathRender(id self, bool fill, bool even_odd = false)
 			static_cast<darling_windows_CGLineCap>(path.line_cap_style));
 		CGContextSetLineJoin(g_current_cg_context,
 			static_cast<darling_windows_CGLineJoin>(path.line_join_style));
+		CGContextSetMiterLimit(g_current_cg_context, path.miter_limit);
 		CGContextStrokePath(g_current_cg_context);
 		CGContextRestoreGState(g_current_cg_context);
 	}
@@ -20277,6 +20293,10 @@ void RegisterAppKitClasses()
 			reinterpret_cast<IMP>(&NSBezierPathSetLineJoinStyle), "v@:Q");
 		class_addMethod(bezier_path, sel_registerName("lineJoinStyle"),
 			reinterpret_cast<IMP>(&NSBezierPathLineJoinStyle), "Q@:");
+		class_addMethod(bezier_path, sel_registerName("setMiterLimit:"),
+			reinterpret_cast<IMP>(&NSBezierPathSetMiterLimit), "v@:d");
+		class_addMethod(bezier_path, sel_registerName("miterLimit"),
+			reinterpret_cast<IMP>(&NSBezierPathMiterLimit), "d@:");
 		class_addMethod(bezier_path, sel_registerName("bounds"),
 			reinterpret_cast<IMP>(&NSBezierPathBounds),
 			"{CGRect={CGPoint=dd}{CGSize=dd}}@:");

@@ -42,6 +42,7 @@ struct darling_windows_CGContextObject final {
 		double line_width = 1;
 		darling_windows_CGLineCap line_cap = darling_windows_kCGLineCapButt;
 		darling_windows_CGLineJoin line_join = darling_windows_kCGLineJoinMiter;
+		double miter_limit = 10;
 		double alpha = 1;
 		darling_windows_CGBlendMode blend_mode = darling_windows_kCGBlendModeNormal;
 		darling_windows_CGAffineTransform ctm{1, 0, 0, 1, 0, 0};
@@ -65,6 +66,7 @@ struct darling_windows_CGContextObject final {
 	double line_width = 1;
 	darling_windows_CGLineCap line_cap = darling_windows_kCGLineCapButt;
 	darling_windows_CGLineJoin line_join = darling_windows_kCGLineJoinMiter;
+	double miter_limit = 10;
 	double alpha = 1;
 	darling_windows_CGBlendMode blend_mode = darling_windows_kCGBlendModeNormal;
 	darling_windows_CGAffineTransform ctm{1, 0, 0, 1, 0, 0};
@@ -1102,7 +1104,8 @@ void StrokeContourJoins(darling_windows_CGContextRef context,
 			const darling_windows_CGPoint miter{outer_in.x + incoming.x * t,
 				outer_in.y + incoming.y * t};
 			if (std::isfinite(miter.x) && std::isfinite(miter.y) &&
-				std::hypot(miter.x - vertex.x, miter.y - vertex.y) <= 10.0 * radius) {
+				std::hypot(miter.x - vertex.x, miter.y - vertex.y) <=
+					context->miter_limit * radius) {
 				FillJoinTriangle(context, outer_in, miter, outer_out);
 				continue;
 			}
@@ -2213,6 +2216,13 @@ extern "C" DARLING_CG_GUEST_ABI void CGContextSetLineJoin(
 		context->line_join = join;
 }
 
+extern "C" DARLING_CG_GUEST_ABI void CGContextSetMiterLimit(
+	darling_windows_CGContextRef context, double limit)
+{
+	if (context != nullptr && std::isfinite(limit) && limit >= 0)
+		context->miter_limit = limit;
+}
+
 extern "C" DARLING_CG_GUEST_ABI void CGContextSetAlpha(
 	darling_windows_CGContextRef context, double alpha)
 {
@@ -2256,7 +2266,7 @@ extern "C" DARLING_CG_GUEST_ABI void CGContextSaveGState(
 	try {
 		context->saved_states.push_back({context->fill, context->stroke,
 			context->line_width, context->line_cap, context->line_join,
-			context->alpha, context->blend_mode,
+			context->miter_limit, context->alpha, context->blend_mode,
 			context->ctm, context->clip_mask});
 	} catch (...) {
 	}
@@ -2273,6 +2283,7 @@ extern "C" DARLING_CG_GUEST_ABI void CGContextRestoreGState(
 	context->line_width = saved.line_width;
 	context->line_cap = saved.line_cap;
 	context->line_join = saved.line_join;
+	context->miter_limit = saved.miter_limit;
 	context->alpha = saved.alpha;
 	context->blend_mode = saved.blend_mode;
 	context->ctm = saved.ctm;

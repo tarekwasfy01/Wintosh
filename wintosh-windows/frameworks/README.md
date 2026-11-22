@@ -771,10 +771,11 @@ argument registers.
 `bounds` computes cubic curve extrema; `controlPointBounds` includes the
 control points, and `isEmpty` reports whether the path has any segments.
 The path stores `lineCapStyle` (`butt`, `round`, or `square`) and
-`lineJoinStyle` (`miter`, `round`, or `bevel`). Quartz saves and restores both
-styles with the graphics state; miter joins fall back to bevel when they exceed
-the default ten-half-width limit. Element inspection, dash patterns, and many
-additional path operations remain unimplemented.
+`lineJoinStyle` (`miter`, `round`, or `bevel`), and `miterLimit`. Quartz saves
+and restores these settings with the graphics state; miter joins fall back to
+bevel when they exceed the configured limit (default 10). CoreGraphics also
+exports the line-cap, line-join, and miter-limit setters. Element inspection,
+dash patterns, and many additional path operations remain unimplemented.
 
 The Objective-C resolver routes no-argument CGRect getters through the
 `objc_msgSend_stret` family, including legacy and Super2 variants, which write

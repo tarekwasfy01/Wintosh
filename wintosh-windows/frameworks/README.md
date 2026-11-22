@@ -806,6 +806,10 @@ intersects it with the existing clip, using the path's winding rule without
 mutating the NSBezierPath. The context flatness is restored before clipping.
 `currentPoint` returns the last endpoint (or the start point after close), and
 `relativeMoveToPoint:` / `relativeLineToPoint:` add offsets to that point.
+`containsPoint:` tests the filled path area and boundary, including implicitly
+closed open subpaths, with cubic curves flattened according to path flatness.
+Following AppKit's contract, hit-testing uses nonzero winding regardless of the
+path's configured fill winding rule and ignores stroke width.
 Other path attributes and many additional operations remain unimplemented.
 
 The Objective-C resolver routes no-argument CGRect getters through the

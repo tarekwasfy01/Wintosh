@@ -1905,6 +1905,128 @@ void NSBezierPathRelativeLineToPoint(id self, SEL, DarlingObjcPoint offset)
 		{{current.x + offset.x, current.y + offset.y}}});
 }
 
+bool NSBezierPathContainsPoint(id self, SEL, DarlingObjcPoint point)
+{
+	if (!std::isfinite(point.x) || !std::isfinite(point.y)) return false;
+	BezierPathState path;
+	try {
+		std::lock_guard lock(g_bezier_mutex);
+		const auto found = g_bezier_paths.find(self);
+		if (found == g_bezier_paths.end()) return false;
+		path = found->second;
+	} catch (...) { return false; }
+	std::vector<DarlingObjcPoint> polygon;
+	DarlingObjcPoint current{};
+	DarlingObjcPoint subpath_start{};
+	bool has_current = false;
+	int winding = 0;
+	const auto add_edge = [&](DarlingObjcPoint first, DarlingObjcPoint second,
+		int& total_winding) {
+		const double dx = second.x - first.x;
+		const double dy = second.y - first.y;
+		const double cross = dx * (point.y - first.y) -
+			dy * (point.x - first.x);
+		const double projection = (point.x - first.x) * dx +
+			(point.y - first.y) * dy;
+		const double length_squared = dx * dx + dy * dy;
+		if (std::abs(cross) <= 1e-9 * (1.0 + std::sqrt(length_squared)) &&
+			projection >= -1e-9 && projection <= length_squared + 1e-9)
+			return 2;
+		if (first.y <= point.y && second.y > point.y && cross > 0)
+			++total_winding;
+		else if (first.y > point.y && second.y <= point.y && cross < 0)
+			--total_winding;
+		return 0;
+	};
+	const auto finish_polygon = [&]() {
+		if (polygon.size() < 2) { polygon.clear(); return false; }
+		for (std::size_t index = 0; index < polygon.size(); ++index) {
+			const int edge = add_edge(polygon[index],
+				polygon[(index + 1) % polygon.size()], winding);
+			if (edge == 2) { polygon.clear(); return true; }
+		}
+		polygon.clear();
+		return false;
+	};
+	const auto append_curve = [&](DarlingObjcPoint start,
+		DarlingObjcPoint control1, DarlingObjcPoint control2,
+		DarlingObjcPoint end) {
+		std::function<void(DarlingObjcPoint, DarlingObjcPoint,
+			DarlingObjcPoint, DarlingObjcPoint, unsigned)> flatten;
+		flatten = [&](DarlingObjcPoint p0, DarlingObjcPoint p1,
+			DarlingObjcPoint p2, DarlingObjcPoint p3, unsigned depth) {
+			const auto distance = [](DarlingObjcPoint p,
+				DarlingObjcPoint a, DarlingObjcPoint b) {
+				const double dx = b.x - a.x, dy = b.y - a.y;
+				const double length_squared = dx * dx + dy * dy;
+				if (length_squared <= 1e-24) return std::hypot(p.x - a.x, p.y - a.y);
+				const double ratio = std::clamp(((p.x - a.x) * dx +
+					(p.y - a.y) * dy) / length_squared, 0.0, 1.0);
+				return std::hypot(p.x - (a.x + ratio * dx),
+					p.y - (a.y + ratio * dy));
+			};
+			const double tolerance = (std::max)(0.01, path.flatness);
+			if ((std::max)(distance(p1, p0, p3), distance(p2, p0, p3)) <=
+				tolerance || depth >= 12 || polygon.size() >= 4096) {
+				if (polygon.size() < 4096) polygon.push_back(p3);
+				else if (!polygon.empty()) polygon.back() = p3;
+				return;
+			}
+			const DarlingObjcPoint a{(p0.x + p1.x) / 2, (p0.y + p1.y) / 2};
+			const DarlingObjcPoint b{(p1.x + p2.x) / 2, (p1.y + p2.y) / 2};
+			const DarlingObjcPoint c{(p2.x + p3.x) / 2, (p2.y + p3.y) / 2};
+			const DarlingObjcPoint d{(a.x + b.x) / 2, (a.y + b.y) / 2};
+			const DarlingObjcPoint e{(b.x + c.x) / 2, (b.y + c.y) / 2};
+			const DarlingObjcPoint middle{(d.x + e.x) / 2, (d.y + e.y) / 2};
+			flatten(p0, a, d, middle, depth + 1);
+			flatten(middle, e, c, p3, depth + 1);
+		};
+		flatten(start, control1, control2, end, 0);
+	};
+	try {
+		for (const auto& element : NSBezierPathElementSnapshot(self)) {
+			switch (element.kind) {
+			case BezierCommandKind::Move:
+				if (finish_polygon()) return true;
+				current = subpath_start = element.points[0];
+				polygon.push_back(current);
+				has_current = true;
+				break;
+			case BezierCommandKind::Line:
+				if (!has_current) {
+					current = subpath_start = {};
+					polygon.push_back(current);
+					has_current = true;
+				}
+				current = element.points[0];
+				polygon.push_back(current);
+				break;
+			case BezierCommandKind::Curve:
+				if (!has_current) {
+					current = subpath_start = {};
+					polygon.push_back(current);
+					has_current = true;
+				}
+				append_curve(current, element.points[1], element.points[2],
+					element.points[0]);
+				current = element.points[0];
+				break;
+			case BezierCommandKind::Close:
+				if (finish_polygon()) return true;
+				current = subpath_start;
+				has_current = true;
+				polygon.push_back(current);
+				break;
+			case BezierCommandKind::Rect:
+			case BezierCommandKind::Oval:
+				break;
+			}
+		}
+		if (finish_polygon()) return true;
+	} catch (...) { return false; }
+	return winding != 0;
+}
+
 id NSBezierPathRoundedRectFactory(Class cls, SEL, DarlingObjcRect rect,
 	double x_radius, double y_radius)
 {
@@ -20711,6 +20833,9 @@ void RegisterAppKitClasses()
 		class_addMethod(bezier_path, sel_registerName("currentPoint"),
 			reinterpret_cast<IMP>(&NSBezierPathCurrentPoint),
 			"{CGPoint=dd}@:");
+		class_addMethod(bezier_path, sel_registerName("containsPoint:"),
+			reinterpret_cast<IMP>(&NSBezierPathContainsPoint),
+			"B@:{CGPoint=dd}");
 		class_addMethod(bezier_path,
 			sel_registerName("elementAtIndex:associatedPoints:"),
 			reinterpret_cast<IMP>(&NSBezierPathElementAtIndex),

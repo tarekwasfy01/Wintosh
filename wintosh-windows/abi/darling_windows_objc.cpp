@@ -841,6 +841,13 @@ std::uintptr_t DispatchSysVObjcCall(DarlingSysVObjcCallFrame* input,
 			receiver, selector, point);
 		return 0;
 	}
+	if (types == "B@:{CGPoint=dd}") {
+		DarlingObjcPoint point{};
+		std::memcpy(&point.x, frame->xmm[0], sizeof(point.x));
+		std::memcpy(&point.y, frame->xmm[1], sizeof(point.y));
+		return InvokeObjcImplementation<bool, DarlingObjcPoint>(imp,
+			method.guest_abi, receiver, selector, point) ? 1u : 0u;
+	}
 	if (types == "v@:{CGPoint=dd}@") {
 		DarlingObjcPoint point{};
 		std::memcpy(&point.x, frame->xmm[0], sizeof(point.x));

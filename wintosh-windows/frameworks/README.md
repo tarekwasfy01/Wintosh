@@ -234,10 +234,13 @@ all stored elements are strings. `dictionaryRepresentation` merges all
 configured domains in lookup order and retains the earliest value for duplicate
 keys. CoreFoundation guest code can also use `CFPreferencesCopyAppValue`,
 `CFPreferencesSetAppValue`, and `CFPreferencesAppSynchronize` for the same
-application-domain XML plist store. `kCFPreferencesCurrentApplication` resolves
-to the main bundle identifier. Writes remain process-local until
-`CFPreferencesAppSynchronize`, and reads see pending writes in the current
-process. User/host/global and suite-search variants remain unavailable.
+application-domain XML plist store, plus `CFPreferencesCopyMultiple`,
+`CFPreferencesCopyKeyList`, and `CFPreferencesSetMultiple` for that app domain.
+`kCFPreferencesCurrentApplication` resolves to the main bundle identifier.
+Writes remain process-local until `CFPreferencesAppSynchronize`, and reads see
+pending writes in the current process. `CurrentUser` is supported; `CurrentHost`
+and `AnyHost` map to one host store. `AnyUser`, cross-user/global domains, suite
+search, and exact-domain `CopyValue`/`SetValue` remain unavailable.
 `NSMutableString` adds `+string`, UTF-8/string constructors, `-appendString:`,
 `-setString:`, `-deleteCharactersInRange:`, `-replaceCharactersInRange:withString:`,
 and `-insertString:atIndex:`. Range operations and indices use UTF-16 code units

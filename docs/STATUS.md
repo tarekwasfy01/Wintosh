@@ -551,14 +551,16 @@ is unverified. No guest fixture or tests were run.
 ### Objective-C NSUserDefaults bridge (2026-11-16)
 
 The CoreFoundation guest resolver now exports `CFPreferencesCopyAppValue`,
-`CFPreferencesSetAppValue`, and `CFPreferencesAppSynchronize` against the same
+`CFPreferencesCopyMultiple`, `CFPreferencesCopyKeyList`, `CFPreferencesSetAppValue`,
+`CFPreferencesSetMultiple`, and `CFPreferencesAppSynchronize` against the same
 prefix-relative application-domain plist store. `kCFPreferencesCurrentApplication`
 resolves to the main bundle identifier, with `org.wintosh.application` as the
 fallback when no bundle identifier is available. Values use the existing XML
 property-list parser and serializer. Writes stay in a process-local pending map
 until `CFPreferencesAppSynchronize`; reads in that process see pending values.
-User, host, global, suite search-list, and key-list variants remain
-unimplemented.
+The `CurrentUser` qualifier is supported; `CurrentHost` and `AnyHost` both map
+to the same host store. `AnyUser`, cross-user/global domains, suite search
+chains, and exact-domain `CopyValue`/`SetValue` remain unimplemented.
 
 The AppKit/Foundation host now exposes `standardUserDefaults`, suite
 initialization, object/string/array/dictionary/data/integer/boolean/double reads, scalar and

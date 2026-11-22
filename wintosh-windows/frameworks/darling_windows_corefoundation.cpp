@@ -7815,6 +7815,21 @@ extern "C" DARLING_CF_GUEST_ABI std::uint8_t CFBooleanGetValue(
 extern "C" darling_windows_CFStringRef
 	kCFPreferencesCurrentApplication = darling_windows_CFStringCreateWithCString(
 		"kCFPreferencesCurrentApplication");
+extern "C" darling_windows_CFStringRef
+	kCFPreferencesCurrentUser = darling_windows_CFStringCreateWithCString(
+		"kCFPreferencesCurrentUser");
+extern "C" darling_windows_CFStringRef
+	kCFPreferencesAnyUser = darling_windows_CFStringCreateWithCString(
+		"kCFPreferencesAnyUser");
+extern "C" darling_windows_CFStringRef
+	kCFPreferencesCurrentHost = darling_windows_CFStringCreateWithCString(
+		"kCFPreferencesCurrentHost");
+extern "C" darling_windows_CFStringRef
+	kCFPreferencesAnyHost = darling_windows_CFStringCreateWithCString(
+		"kCFPreferencesAnyHost");
+extern "C" darling_windows_CFStringRef
+	kCFPreferencesAnyApplication = darling_windows_CFStringCreateWithCString(
+		"kCFPreferencesAnyApplication");
 
 namespace {
 
@@ -7862,6 +7877,90 @@ bool CFPreferencesString(darling_windows_CFStringRef value, std::string& output)
 		static_cast<darling_windows_CFIndex>(buffer.size()))) return false;
 	output.assign(buffer.data());
 	return !output.empty();
+}
+
+bool CFPreferencesSupportsCurrentUserHost(darling_windows_CFStringRef user_name,
+	darling_windows_CFStringRef host_name)
+{
+	std::string user, host;
+	return CFPreferencesString(user_name, user) &&
+		CFPreferencesString(host_name, host) &&
+		user == "kCFPreferencesCurrentUser" &&
+		(host == "kCFPreferencesAnyHost" || host == "kCFPreferencesCurrentHost");
+}
+
+darling_windows_CFDictionaryRef CFPreferencesCopyApplicationDictionary(
+	const std::string& domain, darling_windows_CFArrayRef keys_to_fetch)
+{
+	if (domain.empty()) return nullptr;
+	auto store = darling_windows_preferences_open(domain.c_str());
+	if (store == nullptr) return nullptr;
+	std::vector<char> xml(16 * 1024 * 1024);
+	const bool serialized = darling_windows_preferences_get_domain_property_list_xml(
+		store, xml.data(), xml.size());
+	darling_windows_preferences_close(store);
+	const auto parsed = serialized ? darling_windows_CFPropertyListCreateFromXML(xml.data()) :
+		nullptr;
+	if (parsed == nullptr || darling_windows_CFGetTypeID(parsed) !=
+		darling_windows_CFDictionaryGetTypeID()) {
+		if (parsed != nullptr) darling_windows_CFRelease(parsed);
+		return nullptr;
+	}
+	auto dictionary = darling_windows_CFDictionaryCreateMutableCopy(0,
+		static_cast<darling_windows_CFDictionaryRef>(parsed));
+	darling_windows_CFRelease(parsed);
+	if (dictionary == nullptr) return nullptr;
+	try {
+		std::vector<std::pair<std::string, std::optional<std::string>>> pending;
+		{
+			std::lock_guard lock(g_cf_preferences_mutex);
+			for (const auto& entry : g_cf_preferences_pending)
+				if (entry.first.first == domain)
+					pending.emplace_back(entry.first.second, entry.second);
+		}
+		for (const auto& [name, value_xml] : pending) {
+			const auto key = darling_windows_CFStringCreateWithCString(name.c_str());
+			if (key == nullptr) continue;
+			if (value_xml) {
+				const auto value = darling_windows_CFPropertyListCreateFromXML(
+					value_xml->c_str());
+				if (value != nullptr) {
+					darling_windows_CFDictionarySetValue(dictionary, key, value);
+					darling_windows_CFRelease(value);
+				}
+			} else darling_windows_CFDictionaryRemoveValue(dictionary, key);
+			darling_windows_CFRelease(key);
+		}
+		if (keys_to_fetch == nullptr) {
+			const auto immutable = darling_windows_CFDictionaryCreateCopy(dictionary);
+			darling_windows_CFRelease(dictionary);
+			return immutable;
+		}
+		const auto count = darling_windows_CFArrayGetCount(keys_to_fetch);
+		if (count < 0 || count > 100'000) {
+			darling_windows_CFRelease(dictionary);
+			return nullptr;
+		}
+		auto selected = darling_windows_CFDictionaryCreateMutable(count);
+		if (selected == nullptr) {
+			darling_windows_CFRelease(dictionary);
+			return nullptr;
+		}
+		for (darling_windows_CFIndex index = 0; index < count; ++index) {
+			const auto key = darling_windows_CFArrayGetValueAtIndex(keys_to_fetch, index);
+			if (darling_windows_CFGetTypeID(key) != darling_windows_CFStringGetTypeID())
+				continue;
+			const auto value = darling_windows_CFDictionaryGetValue(dictionary, key);
+			if (value != nullptr) darling_windows_CFDictionarySetValue(selected, key, value);
+		}
+		const auto immutable = darling_windows_CFDictionaryCreateCopy(selected);
+		darling_windows_CFRelease(selected);
+		darling_windows_CFRelease(dictionary);
+		return immutable;
+	} catch (...) {
+		darling_windows_CFRelease(dictionary);
+		return nullptr;
+	}
 }
 
 } // namespace
@@ -7964,6 +8063,78 @@ extern "C" DARLING_CF_GUEST_ABI bool CFPreferencesAppSynchronize(
 	return result;
 }
 
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFDictionaryRef
+CFPreferencesCopyMultiple(darling_windows_CFArrayRef keys_to_fetch,
+	darling_windows_CFStringRef application_id,
+	darling_windows_CFStringRef user_name,
+	darling_windows_CFStringRef host_name)
+{
+	try {
+		if (!CFPreferencesSupportsCurrentUserHost(user_name, host_name)) return nullptr;
+		return CFPreferencesCopyApplicationDictionary(
+			CFPreferencesApplicationDomain(application_id), keys_to_fetch);
+	} catch (...) { return nullptr; }
+}
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFArrayRef
+CFPreferencesCopyKeyList(darling_windows_CFStringRef application_id,
+	darling_windows_CFStringRef user_name,
+	darling_windows_CFStringRef host_name)
+{
+	try {
+		if (!CFPreferencesSupportsCurrentUserHost(user_name, host_name)) return nullptr;
+		const auto dictionary = CFPreferencesCopyApplicationDictionary(
+			CFPreferencesApplicationDomain(application_id), nullptr);
+		if (dictionary == nullptr) return nullptr;
+		const auto count = darling_windows_CFDictionaryGetCount(dictionary);
+		if (count < 0 || count > 100'000) {
+			darling_windows_CFRelease(dictionary);
+			return nullptr;
+		}
+		std::vector<const void*> keys(static_cast<std::size_t>(count));
+		darling_windows_CFDictionaryGetKeysAndValues(dictionary, keys.data(), nullptr);
+		const auto result = darling_windows_CFArrayCreate(keys.data(), count);
+		darling_windows_CFRelease(dictionary);
+		return result;
+	} catch (...) { return nullptr; }
+}
+
+extern "C" DARLING_CF_GUEST_ABI void CFPreferencesSetMultiple(
+	darling_windows_CFDictionaryRef keys_to_set,
+	darling_windows_CFArrayRef keys_to_remove,
+	darling_windows_CFStringRef application_id,
+	darling_windows_CFStringRef user_name,
+	darling_windows_CFStringRef host_name)
+{
+	try {
+		if (!CFPreferencesSupportsCurrentUserHost(user_name, host_name)) return;
+		if (keys_to_set != nullptr) {
+			const auto count = darling_windows_CFDictionaryGetCount(keys_to_set);
+			if (count < 0 || count > 100'000) return;
+			std::vector<const void*> keys(static_cast<std::size_t>(count));
+			std::vector<const void*> values(static_cast<std::size_t>(count));
+			darling_windows_CFDictionaryGetKeysAndValues(keys_to_set, keys.data(),
+				values.data());
+			for (std::size_t index = 0; index < keys.size(); ++index) {
+				if (darling_windows_CFGetTypeID(keys[index]) !=
+					darling_windows_CFStringGetTypeID()) continue;
+				CFPreferencesSetAppValue(static_cast<darling_windows_CFStringRef>(
+					keys[index]), values[index], application_id);
+			}
+		}
+		if (keys_to_remove != nullptr) {
+			const auto count = darling_windows_CFArrayGetCount(keys_to_remove);
+			if (count < 0 || count > 100'000) return;
+			for (darling_windows_CFIndex index = 0; index < count; ++index) {
+				const auto key = darling_windows_CFArrayGetValueAtIndex(keys_to_remove, index);
+				if (darling_windows_CFGetTypeID(key) == darling_windows_CFStringGetTypeID())
+					CFPreferencesSetAppValue(static_cast<darling_windows_CFStringRef>(key),
+						nullptr, application_id);
+			}
+		}
+	} catch (...) {}
+}
+
 extern "C" std::uintptr_t darling_windows_corefoundation_symbol(const char* name)
 {
 	if (name == nullptr) return 0;
@@ -7974,8 +8145,24 @@ extern "C" std::uintptr_t darling_windows_corefoundation_symbol(const char* name
 		return reinterpret_cast<std::uintptr_t>(&CFPreferencesSetAppValue);
 	if (std::strcmp(name, "CFPreferencesAppSynchronize") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFPreferencesAppSynchronize);
+	if (std::strcmp(name, "CFPreferencesCopyMultiple") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFPreferencesCopyMultiple);
+	if (std::strcmp(name, "CFPreferencesCopyKeyList") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFPreferencesCopyKeyList);
+	if (std::strcmp(name, "CFPreferencesSetMultiple") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFPreferencesSetMultiple);
 	if (std::strcmp(name, "kCFPreferencesCurrentApplication") == 0)
 		return reinterpret_cast<std::uintptr_t>(&kCFPreferencesCurrentApplication);
+	if (std::strcmp(name, "kCFPreferencesCurrentUser") == 0)
+		return reinterpret_cast<std::uintptr_t>(&kCFPreferencesCurrentUser);
+	if (std::strcmp(name, "kCFPreferencesAnyUser") == 0)
+		return reinterpret_cast<std::uintptr_t>(&kCFPreferencesAnyUser);
+	if (std::strcmp(name, "kCFPreferencesCurrentHost") == 0)
+		return reinterpret_cast<std::uintptr_t>(&kCFPreferencesCurrentHost);
+	if (std::strcmp(name, "kCFPreferencesAnyHost") == 0)
+		return reinterpret_cast<std::uintptr_t>(&kCFPreferencesAnyHost);
+	if (std::strcmp(name, "kCFPreferencesAnyApplication") == 0)
+		return reinterpret_cast<std::uintptr_t>(&kCFPreferencesAnyApplication);
 	if (std::strcmp(name, "CFRunLoopGetCurrent") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFRunLoopGetCurrent);
 	if (std::strcmp(name, "CFRunLoopGetMain") == 0)

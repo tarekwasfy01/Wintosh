@@ -885,8 +885,28 @@ extern "C" DARLING_CF_GUEST_ABI void CFPreferencesSetAppValue(
 	darling_windows_CFStringRef application_id);
 extern "C" DARLING_CF_GUEST_ABI bool CFPreferencesAppSynchronize(
 	darling_windows_CFStringRef application_id);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFDictionaryRef
+CFPreferencesCopyMultiple(darling_windows_CFArrayRef keys_to_fetch,
+	darling_windows_CFStringRef application_id,
+	darling_windows_CFStringRef user_name,
+	darling_windows_CFStringRef host_name);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFArrayRef
+CFPreferencesCopyKeyList(darling_windows_CFStringRef application_id,
+	darling_windows_CFStringRef user_name,
+	darling_windows_CFStringRef host_name);
+extern "C" DARLING_CF_GUEST_ABI void CFPreferencesSetMultiple(
+	darling_windows_CFDictionaryRef keys_to_set,
+	darling_windows_CFArrayRef keys_to_remove,
+	darling_windows_CFStringRef application_id,
+	darling_windows_CFStringRef user_name,
+	darling_windows_CFStringRef host_name);
 extern "C" darling_windows_CFStringRef
 	kCFPreferencesCurrentApplication;
+extern "C" darling_windows_CFStringRef kCFPreferencesCurrentUser;
+extern "C" darling_windows_CFStringRef kCFPreferencesAnyUser;
+extern "C" darling_windows_CFStringRef kCFPreferencesCurrentHost;
+extern "C" darling_windows_CFStringRef kCFPreferencesAnyHost;
+extern "C" darling_windows_CFStringRef kCFPreferencesAnyApplication;
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFStringCreateWithCString(
 	const void* allocator, const char* bytes, std::uint32_t encoding);
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFIndex CFStringGetLength(

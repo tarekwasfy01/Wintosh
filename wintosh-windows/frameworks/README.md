@@ -568,7 +568,9 @@ can select a decoded bitmap rep from their `NSReps` array or use a direct NSData
 scaling/alignment settings, and draws using all four `NSImageScaling` modes
 (proportional down, independent axes, native size, and proportional up/down)
 plus the nine standard image alignments. The default is proportional-down and
-centered. Multi-frame selection, vector/PDF
+centered. `imageViewWithImage:` creates a view sized to the image, and
+`isEditable`/`setEditable:` expose its non-editable default; drag-and-drop image
+replacement is not implemented. Multi-frame selection, vector/PDF
 decoding, template rendering, full compositing options, and most archived image
 representations remain unsupported. Image APIs compile, but no Mach-O image-view
 fixture verifies pixels.

@@ -1931,7 +1931,7 @@ A minimal AppKit slice now resolves NSApplicationMain, reads NSPrincipalClass fr
 
 ### NSImageView sizing and positioning (2026-11-22)
 
-`NSImageView` now implements `imageScaling`/`setImageScaling:` for proportional-down, independent-axis, no-scaling, and proportional-up/down modes. It also implements all nine standard `imageAlignment` values, defaults to proportional-down and centered, invalidates the window when either property changes, and restores both values from keyed archives. Drawing derives the destination rectangle from the decoded image size and view bounds; the existing view clip clips oversized native-size images. Pixel-level Mach-O guest coverage remains absent.
+`NSImageView` now implements `imageScaling`/`setImageScaling:` for proportional-down, independent-axis, no-scaling, and proportional-up/down modes. It also implements all nine standard `imageAlignment` values, defaults to proportional-down and centered, invalidates the window when either property changes, and restores both values from keyed archives. Drawing derives the destination rectangle from the decoded image size and view bounds; the existing view clip clips oversized native-size images. Pixel-level Mach-O guest coverage remains absent. The `imageViewWithImage:` factory allocates a view sized to the image and initializes its image; `isEditable`/`setEditable:` expose the property with a non-editable default. Image drag-and-drop replacement remains unimplemented.
 
 
 `NSSavePanel` now exposes `directoryURL` and `setDirectoryURL:`. Both the

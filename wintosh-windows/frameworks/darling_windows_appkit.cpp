@@ -763,6 +763,9 @@ std::int64_t NSImageViewImageScaling(id self, SEL selector);
 void NSImageViewSetImageScaling(id self, SEL selector, std::int64_t scaling);
 std::int64_t NSImageViewImageAlignment(id self, SEL selector);
 void NSImageViewSetImageAlignment(id self, SEL selector, std::int64_t alignment);
+bool NSImageViewIsEditable(id self, SEL selector);
+void NSImageViewSetEditable(id self, SEL selector, bool editable);
+id NSImageViewWithImage(Class cls, SEL selector, id image);
 id NSImageViewInitWithCoder(id self, SEL selector, id coder);
 void NSImageViewDrawRect(id self, SEL selector, DarlingObjcRect rect);
 
@@ -3859,10 +3862,29 @@ void NSImageViewSetImage(id self, SEL, id image)
 	if (window != nullptr) InvalidateAppKitWindow(window);
 }
 
+id NSImageViewWithImage(Class cls, SEL, id image)
+{
+	if (cls == nullptr || image == nullptr) return nullptr;
+	const DarlingObjcPoint size = NSImageSize(image, nullptr);
+	if (!std::isfinite(size.x) || !std::isfinite(size.y) || size.x < 0.0 ||
+		size.y < 0.0) return nullptr;
+	id view = class_createInstance(cls, 0);
+	if (view == nullptr) return nullptr;
+	view = NSViewInitWithFrame(view, sel_registerName("initWithFrame:"),
+		DarlingObjcRect{0.0, 0.0, size.x, size.y});
+	if (view == nullptr) return nullptr;
+	NSImageViewSetImage(view, nullptr, image);
+	NSImageViewSetImageScaling(view, nullptr, 0);
+	NSImageViewSetImageAlignment(view, nullptr, 0);
+	NSImageViewSetEditable(view, nullptr, false);
+	return objc_autorelease(view);
+}
+
 id NSImageViewInitWithCoder(id self, SEL, id coder)
 {
 	if (self == nullptr || coder == nullptr ||
 		NSViewInitWithCoder(self, nullptr, coder) == nullptr) return nullptr;
+	NSImageViewSetEditable(self, nullptr, false);
 	for (const char* field : {"NSImage", "NSImageObject", "NSContents"}) {
 		id key = CreateDynamicNSString(objc_getClass("NSString"), field);
 		if (key == nullptr) continue;
@@ -16541,6 +16563,20 @@ void NSTextFieldSetPlaceholderString(id self, SEL, id placeholder)
 	PositionNativeControl(self);
 }
 
+bool NSImageViewIsEditable(id self, SEL)
+{
+	std::lock_guard lock(g_windows_mutex);
+	const auto found = g_views.find(self);
+	return found != g_views.end() && found->second.editable;
+}
+
+void NSImageViewSetEditable(id self, SEL, bool editable)
+{
+	std::lock_guard lock(g_windows_mutex);
+	const auto found = g_views.find(self);
+	if (found != g_views.end()) found->second.editable = editable;
+}
+
 void NSTextFieldSetEditable(id self, SEL, bool editable)
 {
 	HWND control = nullptr;
@@ -21324,6 +21360,12 @@ void RegisterAppKitClasses()
 			reinterpret_cast<IMP>(&NSImageViewImageAlignment), "q@:");
 		class_addMethod(image_view, sel_registerName("setImageAlignment:"),
 			reinterpret_cast<IMP>(&NSImageViewSetImageAlignment), "v@:q");
+		class_addMethod(image_view, sel_registerName("isEditable"),
+			reinterpret_cast<IMP>(&NSImageViewIsEditable), "B@:");
+		class_addMethod(image_view, sel_registerName("setEditable:"),
+			reinterpret_cast<IMP>(&NSImageViewSetEditable), "v@:B");
+		class_addClassMethod(image_view, sel_registerName("imageViewWithImage:"),
+			reinterpret_cast<IMP>(&NSImageViewWithImage), "@@:@");
 		class_addMethod(image_view, sel_registerName("drawRect:"),
 			reinterpret_cast<IMP>(&NSImageViewDrawRect),
 			"v@:{CGRect={CGPoint=dd}{CGSize=dd}}");

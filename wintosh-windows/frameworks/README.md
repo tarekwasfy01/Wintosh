@@ -819,18 +819,23 @@ Following AppKit's contract, hit-testing uses nonzero winding regardless of the
 path's configured fill winding rule and ignores stroke width.
 Other path attributes and many additional operations remain unimplemented.
 
-`NSAffineTransform` supports identity construction/reset, append/prepend matrix
+`NSAffineTransform` supports identity construction, append/prepend matrix
 composition, translation, uniform and per-axis scaling, rotation by
 degrees/radians, inversion for nonsingular matrices, `isIdentity`,
 `transformPoint:`, and `transformSize:`. Each Objective-C instance owns an
 independent six-value affine matrix, and point/size values cross the guest ABI
-in XMM registers. `transform` concatenates into the active graphics context;
+in XMM registers. `transformStruct` and `setTransformStruct:` read/write all
+six coefficients; the getter uses the hidden stret result and the setter reads
+the structure from the guest stack. `initWithTransform:` copies another
+transform. `transformRect:` returns the axis-aligned bounding box of the four
+transformed corners. `set` replaces the active graphics-context CTM, while
+`concat` composes the matrix with it;
 `transformBezierPath:` returns a transformed copy and
 `NSBezierPath -transformUsingAffineTransform:` mutates a path. Rectangles and
-ovals expand to line/cubic segments before path transformation. `transformRect:`,
-transform-struct accessors, and Cocoa's singular-matrix exception behavior are
-not implemented. This has local compile/link evidence only; no guest Mach-O
-fixture verifies the selectors or matrix results.
+ovals expand to line/cubic segments before path transformation. Cocoa's
+singular-matrix exception behavior is not implemented. This has local
+compile/link evidence only; no guest Mach-O fixture verifies the selectors or
+matrix results.
 
 The Objective-C resolver routes no-argument CGRect getters through the
 `objc_msgSend_stret` family, including legacy and Super2 variants, which write

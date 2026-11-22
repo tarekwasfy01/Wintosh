@@ -13,19 +13,23 @@ Status date: 2026-11-23
 
 ### AppKit NSAffineTransform subset (2026-11-23)
 
-`NSAffineTransform` now creates an identity matrix and supports reset, ordered
+`NSAffineTransform` now creates an identity matrix and supports ordered
 append/prepend composition, translation, uniform and per-axis scaling, rotation
 by degrees or radians, inversion for nonsingular matrices, identity queries,
-and affine transformation of `CGPoint` and `CGSize` values. Matrix state is
-held per Objective-C object and removed by its runtime finalizer. The point and
-size arguments and results use explicit x86_64 guest ABI paths. The local Clang
-Release build compiles and links this implementation; no Mach-O guest fixture
-verifies selector dispatch or numeric results. `transform` concatenates the
-matrix into the active graphics context. `transformBezierPath:` creates a
-transformed path, and `NSBezierPath -transformUsingAffineTransform:` mutates an
-existing path; rectangles and ovals expand to line/cubic elements before
-transformation. `transformRect:`, transform-struct accessors, and
-platform-specific singular-matrix exceptions remain unimplemented.
+and affine transformation of `CGPoint`, `CGSize`, and `CGRect` values. A
+rectangle result is the axis-aligned bounds of its four transformed corners.
+Matrix state is held per Objective-C object and removed by its runtime
+finalizer. Point and size values use explicit x86_64 guest ABI paths;
+`setTransformStruct:` reads the six-double structure from the guest stack, and
+`transformStruct` returns it through stret. `initWithTransform:` copies the
+matrix. The local Clang Release build compiles and links this implementation;
+no Mach-O guest fixture verifies selector dispatch or numeric results. `set`
+replaces the active graphics-context CTM and `concat` composes the matrix with
+it. `transformBezierPath:` creates a transformed path, and
+`NSBezierPath -transformUsingAffineTransform:` mutates an existing path;
+rectangles and ovals expand to line/cubic elements before transformation.
+Platform-specific
+singular-matrix exceptions remain unimplemented.
 
 ### Foundation NSURL and relative CFURL integration (2026-11-21)
 

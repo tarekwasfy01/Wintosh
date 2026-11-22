@@ -560,6 +560,7 @@ struct NSAffineTransformState final {
 };
 std::mutex g_affine_transform_mutex;
 std::unordered_map<id, NSAffineTransformState> g_affine_transforms;
+std::unordered_set<id> g_affine_transform_finalizers;
 enum class BezierCommandKind { Move, Line, Curve, Close, Rect, Oval };
 struct BezierCommand final {
 	BezierCommandKind kind{};
@@ -1603,6 +1604,7 @@ void NSAffineTransformFinalize(id object)
 {
 	std::lock_guard lock(g_affine_transform_mutex);
 	g_affine_transforms.erase(object);
+	g_affine_transform_finalizers.erase(object);
 }
 
 NSAffineTransformState NSAffineTransformSnapshot(id object)
@@ -1628,21 +1630,14 @@ void NSAffineTransformConcat(NSAffineTransformState& left,
 		std::isfinite(result.tx) && std::isfinite(result.ty)) left = result;
 }
 
+bool NSAffineTransformStore(id self, const NSAffineTransformState& value);
+
 id NSAffineTransformCreate(Class cls)
 {
 	if (cls == nullptr) return nullptr;
 	id object = class_createInstance(cls, 0);
 	if (object == nullptr) return nullptr;
-	try {
-		std::lock_guard lock(g_affine_transform_mutex);
-		g_affine_transforms.emplace(object, NSAffineTransformState{});
-	} catch (...) {
-		objc_release(object);
-		return nullptr;
-	}
-	if (!darling_objc_register_object_finalizer(object,
-		&NSAffineTransformFinalize)) {
-		NSAffineTransformFinalize(object);
+	if (!NSAffineTransformStore(object, NSAffineTransformState{})) {
 		objc_release(object);
 		return nullptr;
 	}
@@ -1656,15 +1651,44 @@ id NSAffineTransformFactory(Class cls, SEL)
 
 id NSAffineTransformInit(id self, SEL)
 {
-	std::lock_guard lock(g_affine_transform_mutex);
-	g_affine_transforms[self] = NSAffineTransformState{};
-	return self;
+	return NSAffineTransformStore(self, NSAffineTransformState{}) ? self : nullptr;
 }
 
-void NSAffineTransformSet(id self, SEL)
+id NSAffineTransformInitWithTransform(id self, SEL, id other)
 {
-	std::lock_guard lock(g_affine_transform_mutex);
-	g_affine_transforms[self] = NSAffineTransformState{};
+	const auto value = NSAffineTransformSnapshot(other);
+	return NSAffineTransformStore(self, value) ? self : nullptr;
+}
+
+bool NSAffineTransformStore(id self, const NSAffineTransformState& value)
+{
+	bool needs_finalizer = false;
+	try {
+		std::lock_guard lock(g_affine_transform_mutex);
+		g_affine_transforms[self] = value;
+		needs_finalizer = g_affine_transform_finalizers.insert(self).second;
+	} catch (...) { return false; }
+	if (!needs_finalizer || darling_objc_register_object_finalizer(self,
+		&NSAffineTransformFinalize)) return true;
+	NSAffineTransformFinalize(self);
+	return false;
+}
+
+void NSAffineTransformSetStruct(id self, SEL,
+	DarlingObjcAffineTransform transform)
+{
+	const NSAffineTransformState value{transform.m11, transform.m12,
+		transform.m21, transform.m22, transform.tX, transform.tY};
+	if (!std::isfinite(value.a) || !std::isfinite(value.b) ||
+		!std::isfinite(value.c) || !std::isfinite(value.d) ||
+		!std::isfinite(value.tx) || !std::isfinite(value.ty)) return;
+	NSAffineTransformStore(self, value);
+}
+
+DarlingObjcAffineTransform NSAffineTransformGetStruct(id self, SEL)
+{
+	const auto value = NSAffineTransformSnapshot(self);
+	return {value.a, value.b, value.c, value.d, value.tx, value.ty};
 }
 
 void NSAffineTransformAppend(id self, SEL, id other)
@@ -1686,6 +1710,7 @@ void NSAffineTransformPrepend(id self, SEL, id other)
 
 void NSAffineTransformTranslate(id self, SEL, double x, double y)
 {
+	if (!std::isfinite(x) || !std::isfinite(y)) return;
 	const NSAffineTransformState translation{1.0, 0.0, 0.0, 1.0, x, y};
 	std::lock_guard lock(g_affine_transform_mutex);
 	NSAffineTransformConcat(g_affine_transforms[self], translation);
@@ -1763,13 +1788,49 @@ DarlingObjcPoint NSAffineTransformSize(id self, SEL, DarlingObjcPoint size)
 		value.b * size.x + value.d * size.y};
 }
 
-void NSAffineTransformApplyToContext(id self, SEL)
+DarlingObjcRect NSAffineTransformRect(id self, SEL, DarlingObjcRect rect)
+{
+	const auto value = NSAffineTransformSnapshot(self);
+	const DarlingObjcPoint corners[4] = {
+		{rect.x, rect.y}, {rect.x + rect.width, rect.y},
+		{rect.x, rect.y + rect.height},
+		{rect.x + rect.width, rect.y + rect.height}};
+	DarlingObjcRect result{(std::numeric_limits<double>::infinity)(),
+		(std::numeric_limits<double>::infinity)(),
+		-(std::numeric_limits<double>::infinity)(),
+		-(std::numeric_limits<double>::infinity)()};
+	for (const auto& corner : corners) {
+		const double x = value.a * corner.x + value.c * corner.y + value.tx;
+		const double y = value.b * corner.x + value.d * corner.y + value.ty;
+		if (!std::isfinite(x) || !std::isfinite(y)) return {};
+		result.x = (std::min)(result.x, x);
+		result.y = (std::min)(result.y, y);
+		result.width = (std::max)(result.width, x);
+		result.height = (std::max)(result.height, y);
+	}
+	result.width -= result.x;
+	result.height -= result.y;
+	return result;
+}
+
+void NSAffineTransformApplyToContext(id self, bool concatenate)
 {
 	if (g_current_cg_context == nullptr) return;
 	const auto value = NSAffineTransformSnapshot(self);
-	CGContextConcatCTM(g_current_cg_context,
-		darling_windows_CGAffineTransform{value.a, value.b, value.c, value.d,
-			value.tx, value.ty});
+	const darling_windows_CGAffineTransform transform{value.a, value.b,
+		value.c, value.d, value.tx, value.ty};
+	if (concatenate) CGContextConcatCTM(g_current_cg_context, transform);
+	else CGContextSetCTM(g_current_cg_context, transform);
+}
+
+void NSAffineTransformSetContext(id self, SEL)
+{
+	NSAffineTransformApplyToContext(self, false);
+}
+
+void NSAffineTransformConcatContext(id self, SEL)
+{
+	NSAffineTransformApplyToContext(self, true);
 }
 
 void NSBezierPathFinalize(id object)
@@ -21012,10 +21073,20 @@ void RegisterAppKitClasses()
 			reinterpret_cast<IMP>(&NSAffineTransformFactory), "@@:");
 		class_addMethod(affine_transform, sel_registerName("init"),
 			reinterpret_cast<IMP>(&NSAffineTransformInit), "@@:");
+		class_addMethod(affine_transform,
+			sel_registerName("initWithTransform:"),
+			reinterpret_cast<IMP>(&NSAffineTransformInitWithTransform), "@@:@");
 		class_addMethod(affine_transform, sel_registerName("set"),
-			reinterpret_cast<IMP>(&NSAffineTransformSet), "v@:");
-		class_addMethod(affine_transform, sel_registerName("transform"),
-			reinterpret_cast<IMP>(&NSAffineTransformApplyToContext), "v@:");
+			reinterpret_cast<IMP>(&NSAffineTransformSetContext), "v@:");
+		class_addMethod(affine_transform,
+			sel_registerName("setTransformStruct:"),
+			reinterpret_cast<IMP>(&NSAffineTransformSetStruct),
+			"v@:{NSAffineTransformStruct=dddddd}");
+		class_addMethod(affine_transform, sel_registerName("transformStruct"),
+			reinterpret_cast<IMP>(&NSAffineTransformGetStruct),
+			"{NSAffineTransformStruct=dddddd}@:");
+		class_addMethod(affine_transform, sel_registerName("concat"),
+			reinterpret_cast<IMP>(&NSAffineTransformConcatContext), "v@:");
 		class_addMethod(affine_transform, sel_registerName("appendTransform:"),
 			reinterpret_cast<IMP>(&NSAffineTransformAppend), "v@:@");
 		class_addMethod(affine_transform, sel_registerName("prependTransform:"),
@@ -21043,6 +21114,9 @@ void RegisterAppKitClasses()
 		class_addMethod(affine_transform, sel_registerName("transformSize:"),
 			reinterpret_cast<IMP>(&NSAffineTransformSize),
 			"{CGSize=dd}@:{CGSize=dd}");
+		class_addMethod(affine_transform, sel_registerName("transformRect:"),
+			reinterpret_cast<IMP>(&NSAffineTransformRect),
+			"{CGRect={CGPoint=dd}{CGSize=dd}}@:{CGRect={CGPoint=dd}{CGSize=dd}}");
 		class_addMethod(affine_transform,
 			sel_registerName("transformBezierPath:"),
 			reinterpret_cast<IMP>(&NSAffineTransformTransformBezierPath), "@@:@");

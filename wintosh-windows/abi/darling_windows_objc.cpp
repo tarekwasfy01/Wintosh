@@ -926,6 +926,17 @@ std::uintptr_t DispatchSysVObjcCall(DarlingSysVObjcCallFrame* input,
 	}
 	constexpr std::string_view rect_argument_encoding =
 		"{CGRect={CGPoint=dd}{CGSize=dd}}";
+	constexpr std::string_view affine_transform_argument_encoding =
+		"{NSAffineTransformStruct=dddddd}";
+	if (types == std::string("v@:") +
+		std::string(affine_transform_argument_encoding)) {
+		if (frame->stack_arguments == nullptr) return 0;
+		DarlingObjcAffineTransform transform{};
+		std::memcpy(&transform, frame->stack_arguments, sizeof(transform));
+		InvokeObjcImplementation<void, DarlingObjcAffineTransform>(imp,
+			method.guest_abi, receiver, selector, transform);
+		return 0;
+	}
 	constexpr std::string_view operating_system_version_argument_encoding =
 		"{NSOperatingSystemVersion=qqq}";
 	if (types == std::string("B@:") +
@@ -3433,6 +3444,79 @@ extern "C" void darling_objc_msgSend_stret(
 			using VersionMethod = DarlingObjcOperatingSystemVersion (*)(id, SEL);
 			version = reinterpret_cast<VersionMethod>(implementation)(receiver, selector);
 			std::memcpy(return_storage, &version, sizeof(version));
+			return;
+		}
+	}
+#endif
+	constexpr const char* affine_transform_encoding =
+		"{NSAffineTransformStruct=dddddd}@:";
+#if defined(__clang__) && defined(_WIN64) && !defined(_M_ARM64) && !defined(__aarch64__)
+	{
+		const bool class_method = object_isClass(receiver);
+		const Class start = class_method ? reinterpret_cast<Class>(receiver) :
+			receiver->isa;
+		const auto method = LookupMethodSnapshot(start, selector, class_method);
+		if (method.implementation != nullptr &&
+			CanonicalObjcEncoding(method.types) == affine_transform_encoding) {
+			const auto value = InvokeObjcImplementation<DarlingObjcAffineTransform>(
+				method.implementation, method.guest_abi, receiver, selector);
+			std::memcpy(return_storage, &value, sizeof(value));
+			return;
+		}
+	}
+#else
+	{
+		const char* types = class_getMethodTypeEncoding(object_getClass(receiver),
+			selector);
+		const IMP implementation = FindMethod(receiver, selector);
+		if (implementation != nullptr && types != nullptr &&
+			std::strcmp(types, affine_transform_encoding) == 0) {
+			using TransformMethod = DarlingObjcAffineTransform (*)(id, SEL);
+			const auto value = reinterpret_cast<TransformMethod>(implementation)(
+				receiver, selector);
+			std::memcpy(return_storage, &value, sizeof(value));
+			return;
+		}
+	}
+#endif
+	constexpr const char* rect_transform_encoding =
+		"{CGRect={CGPoint=dd}{CGSize=dd}}@:{CGRect={CGPoint=dd}{CGSize=dd}}";
+#if defined(__clang__) && defined(_WIN64) && !defined(_M_ARM64) && !defined(__aarch64__)
+	{
+		const bool class_method = object_isClass(receiver);
+		const Class start = class_method ? reinterpret_cast<Class>(receiver) :
+			receiver->isa;
+		const auto method = LookupMethodSnapshot(start, selector, class_method);
+		if (method.implementation != nullptr &&
+			CanonicalObjcEncoding(method.types) == rect_transform_encoding) {
+			DarlingObjcRect rect{};
+			// The SysV frame pointer is followed by the saved return address;
+			// the first stack-passed argument starts 16 bytes above it.
+			const auto* stack_arguments = reinterpret_cast<const std::uint8_t*>(
+				__builtin_frame_address(0)) + 16;
+			std::memcpy(&rect, stack_arguments, sizeof(rect));
+			const auto value = InvokeObjcImplementation<DarlingObjcRect,
+				DarlingObjcRect>(method.implementation, method.guest_abi, receiver,
+				selector, rect);
+			std::memcpy(return_storage, &value, sizeof(value));
+			return;
+		}
+	}
+#else
+	{
+		const char* types = class_getMethodTypeEncoding(object_getClass(receiver),
+			selector);
+		const IMP implementation = FindMethod(receiver, selector);
+		if (implementation != nullptr && types != nullptr &&
+			std::strcmp(types, rect_transform_encoding) == 0) {
+			va_list arguments;
+			va_start(arguments, selector);
+			const auto rect = va_arg(arguments, DarlingObjcRect);
+			va_end(arguments);
+			using RectMethod = DarlingObjcRect (*)(id, SEL, DarlingObjcRect);
+			const auto value = reinterpret_cast<RectMethod>(implementation)(receiver,
+				selector, rect);
+			std::memcpy(return_storage, &value, sizeof(value));
 			return;
 		}
 	}

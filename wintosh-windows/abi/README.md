@@ -106,7 +106,12 @@ The resolver also exposes `objc_msgSend_stret`, `objc_msgSendSuper_stret`, and
 `NSView -frame` and `-bounds`. These paths copy the 32-byte result through the
 Darwin x86_64 hidden return pointer and apply the matching super search rule;
 they do not implement other aggregate layouts or stret methods with explicit
-arguments. Apple's
+arguments. The AppKit bridge also has explicit stret cases for the six-double
+`NSAffineTransformStruct` return and `NSAffineTransform -transformRect:`; the
+latter reads its stack-passed CGRect argument from the guest stack area. The
+typed dispatcher handles `-setTransformStruct:` by copying its six-double
+structure argument from the stack. These signatures are selected adapters,
+not general aggregate classification. Apple's
 runtime marks this primitive unavailable on arm64 and directs callers to use
 it for structure returns according to the target ABI
 ([objc4 `message.h`](https://github.com/opensource-apple/objc4/blob/master/runtime/message.h)).

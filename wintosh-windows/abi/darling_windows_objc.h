@@ -320,6 +320,15 @@ struct DarlingObjcPoint final {
 	double y;
 };
 static_assert(sizeof(DarlingObjcPoint) == 16);
+struct DarlingObjcAffineTransform final {
+	double m11;
+	double m12;
+	double m21;
+	double m22;
+	double tX;
+	double tY;
+};
+static_assert(sizeof(DarlingObjcAffineTransform) == 48);
 void DARLING_OBJC_GUEST_ABI darling_objc_msgSend_void1_size(id receiver,
 	SEL selector, DarlingObjcPoint argument);
 

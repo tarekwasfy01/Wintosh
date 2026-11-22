@@ -242,12 +242,17 @@ pending-aware values and report whether a stored Boolean or integer has the
 required CoreFoundation type through `keyExistsAndHasValidFormat`.
 `CFPreferencesAppValueIsForced` checks whether the key exists in the app's
 managed-preferences plist.
+`CFPreferencesAddSuitePreferencesToApp` and
+`CFPreferencesRemoveSuitePreferencesFromApp` update an in-process suite list;
+`CFPreferencesCopyAppValue` checks the app plist first, then suites in the
+order they were added. Writes still target only the application domain.
 `kCFPreferencesCurrentApplication` resolves to the main bundle identifier.
 Writes remain process-local until `CFPreferencesAppSynchronize` or
 `CFPreferencesSynchronize`, and reads see pending writes in the current process.
 `CurrentUser` is supported; `CurrentHost`
-and `AnyHost` map to one host store. `AnyUser`, cross-user/global domains, suite
-search and non-application preference domains remain unavailable.
+and `AnyHost` map to one host store. `AnyUser`, cross-user/global domains,
+suite search in the exact-domain/multiple-value APIs, and non-application
+preference domains remain unavailable.
 `NSMutableString` adds `+string`, UTF-8/string constructors, `-appendString:`,
 `-setString:`, `-deleteCharactersInRange:`, `-replaceCharactersInRange:withString:`,
 and `-insertString:atIndex:`. Range operations and indices use UTF-16 code units

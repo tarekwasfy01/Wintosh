@@ -7837,6 +7837,7 @@ using CFPreferencePendingKey = std::pair<std::string, std::string>;
 std::mutex g_cf_preferences_mutex;
 std::map<CFPreferencePendingKey, std::optional<std::string>>
 	g_cf_preferences_pending;
+std::map<std::string, std::vector<std::string>> g_cf_preferences_suites;
 
 std::string CFPreferencesApplicationDomain(
 	darling_windows_CFStringRef application_id)
@@ -7970,26 +7971,50 @@ extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeRef CFPreferencesCopyAppVa
 {
 	std::string key_text;
 	const std::string domain = CFPreferencesApplicationDomain(application_id);
-	if (!CFPreferencesString(key, key_text) || domain.empty()) return nullptr;
-	std::optional<std::string> pending_xml;
-	bool has_pending = false;
-	{
-		std::lock_guard lock(g_cf_preferences_mutex);
-		const auto pending = g_cf_preferences_pending.find({domain, key_text});
-		if (pending != g_cf_preferences_pending.end()) {
-			has_pending = true;
-			pending_xml = pending->second;
+	if (!CFPreferencesString(key, key_text) || domain.empty() ||
+		domain == "kCFPreferencesAnyApplication") return nullptr;
+	try {
+		auto copy_domain_value = [&](const std::string& candidate) {
+			std::optional<std::string> pending_xml;
+			bool has_pending = false;
+			{
+				std::lock_guard lock(g_cf_preferences_mutex);
+				const auto pending = g_cf_preferences_pending.find(
+					{candidate, key_text});
+				if (pending != g_cf_preferences_pending.end()) {
+					has_pending = true;
+					pending_xml = pending->second;
+				}
+			}
+			if (has_pending) return pending_xml ?
+				darling_windows_CFPropertyListCreateFromXML(
+					pending_xml->c_str()) : nullptr;
+			std::unique_ptr<darling_windows_preferences,
+				decltype(&darling_windows_preferences_close)> store(
+				darling_windows_preferences_open(candidate.c_str()),
+				&darling_windows_preferences_close);
+			if (store == nullptr) return static_cast<darling_windows_CFTypeRef>(
+				nullptr);
+			std::vector<char> xml(16 * 1024 * 1024);
+			const bool found = darling_windows_preferences_get_property_list_xml(
+				store.get(), key_text.c_str(), xml.data(), xml.size());
+			return found ? darling_windows_CFPropertyListCreateFromXML(xml.data()) :
+				static_cast<darling_windows_CFTypeRef>(nullptr);
+		};
+		const auto primary = copy_domain_value(domain);
+		if (primary != nullptr) return primary;
+		std::vector<std::string> suites;
+		{
+			std::lock_guard lock(g_cf_preferences_mutex);
+			const auto found = g_cf_preferences_suites.find(domain);
+			if (found != g_cf_preferences_suites.end()) suites = found->second;
 		}
-	}
-	if (has_pending) return pending_xml ?
-		darling_windows_CFPropertyListCreateFromXML(pending_xml->c_str()) : nullptr;
-	auto store = darling_windows_preferences_open(domain.c_str());
-	if (store == nullptr) return nullptr;
-	std::vector<char> xml(16 * 1024 * 1024);
-	const bool found = darling_windows_preferences_get_property_list_xml(
-		store, key_text.c_str(), xml.data(), xml.size());
-	darling_windows_preferences_close(store);
-	return found ? darling_windows_CFPropertyListCreateFromXML(xml.data()) : nullptr;
+		for (const auto& suite : suites) {
+			const auto value = copy_domain_value(suite);
+			if (value != nullptr) return value;
+		}
+		return nullptr;
+	} catch (...) { return nullptr; }
 }
 
 extern "C" DARLING_CF_GUEST_ABI void CFPreferencesSetAppValue(
@@ -8253,6 +8278,44 @@ CFPreferencesAppValueIsForced(darling_windows_CFStringRef key,
 	} catch (...) { return 0; }
 }
 
+extern "C" DARLING_CF_GUEST_ABI void CFPreferencesAddSuitePreferencesToApp(
+	darling_windows_CFStringRef application_id,
+	darling_windows_CFStringRef suite_id)
+{
+	try {
+		if (application_id == nullptr || suite_id == nullptr) return;
+		const auto application = CFPreferencesApplicationDomain(application_id);
+		std::string suite;
+		if (application.empty() || application == "kCFPreferencesAnyApplication" ||
+			!CFPreferencesString(suite_id, suite) ||
+			suite == "kCFPreferencesAnyApplication" ||
+			suite == "kCFPreferencesCurrentApplication") return;
+		std::lock_guard lock(g_cf_preferences_mutex);
+		auto& suites = g_cf_preferences_suites[application];
+		if (std::find(suites.begin(), suites.end(), suite) == suites.end())
+			suites.push_back(std::move(suite));
+	} catch (...) {}
+}
+
+extern "C" DARLING_CF_GUEST_ABI void CFPreferencesRemoveSuitePreferencesFromApp(
+	darling_windows_CFStringRef application_id,
+	darling_windows_CFStringRef suite_id)
+{
+	try {
+		if (application_id == nullptr || suite_id == nullptr) return;
+		const auto application = CFPreferencesApplicationDomain(application_id);
+		std::string suite;
+		if (application.empty() || application == "kCFPreferencesAnyApplication" ||
+			!CFPreferencesString(suite_id, suite)) return;
+		std::lock_guard lock(g_cf_preferences_mutex);
+		const auto found = g_cf_preferences_suites.find(application);
+		if (found == g_cf_preferences_suites.end()) return;
+		auto& suites = found->second;
+		suites.erase(std::remove(suites.begin(), suites.end(), suite), suites.end());
+		if (suites.empty()) g_cf_preferences_suites.erase(found);
+	} catch (...) {}
+}
+
 extern "C" std::uintptr_t darling_windows_corefoundation_symbol(const char* name)
 {
 	if (name == nullptr) return 0;
@@ -8281,6 +8344,10 @@ extern "C" std::uintptr_t darling_windows_corefoundation_symbol(const char* name
 		return reinterpret_cast<std::uintptr_t>(&CFPreferencesGetAppIntegerValue);
 	if (std::strcmp(name, "CFPreferencesAppValueIsForced") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFPreferencesAppValueIsForced);
+	if (std::strcmp(name, "CFPreferencesAddSuitePreferencesToApp") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFPreferencesAddSuitePreferencesToApp);
+	if (std::strcmp(name, "CFPreferencesRemoveSuitePreferencesFromApp") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFPreferencesRemoveSuitePreferencesFromApp);
 	if (std::strcmp(name, "kCFPreferencesCurrentApplication") == 0)
 		return reinterpret_cast<std::uintptr_t>(&kCFPreferencesCurrentApplication);
 	if (std::strcmp(name, "kCFPreferencesCurrentUser") == 0)

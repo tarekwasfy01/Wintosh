@@ -925,6 +925,12 @@ extern "C" DARLING_CF_GUEST_ABI std::intptr_t CFPreferencesGetAppIntegerValue(
 extern "C" DARLING_CF_GUEST_ABI std::uint8_t
 CFPreferencesAppValueIsForced(darling_windows_CFStringRef key,
 	darling_windows_CFStringRef application_id);
+extern "C" DARLING_CF_GUEST_ABI void CFPreferencesAddSuitePreferencesToApp(
+	darling_windows_CFStringRef application_id,
+	darling_windows_CFStringRef suite_id);
+extern "C" DARLING_CF_GUEST_ABI void CFPreferencesRemoveSuitePreferencesFromApp(
+	darling_windows_CFStringRef application_id,
+	darling_windows_CFStringRef suite_id);
 extern "C" darling_windows_CFStringRef
 	kCFPreferencesCurrentApplication;
 extern "C" darling_windows_CFStringRef kCFPreferencesCurrentUser;

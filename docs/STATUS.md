@@ -555,9 +555,11 @@ The CoreFoundation guest resolver now exports `CFPreferencesCopyAppValue`,
 `CFPreferencesSetAppValue`, `CFPreferencesSetValue`, `CFPreferencesSetMultiple`,
 `CFPreferencesAppSynchronize`, `CFPreferencesSynchronize`,
 `CFPreferencesGetAppBooleanValue`, `CFPreferencesGetAppIntegerValue`, and
-`CFPreferencesAppValueIsForced`. Application values use the prefix-relative
-application-domain plist store; forced-key queries check the managed
-preferences plist. `kCFPreferencesCurrentApplication`
+`CFPreferencesAppValueIsForced`, `CFPreferencesAddSuitePreferencesToApp`, and
+`CFPreferencesRemoveSuitePreferencesFromApp`. Application values use the
+prefix-relative application-domain plist store; forced-key queries check the managed
+preferences plist. `CFPreferencesCopyAppValue` checks the application domain
+first, then explicitly added suite plist domains in add order. `kCFPreferencesCurrentApplication`
 resolves to the main bundle identifier, with `org.wintosh.application` as the
 fallback when no bundle identifier is available. Values use the existing XML
 property-list parser and serializer. Writes stay in a process-local pending map
@@ -565,8 +567,9 @@ until `CFPreferencesAppSynchronize` or `CFPreferencesSynchronize`; reads in that
 process see pending values.
 Exact-domain `CopyValue`/`SetValue` and their `Synchronize` entry point support
 the application domain for `CurrentUser`; `CurrentHost` and `AnyHost` both map
-to the same host store. `AnyUser`, cross-user/global domains, suite search
-chains, and non-application preference domains remain unimplemented.
+to the same host store. `AnyUser`, cross-user/global domains, suite search for
+the exact-domain and multiple-value APIs, and non-application preference
+domains remain unimplemented.
 
 The AppKit/Foundation host now exposes `standardUserDefaults`, suite
 initialization, object/string/array/dictionary/data/integer/boolean/double reads, scalar and

@@ -377,6 +377,9 @@ extern "C" DARLING_CG_GUEST_ABI void CGContextSetLineJoin(
 	darling_windows_CGContextRef context, darling_windows_CGLineJoin join);
 extern "C" DARLING_CG_GUEST_ABI void CGContextSetMiterLimit(
 	darling_windows_CGContextRef context, double limit);
+extern "C" DARLING_CG_GUEST_ABI void CGContextSetLineDash(
+	darling_windows_CGContextRef context, double phase, const double* lengths,
+	std::size_t count);
 extern "C" DARLING_CG_GUEST_ABI void CGContextSetAlpha(
 	darling_windows_CGContextRef context, double alpha);
 extern "C" DARLING_CG_GUEST_ABI void CGContextSetBlendMode(

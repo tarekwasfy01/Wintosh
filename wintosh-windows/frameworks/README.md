@@ -774,8 +774,14 @@ The path stores `lineCapStyle` (`butt`, `round`, or `square`) and
 `lineJoinStyle` (`miter`, `round`, or `bevel`), and `miterLimit`. Quartz saves
 and restores these settings with the graphics state; miter joins fall back to
 bevel when they exceed the configured limit (default 10). CoreGraphics also
-exports the line-cap, line-join, and miter-limit setters. Element inspection,
-dash patterns, and many additional path operations remain unimplemented.
+exports the line-cap, line-join, and miter-limit setters. `setLineDash:count:phase:`
+and `getLineDash:count:phase:` store/retrieve positive dash lengths and phase;
+odd-length patterns repeat to preserve alternating on/off semantics and phase
+is normalized to the pattern period. CoreGraphics carries this pattern in the
+graphics state, and NSBezierPath passes it through when stroking. The software
+rasterizer splits flattened contours into painted runs before applying caps
+and joins; antialiasing and exact closed-seam cap behavior remain approximate.
+Element inspection and many additional path operations remain unimplemented.
 
 The Objective-C resolver routes no-argument CGRect getters through the
 `objc_msgSend_stret` family, including legacy and Super2 variants, which write

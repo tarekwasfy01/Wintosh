@@ -562,6 +562,8 @@ struct BezierPathState final {
 	std::uint64_t line_cap_style{darling_windows_kCGLineCapButt};
 	std::uint64_t line_join_style{darling_windows_kCGLineJoinMiter};
 	double miter_limit{10.0};
+	std::vector<double> line_dash;
+	double line_dash_phase{};
 };
 std::mutex g_bezier_mutex;
 std::unordered_map<id, BezierPathState> g_bezier_paths;
@@ -1844,6 +1846,43 @@ double NSBezierPathMiterLimit(id self, SEL)
 	return found == g_bezier_paths.end() ? 10.0 : found->second.miter_limit;
 }
 
+void NSBezierPathSetLineDash(id self, SEL, const double* pattern,
+	std::int64_t count, double phase)
+{
+	if (count < 0 || count > 4096 || !std::isfinite(phase) ||
+		(count > 0 && pattern == nullptr)) return;
+	try {
+		std::vector<double> dash;
+		dash.reserve(static_cast<std::size_t>(count));
+		for (std::int64_t index = 0; index < count; ++index) {
+			if (!std::isfinite(pattern[index]) || pattern[index] <= 0) return;
+			dash.push_back(pattern[index]);
+		}
+		std::lock_guard lock(g_bezier_mutex);
+		auto& path = g_bezier_paths[self];
+		path.line_dash = std::move(dash);
+		path.line_dash_phase = count == 0 ? 0.0 : phase;
+	} catch (...) {}
+}
+
+void NSBezierPathGetLineDash(id self, SEL, double* pattern,
+	std::int64_t* count, double* phase)
+{
+	std::lock_guard lock(g_bezier_mutex);
+	const auto found = g_bezier_paths.find(self);
+	const BezierPathState empty;
+	const auto& path = found == g_bezier_paths.end() ? empty : found->second;
+	if (phase != nullptr) *phase = path.line_dash_phase;
+	if (count == nullptr) return;
+	const std::int64_t capacity = (std::max<std::int64_t>)(0, *count);
+	const std::int64_t actual = static_cast<std::int64_t>(path.line_dash.size());
+	if (pattern != nullptr) {
+		const auto copied = (std::min)(capacity, actual);
+		std::copy_n(path.line_dash.begin(), static_cast<std::size_t>(copied), pattern);
+	}
+	*count = actual;
+}
+
 void NSBezierPathRender(id self, bool fill, bool even_odd = false)
 {
 	if (g_current_cg_context == nullptr) return;
@@ -1896,6 +1935,9 @@ void NSBezierPathRender(id self, bool fill, bool even_odd = false)
 		CGContextSetLineJoin(g_current_cg_context,
 			static_cast<darling_windows_CGLineJoin>(path.line_join_style));
 		CGContextSetMiterLimit(g_current_cg_context, path.miter_limit);
+		CGContextSetLineDash(g_current_cg_context, path.line_dash_phase,
+			path.line_dash.empty() ? nullptr : path.line_dash.data(),
+			path.line_dash.size());
 		CGContextStrokePath(g_current_cg_context);
 		CGContextRestoreGState(g_current_cg_context);
 	}
@@ -20297,6 +20339,14 @@ void RegisterAppKitClasses()
 			reinterpret_cast<IMP>(&NSBezierPathSetMiterLimit), "v@:d");
 		class_addMethod(bezier_path, sel_registerName("miterLimit"),
 			reinterpret_cast<IMP>(&NSBezierPathMiterLimit), "d@:");
+		class_addMethod(bezier_path,
+			sel_registerName("setLineDash:count:phase:"),
+			reinterpret_cast<IMP>(&NSBezierPathSetLineDash),
+			"v@:^dqd");
+		class_addMethod(bezier_path,
+			sel_registerName("getLineDash:count:phase:"),
+			reinterpret_cast<IMP>(&NSBezierPathGetLineDash),
+			"v@:^d^q^d");
 		class_addMethod(bezier_path, sel_registerName("bounds"),
 			reinterpret_cast<IMP>(&NSBezierPathBounds),
 			"{CGRect={CGPoint=dd}{CGSize=dd}}@:");

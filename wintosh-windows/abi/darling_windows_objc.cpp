@@ -1053,6 +1053,27 @@ std::uintptr_t DispatchSysVObjcCall(DarlingSysVObjcCallFrame* input,
 			selector, components);
 		return 0;
 	}
+	if (types == "v@:^dqd") {
+		const auto* pattern = reinterpret_cast<const double*>(
+			frame->gp[argument_index]);
+		const auto count = static_cast<std::int64_t>(
+			frame->gp[argument_index + 1]);
+		double phase = 0;
+		std::memcpy(&phase, frame->xmm[0], sizeof(phase));
+		InvokeObjcImplementation<void, const double*, std::int64_t, double>(imp,
+			method.guest_abi, receiver, selector, pattern, count, phase);
+		return 0;
+	}
+	if (types == "v@:^d^q^d") {
+		auto* pattern = reinterpret_cast<double*>(frame->gp[argument_index]);
+		auto* count = reinterpret_cast<std::int64_t*>(
+			frame->gp[argument_index + 1]);
+		auto* phase = reinterpret_cast<double*>(
+			frame->gp[argument_index + 2]);
+		InvokeObjcImplementation<void, double*, std::int64_t*, double*>(imp,
+			method.guest_abi, receiver, selector, pattern, count, phase);
+		return 0;
+	}
 	if (types == "v@:") {
 		if (method.guest_abi) {
 			using Function = void (__attribute__((sysv_abi)) *)(id, SEL);

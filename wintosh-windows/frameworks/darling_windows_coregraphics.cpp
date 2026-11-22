@@ -17,6 +17,7 @@
 #include <new>
 #include <fstream>
 #include <filesystem>
+#include <iterator>
 #include <utility>
 #include <vector>
 
@@ -43,6 +44,8 @@ struct darling_windows_CGContextObject final {
 		darling_windows_CGLineCap line_cap = darling_windows_kCGLineCapButt;
 		darling_windows_CGLineJoin line_join = darling_windows_kCGLineJoinMiter;
 		double miter_limit = 10;
+		std::vector<double> line_dash;
+		double line_dash_phase = 0;
 		double alpha = 1;
 		darling_windows_CGBlendMode blend_mode = darling_windows_kCGBlendModeNormal;
 		darling_windows_CGAffineTransform ctm{1, 0, 0, 1, 0, 0};
@@ -67,6 +70,8 @@ struct darling_windows_CGContextObject final {
 	darling_windows_CGLineCap line_cap = darling_windows_kCGLineCapButt;
 	darling_windows_CGLineJoin line_join = darling_windows_kCGLineJoinMiter;
 	double miter_limit = 10;
+	std::vector<double> line_dash;
+	double line_dash_phase = 0;
 	double alpha = 1;
 	darling_windows_CGBlendMode blend_mode = darling_windows_kCGBlendModeNormal;
 	darling_windows_CGAffineTransform ctm{1, 0, 0, 1, 0, 0};
@@ -1138,7 +1143,88 @@ void StrokeCurrentPath(darling_windows_CGContextRef context)
 	const auto old_fill = context->fill;
 	context->fill = context->stroke;
 	const double radius = context->line_width / 2.0;
-	for (const auto& contour : context->path) {
+	std::vector<darling_windows_CGContextObject::Contour> dashed_path;
+	if (!context->line_dash.empty()) {
+		for (const auto& contour : context->path) {
+			if (contour.points.size() < 2) continue;
+			std::vector<darling_windows_CGContextObject::Contour> pieces;
+			darling_windows_CGContextObject::Contour current;
+			std::size_t dash_index = 0;
+			double dash_offset = context->line_dash_phase;
+			while (dash_offset >= context->line_dash[dash_index]) {
+				dash_offset -= context->line_dash[dash_index];
+				dash_index = (dash_index + 1) % context->line_dash.size();
+			}
+			double dash_remaining = context->line_dash[dash_index] - dash_offset;
+			bool drawing = (dash_index % 2) == 0;
+			const std::size_t segment_count = contour.points.size() - 1 +
+				(contour.closed ? 1 : 0);
+			for (std::size_t segment = 0; segment < segment_count; ++segment) {
+				const auto& first = contour.points[segment];
+				const auto& second = contour.points[(segment + 1) % contour.points.size()];
+				const double dx = second.x - first.x;
+				const double dy = second.y - first.y;
+				const double length = std::hypot(dx, dy);
+				if (length <= 1e-12) continue;
+				double position = 0;
+				while (position < length) {
+					const double step = (std::min)(dash_remaining, length - position);
+					const auto at = [&](double distance) {
+						const double ratio = distance / length;
+						return darling_windows_CGPoint{first.x + dx * ratio,
+							first.y + dy * ratio};
+					};
+					if (drawing && step > 0) {
+						const auto start = at(position);
+						const auto end = at(position + step);
+						if (current.points.empty()) current.points.push_back(start);
+						else if (std::hypot(current.points.back().x - start.x,
+							current.points.back().y - start.y) > 1e-9)
+							current.points.push_back(start);
+						current.points.push_back(end);
+					}
+					position += step;
+					dash_remaining -= step;
+					if (dash_remaining <= 1e-10) {
+						if (drawing && current.points.size() >= 2) {
+							pieces.push_back(std::move(current));
+							current = {};
+						}
+						dash_index = (dash_index + 1) % context->line_dash.size();
+						drawing = (dash_index % 2) == 0;
+						dash_remaining = context->line_dash[dash_index];
+					}
+				}
+			}
+			if (current.points.size() >= 2) pieces.push_back(std::move(current));
+			if (contour.closed && !pieces.empty()) {
+				const auto& origin = contour.points.front();
+				auto same_point = [](darling_windows_CGPoint left,
+					darling_windows_CGPoint right) {
+					return std::hypot(left.x - right.x, left.y - right.y) <= 1e-9;
+				};
+				if (pieces.size() == 1 && same_point(pieces[0].points.front(), origin) &&
+					same_point(pieces[0].points.back(), origin)) {
+					pieces[0].points.pop_back();
+					pieces[0].closed = pieces[0].points.size() >= 3;
+				} else if (pieces.size() > 1 &&
+					same_point(pieces.front().points.front(), origin) &&
+					same_point(pieces.back().points.back(), origin)) {
+					auto last = std::move(pieces.back());
+					pieces.pop_back();
+					auto& first = pieces.front();
+					last.points.insert(last.points.end(), first.points.begin() + 1,
+						first.points.end());
+					pieces.erase(pieces.begin());
+					pieces.insert(pieces.begin(), std::move(last));
+				}
+			}
+			dashed_path.insert(dashed_path.end(),
+				std::make_move_iterator(pieces.begin()),
+				std::make_move_iterator(pieces.end()));
+		}
+	} else dashed_path = context->path;
+	for (const auto& contour : dashed_path) {
 		if (contour.points.empty()) continue;
 		const auto segment_count = contour.points.size() - 1 + (contour.closed ? 1 : 0);
 		for (std::size_t segment = 0; segment < segment_count; ++segment) {
@@ -1159,7 +1245,7 @@ void StrokeCurrentPath(darling_windows_CGContextRef context)
 			}
 		}
 	}
-	for (const auto& contour : context->path)
+	for (const auto& contour : dashed_path)
 		StrokeContourJoins(context, contour, radius);
 	context->fill = old_fill;
 	context->line_width = saved_line_width;
@@ -2223,6 +2309,38 @@ extern "C" DARLING_CG_GUEST_ABI void CGContextSetMiterLimit(
 		context->miter_limit = limit;
 }
 
+extern "C" DARLING_CG_GUEST_ABI void CGContextSetLineDash(
+	darling_windows_CGContextRef context, double phase, const double* lengths,
+	std::size_t count)
+{
+	if (context == nullptr || !std::isfinite(phase) || count > 4096 ||
+		(count != 0 && lengths == nullptr)) return;
+	if (count == 0) {
+		context->line_dash.clear();
+		context->line_dash_phase = 0;
+		return;
+	}
+	try {
+		std::vector<double> pattern(lengths, lengths + count);
+		double total = 0;
+		for (const double length : pattern) {
+			if (!std::isfinite(length) || length <= 0) return;
+			total += length;
+			if (!std::isfinite(total)) return;
+		}
+		if ((pattern.size() & 1u) != 0) {
+			const auto duplicate = pattern;
+			pattern.insert(pattern.end(), duplicate.begin(), duplicate.end());
+			total *= 2;
+		}
+		if (!std::isfinite(total) || total <= 0) return;
+		double normalized_phase = std::fmod(phase, total);
+		if (normalized_phase < 0) normalized_phase += total;
+		context->line_dash = std::move(pattern);
+		context->line_dash_phase = normalized_phase;
+	} catch (...) {}
+}
+
 extern "C" DARLING_CG_GUEST_ABI void CGContextSetAlpha(
 	darling_windows_CGContextRef context, double alpha)
 {
@@ -2266,7 +2384,8 @@ extern "C" DARLING_CG_GUEST_ABI void CGContextSaveGState(
 	try {
 		context->saved_states.push_back({context->fill, context->stroke,
 			context->line_width, context->line_cap, context->line_join,
-			context->miter_limit, context->alpha, context->blend_mode,
+			context->miter_limit, context->line_dash, context->line_dash_phase,
+			context->alpha, context->blend_mode,
 			context->ctm, context->clip_mask});
 	} catch (...) {
 	}
@@ -2284,6 +2403,8 @@ extern "C" DARLING_CG_GUEST_ABI void CGContextRestoreGState(
 	context->line_cap = saved.line_cap;
 	context->line_join = saved.line_join;
 	context->miter_limit = saved.miter_limit;
+	context->line_dash = std::move(saved.line_dash);
+	context->line_dash_phase = saved.line_dash_phase;
 	context->alpha = saved.alpha;
 	context->blend_mode = saved.blend_mode;
 	context->ctm = saved.ctm;

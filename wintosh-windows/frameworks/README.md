@@ -801,6 +801,8 @@ the current defaults. The initial values are width 1, butt cap, miter join,
 miter limit 10, flatness 0.6, and nonzero winding. Dash patterns have no class
 default. The `fillRect:` and `strokeRect:` class conveniences construct and
 render a temporary path, so their stroke attributes use the same defaults.
+`clipRect:` intersects the active graphics-context clip directly with the
+specified rectangle.
 `addClip` replays the stored path into the active graphics context and
 intersects it with the existing clip, using the path's winding rule without
 mutating the NSBezierPath. The context flatness is restored before clipping.

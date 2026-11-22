@@ -2214,6 +2214,13 @@ void NSBezierPathStrokeRect(Class cls, SEL, DarlingObjcRect rect)
 	objc_release(path);
 }
 
+void NSBezierPathClipRect(Class, SEL, DarlingObjcRect rect)
+{
+	if (g_current_cg_context == nullptr) return;
+	CGContextClipToRect(g_current_cg_context, {{rect.x, rect.y},
+		{rect.width, rect.height}});
+}
+
 void NSBezierPathAppendOval(id self, SEL, DarlingObjcRect rect)
 {
 	NSBezierPathAppend(self, BezierCommand{BezierCommandKind::Oval, {}, rect});
@@ -20840,6 +20847,9 @@ void RegisterAppKitClasses()
 			"v@:{CGRect={CGPoint=dd}{CGSize=dd}}");
 		class_addClassMethod(bezier_path, sel_registerName("strokeRect:"),
 			reinterpret_cast<IMP>(&NSBezierPathStrokeRect),
+			"v@:{CGRect={CGPoint=dd}{CGSize=dd}}");
+		class_addClassMethod(bezier_path, sel_registerName("clipRect:"),
+			reinterpret_cast<IMP>(&NSBezierPathClipRect),
 			"v@:{CGRect={CGPoint=dd}{CGSize=dd}}");
 		class_addClassMethod(bezier_path,
 			sel_registerName("bezierPathWithRect:"),

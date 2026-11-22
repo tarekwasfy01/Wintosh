@@ -914,6 +914,14 @@ extern "C" DARLING_CF_GUEST_ABI bool CFPreferencesSynchronize(
 	darling_windows_CFStringRef application_id,
 	darling_windows_CFStringRef user_name,
 	darling_windows_CFStringRef host_name);
+extern "C" DARLING_CF_GUEST_ABI std::uint8_t CFPreferencesGetAppBooleanValue(
+	darling_windows_CFStringRef key,
+	darling_windows_CFStringRef application_id,
+	std::uint8_t* key_exists_and_has_valid_format);
+extern "C" DARLING_CF_GUEST_ABI std::intptr_t CFPreferencesGetAppIntegerValue(
+	darling_windows_CFStringRef key,
+	darling_windows_CFStringRef application_id,
+	std::uint8_t* key_exists_and_has_valid_format);
 extern "C" darling_windows_CFStringRef
 	kCFPreferencesCurrentApplication;
 extern "C" darling_windows_CFStringRef kCFPreferencesCurrentUser;

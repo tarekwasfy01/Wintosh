@@ -553,7 +553,8 @@ is unverified. No guest fixture or tests were run.
 The CoreFoundation guest resolver now exports `CFPreferencesCopyAppValue`,
 `CFPreferencesCopyValue`, `CFPreferencesCopyMultiple`, `CFPreferencesCopyKeyList`,
 `CFPreferencesSetAppValue`, `CFPreferencesSetValue`, `CFPreferencesSetMultiple`,
-`CFPreferencesAppSynchronize`, and `CFPreferencesSynchronize` against the same
+`CFPreferencesAppSynchronize`, `CFPreferencesSynchronize`,
+`CFPreferencesGetAppBooleanValue`, and `CFPreferencesGetAppIntegerValue` against the same
 prefix-relative application-domain plist store. `kCFPreferencesCurrentApplication`
 resolves to the main bundle identifier, with `org.wintosh.application` as the
 fallback when no bundle identifier is available. Values use the existing XML

@@ -237,6 +237,9 @@ keys. CoreFoundation guest code can also use `CFPreferencesCopyAppValue`,
 application-domain XML plist store, plus `CFPreferencesCopyValue`,
 `CFPreferencesCopyMultiple`, `CFPreferencesCopyKeyList`, `CFPreferencesSetValue`,
 `CFPreferencesSetMultiple`, and `CFPreferencesSynchronize` for that app domain.
+`CFPreferencesGetAppBooleanValue` and `CFPreferencesGetAppIntegerValue` read
+pending-aware values and report whether a stored Boolean or integer has the
+required CoreFoundation type through `keyExistsAndHasValidFormat`.
 `kCFPreferencesCurrentApplication` resolves to the main bundle identifier.
 Writes remain process-local until `CFPreferencesAppSynchronize` or
 `CFPreferencesSynchronize`, and reads see pending writes in the current process.

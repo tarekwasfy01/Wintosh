@@ -8185,6 +8185,52 @@ extern "C" DARLING_CF_GUEST_ABI bool CFPreferencesSynchronize(
 	} catch (...) { return false; }
 }
 
+extern "C" DARLING_CF_GUEST_ABI std::uint8_t
+CFPreferencesGetAppBooleanValue(darling_windows_CFStringRef key,
+	darling_windows_CFStringRef application_id,
+	std::uint8_t* key_exists_and_has_valid_format)
+{
+	if (key_exists_and_has_valid_format != nullptr)
+		*key_exists_and_has_valid_format = 0;
+	try {
+		const auto value = CFPreferencesCopyAppValue(key, application_id);
+		if (value == nullptr) return 0;
+		if (darling_windows_CFGetTypeID(value) !=
+			darling_windows_CFBooleanGetTypeID()) {
+			darling_windows_CFRelease(value);
+			return 0;
+		}
+		const bool result = darling_windows_CFBooleanIsTrue(value);
+		if (key_exists_and_has_valid_format != nullptr)
+			*key_exists_and_has_valid_format = 1;
+		darling_windows_CFRelease(value);
+		return result ? 1 : 0;
+	} catch (...) { return 0; }
+}
+
+extern "C" DARLING_CF_GUEST_ABI std::intptr_t
+CFPreferencesGetAppIntegerValue(darling_windows_CFStringRef key,
+	darling_windows_CFStringRef application_id,
+	std::uint8_t* key_exists_and_has_valid_format)
+{
+	if (key_exists_and_has_valid_format != nullptr)
+		*key_exists_and_has_valid_format = 0;
+	try {
+		const auto value = CFPreferencesCopyAppValue(key, application_id);
+		if (value == nullptr) return 0;
+		std::int64_t integer = 0;
+		const bool valid = darling_windows_CFGetTypeID(value) ==
+			darling_windows_CFNumberGetTypeID() &&
+			darling_windows_CFNumberGetInteger(value, &integer) &&
+			integer >= static_cast<std::int64_t>(std::numeric_limits<std::intptr_t>::min()) &&
+			integer <= static_cast<std::int64_t>(std::numeric_limits<std::intptr_t>::max());
+		if (valid && key_exists_and_has_valid_format != nullptr)
+			*key_exists_and_has_valid_format = 1;
+		darling_windows_CFRelease(value);
+		return valid ? static_cast<std::intptr_t>(integer) : 0;
+	} catch (...) { return 0; }
+}
+
 extern "C" std::uintptr_t darling_windows_corefoundation_symbol(const char* name)
 {
 	if (name == nullptr) return 0;
@@ -8207,6 +8253,10 @@ extern "C" std::uintptr_t darling_windows_corefoundation_symbol(const char* name
 		return reinterpret_cast<std::uintptr_t>(&CFPreferencesSetValue);
 	if (std::strcmp(name, "CFPreferencesSynchronize") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFPreferencesSynchronize);
+	if (std::strcmp(name, "CFPreferencesGetAppBooleanValue") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFPreferencesGetAppBooleanValue);
+	if (std::strcmp(name, "CFPreferencesGetAppIntegerValue") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFPreferencesGetAppIntegerValue);
 	if (std::strcmp(name, "kCFPreferencesCurrentApplication") == 0)
 		return reinterpret_cast<std::uintptr_t>(&kCFPreferencesCurrentApplication);
 	if (std::strcmp(name, "kCFPreferencesCurrentUser") == 0)

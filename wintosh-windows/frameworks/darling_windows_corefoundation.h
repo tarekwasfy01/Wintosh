@@ -900,6 +900,20 @@ extern "C" DARLING_CF_GUEST_ABI void CFPreferencesSetMultiple(
 	darling_windows_CFStringRef application_id,
 	darling_windows_CFStringRef user_name,
 	darling_windows_CFStringRef host_name);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeRef
+CFPreferencesCopyValue(darling_windows_CFStringRef key,
+	darling_windows_CFStringRef application_id,
+	darling_windows_CFStringRef user_name,
+	darling_windows_CFStringRef host_name);
+extern "C" DARLING_CF_GUEST_ABI void CFPreferencesSetValue(
+	darling_windows_CFStringRef key, darling_windows_CFTypeRef value,
+	darling_windows_CFStringRef application_id,
+	darling_windows_CFStringRef user_name,
+	darling_windows_CFStringRef host_name);
+extern "C" DARLING_CF_GUEST_ABI bool CFPreferencesSynchronize(
+	darling_windows_CFStringRef application_id,
+	darling_windows_CFStringRef user_name,
+	darling_windows_CFStringRef host_name);
 extern "C" darling_windows_CFStringRef
 	kCFPreferencesCurrentApplication;
 extern "C" darling_windows_CFStringRef kCFPreferencesCurrentUser;

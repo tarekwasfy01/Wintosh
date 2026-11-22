@@ -8135,6 +8135,56 @@ extern "C" DARLING_CF_GUEST_ABI void CFPreferencesSetMultiple(
 	} catch (...) {}
 }
 
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeRef
+CFPreferencesCopyValue(darling_windows_CFStringRef key,
+	darling_windows_CFStringRef application_id,
+	darling_windows_CFStringRef user_name,
+	darling_windows_CFStringRef host_name)
+{
+	try {
+		if (key == nullptr || application_id == nullptr || user_name == nullptr ||
+			host_name == nullptr || !CFPreferencesSupportsCurrentUserHost(
+				user_name, host_name)) return nullptr;
+		const auto application = CFPreferencesApplicationDomain(application_id);
+		if (application.empty() || application == "kCFPreferencesAnyApplication")
+			return nullptr;
+		return CFPreferencesCopyAppValue(key, application_id);
+	} catch (...) { return nullptr; }
+}
+
+extern "C" DARLING_CF_GUEST_ABI void CFPreferencesSetValue(
+	darling_windows_CFStringRef key, darling_windows_CFTypeRef value,
+	darling_windows_CFStringRef application_id,
+	darling_windows_CFStringRef user_name,
+	darling_windows_CFStringRef host_name)
+{
+	try {
+		std::string key_text;
+		if (key == nullptr || application_id == nullptr || user_name == nullptr ||
+			host_name == nullptr || !CFPreferencesString(key, key_text) ||
+			!CFPreferencesSupportsCurrentUserHost(user_name, host_name)) return;
+		const auto application = CFPreferencesApplicationDomain(application_id);
+		if (application.empty() || application == "kCFPreferencesAnyApplication")
+			return;
+		CFPreferencesSetAppValue(key, value, application_id);
+	} catch (...) {}
+}
+
+extern "C" DARLING_CF_GUEST_ABI bool CFPreferencesSynchronize(
+	darling_windows_CFStringRef application_id,
+	darling_windows_CFStringRef user_name,
+	darling_windows_CFStringRef host_name)
+{
+	try {
+		if (application_id == nullptr || user_name == nullptr || host_name == nullptr ||
+			!CFPreferencesSupportsCurrentUserHost(user_name, host_name)) return false;
+		const auto application = CFPreferencesApplicationDomain(application_id);
+		if (application.empty() || application == "kCFPreferencesAnyApplication")
+			return false;
+		return CFPreferencesAppSynchronize(application_id);
+	} catch (...) { return false; }
+}
+
 extern "C" std::uintptr_t darling_windows_corefoundation_symbol(const char* name)
 {
 	if (name == nullptr) return 0;
@@ -8151,6 +8201,12 @@ extern "C" std::uintptr_t darling_windows_corefoundation_symbol(const char* name
 		return reinterpret_cast<std::uintptr_t>(&CFPreferencesCopyKeyList);
 	if (std::strcmp(name, "CFPreferencesSetMultiple") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFPreferencesSetMultiple);
+	if (std::strcmp(name, "CFPreferencesCopyValue") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFPreferencesCopyValue);
+	if (std::strcmp(name, "CFPreferencesSetValue") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFPreferencesSetValue);
+	if (std::strcmp(name, "CFPreferencesSynchronize") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFPreferencesSynchronize);
 	if (std::strcmp(name, "kCFPreferencesCurrentApplication") == 0)
 		return reinterpret_cast<std::uintptr_t>(&kCFPreferencesCurrentApplication);
 	if (std::strcmp(name, "kCFPreferencesCurrentUser") == 0)

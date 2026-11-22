@@ -551,16 +551,19 @@ is unverified. No guest fixture or tests were run.
 ### Objective-C NSUserDefaults bridge (2026-11-16)
 
 The CoreFoundation guest resolver now exports `CFPreferencesCopyAppValue`,
-`CFPreferencesCopyMultiple`, `CFPreferencesCopyKeyList`, `CFPreferencesSetAppValue`,
-`CFPreferencesSetMultiple`, and `CFPreferencesAppSynchronize` against the same
+`CFPreferencesCopyValue`, `CFPreferencesCopyMultiple`, `CFPreferencesCopyKeyList`,
+`CFPreferencesSetAppValue`, `CFPreferencesSetValue`, `CFPreferencesSetMultiple`,
+`CFPreferencesAppSynchronize`, and `CFPreferencesSynchronize` against the same
 prefix-relative application-domain plist store. `kCFPreferencesCurrentApplication`
 resolves to the main bundle identifier, with `org.wintosh.application` as the
 fallback when no bundle identifier is available. Values use the existing XML
 property-list parser and serializer. Writes stay in a process-local pending map
-until `CFPreferencesAppSynchronize`; reads in that process see pending values.
-The `CurrentUser` qualifier is supported; `CurrentHost` and `AnyHost` both map
+until `CFPreferencesAppSynchronize` or `CFPreferencesSynchronize`; reads in that
+process see pending values.
+Exact-domain `CopyValue`/`SetValue` and their `Synchronize` entry point support
+the application domain for `CurrentUser`; `CurrentHost` and `AnyHost` both map
 to the same host store. `AnyUser`, cross-user/global domains, suite search
-chains, and exact-domain `CopyValue`/`SetValue` remain unimplemented.
+chains, and non-application preference domains remain unimplemented.
 
 The AppKit/Foundation host now exposes `standardUserDefaults`, suite
 initialization, object/string/array/dictionary/data/integer/boolean/double reads, scalar and

@@ -571,9 +571,11 @@ registration domain instead of attaching fallback values to the persistent
 application domain. Array, dictionary, and data typed getters return the
 matching property-list object or nil for a missing key or a different value
 type. The global domain is read from the prefix-relative `NSGlobalDomain.plist`.
-Full Apple search-list controls, language preference domains, suite insertion
-ordering, and change notifications remain open. Builds validate compile/link
-only; no guest fixture was run.
+`addSuiteNamed:` inserts readable suite stores between the app/suite and global
+domains in call order; `removeSuiteNamed:` drops the corresponding read domain.
+Full configurable search-list controls, language preference domains, and
+change notifications remain open. Builds validate compile/link only; no guest
+fixture was run.
 
 ### NSApplication lifecycle selectors (2026-11-16)
 

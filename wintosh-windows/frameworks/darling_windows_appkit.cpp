@@ -427,6 +427,8 @@ struct AppKitUserDefaultsState final {
 	darling_windows_preferences_ref argument_store{};
 	darling_windows_preferences_ref managed_store{};
 	darling_windows_preferences_ref global_store{};
+	std::vector<std::pair<std::string, darling_windows_preferences_ref>> suite_stores;
+	std::string selected_suite;
 	std::unordered_map<std::string, std::unordered_map<std::string, std::string>>
 		volatile_domains;
 	std::vector<std::string> volatile_domain_order;
@@ -7750,6 +7752,8 @@ void NSUserDefaultsFinalize(id object)
 		darling_windows_preferences_close(state.managed_store);
 	if (state.global_store != nullptr)
 		darling_windows_preferences_close(state.global_store);
+	for (const auto& suite : state.suite_stores)
+		if (suite.second != nullptr) darling_windows_preferences_close(suite.second);
 	if (state.store != nullptr) darling_windows_preferences_close(state.store);
 }
 
@@ -7766,6 +7770,7 @@ id NSUserDefaultsInitWithDomain(id self, const char* suite)
 		darling_windows_preferences_open(domain.c_str()) :
 		darling_windows_preferences_open_suite(domain.c_str(), suite);
 	if (state.store == nullptr) return nullptr;
+	if (suite != nullptr) state.selected_suite = suite;
 	state.global_store = darling_windows_preferences_open("NSGlobalDomain");
 	if (state.global_store == nullptr) {
 		darling_windows_preferences_close(state.store);
@@ -7909,19 +7914,20 @@ id NSUserDefaultsObjectForKey(id self, SEL, id key_object)
 	const char* key = key_object == nullptr ? nullptr :
 		NSStringUTF8String(key_object, nullptr);
 	if (key == nullptr) return nullptr;
-	AppKitUserDefaultsState state{};
-	{
-		std::lock_guard lock(g_user_defaults_mutex);
-		const auto found = g_user_defaults.find(self);
-		if (found == g_user_defaults.end()) return nullptr;
-		state = found->second;
-	}
+	std::lock_guard lock(g_user_defaults_mutex);
+	const auto found = g_user_defaults.find(self);
+	if (found == g_user_defaults.end()) return nullptr;
+	const auto& state = found->second;
 	if (id value = NSUserDefaultsObjectForStore(state.argument_store, key);
 		value != nullptr) return value;
 	if (id value = NSUserDefaultsObjectForStore(state.managed_store, key);
 		value != nullptr) return value;
 	if (id value = NSUserDefaultsObjectForStore(state.store, key); value != nullptr)
 		return value;
+	for (const auto& suite : state.suite_stores) {
+		if (id value = NSUserDefaultsObjectForStore(suite.second, key);
+			value != nullptr) return value;
+	}
 	if (id value = NSUserDefaultsObjectForStore(state.global_store, key);
 		value != nullptr) return value;
 	if (id value = NSUserDefaultsVolatileObjectForKey(state, key); value != nullptr)
@@ -7929,6 +7935,65 @@ id NSUserDefaultsObjectForKey(id self, SEL, id key_object)
 	if (id value = NSUserDefaultsRegistrationObjectForKey(state, key);
 		value != nullptr) return value;
 	return nullptr;
+}
+
+void NSUserDefaultsAddSuiteNamed(id self, SEL, id name_object)
+{
+	const char* name = name_object == nullptr ? nullptr :
+		NSStringUTF8String(name_object, nullptr);
+	if (name == nullptr || *name == '\0' ||
+		std::strcmp(name, "NSGlobalDomain") == 0) return;
+	const std::string application_domain = NSUserDefaultsApplicationDomain();
+	if (application_domain == name) return;
+	{
+		std::lock_guard lock(g_user_defaults_mutex);
+		const auto found = g_user_defaults.find(self);
+		if (found == g_user_defaults.end() || found->second.selected_suite == name ||
+			std::any_of(found->second.suite_stores.begin(),
+				found->second.suite_stores.end(), [name](const auto& suite) {
+					return suite.first == name;
+				})) return;
+	}
+	auto suite_store = darling_windows_preferences_open_suite(
+		application_domain.c_str(), name);
+	if (suite_store == nullptr) return;
+	bool accepted = false;
+	{
+		std::lock_guard lock(g_user_defaults_mutex);
+		const auto found = g_user_defaults.find(self);
+		if (found != g_user_defaults.end() &&
+			found->second.selected_suite != name &&
+			std::none_of(found->second.suite_stores.begin(),
+				found->second.suite_stores.end(), [name](const auto& suite) {
+					return suite.first == name;
+				})) {
+			try {
+				found->second.suite_stores.emplace_back(name, suite_store);
+				accepted = true;
+			} catch (...) {}
+		}
+	}
+	if (!accepted) darling_windows_preferences_close(suite_store);
+}
+
+void NSUserDefaultsRemoveSuiteNamed(id self, SEL, id name_object)
+{
+	const char* name = name_object == nullptr ? nullptr :
+		NSStringUTF8String(name_object, nullptr);
+	if (name == nullptr) return;
+	darling_windows_preferences_ref removed = nullptr;
+	{
+		std::lock_guard lock(g_user_defaults_mutex);
+		const auto found = g_user_defaults.find(self);
+		if (found == g_user_defaults.end()) return;
+		auto& suites = found->second.suite_stores;
+		const auto suite = std::find_if(suites.begin(), suites.end(),
+			[name](const auto& candidate) { return candidate.first == name; });
+		if (suite == suites.end()) return;
+		removed = suite->second;
+		suites.erase(suite);
+	}
+	if (removed != nullptr) darling_windows_preferences_close(removed);
 }
 
 bool NSUserDefaultsObjectHasClassName(id object, const char* expected)
@@ -18990,6 +19055,10 @@ void RegisterAppKitClasses()
 			reinterpret_cast<IMP>(&NSUserDefaultsInit), "@@:");
 		class_addMethod(user_defaults, sel_registerName("initWithSuiteName:"),
 			reinterpret_cast<IMP>(&NSUserDefaultsInitWithSuiteName), "@@:@");
+		class_addMethod(user_defaults, sel_registerName("addSuiteNamed:"),
+			reinterpret_cast<IMP>(&NSUserDefaultsAddSuiteNamed), "v@:@");
+		class_addMethod(user_defaults, sel_registerName("removeSuiteNamed:"),
+			reinterpret_cast<IMP>(&NSUserDefaultsRemoveSuiteNamed), "v@:@");
 		class_addMethod(user_defaults, sel_registerName("objectForKey:"),
 			reinterpret_cast<IMP>(&NSUserDefaultsObjectForKey), "@@:@");
 		class_addMethod(user_defaults, sel_registerName("arrayForKey:"),

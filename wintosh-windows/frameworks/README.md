@@ -219,8 +219,10 @@ integer, double, and boolean getters; property-list writes;
 preferences, the application or suite domain, `NSGlobalDomain`, other volatile
 domains, and then the registration fallback. Global values are read from the
 prefix-relative `NSGlobalDomain.plist`; registered defaults stay process-local.
-Suite search-list insertion and language-domain ordering, change notifications,
-and full Foundation search-list behavior remain unimplemented.
+`addSuiteNamed:` and `removeSuiteNamed:` add and remove suite lookup domains;
+added suites are searched in insertion order between the app/suite and global
+domains. Language-domain ordering, change notifications, and configurable
+Foundation search-list behavior remain unimplemented.
 `NSMutableString` adds `+string`, UTF-8/string constructors, `-appendString:`,
 `-setString:`, `-deleteCharactersInRange:`, `-replaceCharactersInRange:withString:`,
 and `-insertString:atIndex:`. Range operations and indices use UTF-16 code units

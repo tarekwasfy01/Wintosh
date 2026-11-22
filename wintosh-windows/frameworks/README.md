@@ -240,6 +240,8 @@ application-domain XML plist store, plus `CFPreferencesCopyValue`,
 `CFPreferencesGetAppBooleanValue` and `CFPreferencesGetAppIntegerValue` read
 pending-aware values and report whether a stored Boolean or integer has the
 required CoreFoundation type through `keyExistsAndHasValidFormat`.
+`CFPreferencesAppValueIsForced` checks whether the key exists in the app's
+managed-preferences plist.
 `kCFPreferencesCurrentApplication` resolves to the main bundle identifier.
 Writes remain process-local until `CFPreferencesAppSynchronize` or
 `CFPreferencesSynchronize`, and reads see pending writes in the current process.

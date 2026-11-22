@@ -554,8 +554,10 @@ The CoreFoundation guest resolver now exports `CFPreferencesCopyAppValue`,
 `CFPreferencesCopyValue`, `CFPreferencesCopyMultiple`, `CFPreferencesCopyKeyList`,
 `CFPreferencesSetAppValue`, `CFPreferencesSetValue`, `CFPreferencesSetMultiple`,
 `CFPreferencesAppSynchronize`, `CFPreferencesSynchronize`,
-`CFPreferencesGetAppBooleanValue`, and `CFPreferencesGetAppIntegerValue` against the same
-prefix-relative application-domain plist store. `kCFPreferencesCurrentApplication`
+`CFPreferencesGetAppBooleanValue`, `CFPreferencesGetAppIntegerValue`, and
+`CFPreferencesAppValueIsForced`. Application values use the prefix-relative
+application-domain plist store; forced-key queries check the managed
+preferences plist. `kCFPreferencesCurrentApplication`
 resolves to the main bundle identifier, with `org.wintosh.application` as the
 fallback when no bundle identifier is available. Values use the existing XML
 property-list parser and serializer. Writes stay in a process-local pending map

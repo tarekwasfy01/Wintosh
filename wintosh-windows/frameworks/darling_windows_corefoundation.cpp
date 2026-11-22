@@ -8231,6 +8231,28 @@ CFPreferencesGetAppIntegerValue(darling_windows_CFStringRef key,
 	} catch (...) { return 0; }
 }
 
+extern "C" DARLING_CF_GUEST_ABI std::uint8_t
+CFPreferencesAppValueIsForced(darling_windows_CFStringRef key,
+	darling_windows_CFStringRef application_id)
+{
+	try {
+		std::string key_text;
+		if (key == nullptr || application_id == nullptr ||
+			!CFPreferencesString(key, key_text)) return 0;
+		const auto domain = CFPreferencesApplicationDomain(application_id);
+		if (domain.empty() || domain == "kCFPreferencesAnyApplication") return 0;
+		std::unique_ptr<darling_windows_preferences,
+			decltype(&darling_windows_preferences_close)> managed(
+			darling_windows_preferences_open_managed(domain.c_str()),
+			&darling_windows_preferences_close);
+		if (managed == nullptr) return 0;
+		std::vector<char> xml(16 * 1024 * 1024);
+		const bool forced = darling_windows_preferences_get_property_list_xml(
+			managed.get(), key_text.c_str(), xml.data(), xml.size());
+		return forced ? 1 : 0;
+	} catch (...) { return 0; }
+}
+
 extern "C" std::uintptr_t darling_windows_corefoundation_symbol(const char* name)
 {
 	if (name == nullptr) return 0;
@@ -8257,6 +8279,8 @@ extern "C" std::uintptr_t darling_windows_corefoundation_symbol(const char* name
 		return reinterpret_cast<std::uintptr_t>(&CFPreferencesGetAppBooleanValue);
 	if (std::strcmp(name, "CFPreferencesGetAppIntegerValue") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFPreferencesGetAppIntegerValue);
+	if (std::strcmp(name, "CFPreferencesAppValueIsForced") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFPreferencesAppValueIsForced);
 	if (std::strcmp(name, "kCFPreferencesCurrentApplication") == 0)
 		return reinterpret_cast<std::uintptr_t>(&kCFPreferencesCurrentApplication);
 	if (std::strcmp(name, "kCFPreferencesCurrentUser") == 0)

@@ -2221,6 +2221,24 @@ void NSBezierPathClipRect(Class, SEL, DarlingObjcRect rect)
 		{rect.width, rect.height}});
 }
 
+void NSBezierPathStrokeLine(Class cls, SEL, DarlingObjcPoint start,
+	DarlingObjcPoint end)
+{
+	id path = NSBezierPathCreate(cls);
+	if (path == nullptr) return;
+	try {
+		std::lock_guard lock(g_bezier_mutex);
+		auto& commands = g_bezier_paths[path].commands;
+		commands.push_back({BezierCommandKind::Move, {start}});
+		commands.push_back({BezierCommandKind::Line, {end}});
+	} catch (...) {
+		objc_release(path);
+		return;
+	}
+	NSBezierPathRender(path, false);
+	objc_release(path);
+}
+
 void NSBezierPathAppendOval(id self, SEL, DarlingObjcRect rect)
 {
 	NSBezierPathAppend(self, BezierCommand{BezierCommandKind::Oval, {}, rect});
@@ -20851,6 +20869,10 @@ void RegisterAppKitClasses()
 		class_addClassMethod(bezier_path, sel_registerName("clipRect:"),
 			reinterpret_cast<IMP>(&NSBezierPathClipRect),
 			"v@:{CGRect={CGPoint=dd}{CGSize=dd}}");
+		class_addClassMethod(bezier_path,
+			sel_registerName("strokeLineFromPoint:toPoint:"),
+			reinterpret_cast<IMP>(&NSBezierPathStrokeLine),
+			"v@:{CGPoint=dd}{CGPoint=dd}");
 		class_addClassMethod(bezier_path,
 			sel_registerName("bezierPathWithRect:"),
 			reinterpret_cast<IMP>(&NSBezierPathRectPathFactory),

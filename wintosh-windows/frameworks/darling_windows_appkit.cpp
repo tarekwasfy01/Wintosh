@@ -564,6 +564,7 @@ struct BezierPathState final {
 	double miter_limit{10.0};
 	std::vector<double> line_dash;
 	double line_dash_phase{};
+	std::int64_t winding_rule{};
 };
 std::mutex g_bezier_mutex;
 std::unordered_map<id, BezierPathState> g_bezier_paths;
@@ -1934,6 +1935,20 @@ double NSBezierPathMiterLimit(id self, SEL)
 	return found == g_bezier_paths.end() ? 10.0 : found->second.miter_limit;
 }
 
+void NSBezierPathSetWindingRule(id self, SEL, std::int64_t rule)
+{
+	if (rule != 0 && rule != 1) return;
+	std::lock_guard lock(g_bezier_mutex);
+	g_bezier_paths[self].winding_rule = rule;
+}
+
+std::int64_t NSBezierPathWindingRule(id self, SEL)
+{
+	std::lock_guard lock(g_bezier_mutex);
+	const auto found = g_bezier_paths.find(self);
+	return found == g_bezier_paths.end() ? 0 : found->second.winding_rule;
+}
+
 void NSBezierPathSetLineDash(id self, SEL, const double* pattern,
 	std::int64_t count, double phase)
 {
@@ -2013,7 +2028,8 @@ void NSBezierPathRender(id self, bool fill, bool even_odd = false)
 		}
 	}
 	if (fill) {
-		if (even_odd) CGContextEOFillPath(g_current_cg_context);
+		if (even_odd || path.winding_rule == 1)
+			CGContextEOFillPath(g_current_cg_context);
 		else CGContextFillPath(g_current_cg_context);
 	} else {
 		CGContextSaveGState(g_current_cg_context);
@@ -20427,6 +20443,10 @@ void RegisterAppKitClasses()
 			reinterpret_cast<IMP>(&NSBezierPathSetMiterLimit), "v@:d");
 		class_addMethod(bezier_path, sel_registerName("miterLimit"),
 			reinterpret_cast<IMP>(&NSBezierPathMiterLimit), "d@:");
+		class_addMethod(bezier_path, sel_registerName("setWindingRule:"),
+			reinterpret_cast<IMP>(&NSBezierPathSetWindingRule), "v@:q");
+		class_addMethod(bezier_path, sel_registerName("windingRule"),
+			reinterpret_cast<IMP>(&NSBezierPathWindingRule), "q@:");
 		class_addMethod(bezier_path,
 			sel_registerName("setLineDash:count:phase:"),
 			reinterpret_cast<IMP>(&NSBezierPathSetLineDash),

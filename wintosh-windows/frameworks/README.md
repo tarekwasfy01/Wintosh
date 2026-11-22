@@ -787,7 +787,10 @@ and close; ovals expand to one move, four cubic curves, and close. Associated
 curve points are returned in Cocoa order (first control point, second control
 point, end point); the optional output pointer is honored. Out-of-range indices return
 `-1` because Objective-C exception unwinding is not implemented. Winding-rule
-properties and many additional path operations remain unimplemented.
+`windingRule` reads/sets nonzero (0) or even-odd (1); ordinary `fill` honors
+that setting while `evenOddFill` always uses even-odd. Unsupported rule values
+are ignored. Other path attributes and many additional operations remain
+unimplemented.
 
 The Objective-C resolver routes no-argument CGRect getters through the
 `objc_msgSend_stret` family, including legacy and Super2 variants, which write

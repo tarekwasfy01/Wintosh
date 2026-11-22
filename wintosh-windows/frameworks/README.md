@@ -819,6 +819,16 @@ Following AppKit's contract, hit-testing uses nonzero winding regardless of the
 path's configured fill winding rule and ignores stroke width.
 Other path attributes and many additional operations remain unimplemented.
 
+`NSAffineTransform` supports identity construction/reset, append/prepend matrix
+composition, translation, uniform and per-axis scaling, rotation by
+degrees/radians, inversion for nonsingular matrices, `isIdentity`,
+`transformPoint:`, and `transformSize:`. Each Objective-C instance owns an
+independent six-value affine matrix, and point/size values cross the guest ABI
+in XMM registers. This subset does not yet transform rectangles, expose the
+transform struct, apply transforms to paths or view drawing, or reproduce
+Cocoa's singular-matrix exception behavior. It has local compile/link evidence
+only; no guest Mach-O fixture verifies the selectors or matrix results.
+
 The Objective-C resolver routes no-argument CGRect getters through the
 `objc_msgSend_stret` family, including legacy and Super2 variants, which write
 the expected 32-byte x86_64 result into the guest's hidden return buffer.

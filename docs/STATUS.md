@@ -11,6 +11,19 @@ map.
 
 Status date: 2026-11-22
 
+### AppKit NSAffineTransform subset (2026-11-22)
+
+`NSAffineTransform` now creates an identity matrix and supports reset, ordered
+append/prepend composition, translation, uniform and per-axis scaling, rotation
+by degrees or radians, inversion for nonsingular matrices, identity queries,
+and affine transformation of `CGPoint` and `CGSize` values. Matrix state is
+held per Objective-C object and removed by its runtime finalizer. The point and
+size arguments and results use explicit x86_64 guest ABI paths. The local Clang
+Release build compiles and links this implementation; no Mach-O guest fixture
+verifies selector dispatch or numeric results. `transformRect:`, transform-
+struct accessors, integration with `NSBezierPath`/view drawing, and
+platform-specific singular-matrix exceptions remain unimplemented.
+
 ### Foundation NSURL and relative CFURL integration (2026-11-21)
 
 The AppKit `NSURL` host object now retains the CoreFoundation URL that backs

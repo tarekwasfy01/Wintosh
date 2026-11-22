@@ -550,6 +550,16 @@ std::unordered_map<id, ObjcNumberValue> g_numbers;
 std::mutex g_color_mutex;
 std::unordered_map<id, darling_windows_CGColor> g_nscolors;
 std::unordered_set<id> g_grayscale_nscolors;
+struct NSAffineTransformState final {
+	double a{1.0};
+	double b{};
+	double c{};
+	double d{1.0};
+	double tx{};
+	double ty{};
+};
+std::mutex g_affine_transform_mutex;
+std::unordered_map<id, NSAffineTransformState> g_affine_transforms;
 enum class BezierCommandKind { Move, Line, Curve, Close, Rect, Oval };
 struct BezierCommand final {
 	BezierCommandKind kind{};
@@ -1588,6 +1598,170 @@ void NSColorGetComponentArray(id self, SEL, double* components)
 void NSColorSet(id self, SEL) { NSColorApply(self, true, true); }
 void NSColorSetFill(id self, SEL) { NSColorApply(self, true, false); }
 void NSColorSetStroke(id self, SEL) { NSColorApply(self, false, true); }
+
+void NSAffineTransformFinalize(id object)
+{
+	std::lock_guard lock(g_affine_transform_mutex);
+	g_affine_transforms.erase(object);
+}
+
+NSAffineTransformState NSAffineTransformSnapshot(id object)
+{
+	std::lock_guard lock(g_affine_transform_mutex);
+	const auto found = g_affine_transforms.find(object);
+	return found == g_affine_transforms.end() ? NSAffineTransformState{} :
+		found->second;
+}
+
+void NSAffineTransformConcat(NSAffineTransformState& left,
+	const NSAffineTransformState& right)
+{
+	const NSAffineTransformState result{
+		left.a * right.a + left.c * right.b,
+		left.b * right.a + left.d * right.b,
+		left.a * right.c + left.c * right.d,
+		left.b * right.c + left.d * right.d,
+		left.a * right.tx + left.c * right.ty + left.tx,
+		left.b * right.tx + left.d * right.ty + left.ty};
+	if (std::isfinite(result.a) && std::isfinite(result.b) &&
+		std::isfinite(result.c) && std::isfinite(result.d) &&
+		std::isfinite(result.tx) && std::isfinite(result.ty)) left = result;
+}
+
+id NSAffineTransformCreate(Class cls)
+{
+	if (cls == nullptr) return nullptr;
+	id object = class_createInstance(cls, 0);
+	if (object == nullptr) return nullptr;
+	try {
+		std::lock_guard lock(g_affine_transform_mutex);
+		g_affine_transforms.emplace(object, NSAffineTransformState{});
+	} catch (...) {
+		objc_release(object);
+		return nullptr;
+	}
+	if (!darling_objc_register_object_finalizer(object,
+		&NSAffineTransformFinalize)) {
+		NSAffineTransformFinalize(object);
+		objc_release(object);
+		return nullptr;
+	}
+	return object;
+}
+
+id NSAffineTransformFactory(Class cls, SEL)
+{
+	return objc_autorelease(NSAffineTransformCreate(cls));
+}
+
+id NSAffineTransformInit(id self, SEL)
+{
+	std::lock_guard lock(g_affine_transform_mutex);
+	g_affine_transforms[self] = NSAffineTransformState{};
+	return self;
+}
+
+void NSAffineTransformSet(id self, SEL)
+{
+	std::lock_guard lock(g_affine_transform_mutex);
+	g_affine_transforms[self] = NSAffineTransformState{};
+}
+
+void NSAffineTransformAppend(id self, SEL, id other)
+{
+	const auto right = NSAffineTransformSnapshot(other);
+	std::lock_guard lock(g_affine_transform_mutex);
+	NSAffineTransformConcat(g_affine_transforms[self], right);
+}
+
+void NSAffineTransformPrepend(id self, SEL, id other)
+{
+	const auto left = NSAffineTransformSnapshot(other);
+	std::lock_guard lock(g_affine_transform_mutex);
+	auto& current = g_affine_transforms[self];
+	auto result = left;
+	NSAffineTransformConcat(result, current);
+	current = result;
+}
+
+void NSAffineTransformTranslate(id self, SEL, double x, double y)
+{
+	const NSAffineTransformState translation{1.0, 0.0, 0.0, 1.0, x, y};
+	std::lock_guard lock(g_affine_transform_mutex);
+	NSAffineTransformConcat(g_affine_transforms[self], translation);
+}
+
+void NSAffineTransformScale(id self, SEL, double x, double y)
+{
+	if (!std::isfinite(x) || !std::isfinite(y)) return;
+	const NSAffineTransformState scale{x, 0.0, 0.0, y, 0.0, 0.0};
+	std::lock_guard lock(g_affine_transform_mutex);
+	NSAffineTransformConcat(g_affine_transforms[self], scale);
+}
+
+void NSAffineTransformScaleUniform(id self, SEL, double value)
+{
+	NSAffineTransformScale(self, nullptr, value, value);
+}
+
+void NSAffineTransformRotate(id self, SEL, double degrees)
+{
+	if (!std::isfinite(degrees)) return;
+	constexpr double pi = 3.1415926535897932384626433832795;
+	const double radians = degrees * pi / 180.0;
+	const double cosine = std::cos(radians);
+	const double sine = std::sin(radians);
+	const NSAffineTransformState rotation{cosine, sine, -sine, cosine, 0.0, 0.0};
+	std::lock_guard lock(g_affine_transform_mutex);
+	NSAffineTransformConcat(g_affine_transforms[self], rotation);
+}
+
+void NSAffineTransformRotateRadians(id self, SEL, double radians)
+{
+	if (!std::isfinite(radians)) return;
+	const double cosine = std::cos(radians);
+	const double sine = std::sin(radians);
+	const NSAffineTransformState rotation{cosine, sine, -sine, cosine, 0.0, 0.0};
+	std::lock_guard lock(g_affine_transform_mutex);
+	NSAffineTransformConcat(g_affine_transforms[self], rotation);
+}
+
+void NSAffineTransformInvert(id self, SEL)
+{
+	std::lock_guard lock(g_affine_transform_mutex);
+	auto& value = g_affine_transforms[self];
+	const double determinant = value.a * value.d - value.b * value.c;
+	if (!std::isfinite(determinant) || std::abs(determinant) <= 1e-15) return;
+	const double inverse = 1.0 / determinant;
+	const NSAffineTransformState result{value.d * inverse, -value.b * inverse,
+		-value.c * inverse, value.a * inverse,
+		(value.c * value.ty - value.d * value.tx) * inverse,
+		(value.b * value.tx - value.a * value.ty) * inverse};
+	if (std::isfinite(result.a) && std::isfinite(result.b) &&
+		std::isfinite(result.c) && std::isfinite(result.d) &&
+		std::isfinite(result.tx) && std::isfinite(result.ty)) value = result;
+}
+
+bool NSAffineTransformIsIdentity(id self, SEL)
+{
+	const auto value = NSAffineTransformSnapshot(self);
+	return value.a == 1.0 && value.b == 0.0 && value.c == 0.0 &&
+		value.d == 1.0 && value.tx == 0.0 && value.ty == 0.0;
+}
+
+DarlingObjcPoint NSAffineTransformPoint(id self, SEL, DarlingObjcPoint point)
+{
+	const auto value = NSAffineTransformSnapshot(self);
+	return {value.a * point.x + value.c * point.y + value.tx,
+		value.b * point.x + value.d * point.y + value.ty};
+}
+
+DarlingObjcPoint NSAffineTransformSize(id self, SEL, DarlingObjcPoint size)
+{
+	const auto value = NSAffineTransformSnapshot(self);
+	return {value.a * size.x + value.c * size.y,
+		value.b * size.x + value.d * size.y};
+}
 
 void NSBezierPathFinalize(id object)
 {
@@ -20758,6 +20932,42 @@ void RegisterAppKitClasses()
 			reinterpret_cast<IMP>(&NSGraphicsContextRestoreGraphicsState), "v@:");
 		class_addMethod(graphics_context, sel_registerName("CGContext"),
 			reinterpret_cast<IMP>(&NSGraphicsContextCGContext), "^v@:");
+
+		Class affine_transform = RegisterHostClass("NSAffineTransform", root);
+		if (affine_transform == nullptr) return;
+		class_addClassMethod(affine_transform, sel_registerName("transform"),
+			reinterpret_cast<IMP>(&NSAffineTransformFactory), "@@:");
+		class_addMethod(affine_transform, sel_registerName("init"),
+			reinterpret_cast<IMP>(&NSAffineTransformInit), "@@:");
+		class_addMethod(affine_transform, sel_registerName("set"),
+			reinterpret_cast<IMP>(&NSAffineTransformSet), "v@:");
+		class_addMethod(affine_transform, sel_registerName("appendTransform:"),
+			reinterpret_cast<IMP>(&NSAffineTransformAppend), "v@:@");
+		class_addMethod(affine_transform, sel_registerName("prependTransform:"),
+			reinterpret_cast<IMP>(&NSAffineTransformPrepend), "v@:@");
+		class_addMethod(affine_transform,
+			sel_registerName("translateXBy:yBy:"),
+			reinterpret_cast<IMP>(&NSAffineTransformTranslate), "v@:dd");
+		class_addMethod(affine_transform, sel_registerName("scaleBy:"),
+			reinterpret_cast<IMP>(&NSAffineTransformScaleUniform), "v@:d");
+		class_addMethod(affine_transform, sel_registerName("scaleXBy:yBy:"),
+			reinterpret_cast<IMP>(&NSAffineTransformScale), "v@:dd");
+		class_addMethod(affine_transform,
+			sel_registerName("rotateByDegrees:"),
+			reinterpret_cast<IMP>(&NSAffineTransformRotate), "v@:d");
+		class_addMethod(affine_transform,
+			sel_registerName("rotateByRadians:"),
+			reinterpret_cast<IMP>(&NSAffineTransformRotateRadians), "v@:d");
+		class_addMethod(affine_transform, sel_registerName("invert"),
+			reinterpret_cast<IMP>(&NSAffineTransformInvert), "v@:");
+		class_addMethod(affine_transform, sel_registerName("isIdentity"),
+			reinterpret_cast<IMP>(&NSAffineTransformIsIdentity), "B@:");
+		class_addMethod(affine_transform, sel_registerName("transformPoint:"),
+			reinterpret_cast<IMP>(&NSAffineTransformPoint),
+			"{CGPoint=dd}@:{CGPoint=dd}");
+		class_addMethod(affine_transform, sel_registerName("transformSize:"),
+			reinterpret_cast<IMP>(&NSAffineTransformSize),
+			"{CGSize=dd}@:{CGSize=dd}");
 
 		Class color = RegisterHostClass("NSColor", root);
 		if (color == nullptr) return;

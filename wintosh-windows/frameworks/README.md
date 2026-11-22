@@ -212,12 +212,15 @@ surface includes `operatingSystemVersion`, `operatingSystemVersionString`,
 `WINTOSH_MACOS_VERSION` profile and 24-byte Darwin aggregate ABI. Thermal and
 power APIs and wider Darwin process state remain absent.
 `NSUserDefaults.standardUserDefaults` and suite initialization bridge to the
-prefix-relative preference store. Object/string/integer/double/boolean lookup,
-string/integer/double/boolean writes, `removeObjectForKey:`, `synchronize`, and scalar
-`registerDefaults:` values are supported, with command arguments and managed
-preferences taking precedence over the writable application domain. Persisted
-arrays, dictionaries, data, dates, volatile domains,
-change notifications, and full domain-search behavior are not yet implemented.
+prefix-relative preference store. Object, string, array, dictionary, data,
+integer, double, and boolean getters; property-list writes;
+`removeObjectForKey:`, `synchronize`, volatile-domain access, and
+`registerDefaults:` are supported. Reads search command arguments, managed
+preferences, the application or suite domain, `NSGlobalDomain`, other volatile
+domains, and then the registration fallback. Global values are read from the
+prefix-relative `NSGlobalDomain.plist`; registered defaults stay process-local.
+Suite search-list insertion and language-domain ordering, change notifications,
+and full Foundation search-list behavior remain unimplemented.
 `NSMutableString` adds `+string`, UTF-8/string constructors, `-appendString:`,
 `-setString:`, `-deleteCharactersInRange:`, `-replaceCharactersInRange:withString:`,
 and `-insertString:atIndex:`. Range operations and indices use UTF-16 code units

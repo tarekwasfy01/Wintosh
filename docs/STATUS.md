@@ -551,11 +551,12 @@ is unverified. No guest fixture or tests were run.
 ### Objective-C NSUserDefaults bridge (2026-11-16)
 
 The AppKit/Foundation host now exposes `standardUserDefaults`, suite
-initialization, object/string/integer/boolean/double reads, scalar and
+initialization, object/string/array/dictionary/data/integer/boolean/double reads, scalar and
 property-list object writes, removal, synchronization, and `registerDefaults:`
 values over
-the existing prefix-relative preferences store. Reads prioritize the command
-argument domain, managed preferences, then the application/suite store;
+the existing prefix-relative preferences store. Reads prioritize command-line
+arguments, managed preferences, the application/suite store, `NSGlobalDomain`,
+other volatile domains, then the per-process `NSRegistrationDomain` fallback;
 `open_arguments` now contains only parsed argument-domain values so stale
 persistent values cannot mask later writes. The store persists strings,
 signed 64-bit integers, finite doubles, booleans, and recursively converts
@@ -565,12 +566,14 @@ reads/writes and registration defaults. Null and unsupported collection values
 are rejected. The Objective-C bridge also implements `volatileDomainForName:`,
 `setVolatileDomain:forName:`, `removeVolatileDomainForName:`, and
 `volatileDomainNames`; each instance keeps independent volatile domains as
-serialized snapshots. `objectForKey:` and the numeric convenience getters now
-consult volatile snapshots after argument and managed values and before the
-application store; among volatile snapshots, the most recently set domain
-wins. Full Apple search-list controls and exact global/language/suite domain
-ordering remain open. Change notifications remain open. Builds validate
-compile/link only; no guest fixture was run.
+serialized snapshots. `registerDefaults:` now populates the volatile
+registration domain instead of attaching fallback values to the persistent
+application domain. Array, dictionary, and data typed getters return the
+matching property-list object or nil for a missing key or a different value
+type. The global domain is read from the prefix-relative `NSGlobalDomain.plist`.
+Full Apple search-list controls, language preference domains, suite insertion
+ordering, and change notifications remain open. Builds validate compile/link
+only; no guest fixture was run.
 
 ### NSApplication lifecycle selectors (2026-11-16)
 

@@ -426,6 +426,7 @@ struct AppKitUserDefaultsState final {
 	darling_windows_preferences_ref store{};
 	darling_windows_preferences_ref argument_store{};
 	darling_windows_preferences_ref managed_store{};
+	darling_windows_preferences_ref global_store{};
 	std::unordered_map<std::string, std::unordered_map<std::string, std::string>>
 		volatile_domains;
 	std::vector<std::string> volatile_domain_order;
@@ -7747,6 +7748,8 @@ void NSUserDefaultsFinalize(id object)
 		darling_windows_preferences_close(state.argument_store);
 	if (state.managed_store != nullptr)
 		darling_windows_preferences_close(state.managed_store);
+	if (state.global_store != nullptr)
+		darling_windows_preferences_close(state.global_store);
 	if (state.store != nullptr) darling_windows_preferences_close(state.store);
 }
 
@@ -7763,6 +7766,11 @@ id NSUserDefaultsInitWithDomain(id self, const char* suite)
 		darling_windows_preferences_open(domain.c_str()) :
 		darling_windows_preferences_open_suite(domain.c_str(), suite);
 	if (state.store == nullptr) return nullptr;
+	state.global_store = darling_windows_preferences_open("NSGlobalDomain");
+	if (state.global_store == nullptr) {
+		darling_windows_preferences_close(state.store);
+		return nullptr;
+	}
 	std::vector<std::string> arguments;
 	std::vector<const char*> argument_pointers;
 	try {
@@ -7784,6 +7792,8 @@ id NSUserDefaultsInitWithDomain(id self, const char* suite)
 			darling_windows_preferences_close(state.argument_store);
 		if (state.managed_store != nullptr)
 			darling_windows_preferences_close(state.managed_store);
+		if (state.global_store != nullptr)
+			darling_windows_preferences_close(state.global_store);
 		darling_windows_preferences_close(state.store);
 		return nullptr;
 	}
@@ -7873,6 +7883,7 @@ id NSUserDefaultsVolatileObjectForKey(const AppKitUserDefaultsState& state,
 {
 	for (auto domain = state.volatile_domain_order.rbegin();
 		domain != state.volatile_domain_order.rend(); ++domain) {
+		if (*domain == "NSRegistrationDomain") continue;
 		const auto found_domain = state.volatile_domains.find(*domain);
 		if (found_domain == state.volatile_domains.end()) continue;
 		const auto found_value = found_domain->second.find(key);
@@ -7881,6 +7892,16 @@ id NSUserDefaultsVolatileObjectForKey(const AppKitUserDefaultsState& state,
 			value != nullptr) return objc_autorelease(value);
 	}
 	return nullptr;
+}
+
+id NSUserDefaultsRegistrationObjectForKey(const AppKitUserDefaultsState& state,
+	const char* key)
+{
+	const auto domain = state.volatile_domains.find("NSRegistrationDomain");
+	if (domain == state.volatile_domains.end()) return nullptr;
+	const auto value = domain->second.find(key);
+	return value == domain->second.end() ? nullptr :
+		ObjcObjectFromPropertyListXml(value->second.c_str());
 }
 
 id NSUserDefaultsObjectForKey(id self, SEL, id key_object)
@@ -7899,11 +7920,43 @@ id NSUserDefaultsObjectForKey(id self, SEL, id key_object)
 		value != nullptr) return value;
 	if (id value = NSUserDefaultsObjectForStore(state.managed_store, key);
 		value != nullptr) return value;
-	if (id value = NSUserDefaultsVolatileObjectForKey(state, key); value != nullptr)
-		return value;
 	if (id value = NSUserDefaultsObjectForStore(state.store, key); value != nullptr)
 		return value;
+	if (id value = NSUserDefaultsObjectForStore(state.global_store, key);
+		value != nullptr) return value;
+	if (id value = NSUserDefaultsVolatileObjectForKey(state, key); value != nullptr)
+		return value;
+	if (id value = NSUserDefaultsRegistrationObjectForKey(state, key);
+		value != nullptr) return value;
 	return nullptr;
+}
+
+bool NSUserDefaultsObjectHasClassName(id object, const char* expected)
+{
+	const Class cls = object == nullptr ? nullptr : object_getClass(object);
+	const char* actual = cls == nullptr ? nullptr : class_getName(cls);
+	return actual != nullptr && std::strcmp(actual, expected) == 0;
+}
+
+id NSUserDefaultsArrayForKey(id self, SEL selector, id key)
+{
+	id value = NSUserDefaultsObjectForKey(self, selector, key);
+	return NSUserDefaultsObjectHasClassName(value, "NSArray") ||
+		NSUserDefaultsObjectHasClassName(value, "NSMutableArray") ? value : nullptr;
+}
+
+id NSUserDefaultsDictionaryForKey(id self, SEL selector, id key)
+{
+	id value = NSUserDefaultsObjectForKey(self, selector, key);
+	return NSUserDefaultsObjectHasClassName(value, "NSDictionary") ||
+		NSUserDefaultsObjectHasClassName(value, "NSMutableDictionary") ? value : nullptr;
+}
+
+id NSUserDefaultsDataForKey(id self, SEL selector, id key)
+{
+	id value = NSUserDefaultsObjectForKey(self, selector, key);
+	return NSUserDefaultsObjectHasClassName(value, "NSData") ||
+		NSUserDefaultsObjectHasClassName(value, "NSMutableData") ? value : nullptr;
 }
 
 id NSUserDefaultsVolatileDomainForName(id self, SEL, id name_object)
@@ -8297,45 +8350,25 @@ void NSUserDefaultsRegisterDefaults(id self, SEL, id dictionary)
 			return;
 		}
 	}
+	std::unordered_map<std::string, std::string> registration;
 	for (const auto& [key_object, value_object] : entries) {
 		const char* key = NSStringUTF8String(key_object, nullptr);
-		const Class value_class = object_getClass(value_object);
-		const char* value_class_name = value_class == nullptr ? nullptr :
-			class_getName(value_class);
-		if (key != nullptr && IsSupportedNSStringClass(value_class)) {
-			const char* value = NSStringUTF8String(value_object, nullptr);
-			if (value != nullptr)
-				darling_windows_preferences_register_string(state.store, key, value);
-		} else if (key != nullptr && value_class_name != nullptr &&
-			std::strcmp(value_class_name, "NSNumber") == 0) {
-			ObjcNumberValue number{};
-			{
-				std::lock_guard lock(g_number_mutex);
-				const auto found = g_numbers.find(value_object);
-				if (found != g_numbers.end()) number = found->second;
-			}
-			if (number.boolean)
-				darling_windows_preferences_register_boolean(state.store, key,
-					number.real != 0.0);
-			else if (number.integral && !number.unsigned_value)
-				darling_windows_preferences_register_integer(state.store, key,
-					number.integer);
-			else if (number.integral && number.unsigned_value &&
-				number.unsigned_integer <= static_cast<std::uint64_t>(INT64_MAX))
-				darling_windows_preferences_register_integer(state.store, key,
-					static_cast<std::int64_t>(number.unsigned_integer));
-			else if (!number.integral)
-				darling_windows_preferences_register_double(state.store, key,
-					number.real);
-		} else if (key != nullptr) {
-			std::string xml;
-			if (ObjcPropertyListXml(value_object, xml))
-				darling_windows_preferences_register_property_list_xml(state.store,
-					key, xml.c_str());
-		}
+		std::string xml;
+		if (key != nullptr && ObjcPropertyListXml(value_object, xml))
+			registration.insert_or_assign(key, std::move(xml));
 		objc_release(key_object);
 		objc_release(value_object);
 	}
+	std::lock_guard lock(g_user_defaults_mutex);
+	const auto found = g_user_defaults.find(self);
+	if (found == g_user_defaults.end()) return;
+	auto& registered = found->second.volatile_domains["NSRegistrationDomain"];
+	if (std::find(found->second.volatile_domain_order.begin(),
+		found->second.volatile_domain_order.end(), "NSRegistrationDomain") ==
+		found->second.volatile_domain_order.end())
+		found->second.volatile_domain_order.emplace_back("NSRegistrationDomain");
+	for (auto& [key, xml] : registration)
+		registered.insert_or_assign(std::move(key), std::move(xml));
 }
 
 id NSStringStringWithUTF8String(Class cls, SEL, const char* utf8)
@@ -18959,6 +18992,12 @@ void RegisterAppKitClasses()
 			reinterpret_cast<IMP>(&NSUserDefaultsInitWithSuiteName), "@@:@");
 		class_addMethod(user_defaults, sel_registerName("objectForKey:"),
 			reinterpret_cast<IMP>(&NSUserDefaultsObjectForKey), "@@:@");
+		class_addMethod(user_defaults, sel_registerName("arrayForKey:"),
+			reinterpret_cast<IMP>(&NSUserDefaultsArrayForKey), "@@:@");
+		class_addMethod(user_defaults, sel_registerName("dictionaryForKey:"),
+			reinterpret_cast<IMP>(&NSUserDefaultsDictionaryForKey), "@@:@");
+		class_addMethod(user_defaults, sel_registerName("dataForKey:"),
+			reinterpret_cast<IMP>(&NSUserDefaultsDataForKey), "@@:@");
 		class_addMethod(user_defaults, sel_registerName("stringForKey:"),
 			reinterpret_cast<IMP>(&NSUserDefaultsStringForKey), "@@:@");
 		class_addMethod(user_defaults, sel_registerName("integerForKey:"),

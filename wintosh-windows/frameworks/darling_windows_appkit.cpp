@@ -1905,6 +1905,107 @@ void NSBezierPathRelativeLineToPoint(id self, SEL, DarlingObjcPoint offset)
 		{{current.x + offset.x, current.y + offset.y}}});
 }
 
+void NSBezierPathAppendArcFromPoint(id self, SEL, DarlingObjcPoint corner,
+	DarlingObjcPoint next, double radius)
+{
+	if (!std::isfinite(corner.x) || !std::isfinite(corner.y) ||
+		!std::isfinite(next.x) || !std::isfinite(next.y) ||
+		!std::isfinite(radius) || radius < 0) return;
+	const DarlingObjcPoint current = NSBezierPathCurrentPoint(self, nullptr);
+	const double first_dx = current.x - corner.x;
+	const double first_dy = current.y - corner.y;
+	const double second_dx = next.x - corner.x;
+	const double second_dy = next.y - corner.y;
+	const double first_length = std::hypot(first_dx, first_dy);
+	const double second_length = std::hypot(second_dx, second_dy);
+	if (!std::isfinite(first_length) || !std::isfinite(second_length) ||
+		radius == 0 || first_length <= 1e-12 || second_length <= 1e-12) {
+		NSBezierPathAppend(self, BezierCommand{BezierCommandKind::Line,
+			{{corner.x, corner.y}}});
+		return;
+	}
+	const DarlingObjcPoint incoming{first_dx / first_length,
+		first_dy / first_length};
+	const DarlingObjcPoint outgoing{second_dx / second_length,
+		second_dy / second_length};
+	const double dot = std::clamp(incoming.x * outgoing.x +
+		incoming.y * outgoing.y, -1.0, 1.0);
+	const double half_angle = std::acos(dot) / 2.0;
+	const double tangent_factor = std::tan(half_angle);
+	const double cross = first_dx * second_dy - first_dy * second_dx;
+	if (std::abs(cross) <= 1e-12 || half_angle <= 1e-12 ||
+		tangent_factor <= 1e-12) {
+		NSBezierPathAppend(self, BezierCommand{BezierCommandKind::Line,
+			{{corner.x, corner.y}}});
+		return;
+	}
+	const double tangent_distance = (std::min)(radius / tangent_factor,
+		(std::min)(first_length, second_length));
+	const double actual_radius = tangent_distance * tangent_factor;
+	if (!std::isfinite(actual_radius) || actual_radius <= 0) {
+		NSBezierPathAppend(self, BezierCommand{BezierCommandKind::Line,
+			{{corner.x, corner.y}}});
+		return;
+	}
+	const DarlingObjcPoint tangent_start{corner.x + incoming.x * tangent_distance,
+		corner.y + incoming.y * tangent_distance};
+	const DarlingObjcPoint tangent_end{corner.x + outgoing.x * tangent_distance,
+		corner.y + outgoing.y * tangent_distance};
+	const double bisector_length = std::hypot(incoming.x + outgoing.x,
+		incoming.y + outgoing.y);
+	if (bisector_length <= 1e-12) {
+		NSBezierPathAppend(self, BezierCommand{BezierCommandKind::Line,
+			{{corner.x, corner.y}}});
+		return;
+	}
+	const double center_distance = actual_radius / std::sin(half_angle);
+	if (!std::isfinite(center_distance)) {
+		NSBezierPathAppend(self, BezierCommand{BezierCommandKind::Line,
+			{{corner.x, corner.y}}});
+		return;
+	}
+	const DarlingObjcPoint center{corner.x +
+		(incoming.x + outgoing.x) / bisector_length * center_distance,
+		corner.y + (incoming.y + outgoing.y) / bisector_length * center_distance};
+	const double start_angle = std::atan2(tangent_start.y - center.y,
+		tangent_start.x - center.x);
+	double sweep = std::atan2(tangent_end.y - center.y,
+		tangent_end.x - center.x) - start_angle;
+	const double direction = cross < 0 ? 1.0 : -1.0;
+	constexpr double tau = 6.283185307179586476925286766559;
+	if (direction > 0 && sweep < 0) sweep += tau;
+	if (direction < 0 && sweep > 0) sweep -= tau;
+	const std::size_t segments = (std::max)(std::size_t{1},
+		static_cast<std::size_t>(std::ceil(std::abs(sweep) /
+			1.57079632679489661923)));
+	std::vector<BezierCommand> commands;
+	try {
+		commands.reserve(segments + 1);
+		if (std::hypot(current.x - tangent_start.x,
+			current.y - tangent_start.y) > 1e-12)
+			commands.push_back({BezierCommandKind::Line, {tangent_start}});
+		const double step = sweep / static_cast<double>(segments);
+		for (std::size_t index = 0; index < segments; ++index) {
+			const double a0 = start_angle + step * index;
+			const double a1 = a0 + step;
+			const double k = (4.0 / 3.0) * std::tan(step / 4.0) * actual_radius;
+			const DarlingObjcPoint end{center.x + actual_radius * std::cos(a1),
+				center.y + actual_radius * std::sin(a1)};
+			const DarlingObjcPoint tangent0{-std::sin(a0) * direction,
+				std::cos(a0) * direction};
+			const DarlingObjcPoint tangent1{-std::sin(a1) * direction,
+				std::cos(a1) * direction};
+			commands.push_back({BezierCommandKind::Curve,
+				{end, {center.x + actual_radius * std::cos(a0) + k * tangent0.x,
+					center.y + actual_radius * std::sin(a0) + k * tangent0.y},
+				 {end.x - k * tangent1.x, end.y - k * tangent1.y}}});
+		}
+		std::lock_guard lock(g_bezier_mutex);
+		auto& target = g_bezier_paths[self].commands;
+		target.insert(target.end(), commands.begin(), commands.end());
+	} catch (...) {}
+}
+
 bool NSBezierPathContainsPoint(id self, SEL, DarlingObjcPoint point)
 {
 	if (!std::isfinite(point.x) || !std::isfinite(point.y)) return false;
@@ -20772,6 +20873,10 @@ void RegisterAppKitClasses()
 			"v@:{CGPoint=dd}{CGPoint=dd}{CGPoint=dd}");
 		class_addMethod(bezier_path, sel_registerName("closePath"),
 			reinterpret_cast<IMP>(&NSBezierPathClose), "v@:");
+		class_addMethod(bezier_path,
+			sel_registerName("appendBezierPathWithArcFromPoint:toPoint:radius:"),
+			reinterpret_cast<IMP>(&NSBezierPathAppendArcFromPoint),
+			"v@:{CGPoint=dd}{CGPoint=dd}d");
 		class_addMethod(bezier_path,
 			sel_registerName("appendBezierPathWithRect:"),
 			reinterpret_cast<IMP>(&NSBezierPathAppendRect),

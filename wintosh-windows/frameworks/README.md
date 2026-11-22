@@ -806,6 +806,10 @@ intersects it with the existing clip, using the path's winding rule without
 mutating the NSBezierPath. The context flatness is restored before clipping.
 `currentPoint` returns the last endpoint (or the start point after close), and
 `relativeMoveToPoint:` / `relativeLineToPoint:` add offsets to that point.
+`appendBezierPathWithArcFromPoint:toPoint:radius:` computes tangent points and
+the corner-circle center, appends a line to the first tangent, then cubic
+segments no larger than 90 degrees. The radius is reduced when either adjacent
+segment is too short; degenerate corners become a line to the corner.
 `containsPoint:` tests the filled path area and boundary, including implicitly
 closed open subpaths, with cubic curves flattened according to path flatness.
 Following AppKit's contract, hit-testing uses nonzero winding regardless of the

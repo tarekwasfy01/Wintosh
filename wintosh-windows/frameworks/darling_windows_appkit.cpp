@@ -2100,19 +2100,8 @@ void NSBezierPathGetLineDash(id self, SEL, double* pattern,
 	*count = actual;
 }
 
-void NSBezierPathRender(id self, bool fill, bool even_odd)
+void NSBezierPathReplayPath(const BezierPathState& path)
 {
-	if (g_current_cg_context == nullptr) return;
-	BezierPathState path;
-	{
-		std::lock_guard lock(g_bezier_mutex);
-		const auto found = g_bezier_paths.find(self);
-		if (found == g_bezier_paths.end()) return;
-		try { path = found->second; }
-		catch (...) { return; }
-	}
-	CGContextSaveGState(g_current_cg_context);
-	CGContextSetFlatness(g_current_cg_context, path.flatness);
 	CGContextBeginPath(g_current_cg_context);
 	for (const BezierCommand& command : path.commands) {
 		switch (command.kind) {
@@ -2143,6 +2132,31 @@ void NSBezierPathRender(id self, bool fill, bool even_odd)
 			break;
 		}
 	}
+}
+
+BezierPathState NSBezierPathSnapshotForRender(id self)
+{
+	BezierPathState path;
+	std::lock_guard lock(g_bezier_mutex);
+	const auto found = g_bezier_paths.find(self);
+	if (found != g_bezier_paths.end()) path = found->second;
+	return path;
+}
+
+void NSBezierPathRender(id self, bool fill, bool even_odd)
+{
+	if (g_current_cg_context == nullptr) return;
+	BezierPathState path;
+	{
+		std::lock_guard lock(g_bezier_mutex);
+		const auto found = g_bezier_paths.find(self);
+		if (found == g_bezier_paths.end()) return;
+		try { path = found->second; }
+		catch (...) { return; }
+	}
+	CGContextSaveGState(g_current_cg_context);
+	CGContextSetFlatness(g_current_cg_context, path.flatness);
+	NSBezierPathReplayPath(path);
 	if (fill) {
 		if (even_odd || path.winding_rule == 1)
 			CGContextEOFillPath(g_current_cg_context);
@@ -2162,6 +2176,21 @@ void NSBezierPathRender(id self, bool fill, bool even_odd)
 		CGContextRestoreGState(g_current_cg_context);
 	}
 	CGContextRestoreGState(g_current_cg_context);
+}
+
+void NSBezierPathAddClip(id self, SEL)
+{
+	if (g_current_cg_context == nullptr) return;
+	BezierPathState path;
+	try { path = NSBezierPathSnapshotForRender(self); }
+	catch (...) { return; }
+	const double previous_flatness = darling_windows_CGContextGetFlatness(
+		g_current_cg_context);
+	CGContextSetFlatness(g_current_cg_context, path.flatness);
+	NSBezierPathReplayPath(path);
+	CGContextSetFlatness(g_current_cg_context, previous_flatness);
+	if (path.winding_rule == 1) CGContextEOClip(g_current_cg_context);
+	else CGContextClip(g_current_cg_context);
 }
 
 void NSBezierPathFill(id self, SEL) { NSBezierPathRender(self, true); }
@@ -20637,6 +20666,8 @@ void RegisterAppKitClasses()
 			reinterpret_cast<IMP>(&NSBezierPathEvenOddFill), "v@:");
 		class_addMethod(bezier_path, sel_registerName("stroke"),
 			reinterpret_cast<IMP>(&NSBezierPathStroke), "v@:");
+		class_addMethod(bezier_path, sel_registerName("addClip"),
+			reinterpret_cast<IMP>(&NSBezierPathAddClip), "v@:");
 
 		Class menu = RegisterHostClass("NSMenu", root);
 		if (menu == nullptr) return;

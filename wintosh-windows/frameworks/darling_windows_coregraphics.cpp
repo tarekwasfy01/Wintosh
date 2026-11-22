@@ -2360,6 +2360,12 @@ extern "C" DARLING_CG_GUEST_ABI void CGContextSetFlatness(
 		context->flatness = flatness;
 }
 
+extern "C" double darling_windows_CGContextGetFlatness(
+	darling_windows_CGContextRef context)
+{
+	return context == nullptr ? 0.6 : context->flatness;
+}
+
 extern "C" DARLING_CG_GUEST_ABI void CGContextSetLineDash(
 	darling_windows_CGContextRef context, double phase, const double* lengths,
 	std::size_t count)

@@ -801,6 +801,9 @@ the current defaults. The initial values are width 1, butt cap, miter join,
 miter limit 10, flatness 0.6, and nonzero winding. Dash patterns have no class
 default. The `fillRect:` and `strokeRect:` class conveniences construct and
 render a temporary path, so their stroke attributes use the same defaults.
+`addClip` replays the stored path into the active graphics context and
+intersects it with the existing clip, using the path's winding rule without
+mutating the NSBezierPath. The context flatness is restored before clipping.
 Other path attributes and many additional operations remain unimplemented.
 
 The Objective-C resolver routes no-argument CGRect getters through the

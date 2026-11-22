@@ -573,7 +573,9 @@ matching property-list object or nil for a missing key or a different value
 type. The global domain is read from the prefix-relative `NSGlobalDomain.plist`.
 `objectIsForcedForKey:` and `objectIsForcedForKey:inDomain:` report keys loaded
 from the administrator-managed preferences file; the domain-specific form is
-limited to this defaults object's application domain. `dictionaryRepresentation`
+limited to this defaults object's application domain. `stringArrayForKey:`
+returns an immutable array only when every stored element is a string.
+`dictionaryRepresentation`
 now merges the domain snapshots in search order and preserves the first value
 for duplicate keys.
 `addSuiteNamed:` inserts readable suite stores between the app/suite and global

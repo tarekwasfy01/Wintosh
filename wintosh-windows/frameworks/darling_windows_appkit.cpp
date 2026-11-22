@@ -8100,6 +8100,33 @@ id NSUserDefaultsArrayForKey(id self, SEL selector, id key)
 		NSUserDefaultsObjectHasClassName(value, "NSMutableArray") ? value : nullptr;
 }
 
+id NSUserDefaultsStringArrayForKey(id self, SEL selector, id key)
+{
+	id value = NSUserDefaultsArrayForKey(self, selector, key);
+	if (value == nullptr) return nullptr;
+	std::vector<id> elements;
+	try {
+		std::lock_guard lock(g_array_mutex);
+		const auto found = g_arrays.find(value);
+		if (found == g_arrays.end()) return nullptr;
+		elements.reserve(found->second.size());
+		for (id element : found->second) elements.push_back(objc_retain(element));
+	} catch (...) {
+		for (id element : elements) objc_release(element);
+		return nullptr;
+	}
+	for (id element : elements) {
+		if (!IsSupportedNSStringClass(object_getClass(element))) {
+			for (id retained : elements) objc_release(retained);
+			return nullptr;
+		}
+	}
+	id result = CreateNSArray(objc_getClass("NSArray"), elements.data(),
+		elements.size());
+	for (id element : elements) objc_release(element);
+	return objc_autorelease(result);
+}
+
 id NSUserDefaultsDictionaryForKey(id self, SEL selector, id key)
 {
 	id value = NSUserDefaultsObjectForKey(self, selector, key);
@@ -19287,6 +19314,8 @@ void RegisterAppKitClasses()
 			reinterpret_cast<IMP>(&NSUserDefaultsObjectForKey), "@@:@");
 		class_addMethod(user_defaults, sel_registerName("arrayForKey:"),
 			reinterpret_cast<IMP>(&NSUserDefaultsArrayForKey), "@@:@");
+		class_addMethod(user_defaults, sel_registerName("stringArrayForKey:"),
+			reinterpret_cast<IMP>(&NSUserDefaultsStringArrayForKey), "@@:@");
 		class_addMethod(user_defaults, sel_registerName("dictionaryForKey:"),
 			reinterpret_cast<IMP>(&NSUserDefaultsDictionaryForKey), "@@:@");
 		class_addMethod(user_defaults, sel_registerName("dictionaryRepresentation"),

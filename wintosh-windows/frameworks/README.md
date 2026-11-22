@@ -229,8 +229,10 @@ language, explicitly registered volatile, and registration domains. Live
 language-list refresh, change notifications, and configurable Foundation
 search-list behavior remain unimplemented. `objectIsForcedForKey:` and
 `objectIsForcedForKey:inDomain:` check administrator-managed keys in the
-application domain. `dictionaryRepresentation` merges all configured domains
-in lookup order and retains the earliest value for duplicate keys.
+application domain. `stringArrayForKey:` returns an immutable array only when
+all stored elements are strings. `dictionaryRepresentation` merges all
+configured domains in lookup order and retains the earliest value for duplicate
+keys.
 `NSMutableString` adds `+string`, UTF-8/string constructors, `-appendString:`,
 `-setString:`, `-deleteCharactersInRange:`, `-replaceCharactersInRange:withString:`,
 and `-insertString:atIndex:`. Range operations and indices use UTF-16 code units

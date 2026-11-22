@@ -573,9 +573,13 @@ matching property-list object or nil for a missing key or a different value
 type. The global domain is read from the prefix-relative `NSGlobalDomain.plist`.
 `addSuiteNamed:` inserts readable suite stores between the app/suite and global
 domains in call order; `removeSuiteNamed:` drops the corresponding read domain.
-Full configurable search-list controls, language preference domains, and
-change notifications remain open. Builds validate compile/link only; no guest
-fixture was run.
+After `NSGlobalDomain`, reads consult language domains in the order from its
+`AppleLanguages` array; if that key is absent, Windows preferred UI languages
+provide the ordered locale fallback. Region-specific domains are checked before
+their base language. Language-domain values participate in `objectForKey:`
+lookups but are not yet exposed through volatile-domain enumeration or lookup.
+Full configurable search-list controls and change notifications remain open.
+Builds validate compile/link only; no guest fixture was run.
 
 ### NSApplication lifecycle selectors (2026-11-16)
 

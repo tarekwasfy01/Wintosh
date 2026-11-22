@@ -16,6 +16,7 @@
 #include <commdlg.h>
 #include <knownfolders.h>
 #include <shlobj.h>
+#include <winnls.h>
 
 #include <algorithm>
 #include <array>
@@ -428,6 +429,7 @@ struct AppKitUserDefaultsState final {
 	darling_windows_preferences_ref managed_store{};
 	darling_windows_preferences_ref global_store{};
 	std::vector<std::pair<std::string, darling_windows_preferences_ref>> suite_stores;
+	std::vector<std::pair<std::string, darling_windows_preferences_ref>> language_stores;
 	std::string selected_suite;
 	std::unordered_map<std::string, std::unordered_map<std::string, std::string>>
 		volatile_domains;
@@ -7735,6 +7737,69 @@ std::string NSUserDefaultsApplicationDomain()
 	return "org.wintosh.application";
 }
 
+void NSUserDefaultsAppendLanguageName(std::string language,
+	std::vector<std::string>& names)
+{
+	if (language.empty() || language.size() > 127 ||
+		language.find_first_of("/\\") != std::string::npos) return;
+	std::replace(language.begin(), language.end(), '-', '_');
+	const auto append = [&names](const std::string& name) {
+		if (!name.empty() && names.size() < 64 &&
+			std::find(names.begin(), names.end(), name) == names.end())
+			names.push_back(name);
+	};
+	append(language);
+	const auto separator = language.find('_');
+	if (separator != std::string::npos) append(language.substr(0, separator));
+}
+
+std::vector<std::string> NSUserDefaultsPreferredLanguages(
+	darling_windows_preferences_ref global_store)
+{
+	std::vector<std::string> languages;
+	try {
+		std::vector<char> plist(16 * 1024 * 1024);
+		if (global_store != nullptr && darling_windows_preferences_get_property_list_xml(
+			global_store, "AppleLanguages", plist.data(), plist.size())) {
+			const auto value = darling_windows_CFPropertyListCreateFromXML(plist.data());
+			if (value != nullptr && darling_windows_CFGetTypeID(value) ==
+				darling_windows_CFArrayGetTypeID()) {
+				const auto array = static_cast<darling_windows_CFArrayRef>(value);
+				const auto count = darling_windows_CFArrayGetCount(array);
+				if (count >= 0 && count <= 64) {
+					for (darling_windows_CFIndex index = 0; index < count; ++index) {
+						const auto item = darling_windows_CFArrayGetValueAtIndex(array, index);
+						if (item == nullptr || darling_windows_CFGetTypeID(item) !=
+							darling_windows_CFStringGetTypeID()) continue;
+						std::array<char, 128> buffer{};
+						if (darling_windows_CFStringGetCString(
+							static_cast<darling_windows_CFStringRef>(item), buffer.data(),
+							static_cast<darling_windows_CFIndex>(buffer.size())))
+							NSUserDefaultsAppendLanguageName(buffer.data(), languages);
+					}
+				}
+			}
+			if (value != nullptr) darling_windows_CFRelease(value);
+		}
+		if (languages.empty()) {
+			ULONG language_count = 0;
+			ULONG buffer_length = 0;
+			GetUserPreferredUILanguages(MUI_LANGUAGE_NAME, &language_count,
+				nullptr, &buffer_length);
+			if (buffer_length > 0 && buffer_length < 65536) {
+				std::vector<wchar_t> buffer(buffer_length);
+				if (GetUserPreferredUILanguages(MUI_LANGUAGE_NAME, &language_count,
+					buffer.data(), &buffer_length)) {
+					for (const wchar_t* item = buffer.data(); *item != L'\0';
+						item += std::wcslen(item) + 1)
+						NSUserDefaultsAppendLanguageName(WideToUtf8(item), languages);
+				}
+			}
+		}
+	} catch (...) { languages.clear(); }
+	return languages;
+}
+
 void NSUserDefaultsFinalize(id object)
 {
 	AppKitUserDefaultsState state{};
@@ -7754,6 +7819,8 @@ void NSUserDefaultsFinalize(id object)
 		darling_windows_preferences_close(state.global_store);
 	for (const auto& suite : state.suite_stores)
 		if (suite.second != nullptr) darling_windows_preferences_close(suite.second);
+	for (const auto& language : state.language_stores)
+		if (language.second != nullptr) darling_windows_preferences_close(language.second);
 	if (state.store != nullptr) darling_windows_preferences_close(state.store);
 }
 
@@ -7773,6 +7840,23 @@ id NSUserDefaultsInitWithDomain(id self, const char* suite)
 	if (suite != nullptr) state.selected_suite = suite;
 	state.global_store = darling_windows_preferences_open("NSGlobalDomain");
 	if (state.global_store == nullptr) {
+		darling_windows_preferences_close(state.store);
+		return nullptr;
+	}
+	try {
+		for (const auto& language : NSUserDefaultsPreferredLanguages(state.global_store)) {
+			auto language_store = darling_windows_preferences_open(language.c_str());
+			if (language_store == nullptr) continue;
+			try { state.language_stores.emplace_back(language, language_store); }
+			catch (...) {
+				darling_windows_preferences_close(language_store);
+				throw;
+			}
+		}
+	} catch (...) {
+		for (const auto& language : state.language_stores)
+			darling_windows_preferences_close(language.second);
+		darling_windows_preferences_close(state.global_store);
 		darling_windows_preferences_close(state.store);
 		return nullptr;
 	}
@@ -7799,6 +7883,8 @@ id NSUserDefaultsInitWithDomain(id self, const char* suite)
 			darling_windows_preferences_close(state.managed_store);
 		if (state.global_store != nullptr)
 			darling_windows_preferences_close(state.global_store);
+		for (const auto& language : state.language_stores)
+			darling_windows_preferences_close(language.second);
 		darling_windows_preferences_close(state.store);
 		return nullptr;
 	}
@@ -7930,6 +8016,10 @@ id NSUserDefaultsObjectForKey(id self, SEL, id key_object)
 	}
 	if (id value = NSUserDefaultsObjectForStore(state.global_store, key);
 		value != nullptr) return value;
+	for (const auto& language : state.language_stores) {
+		if (id value = NSUserDefaultsObjectForStore(language.second, key);
+			value != nullptr) return value;
+	}
 	if (id value = NSUserDefaultsVolatileObjectForKey(state, key); value != nullptr)
 		return value;
 	if (id value = NSUserDefaultsRegistrationObjectForKey(state, key);

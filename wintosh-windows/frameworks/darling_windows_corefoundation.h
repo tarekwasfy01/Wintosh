@@ -878,6 +878,15 @@ extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeRef CFMachPortCreateRunLoo
 	const void* allocator, darling_windows_CFMachPortRef port,
 	darling_windows_CFIndex order);
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeID CFStringGetTypeID();
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeRef CFPreferencesCopyAppValue(
+	darling_windows_CFStringRef key, darling_windows_CFStringRef application_id);
+extern "C" DARLING_CF_GUEST_ABI void CFPreferencesSetAppValue(
+	darling_windows_CFStringRef key, darling_windows_CFTypeRef value,
+	darling_windows_CFStringRef application_id);
+extern "C" DARLING_CF_GUEST_ABI bool CFPreferencesAppSynchronize(
+	darling_windows_CFStringRef application_id);
+extern "C" darling_windows_CFStringRef
+	kCFPreferencesCurrentApplication;
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFStringCreateWithCString(
 	const void* allocator, const char* bytes, std::uint32_t encoding);
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFIndex CFStringGetLength(

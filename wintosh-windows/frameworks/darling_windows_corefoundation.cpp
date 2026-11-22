@@ -1,5 +1,6 @@
 /* Minimal CoreFoundation-compatible primitives; GPL-3.0-only. */
 #include "darling_windows_corefoundation.h"
+#include "darling_windows_preferences.h"
 #include "../loader/darling_windows_macho.h"
 #include "darling_windows_appkit.h"
 #include "../abi/darling_windows_objc.h"
@@ -7810,10 +7811,119 @@ extern "C" DARLING_CF_GUEST_ABI std::uint8_t CFBooleanGetValue(
 	return darling_windows_CFBooleanIsTrue(value) ? 1 : 0;
 }
 
+extern "C" darling_windows_CFStringRef
+	kCFPreferencesCurrentApplication = darling_windows_CFStringCreateWithCString(
+		"kCFPreferencesCurrentApplication");
+
+namespace {
+
+std::string CFPreferencesApplicationDomain(
+	darling_windows_CFStringRef application_id)
+{
+	const char* text = darling_windows_CFStringGetCStringPtr(application_id);
+	std::string domain;
+	if (text != nullptr) domain = text;
+	else {
+		char buffer[4096]{};
+		if (!darling_windows_CFStringGetCString(application_id, buffer,
+			static_cast<darling_windows_CFIndex>(sizeof(buffer)))) return {};
+		domain = buffer;
+	}
+	if (domain.empty() || domain == "kCFPreferencesCurrentApplication") {
+		const auto bundle = darling_windows_CFBundleGetMainBundle();
+		const auto identifier = bundle == nullptr ? nullptr :
+			darling_windows_CFBundleGetIdentifier(bundle);
+		const char* bundle_id = darling_windows_CFStringGetCStringPtr(identifier);
+		if (bundle_id != nullptr && *bundle_id != '\0') return bundle_id;
+		char buffer[4096]{};
+		if (identifier != nullptr && darling_windows_CFStringGetCString(identifier,
+			buffer, static_cast<darling_windows_CFIndex>(sizeof(buffer))) &&
+			buffer[0] != '\0') return buffer;
+		return "org.wintosh.application";
+	}
+	return domain;
+}
+
+bool CFPreferencesString(darling_windows_CFStringRef value, std::string& output)
+{
+	const char* text = darling_windows_CFStringGetCStringPtr(value);
+	if (text != nullptr) {
+		output = text;
+		return !output.empty();
+	}
+	std::vector<char> buffer(1024 * 1024);
+	if (!darling_windows_CFStringGetCString(value, buffer.data(),
+		static_cast<darling_windows_CFIndex>(buffer.size()))) return false;
+	output.assign(buffer.data());
+	return !output.empty();
+}
+
+} // namespace
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeRef CFPreferencesCopyAppValue(
+	darling_windows_CFStringRef key, darling_windows_CFStringRef application_id)
+{
+	std::string key_text;
+	const std::string domain = CFPreferencesApplicationDomain(application_id);
+	if (!CFPreferencesString(key, key_text) || domain.empty()) return nullptr;
+	auto store = darling_windows_preferences_open(domain.c_str());
+	if (store == nullptr) return nullptr;
+	std::vector<char> xml(16 * 1024 * 1024);
+	const bool found = darling_windows_preferences_get_property_list_xml(
+		store, key_text.c_str(), xml.data(), xml.size());
+	darling_windows_preferences_close(store);
+	return found ? darling_windows_CFPropertyListCreateFromXML(xml.data()) : nullptr;
+}
+
+extern "C" DARLING_CF_GUEST_ABI void CFPreferencesSetAppValue(
+	darling_windows_CFStringRef key, darling_windows_CFTypeRef value,
+	darling_windows_CFStringRef application_id)
+{
+	std::string key_text;
+	const std::string domain = CFPreferencesApplicationDomain(application_id);
+	if (!CFPreferencesString(key, key_text) || domain.empty()) return;
+	auto store = darling_windows_preferences_open(domain.c_str());
+	if (store == nullptr) return;
+	if (value == nullptr) {
+		darling_windows_preferences_remove(store, key_text.c_str());
+	} else {
+		const auto xml_value = darling_windows_CFPropertyListCreateXML(value);
+		if (xml_value != nullptr) {
+			std::vector<char> xml(16 * 1024 * 1024);
+			if (darling_windows_CFStringGetCString(xml_value, xml.data(),
+				static_cast<darling_windows_CFIndex>(xml.size())))
+				darling_windows_preferences_set_property_list_xml(store,
+					key_text.c_str(), xml.data());
+			darling_windows_CFRelease(xml_value);
+		}
+	}
+	darling_windows_preferences_close(store);
+}
+
+extern "C" DARLING_CF_GUEST_ABI bool CFPreferencesAppSynchronize(
+	darling_windows_CFStringRef application_id)
+{
+	const std::string domain = CFPreferencesApplicationDomain(application_id);
+	if (domain.empty()) return false;
+	auto store = darling_windows_preferences_open(domain.c_str());
+	if (store == nullptr) return false;
+	const bool result = darling_windows_preferences_synchronize(store);
+	darling_windows_preferences_close(store);
+	return result;
+}
+
 extern "C" std::uintptr_t darling_windows_corefoundation_symbol(const char* name)
 {
 	if (name == nullptr) return 0;
 	if (*name == '_') ++name;
+	if (std::strcmp(name, "CFPreferencesCopyAppValue") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFPreferencesCopyAppValue);
+	if (std::strcmp(name, "CFPreferencesSetAppValue") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFPreferencesSetAppValue);
+	if (std::strcmp(name, "CFPreferencesAppSynchronize") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFPreferencesAppSynchronize);
+	if (std::strcmp(name, "kCFPreferencesCurrentApplication") == 0)
+		return reinterpret_cast<std::uintptr_t>(&kCFPreferencesCurrentApplication);
 	if (std::strcmp(name, "CFRunLoopGetCurrent") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFRunLoopGetCurrent);
 	if (std::strcmp(name, "CFRunLoopGetMain") == 0)

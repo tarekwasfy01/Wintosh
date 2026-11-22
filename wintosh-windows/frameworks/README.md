@@ -232,7 +232,11 @@ search-list behavior remain unimplemented. `objectIsForcedForKey:` and
 application domain. `stringArrayForKey:` returns an immutable array only when
 all stored elements are strings. `dictionaryRepresentation` merges all
 configured domains in lookup order and retains the earliest value for duplicate
-keys.
+keys. CoreFoundation guest code can also use `CFPreferencesCopyAppValue`,
+`CFPreferencesSetAppValue`, and `CFPreferencesAppSynchronize` for the same
+application-domain XML plist store. `kCFPreferencesCurrentApplication` resolves
+to the main bundle identifier; the other user/host/global and suite-search
+variants remain unavailable.
 `NSMutableString` adds `+string`, UTF-8/string constructors, `-appendString:`,
 `-setString:`, `-deleteCharactersInRange:`, `-replaceCharactersInRange:withString:`,
 and `-insertString:atIndex:`. Range operations and indices use UTF-16 code units

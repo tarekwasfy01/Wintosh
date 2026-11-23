@@ -18,6 +18,9 @@ the named runtime gate and the semantic boundary must both be recorded.
    Apple frameworks. WSL1 does not supply the missing Darwin-to-Linux syscall
    edge. The controlled x86_64 binder trampoline is verified
    separately; end-to-end lazy-stub behavior is not yet verified.
+   The detailed backend composition, memory invariants, and staged guest-to-host
+   trap contract are recorded in
+   [`AARCH64-X64-BACKEND.md`](porting/AARCH64-X64-BACKEND.md).
 2. **Foundation/CoreFoundation** — grow the existing C ABI in cohesive value,
    collection, plist, run-loop, and notification families. Gate each family in
    `corefoundation_smoke` and keep Apple/Cocotron provenance separate from

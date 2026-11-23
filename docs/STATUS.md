@@ -2364,6 +2364,18 @@ on their existing checked/deferred path, since code trampolines cannot preserve
 data-reference semantics. The Windows x64 build succeeds; no far-branch Mach-O
 fixture has verified the generated thunk at runtime.
 
+### ARM64 BRANCH26 long-branch thunks (2026-11-23)
+
+The ARM64 relocation path now emits a 16-byte literal trampoline when a
+`BRANCH26` target is outside the instruction's signed 28-bit byte range:
+`LDR X16, #8; BR X16; .quad target`. The original B/BL opcode is preserved and
+retargeted to the thunk, so BL's link register still records the guest return
+address. Thunks deduplicate by absolute target and use the mapped image's
+reserved 64 KiB thunk pool. Unaligned targets and thunks outside the source
+instruction's ±128 MiB range fail explicitly. The local Windows x64 Clang
+runner build succeeds, but this compiles rather than executes the ARM64 path;
+no Windows ARM64 build or far-branch ARM64 Mach-O fixture has exercised it.
+
 ### Shared near window for dynamic x86_64 images (2026-11-23)
 
 Provider placement now uses the main image's `__TEXT` address, avoiding the

@@ -2269,13 +2269,17 @@ void MachOImage::ApplyRelocations(const Mapping& mapping,
 					static_cast<std::intptr_t>(vm_address) + mapping.Slide());
 				const auto delta = static_cast<std::int64_t>(target_with_addend) -
 					static_cast<std::int64_t>(place);
-				if ((delta & 3) != 0 || delta < -(std::int64_t(1) << 27) ||
-					delta >= (std::int64_t(1) << 27)) {
-					throw std::overflow_error("ARM64 BRANCH26 relocation is out of range");
+				if ((delta & 3) != 0) {
+					throw std::runtime_error("ARM64 BRANCH26 target is not instruction aligned");
 				}
-				const auto instruction = read32(index, vm_address);
-				const auto immediate = static_cast<std::uint32_t>((delta >> 2) & 0x03ffffff);
-				write32(vm_address, (instruction & 0xfc000000u) | immediate);
+				if (delta < -(std::int64_t(1) << 27) ||
+					delta >= (std::int64_t(1) << 27)) {
+					ApplyArm64BranchThunk(mapping, vm_address, target_with_addend);
+				} else {
+					const auto instruction = read32(index, vm_address);
+					const auto immediate = static_cast<std::uint32_t>((delta >> 2) & 0x03ffffff);
+					write32(vm_address, (instruction & 0xfc000000u) | immediate);
+				}
 			} else if ((relocation.type == 3 || relocation.type == 5 || relocation.type == 8) &&
 				relocation.pc_relative && relocation.length == 2) {
 				const auto place = static_cast<std::uintptr_t>(
@@ -2888,6 +2892,90 @@ void MachOImage::ApplyBranchThunk(const Mapping& mapping,
 	mapping.m_branch_thunks.emplace_back(target, thunk_address);
 	++mapping.m_thunk_pool_used;
 	ApplyRelative32(mapping, vm_address, thunk_address);
+}
+
+void MachOImage::ApplyArm64BranchThunk(const Mapping& mapping,
+	std::uint64_t vm_address, std::uintptr_t target) const
+{
+	constexpr std::size_t ThunkBytes = 16;
+	constexpr std::size_t ThunkCapacity = 0x10000 / ThunkBytes;
+	const auto existing = std::find_if(mapping.m_branch_thunks.begin(),
+		mapping.m_branch_thunks.end(), [target](const auto& thunk) {
+			return thunk.first == target;
+		});
+	std::uintptr_t thunk_address = 0;
+	if (existing != mapping.m_branch_thunks.end()) {
+		thunk_address = existing->second;
+	} else {
+		if (mapping.m_reservation == nullptr || mapping.m_thunk_pool_used >= ThunkCapacity)
+			throw std::runtime_error("Mach-O ARM64 branch thunk pool is exhausted");
+		const auto pool_base = reinterpret_cast<std::uintptr_t>(mapping.m_reservation) +
+			mapping.m_thunk_pool_offset;
+		thunk_address = pool_base + mapping.m_thunk_pool_used * ThunkBytes;
+		const auto page_address = thunk_address & ~std::uintptr_t(0xfff);
+		const auto page_offset = thunk_address - page_address;
+		if (page_offset == 0 && VirtualAlloc(reinterpret_cast<void*>(page_address), 0x1000,
+			MEM_COMMIT, PAGE_READWRITE) == nullptr) {
+			ThrowLastError("VirtualAlloc(Mach-O ARM64 branch thunk)");
+		}
+		DWORD old_protection = PAGE_NOACCESS;
+		if (!VirtualProtect(reinterpret_cast<void*>(page_address), 0x1000,
+			PAGE_READWRITE, &old_protection)) {
+			ThrowLastError("VirtualProtect(Mach-O ARM64 branch thunk write)");
+		}
+		// ldr x16, #8; br x16; .quad target. The source BL/B instruction
+		// transfers control here; BR preserves the source BL's LR value.
+		const std::array<std::uint32_t, 2> instructions{
+			0x58000050u, // LDR X16, [PC, #8]
+			0xd61f0200u  // BR X16
+		};
+		std::memcpy(reinterpret_cast<void*>(thunk_address), instructions.data(),
+			sizeof(instructions));
+		std::memcpy(reinterpret_cast<void*>(thunk_address + sizeof(instructions)),
+			&target, sizeof(target));
+		DWORD restored_protection = PAGE_NOACCESS;
+		if (!VirtualProtect(reinterpret_cast<void*>(page_address), 0x1000,
+			PAGE_EXECUTE_READ, &restored_protection)) {
+			ThrowLastError("VirtualProtect(Mach-O ARM64 branch thunk execute)");
+		}
+		FlushInstructionCache(GetCurrentProcess(), reinterpret_cast<void*>(thunk_address),
+			ThunkBytes);
+		mapping.m_branch_thunks.emplace_back(target, thunk_address);
+		++mapping.m_thunk_pool_used;
+	}
+	const auto place = static_cast<std::uintptr_t>(
+		static_cast<std::intptr_t>(vm_address) + mapping.Slide());
+	const auto segment = std::find_if(m_segments.begin(), m_segments.end(),
+		[vm_address](const auto& candidate) {
+			return vm_address >= candidate.vm_address &&
+				vm_address - candidate.vm_address <= candidate.vm_size &&
+				candidate.vm_size - (vm_address - candidate.vm_address) >=
+					sizeof(std::uint32_t);
+		});
+	if (segment == m_segments.end())
+		throw std::out_of_range("Mach-O ARM64 branch relocation is outside a segment");
+	const auto delta = static_cast<std::int64_t>(thunk_address) -
+		static_cast<std::int64_t>(place);
+	if ((delta & 3) != 0 || delta < -(std::int64_t(1) << 27) ||
+		delta >= (std::int64_t(1) << 27)) {
+		throw std::overflow_error("Mach-O ARM64 branch thunk is out of BRANCH26 range");
+	}
+	DWORD old_protection = PAGE_NOACCESS;
+	if (!VirtualProtect(reinterpret_cast<void*>(place), sizeof(std::uint32_t),
+		PAGE_READWRITE, &old_protection)) {
+		ThrowLastError("VirtualProtect(Mach-O ARM64 branch relocation)");
+	}
+	std::uint32_t instruction = 0;
+	std::memcpy(&instruction, reinterpret_cast<const void*>(place), sizeof(instruction));
+	const auto immediate = static_cast<std::uint32_t>((delta >> 2) & 0x03ffffff);
+	instruction = (instruction & 0xfc000000u) | immediate;
+	std::memcpy(reinterpret_cast<void*>(place), &instruction, sizeof(instruction));
+	DWORD restored_protection = PAGE_NOACCESS;
+	if (!VirtualProtect(reinterpret_cast<void*>(place), sizeof(instruction),
+		ProtectionFor(segment->initial_protection), &restored_protection)) {
+		ThrowLastError("VirtualProtect(Mach-O ARM64 branch relocation restore)");
+	}
+	FlushInstructionCache(GetCurrentProcess(), reinterpret_cast<void*>(place), sizeof(instruction));
 }
 
 void MachOImage::ApplyRelative32WithAddend(const Mapping& mapping,

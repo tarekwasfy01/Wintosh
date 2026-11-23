@@ -83,3 +83,12 @@ launch-time fallback for classic lazy imports when all symbols resolve.
 `WINTOSH_TRACE_LAZY_BIND=1` reports image classification, slot contents and
 resolver calls while debugging. A lazy-info offset selects and applies every
 action in its sequence through the sequence boundary.
+
+ARM64 `BRANCH26` relocations retain the direct in-range path and now use a
+deduplicated literal-load branch thunk for distant targets. The 16-byte thunk
+loads its absolute target into `x16` and branches without changing `lr`, which
+preserves the call/return contract established by an incoming `BL`. The shared
+64 KiB image reservation limits the thunk's own reach to the source branch;
+out-of-range thunks and unaligned targets are rejected. This is a relocation
+capability only: it does not supply ARM64 CPU translation on x64 Windows or
+prove Darwin/Windows ARM64 call-ABI compatibility.

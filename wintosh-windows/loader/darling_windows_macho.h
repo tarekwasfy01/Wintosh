@@ -432,6 +432,8 @@ public:
 		std::uintptr_t target) const;
 	void ApplyBranchThunk(const Mapping& mapping, std::uint64_t vm_address,
 		std::uintptr_t target) const;
+	void ApplyArm64BranchThunk(const Mapping& mapping, std::uint64_t vm_address,
+		std::uintptr_t target) const;
 	void ApplyRelative32WithAddend(const Mapping& mapping, std::uint64_t vm_address,
 		std::uintptr_t target, std::int32_t addend) const;
 	[[nodiscard]] std::uintptr_t TLVPointerAddress(const Mapping& mapping,

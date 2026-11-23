@@ -64,3 +64,7 @@ see [LOADER-EMULATOR-REFERENCES.md](LOADER-EMULATOR-REFERENCES.md).
 
 The current i386 Mach-O object-linker candidates and staged acceptance model
 are documented in [LINKER-RESEARCH.md](LINKER-RESEARCH.md).
+
+The missing AArch64 execution path on x64 Windows, including its Dynarmic
+callback, guest memory, and import-trap contract, is recorded in
+[AARCH64-X64-BACKEND.md](AARCH64-X64-BACKEND.md).

@@ -44,7 +44,8 @@ dispatcher in that order after normal process return. The fixture also
 exercises guest `dlopen`/`dlsym`/`dlclose` for an ARM64 dylib, including its
 constructor, exported function, DSO-scoped C++ exit callback, and explicit
 `__mod_term_func` while its mapped segments and import thunks are registered
-with the active interpreter.
+with the active interpreter. A dynamic Objective-C class and category also
+run `+load` in order and answer class-method sends before the image closes.
 
 The Objective-C message dispatcher calls `+initialize` once per class, after
 its superclass has initialized. Reentrant messages from the initializing

@@ -15,6 +15,7 @@ extern void *dlsym(void *handle, const char *symbol);
 extern int dlclose(void *handle);
 
 typedef long (*WintoshDynamicAnswer)(void);
+typedef long (*WintoshDynamicObjcSend)(id, SEL);
 
 static void WintoshCxaAtexitMarker(void *bytes)
 {
@@ -245,6 +246,15 @@ int main(int argc, char **argv, char **envp)
 		(WintoshDynamicAnswer)dlsym(dynamic_image, "wintosh_dynamic_answer");
 	if (dynamic_answer == (WintoshDynamicAnswer)0 || dynamic_answer() != 42)
 		return 7;
+	Class dynamic_probe = objc_getClass("WintoshDynamicLoadProbe");
+	SEL dynamic_answer_selector = sel_registerName("dynamicAnswer");
+	SEL dynamic_category_selector = sel_registerName("categoryAnswer");
+	WintoshDynamicObjcSend dynamic_send = (WintoshDynamicObjcSend)objc_msgSend;
+	if (dynamic_probe == (Class)0 || dynamic_answer_selector == (SEL)0 ||
+		dynamic_category_selector == (SEL)0 ||
+		dynamic_send((id)dynamic_probe, dynamic_answer_selector) != 84 ||
+		dynamic_send((id)dynamic_probe, dynamic_category_selector) != 126)
+		return 9;
 	if (dlclose(dynamic_image) != 0)
 		return 8;
 	Class probe = objc_getClass("WintoshProbe");

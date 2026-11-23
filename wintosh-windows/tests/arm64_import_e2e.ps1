@@ -21,6 +21,8 @@ $objcObject = Join-Path $OutputDirectory 'arm64-objc-import.o'
 $objcImage = Join-Path $OutputDirectory 'arm64-objc-import.macho'
 $dynamicSource = Join-Path $PSScriptRoot 'fixtures/arm64-import/dynamic.c'
 $dynamicObject = Join-Path $OutputDirectory 'arm64-dynamic-import.o'
+$dynamicObjcSource = Join-Path $PSScriptRoot 'fixtures/arm64-import/dynamic_objc.m'
+$dynamicObjcObject = Join-Path $OutputDirectory 'arm64-dynamic-objc-import.o'
 $dynamicImage = Join-Path $OutputDirectory 'libarm64-dynamic-import.dylib'
 
 & $clangPath -target arm64-apple-macosx11.0 -fno-stack-protector -O0 `
@@ -39,9 +41,13 @@ if ($LASTEXITCODE -ne 0) { throw "ARM64 Objective-C fixture link failed: $LASTEX
 & $clangPath -target arm64-apple-macosx11.0 -fno-stack-protector -O0 `
 	-c -x c $dynamicSource -o $dynamicObject
 if ($LASTEXITCODE -ne 0) { throw "ARM64 dynamic image compile failed: $LASTEXITCODE" }
+& $clangPath -target arm64-apple-macosx11.0 '-fobjc-runtime=macosx-11.0' `
+	-fno-objc-arc -fno-stack-protector -O0 -c -x objective-c $dynamicObjcSource `
+	-o $dynamicObjcObject
+if ($LASTEXITCODE -ne 0) { throw "ARM64 dynamic Objective-C compile failed: $LASTEXITCODE" }
 & $Linker -arch arm64 -platform_version macos 11.0 14.0 -dylib `
 	-install_name '@rpath/libarm64-dynamic-import.dylib' -undefined dynamic_lookup `
-	-o $dynamicImage $dynamicObject
+	-o $dynamicImage $dynamicObject $dynamicObjcObject
 if ($LASTEXITCODE -ne 0) { throw "ARM64 dynamic image link failed: $LASTEXITCODE" }
 
 $priorEager = [Environment]::GetEnvironmentVariable('WINTOSH_FORCE_EAGER_BIND', 'Process')
@@ -78,9 +84,15 @@ if ($objcText -notmatch 'ARM64_CXA_ATEXIT=PASS' -or
 	$objcText -notmatch 'ARM64_ATEXIT=PASS' -or
 	$objcText -notmatch 'ARM64_TERMINATOR=PASS' -or
 	$objcText -notmatch 'ARM64_DYLIB_INIT=PASS' -or
+	$objcText -notmatch 'ARM64_DYLIB_OBJC_LOAD=PASS' -or
+	$objcText -notmatch 'ARM64_DYLIB_CATEGORY_LOAD=PASS' -or
 	$objcText -notmatch 'ARM64_DYLIB_CXA=PASS' -or
 	$objcText -notmatch 'ARM64_DYLIB_MOD_TERM=PASS' -or
 	$objcText.IndexOf('ARM64_DYLIB_INIT=PASS') -gt
+	$objcText.IndexOf('ARM64_DYLIB_OBJC_LOAD=PASS') -or
+	$objcText.IndexOf('ARM64_DYLIB_OBJC_LOAD=PASS') -gt
+	$objcText.IndexOf('ARM64_DYLIB_CATEGORY_LOAD=PASS') -or
+	$objcText.IndexOf('ARM64_DYLIB_CATEGORY_LOAD=PASS') -gt
 	$objcText.IndexOf('ARM64_DYLIB_CXA=PASS') -or
 	$objcText.IndexOf('ARM64_DYLIB_CXA=PASS') -gt
 	$objcText.IndexOf('ARM64_DYLIB_MOD_TERM=PASS') -or

@@ -89,8 +89,9 @@ markers in that sequence. The ARM64 fixture now also uses guest
 `dlopen`/`dlsym`/`dlclose`: a real ARM64 dylib runs its constructor, exports and
 executes a function, runs its DSO-scoped C++ exit callback and explicit
 `__mod_term_func`, then releases its guest mappings and import thunks. Dynamic
-Objective-C `+load`, larger dependency graphs, and general application bundles
-remain unverified.
+Objective-C class and category `+load` callbacks now run in that guest
+dispatcher; the fixture invokes a method from each before `dlclose`. Larger
+dependency graphs and general application bundles remain unverified.
 
 ## Mach broker update, 2026-11-23
 

@@ -24,7 +24,9 @@ On process return, it checks that guest `__cxa_atexit`, `atexit`, and
 order and emit their markers. It also opens an ARM64 `.dylib` from guest code,
 checks its constructor, resolves and calls an exported function, then closes it
 and checks its DSO-scoped C++ exit callback and `__mod_term_func` before process
-shutdown.
+shutdown. The same dylib registers an Objective-C class and category, checks
+class-before-category `+load`, and answers a method send through each before
+the image closes.
 It also compiles a real Objective-C category into `__objc_catlist` and calls
 its class method through the guest Objective-C dispatch path. `objc_smoke`
 registers category methods/protocols/properties under an image token and checks

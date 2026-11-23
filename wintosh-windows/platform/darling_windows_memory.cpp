@@ -13,6 +13,7 @@
 #include <windows.h>
 
 #include <algorithm>
+#include <iterator>
 #include <limits>
 #include <map>
 #include <mutex>
@@ -96,25 +97,71 @@ bool TryReplaceOwnedAnonymousRange(void* address, std::size_t length,
 		return false;
 	const auto end = start + length;
 	std::lock_guard lock(anonymous_mapping_mutex);
-	auto found = anonymous_mappings.upper_bound(start);
-	if (found == anonymous_mappings.begin())
+	void* reservation = nullptr;
+	std::size_t reservation_bytes = 0;
+	const auto overlapping_reservation = [&](const auto& item) {
+		const auto segment_end = item.first + item.second.bytes;
+		return item.first < end && start < segment_end;
+	};
+	for (const auto& item : anonymous_mappings) {
+		const auto reservation_start = reinterpret_cast<std::uintptr_t>(item.second.reservation);
+		if (reservation_start > (std::numeric_limits<std::uintptr_t>::max)() -
+			item.second.reservation_bytes)
+			continue;
+		if (start >= reservation_start &&
+			end <= reservation_start + item.second.reservation_bytes) {
+			if (reservation != nullptr && reservation != item.second.reservation)
+				return false;
+			reservation = item.second.reservation;
+			reservation_bytes = item.second.reservation_bytes;
+		}
+		if (overlapping_reservation(item) && reservation != nullptr &&
+			reservation != item.second.reservation)
+			return false;
+	}
+	if (reservation == nullptr)
 		return false;
-	--found;
-	const auto reservation = found->second.reservation;
-	auto cursor = start;
-	for (auto it = found; it != anonymous_mappings.end() && cursor < end; ++it) {
+
+	auto updated = anonymous_mappings;
+	for (auto it = updated.begin(); it != updated.end();) {
 		const auto segment_start = it->first;
 		const auto segment_end = segment_start + it->second.bytes;
-		if (it->second.reservation != reservation || segment_start > cursor || segment_end <= cursor)
-			return false;
-		cursor = (std::min)(end, segment_end);
+		if (it->second.reservation != reservation || segment_end <= start || segment_start >= end) {
+			++it;
+			continue;
+		}
+		it = updated.erase(it);
+		if (segment_start < start)
+			updated.emplace(segment_start, AnonymousMappingSegment{start - segment_start,
+				reservation, reservation_bytes});
+		if (segment_end > end)
+			updated.emplace(end, AnonymousMappingSegment{segment_end - end,
+				reservation, reservation_bytes});
 	}
-	if (cursor != end)
+	auto [inserted, success] = updated.emplace(start,
+		AnonymousMappingSegment{length, reservation, reservation_bytes});
+	if (!success)
 		return false;
+	if (inserted != updated.begin()) {
+		auto previous = std::prev(inserted);
+		if (previous->second.reservation == reservation &&
+			previous->first + previous->second.bytes == inserted->first) {
+			previous->second.bytes += inserted->second.bytes;
+			updated.erase(inserted);
+			inserted = previous;
+		}
+	}
+	auto next = std::next(inserted);
+	if (next != updated.end() && next->second.reservation == reservation &&
+		inserted->first + inserted->second.bytes == next->first) {
+		inserted->second.bytes += next->second.bytes;
+		updated.erase(next);
+	}
 	if (!VirtualFree(address, length, MEM_DECOMMIT))
 		ThrowLastError("VirtualFree(MAP_FIXED/MEM_DECOMMIT)");
 	if (VirtualAlloc(address, length, MEM_COMMIT, protection) != address)
 		ThrowLastError("VirtualAlloc(MAP_FIXED/MEM_COMMIT)");
+	anonymous_mappings.swap(updated);
 	return true;
 }
 

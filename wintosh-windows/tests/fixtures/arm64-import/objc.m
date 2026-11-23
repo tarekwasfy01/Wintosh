@@ -104,11 +104,19 @@ static long WintoshMappedMemoryRoundTrip(void)
 	const int protected = mprotect((void *)memory, page_size * 3, 1);
 	const long middle_unmap = WintoshSyscallMunmap((void *)(memory + page_size), page_size);
 	const int repeated_unmap = munmap((void *)(memory + page_size), page_size);
+	void *hole_replacement = WintoshSyscallMmap(
+		(void *)(memory + page_size), page_size, 3, 0x1012, -1, 0);
+	if (hole_replacement != (void *)(memory + page_size))
+		return 21;
+	memory[page_size] = 43;
+	if (memory[page_size] != 43)
+		return 22;
+	const int hole_unmap = munmap((void *)(memory + page_size), page_size);
 	const int left_unmap = munmap((void *)memory, page_size);
 	const long right_unmap = WintoshSyscallMunmap((void *)(memory + page_size * 2), page_size);
 	if (value != 42) return 20;
 	if (protected != 0) return 30;
-	if (middle_unmap != 0 || left_unmap != 0 || right_unmap != 0) return 40;
+	if (middle_unmap != 0 || hole_unmap != 0 || left_unmap != 0 || right_unmap != 0) return 40;
 	if (repeated_unmap != -1) return 50;
 	return 1;
 }

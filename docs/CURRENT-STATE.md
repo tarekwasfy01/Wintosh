@@ -41,7 +41,9 @@ with a persisted byte change, then modifies a `MAP_PRIVATE` view and verifies
 that the file remains unchanged after unmapping.
 Raw `SYS_mmap` 197 and imported `_mmap` can replace page-aligned subranges fully
 covered by one guest-owned anonymous reservation, including pages previously
-set to `PROT_NONE`; the fixture writes through both replacement pages. Cross-
+set to `PROT_NONE`; raw `SYS_mmap` also recommits a previously unmapped hole,
+which imported `_munmap` then frees again. The fixture writes through all
+replacement pages. Cross-
 allocation, image, and file-view replacements remain unsupported. Partial
 file-view unmapping and full syscall error/errno parity remain incomplete. Nested Darwin
 syscalls, Mach traps, broader import catalog coverage, full framework coverage,

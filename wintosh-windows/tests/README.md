@@ -19,7 +19,9 @@ read-only, unmaps the middle page, verifies that the bridge rejects a repeated
 unmap of the hole, then unmaps the left and right pages. The first and last
 releases use raw Darwin `svc #0x80` syscall 73; the middle release and repeated
 unmap use the imported `_munmap` bridge, checking that both paths share the
-same ownership intervals. While the mapping is `PROT_NONE`, raw Darwin
+same ownership intervals. It remaps the middle hole at the same address with
+raw Darwin `SYS_mmap` and frees it through imported `_munmap`. While the
+remaining mapping is `PROT_NONE`, raw Darwin
 `svc #0x80` syscall 197 replaces its middle page with `MAP_FIXED`; the imported
 `_mmap` bridge then replaces the first page. The fixture writes through both
 replacements and restores protection across the full mapping. This covers

@@ -62,10 +62,22 @@ int main()
 		void* fixed_replacement = darling_windows_mmap(
 			static_cast<char*>(partial_mapping) + page_size, page_size, 3,
 			0x1000 | 2 | 0x0010, -1, 0);
+		const auto middle_unmap = fixed_replacement ==
+			static_cast<char*>(partial_mapping) + page_size ? darling_windows_munmap(
+				static_cast<char*>(partial_mapping) + page_size, page_size) : -1;
+		const auto repeated_unmap = darling_windows_munmap(
+			static_cast<char*>(partial_mapping) + page_size, page_size);
+		void* hole_replacement = darling_windows_mmap(
+			static_cast<char*>(partial_mapping) + page_size, page_size, 3,
+			0x1000 | 2 | 0x0010, -1, 0);
+		if (hole_replacement != reinterpret_cast<void*>(-1))
+			static_cast<char*>(hole_replacement)[0] = 'H';
+		const auto hole_unmap = hole_replacement == reinterpret_cast<void*>(-1) ? -1 :
+			darling_windows_munmap(hole_replacement, page_size);
 		if (partial_mapping == reinterpret_cast<void*>(-1) ||
 			fixed_replacement != static_cast<char*>(partial_mapping) + page_size ||
-			darling_windows_munmap(static_cast<char*>(partial_mapping) + page_size, page_size) != 0 ||
-			darling_windows_munmap(static_cast<char*>(partial_mapping) + page_size, page_size) == 0 ||
+			middle_unmap != 0 || repeated_unmap == 0 || hole_replacement !=
+			static_cast<char*>(partial_mapping) + page_size || hole_unmap != 0 ||
 			darling_windows_munmap(partial_mapping, page_size) != 0 ||
 			darling_windows_munmap(static_cast<char*>(partial_mapping) + page_size * 2, page_size) != 0) {
 			if (partial_mapping != reinterpret_cast<void*>(-1))

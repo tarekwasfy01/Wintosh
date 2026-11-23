@@ -183,6 +183,28 @@ satisfy `x mod G = 0`. This removes the Windows allocation-granularity
 constraint for addresses in a free envelope without claiming replacement of
 arbitrary occupied neighboring mappings.
 
+For a fixed replacement wholly inside one tracked file view, let the original
+view be `V₀ = [b,b+n)` and the replacement be `M = [b+ℓ,b+ℓ+k)`. The old
+mapping becomes the left and right file intervals; the middle placeholder is
+then replaced by the new file interval `N`:
+
+```text
+0 ≤ ℓ, 0 < k, ℓ + k ≤ n
+L = [b,b+ℓ)              if ℓ > 0
+R = [b+ℓ+k,b+n)          if ℓ+k < n
+V₁ = L ∪ N ∪ R
+old_offset(v) = o₀ + (v-b)        for v ∈ L ∪ R
+new_offset(v) = oₙ + (v-(b+ℓ))   for v ∈ N
+```
+
+The old file view is first split through the same host transaction used by
+partial `munmap`; this leaves the target interval as an exact placeholder.
+`MapViewOfFile3(MEM_REPLACE_PLACEHOLDER)` then installs the new section view.
+The current implementation only admits a target contained in one tracked,
+placeholder-backed file view. Cross-allocation, image, anonymous-to-file, and
+multi-view replacements still need separate ownership transactions. This path
+has compiled but does not yet have a dedicated runtime regression fixture.
+
 Mit Seitengröße `p` und Seitenzahlen `a = ℓ/p`, `m = k/p` und
 `c = (n-ℓ-k)/p` entspricht die Erhaltung der beiden Restbereiche auf dem
 Seitenvektor `x₀` der Selektionsmatrix

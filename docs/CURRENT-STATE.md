@@ -49,12 +49,15 @@ Windows' 64 KiB allocation granularity; the view is tracked with its mapping
 owner and can be released as a complete view. Older Windows versions fall back
 to the allocation-granularity-aligned `MapViewOfFile` path. File-backed partial
 `munmap` is supported on the placeholder path; fallback views remain whole-view
-only. On placeholder-capable Windows, file-backed `MAP_FIXED` can now target a
+only. On placeholder-capable Windows, file-backed `MAP_FIXED` can target a
 page-aligned address inside a free 64-KiB outer window by splitting that window
-into prefix, view, and suffix placeholders. Exact replacement of an owned whole
-file view is also covered. Replacing an occupied partial file view, and full
-syscall error/errno parity, remain open. This is a memory primitive, not a claim
-that arbitrary macOS apps run.
+into prefix, view, and suffix placeholders. It can also remove a subrange of
+one tracked placeholder-backed file view and replace the resulting placeholder
+with a new file view; the retained left/right views are reconstructed by the
+shared partial-`munmap` path. The latest code compiles locally, but this new
+occupied-view replacement path still needs a runtime regression fixture. Full
+syscall error/errno parity remains open. This is a memory primitive, not a
+claim that arbitrary macOS apps run.
 Raw `SYS_mmap` 197 and imported `_mmap` can replace page-aligned subranges fully
 covered by one guest-owned anonymous reservation, including pages previously
 set to `PROT_NONE`; raw `SYS_mmap` also recommits a previously unmapped hole,

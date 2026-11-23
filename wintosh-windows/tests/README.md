@@ -30,8 +30,11 @@ also maps a page-offset `MAP_SHARED` view with page-granular `MAP_FIXED` into a
 free address after releasing its seed view, then verifies the mapped byte and
 unmaps it. This exercises the placeholder path around Windows' allocation
 granularity. On older fallback paths file-backed views still require a
-whole-view unmap; replacing occupied partial file views, cross-allocation, and
-image mappings with `MAP_FIXED` remain unsupported.
+whole-view unmap. The runtime currently also routes `MAP_FIXED` over a
+subrange of one tracked placeholder-backed file view through partial unmap and
+placeholder replacement, but this occupied-view path does not yet have a
+dedicated regression fixture. Cross-allocation and image replacements remain
+unsupported.
 
 The guest fixture also creates a file with `open`, writes seed bytes, maps it
 with `MAP_SHARED`, changes bytes on both sides of a removed middle page, and

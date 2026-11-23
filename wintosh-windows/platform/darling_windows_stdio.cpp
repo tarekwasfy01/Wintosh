@@ -333,7 +333,29 @@ void* MapFixedPlaceholderFileView(const WindowsPlaceholderApis& apis,
 	return view;
 }
 
-bool ReleaseOwnedFileMapping(void* user_address)
+bool CanPartiallyReplaceOwnedPlaceholderFileMapping(void* user_address,
+	std::size_t bytes)
+{
+	const auto requested_start = reinterpret_cast<std::uintptr_t>(user_address);
+	if (bytes > (std::numeric_limits<std::uintptr_t>::max)() - requested_start)
+		return false;
+	const auto requested_end = requested_start + bytes;
+	std::lock_guard lock(darwin_file_mapping_mutex);
+	for (const auto& [key, mapping] : darwin_file_mappings) {
+		const auto user_start = reinterpret_cast<std::uintptr_t>(key);
+		if (mapping.owner == nullptr || !mapping.owner->placeholder_backed ||
+			mapping.guest_offset != 0 || mapping.bytes == 0 ||
+			mapping.bytes > (std::numeric_limits<std::uintptr_t>::max)() - user_start)
+			continue;
+		const auto user_end = user_start + mapping.bytes;
+		if (requested_start >= user_start && requested_end <= user_end &&
+			(requested_start != user_start || requested_end != user_end))
+			return true;
+	}
+	return false;
+}
+
+bool ReleaseOwnedFileMapping(void* user_address, std::size_t expected_user_bytes)
 {
 	std::lock_guard lock(darwin_file_mapping_mutex);
 	const auto found = darwin_file_mappings.find(user_address);
@@ -341,6 +363,9 @@ bool ReleaseOwnedFileMapping(void* user_address)
 		return false;
 	}
 	const auto mapping = found->second;
+	if (mapping.guest_offset > mapping.bytes ||
+		mapping.bytes - mapping.guest_offset != expected_user_bytes)
+		return false;
 	const auto owner = mapping.owner;
 	if (owner == nullptr || owner->active_views == 0) {
 		darling::windows_host::DarwinErrno::Set(22);
@@ -5157,7 +5182,24 @@ extern "C" void* darling_windows_mmap(void* address, std::size_t length,
 			MapViewOfFile(mapping, desired_access, view_offset_high, view_offset_low, view_bytes);
 	}
 	if (base == nullptr) {
-		if ((flags & map_fixed) != 0 && ReleaseOwnedFileMapping(address)) {
+		if ((flags & map_fixed) != 0 &&
+			CanPartiallyReplaceOwnedPlaceholderFileMapping(address,
+				placeholder_view_bytes) &&
+			darling_windows_munmap(address, placeholder_view_bytes) == 0) {
+			constexpr ULONG mem_replace_placeholder = 0x00004000;
+			base = placeholder_apis.map_view_of_file3 == nullptr ? nullptr :
+				placeholder_apis.map_view_of_file3(mapping, GetCurrentProcess(),
+					address, unsigned_offset, placeholder_view_bytes,
+					mem_replace_placeholder, view_protection, nullptr, 0);
+			if (base != nullptr) {
+				actual_view_bytes = placeholder_view_bytes;
+				guest_offset = 0;
+				mapped_file_offset = unsigned_offset;
+				placeholder_backed = true;
+			}
+		}
+		if (base == nullptr && (flags & map_fixed) != 0 &&
+			ReleaseOwnedFileMapping(address, placeholder_view_bytes)) {
 			base = map_fixed_placeholder();
 			if (base != nullptr) {
 				actual_view_bytes = placeholder_view_bytes;

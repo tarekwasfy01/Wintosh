@@ -93,24 +93,28 @@ reported as supported until both local and broker routes satisfy those
 invariants.
 
 Mach-O parseability, mapping, and guest execution are separate predicates.
-For the architecture boundary inspected on 2026-11-17, `1` means the source
+For the architecture boundary inspected on 2026-11-23, `1` means the source
 contains that stage, `0` means it explicitly rejects the stage, and `?` means
 the stage is not demonstrated on that host:
 
-| Guest Mach-O architecture / stage | Windows x64 | Windows ARM64 |
-|---|---:|---:|
-| x86_64 parse, map, relocation subset | 1 | 1 |
-| x86_64 real entry execution | 1* | 0 |
-| i386 parse, map, relocation subset | 1 | 1 |
-| i386 execution | 0 | 0 |
-| arm64 parse, map, relocation subset | 1 | 1 |
-| arm64 execution | 0 | ? |
+| Guest Mach-O architecture / stage | Windows x64 | Windows ARM64 | Windows Win32 |
+|---|---:|---:|---:|
+| x86_64 parse, map, relocation subset | 1 | 1 | 0 |
+| x86_64 real entry execution | 1* | 0 | 0 |
+| i386 parse, map, relocation subset | 1 | 1 | 1 |
+| i386 entry path (source + host build) | 0 | 0 | 1 |
+| i386 guest execution verified at runtime | 0 | 0 | ? |
+| arm64 parse, map, relocation subset | 1 | 1 | 0 |
+| arm64 execution | 0 | ? | 0 |
 
 `1*` on x64 is limited to Clang builds with the SysV entry bridge. The ARM64
 source path now admits matching-architecture ARM64 code and includes a
 Darwin-start transfer, but execution remains `?` because this environment has
-not produced an ARM64 runner or executed an ARM64 guest. All 32 host C++ source
-files and the ARM64 trampoline compile and archive as 33 ARM64 COFF members;
+not produced an ARM64 runner or executed an ARM64 guest. The Win32 target now
+builds the host library and runner and includes an i386 Darwin-start trampoline;
+runtime guest execution remains `?` until a 32-bit Mach-O fixture is launched.
+All 32 host C++ source files and the ARM64 trampoline compile and archive as
+33 ARM64 COFF members;
 `llvm-readobj` confirms every member has machine type `IMAGE_FILE_MACHINE_ARM64`.
 A fresh ARM64 CMake compiler check still fails at link because `msvcrtd.lib` is
 missing. The x64 host

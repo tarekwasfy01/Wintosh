@@ -6820,7 +6820,11 @@ struct MachOConstantString final {
 	const void* contents;
 	std::uint64_t length;
 };
+#if INTPTR_MAX == INT64_MAX
 static_assert(sizeof(MachOConstantString) == 32);
+#else
+static_assert(sizeof(MachOConstantString) == 24);
+#endif
 
 constexpr std::size_t kDynamicStringLengthOffset = 2 * sizeof(std::uintptr_t);
 constexpr std::size_t kDynamicStringBytesOffset =

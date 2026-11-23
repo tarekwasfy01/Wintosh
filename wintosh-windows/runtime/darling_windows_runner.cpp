@@ -267,20 +267,20 @@ LONG WINAPI GuestExceptionBoundary(PEXCEPTION_POINTERS pointers)
 		static_cast<unsigned long long>(pointers->ContextRecord->Pc) : 0ull;
 	const auto sp = pointers != nullptr && pointers->ContextRecord != nullptr ?
 		static_cast<unsigned long long>(pointers->ContextRecord->Sp) : 0ull;
+#elif defined(_M_IX86)
+	const auto pc = pointers != nullptr && pointers->ContextRecord != nullptr ?
+		static_cast<unsigned long long>(pointers->ContextRecord->Eip) : 0ull;
+	const auto sp = pointers != nullptr && pointers->ContextRecord != nullptr ?
+		static_cast<unsigned long long>(pointers->ContextRecord->Esp) : 0ull;
 #else
-	const auto rip = pointers != nullptr && pointers->ContextRecord != nullptr ?
+	const auto pc = pointers != nullptr && pointers->ContextRecord != nullptr ?
 		static_cast<unsigned long long>(pointers->ContextRecord->Rip) : 0ull;
-	const auto rsp = pointers != nullptr && pointers->ContextRecord != nullptr ?
+	const auto sp = pointers != nullptr && pointers->ContextRecord != nullptr ?
 		static_cast<unsigned long long>(pointers->ContextRecord->Rsp) : 0ull;
 #endif
 	const auto length = std::snprintf(message, sizeof(message),
 		"DARLING_GUEST_EXCEPTION=0x%08lX PC=0x%llX SP=0x%llX\r\n",
-		static_cast<unsigned long>(code),
-#if defined(_M_ARM64)
-		pc, sp);
-#else
-		rip, rsp);
-#endif
+		static_cast<unsigned long>(code), pc, sp);
 	DWORD written = 0;
 	if (length > 0)
 		WriteFile(GetStdHandle(STD_ERROR_HANDLE), message,

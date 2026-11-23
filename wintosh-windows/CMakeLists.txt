@@ -4,6 +4,7 @@ project(wintosh-windows LANGUAGES CXX)
 
 set(WINTOSH_X64_TARGET FALSE)
 set(WINTOSH_ARM64_TARGET FALSE)
+set(WINTOSH_I386_TARGET FALSE)
 if (WIN32 AND CMAKE_SIZEOF_VOID_P EQUAL 8)
     # The guest ABI shims and startup trampolines below are specifically
     # x86_64. Do not infer x64 from pointer width: Windows ARM64 is also 64-bit.
@@ -15,6 +16,10 @@ if (WIN32 AND CMAKE_SIZEOF_VOID_P EQUAL 8)
             set(WINTOSH_ARM64_TARGET TRUE)
         endif()
     endforeach()
+elseif (WIN32 AND CMAKE_SIZEOF_VOID_P EQUAL 4)
+    # A Win32 process runs i386 Darwin instructions directly. Darwin and
+    # Windows share the stack-based i386 cdecl convention at C boundaries.
+    set(WINTOSH_I386_TARGET TRUE)
 endif()
 
 if (WINTOSH_X64_TARGET AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
@@ -48,6 +53,18 @@ elseif (WINTOSH_X64_TARGET)
         COMMAND "${CMAKE_ASM_MASM_COMPILER}" /c /nologo
             "/Fo${WINTOSH_STARTUP_OBJ}" "${WINTOSH_STARTUP_ASM}"
         DEPENDS "${WINTOSH_STARTUP_ASM}"
+        VERBATIM)
+elseif (WINTOSH_I386_TARGET)
+    enable_language(ASM_MASM)
+    set(WINTOSH_I386_STARTUP_ASM
+        "${CMAKE_CURRENT_SOURCE_DIR}/runtime/darling_windows_startup_i386.asm")
+    set(WINTOSH_I386_STARTUP_OBJ
+        "${CMAKE_CURRENT_BINARY_DIR}/darling_windows_startup_i386.obj")
+    add_custom_command(
+        OUTPUT "${WINTOSH_I386_STARTUP_OBJ}"
+        COMMAND "${CMAKE_ASM_MASM_COMPILER}" /c /nologo
+            "/Fo${WINTOSH_I386_STARTUP_OBJ}" "${WINTOSH_I386_STARTUP_ASM}"
+        DEPENDS "${WINTOSH_I386_STARTUP_ASM}"
         VERBATIM)
 endif()
 
@@ -99,6 +116,8 @@ if (WINTOSH_X64_TARGET AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     list(APPEND WINTOSH_HOST_SOURCES ${WINTOSH_CLANG_ASM_OBJECTS})
 elseif (WINTOSH_X64_TARGET)
     list(APPEND WINTOSH_HOST_SOURCES "${WINTOSH_STARTUP_OBJ}")
+elseif (WINTOSH_I386_TARGET)
+    list(APPEND WINTOSH_HOST_SOURCES "${WINTOSH_I386_STARTUP_OBJ}")
 elseif (WINTOSH_ARM64_TARGET AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     list(APPEND WINTOSH_HOST_SOURCES
         "${WINTOSH_ARM64_STARTUP_OBJ}"

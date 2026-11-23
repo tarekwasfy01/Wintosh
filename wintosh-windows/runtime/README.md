@@ -8,6 +8,14 @@ current parser, dyld graph, relocations, bindings, initializers, and Windows
 page protections have been applied. On an x86_64 Windows build this execution
 path is limited to x86_64 Mach-O images whose entry ABI and imported symbols
 are compatible with the Wintosh bridge.
+The Win32 target now compiles the host library and runner, and supports a
+native i386 startup/entry path at source level. Guest execution has not yet
+been verified with a real i386 Mach-O fixture.
+Apple's [dyld4 design notes](https://github.com/apple-oss-distributions/dyld/blob/main/doc/dyld4.md)
+describe process startup with argc, argv, envp, and Apple parameters on the
+initial stack. That current description does not establish compatibility with
+historical i386 dyld/CRT binaries; a real i386 guest launch remains the needed
+runtime check.
 The Windows ARM64 source now admits matching ARM64 guest code through the
 native instruction path and uses a dedicated Darwin-start stack transfer.
 This path is intended for Clang Windows ARM64 builds; ARM64 MSVC remains
@@ -46,8 +54,11 @@ wintosh-run.exe path\to\program arg1 arg2
 ```
 
 `--inspect` performs parsing and dependency/initialization-order inspection
-without entering the image. Execution of 32-bit i386 or ARM64 Mach-O images
-is rejected on x86_64 Windows because no CPU translation layer is included.
+without entering the image. Execution of i386 Mach-O is rejected on x86_64
+Windows because no CPU translation layer is included. A Win32 build now has a
+native i386 entry path, but its guest execution has not yet been verified with
+a real 32-bit Mach-O runtime fixture. ARM64 execution on x86_64 Windows also
+requires a CPU translation layer.
 `--diagnose-host` is independent of an input image and reports the current
 Windows architecture, pointer width, supported native Mach-O target, prefix
 source, preferred universal-binary slice, and the absence of cross-architecture
@@ -58,16 +69,20 @@ Darwin adapter.  It deliberately does not download or invent Apple system
 libraries; the current `libSystem` and `libobjc` boundary is provided by the
 host symbol table, while real Darwin dylibs and frameworks remain a separate
 licensed runtime component.
-`--startup-abi darwin` selects the native x86_64 or ARM64 trampoline for a
-matching-architecture Mach-O whose entrypoint is a Darwin `crt1`/`dyld` start
-routine. The ARM64 path requires Clang and remains source/build verified only;
-an ARM64 runner executable and guest runtime have not yet been verified.
+`--startup-abi darwin` selects the native x86_64, i386, or ARM64 trampoline
+for a matching-architecture Mach-O whose entrypoint is a Darwin `crt1`/`dyld`
+start routine. The Win32 i386 library and runner build successfully and use a
+MASM trampoline to install argc, argv, envp, and Apple parameters on the guest
+initial stack. A real i386 guest launch remains unverified. The ARM64 path
+requires Clang and remains source/build verified only; an ARM64 runner
+executable and guest runtime have not yet been verified.
 `--startup-abi main` is the real compatible `int(argc, argv, envp)` path and
-requires a Clang Windows build. On x86_64 it uses Clang's System-V ABI support;
-on ARM64 the basic integer/pointer entry parameters use x0-x2. Apple ARM64
-differs from Windows for other ABI cases, so this does not establish general
-ARM64 Objective-C or framework-call compatibility. The MSVC build fails closed
-before entering guest code.
+requires Clang's System-V ABI support on x86_64. On Win32, Darwin i386 and
+Windows use the same stack-based cdecl convention, so the MSVC build can enter
+this i386 path. On ARM64 the basic integer/pointer entry parameters use x0-x2.
+Apple ARM64 differs from Windows for other ABI cases, so this does not establish
+general ARM64 Objective-C or framework-call compatibility. Other MSVC
+architecture paths fail closed before entering guest code.
 `--startup-abi synthetic-main` is reserved for the repository's marked
 synthetic fixtures, which intentionally use the Windows-compatible calling
 convention and are not proof of Apple ABI execution.

@@ -52,7 +52,7 @@ void RemoveActiveLazyBindingSession(const MachOLazyBindingSession* session) noex
 }
 }
 
-#if defined(_WIN64) && defined(__clang__)
+#if (defined(_WIN64) && defined(__clang__)) || defined(_M_IX86)
 extern "C" void darling_windows_enter_darwin_start(void* entry, void* darwin_stack);
 #endif
 
@@ -3120,7 +3120,7 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 		throw std::logic_error("Darwin Apple parameter vector must be null terminated");
 	}
 	if (entry_abi == DarwinEntryAbi::DarwinStart) {
-	#if defined(_WIN64) && defined(__clang__)
+	#if (defined(_WIN64) && defined(__clang__)) || defined(_M_IX86)
 		// Darwin's crt1 entry receives argc at the initial stack pointer, followed by argv, envp and
 		// the Apple parameter vector. Keep all pointed-to storage alive until
 		// the non-returning entry transfer.
@@ -3168,11 +3168,11 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 		throw std::runtime_error("Darwin startup entry returned unexpectedly");
 #else
 		throw std::runtime_error(
-			"Darwin startup transfer requires a supported Clang Windows host architecture");
+			"Darwin startup transfer requires a supported Windows host architecture");
 #endif
 	}
 	if (entry_abi == DarwinEntryAbi::CompatibleMain) {
-#if !defined(__clang__)
+#if !defined(__clang__) && !defined(_M_IX86)
 		throw std::runtime_error(
 			"real Mach-O execution requires a Clang build with System-V ABI support");
 #endif

@@ -1117,9 +1117,10 @@ an actual component-local license/notice file or separately recorded evidence
 are marked accordingly; text-marker matches in fetched candidates remain
 manual review material.
 
-The Win32 build now fails closed for x64-only Windows `CONTEXT` register
-flavors and the Win32 Mach ABI smoke reports that boundary explicitly; the
-remaining 32-bit metadata and host primitive tests still pass. CI runs the
+The Win32 build now compiles the host library and runner. It includes i386
+exception PC/SP reporting and a MASM Darwin-start trampoline that installs the
+initial argc/argv/envp/apple stack before transferring to guest code. No
+32-bit Mach-O runtime fixture has yet exercised that transfer. CI runs the
 complete suite serially because filesystem, path and ConPTY fixtures share
 process-global Windows state.
 
@@ -2046,11 +2047,13 @@ spelling in addition to the existing `sleep` entry point. These aliases retain
 the current whole-second Windows behavior and do not claim Darwin interruption
 or cancellation semantics.
 
-The runtime README now records the actual Mach-O execution boundary: the
-Windows x86_64 runner can enter compatible x86_64 images after mapping,
-relocations, bindings, initializers, and protection setup, while i386 and
-ARM64 images remain rejected without a CPU translation layer. This is loader
-execution evidence, not proof of full unmodified macOS application support.
+The runtime README records the Mach-O execution boundary: the Windows x86_64
+runner enters compatible x86_64 images after mapping, relocations, bindings,
+initializers, and protection setup. The Win32 target now builds and includes an
+i386 Darwin-start stack transfer; the guest-entry path has not yet been
+validated with a real 32-bit Mach-O fixture. ARM64 instructions still require
+a CPU translation layer on x86_64 Windows. This is loader execution evidence,
+not proof of full unmodified macOS application support.
 The dyld smoke now also executes a separate minimal `__mod_init_func` fixture
 and reports `DYLD_MOD_INIT=PASS`; complete ObjC runtime initialization and
 full dyld parity remain open.
@@ -2331,7 +2334,7 @@ addend. Rebase targets receive the image slide; tagged non-pointer values are
 restored by subtracting dyld's `(64 MiB + max_valid_pointer) / 2` bias. The
 fixup writer uses the 32-bit absolute path and rejects width/image mismatches.
 The Windows x64 build compiles this parser path, but it cannot execute 32-bit
-Mach-O on its 64-bit host. A separate Win32 build was attempted and is currently
-blocked by the repository's 64-bit-only ABI-bridge assertion and x64-specific
-`CONTEXT.Rip/Rsp` use in the runner. The Win32 host target and a 32-bit chained
-Mach-O runtime fixture remain unimplemented.
+Mach-O on its 64-bit host. The Win32 host library and runner now build, and the
+Win32 path contains a native i386 Darwin-start stack transfer. Runtime execution
+of a 32-bit chained-fixup Mach-O has not yet been demonstrated; metadata and
+fixup parsing alone are not guest execution evidence.

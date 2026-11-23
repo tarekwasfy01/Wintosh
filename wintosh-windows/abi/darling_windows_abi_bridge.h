@@ -22,7 +22,11 @@
 
 namespace darling::windows_host::abi {
 
-static_assert(sizeof(void*) == 8, "Darling ABI bridge is 64-bit only");
+// On Win32, i386 Darwin uses the same stack-based cdecl convention as the
+// Windows host. On x64/ARM64 the architecture-specific bridge selects the
+// corresponding Darwin register ABI.
+static_assert(sizeof(void*) == 4 || sizeof(void*) == 8,
+	"Darling ABI bridge requires a 32-bit or 64-bit Windows host");
 
 template <typename R, typename... A>
 using GuestFn = DARLING_SYSV R (*)(A...);

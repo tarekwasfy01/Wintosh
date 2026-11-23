@@ -26,8 +26,9 @@ checks its constructor, resolves and calls an exported function, then closes it
 and checks its DSO-scoped C++ exit callback and `__mod_term_func` before process
 shutdown. The same dylib registers an Objective-C class and category, checks
 class-before-category `+load`, and answers a method send through each before
-the image closes. That client dylib also loads a provider through `@rpath`
-using a bare `@loader_path` runpath; the fixture checks provider-before-client
+the image closes. That client dylib loads a provider through `@rpath` using a
+bare `@loader_path` runpath. The provider loads a third dylib through the
+inherited runpath without declaring one itself; the fixture checks leaf-to-root
 initialization and reverse termination order.
 It also compiles a real Objective-C category into `__objc_catlist` and calls
 its class method through the guest Objective-C dispatch path. `objc_smoke`

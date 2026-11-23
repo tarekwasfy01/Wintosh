@@ -92,8 +92,9 @@ executes a function, runs its DSO-scoped C++ exit callback and explicit
 Objective-C class and category `+load` callbacks now run in that guest
 dispatcher; the fixture invokes a method from each before `dlclose`. The image
 also links to a second ARM64 dylib through `@rpath`, with `@loader_path` in
-`LC_RPATH`; the fixture checks dependency-before-client initialization and
-reverse dependency/client termination order. This covers a two-image dynamic
+`LC_RPATH`. That provider itself depends on a third dylib without a local
+runpath, exercising inherited root runpaths. The fixture checks leaf-to-root
+initialization and reverse termination. This covers one three-image dynamic
 graph only; larger graphs and general application bundles remain unverified.
 
 ## Mach broker update, 2026-11-23

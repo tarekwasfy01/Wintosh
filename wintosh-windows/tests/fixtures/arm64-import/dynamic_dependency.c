@@ -1,6 +1,7 @@
 /* Original Wintosh ARM64 dynamic dependency fixture; GPL-3.0-only. */
 
 extern int write(int descriptor, const void *bytes, unsigned long length);
+extern long wintosh_dynamic_nested_dependency_answer(void);
 
 __attribute__((constructor)) static void WintoshDependencyConstructor(void)
 {
@@ -25,5 +26,5 @@ static void (*WintoshDependencyTerminator)(void) = WintoshDependencyModuleTermin
 
 long wintosh_dynamic_dependency_answer(void)
 {
-	return 30;
+	return wintosh_dynamic_nested_dependency_answer() + 15;
 }

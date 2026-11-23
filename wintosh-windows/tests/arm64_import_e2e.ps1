@@ -24,6 +24,9 @@ $dynamicObject = Join-Path $OutputDirectory 'arm64-dynamic-import.o'
 $dependencySource = Join-Path $PSScriptRoot 'fixtures/arm64-import/dynamic_dependency.c'
 $dependencyObject = Join-Path $OutputDirectory 'arm64-dynamic-dependency.o'
 $dependencyImage = Join-Path $OutputDirectory 'libarm64-dynamic-dependency.dylib'
+$nestedDependencySource = Join-Path $PSScriptRoot 'fixtures/arm64-import/dynamic_nested_dependency.c'
+$nestedDependencyObject = Join-Path $OutputDirectory 'arm64-dynamic-nested-dependency.o'
+$nestedDependencyImage = Join-Path $OutputDirectory 'libarm64-dynamic-nested-dependency.dylib'
 $dynamicObjcSource = Join-Path $PSScriptRoot 'fixtures/arm64-import/dynamic_objc.m'
 $dynamicObjcObject = Join-Path $OutputDirectory 'arm64-dynamic-objc-import.o'
 $dynamicImage = Join-Path $OutputDirectory 'libarm64-dynamic-import.dylib'
@@ -47,9 +50,16 @@ if ($LASTEXITCODE -ne 0) { throw "ARM64 dynamic image compile failed: $LASTEXITC
 & $clangPath -target arm64-apple-macosx11.0 -fno-stack-protector -O0 `
 	-c -x c $dependencySource -o $dependencyObject
 if ($LASTEXITCODE -ne 0) { throw "ARM64 dependency image compile failed: $LASTEXITCODE" }
+& $clangPath -target arm64-apple-macosx11.0 -fno-stack-protector -O0 `
+	-c -x c $nestedDependencySource -o $nestedDependencyObject
+if ($LASTEXITCODE -ne 0) { throw "ARM64 nested dependency compile failed: $LASTEXITCODE" }
+& $Linker -arch arm64 -platform_version macos 11.0 14.0 -dylib `
+	-install_name '@rpath/libarm64-dynamic-nested-dependency.dylib' `
+	-undefined dynamic_lookup -o $nestedDependencyImage $nestedDependencyObject
+if ($LASTEXITCODE -ne 0) { throw "ARM64 nested dependency link failed: $LASTEXITCODE" }
 & $Linker -arch arm64 -platform_version macos 11.0 14.0 -dylib `
 	-install_name '@rpath/libarm64-dynamic-dependency.dylib' -undefined dynamic_lookup `
-	-o $dependencyImage $dependencyObject
+	-o $dependencyImage $dependencyObject $nestedDependencyImage
 if ($LASTEXITCODE -ne 0) { throw "ARM64 dependency image link failed: $LASTEXITCODE" }
 & $clangPath -target arm64-apple-macosx11.0 '-fobjc-runtime=macosx-11.0' `
 	-fno-objc-arc -fno-stack-protector -O0 -c -x objective-c $dynamicObjcSource `
@@ -96,12 +106,17 @@ if ($objcText -notmatch 'ARM64_CXA_ATEXIT=PASS' -or
 	$objcText -notmatch 'ARM64_TERMINATOR=PASS' -or
 	$objcText -notmatch 'ARM64_DYLIB_INIT=PASS' -or
 	$objcText -notmatch 'ARM64_DEPENDENCY_INIT=PASS' -or
+	$objcText -notmatch 'ARM64_NESTED_DEPENDENCY_INIT=PASS' -or
 	$objcText -notmatch 'ARM64_DYLIB_OBJC_LOAD=PASS' -or
 	$objcText -notmatch 'ARM64_DYLIB_CATEGORY_LOAD=PASS' -or
 	$objcText -notmatch 'ARM64_DYLIB_CXA=PASS' -or
 	$objcText -notmatch 'ARM64_DYLIB_MOD_TERM=PASS' -or
 	$objcText -notmatch 'ARM64_DEPENDENCY_CXA=PASS' -or
 	$objcText -notmatch 'ARM64_DEPENDENCY_MOD_TERM=PASS' -or
+	$objcText -notmatch 'ARM64_NESTED_DEPENDENCY_CXA=PASS' -or
+	$objcText -notmatch 'ARM64_NESTED_DEPENDENCY_MOD_TERM=PASS' -or
+	$objcText.IndexOf('ARM64_NESTED_DEPENDENCY_INIT=PASS') -gt
+	$objcText.IndexOf('ARM64_DEPENDENCY_INIT=PASS') -or
 	$objcText.IndexOf('ARM64_DEPENDENCY_INIT=PASS') -gt
 	$objcText.IndexOf('ARM64_DYLIB_INIT=PASS') -or
 	$objcText.IndexOf('ARM64_DYLIB_INIT=PASS') -gt
@@ -117,6 +132,10 @@ if ($objcText -notmatch 'ARM64_CXA_ATEXIT=PASS' -or
 	$objcText.IndexOf('ARM64_DEPENDENCY_CXA=PASS') -gt
 	$objcText.IndexOf('ARM64_DEPENDENCY_MOD_TERM=PASS') -or
 	$objcText.IndexOf('ARM64_DYLIB_MOD_TERM=PASS') -gt
+	$objcText.IndexOf('ARM64_NESTED_DEPENDENCY_CXA=PASS') -or
+	$objcText.IndexOf('ARM64_NESTED_DEPENDENCY_CXA=PASS') -gt
+	$objcText.IndexOf('ARM64_NESTED_DEPENDENCY_MOD_TERM=PASS') -or
+	$objcText.IndexOf('ARM64_DEPENDENCY_MOD_TERM=PASS') -gt
 	$objcText.IndexOf('ARM64_CXA_ATEXIT=PASS') -or
 	$objcText.IndexOf('ARM64_CXA_ATEXIT=PASS') -gt
 	$objcText.IndexOf('ARM64_ATEXIT=PASS') -or

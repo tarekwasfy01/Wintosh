@@ -46,9 +46,10 @@ constructor, exported function, DSO-scoped C++ exit callback, and explicit
 `__mod_term_func` while its mapped segments and import thunks are registered
 with the active interpreter. A dynamic Objective-C class and category also
 run `+load` in order and answer class-method sends before the image closes.
-The dynamic ARM64 fixture has a provider dylib dependency resolved through
-`@rpath` and a bare `@loader_path` entry; it checks dependency-first startup
-and reverse shutdown. This is one two-image graph, not broad bundle coverage.
+The dynamic ARM64 fixture resolves a three-image dylib graph through a bare
+`@loader_path` runpath inherited from the root image; the leaf and middle
+images declare no local runpath. It checks dependency-first startup and reverse
+shutdown. This is one small graph, not broad bundle coverage.
 
 The Objective-C message dispatcher calls `+initialize` once per class, after
 its superclass has initialized. Reentrant messages from the initializing

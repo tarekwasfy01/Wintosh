@@ -154,6 +154,14 @@ static long WintoshFileMappedRoundTrip(const char *path)
 		close(descriptor);
 		return 64;
 	}
+	void *fixed_subgranular = mmap((void *)(memory + 4096), 4096, 3,
+		0x0001 | 0x0010, descriptor, 4096);
+	if (fixed_subgranular != (void *)(memory + 4096) ||
+		*(volatile char *)fixed_subgranular != 'I' ||
+		munmap(fixed_subgranular, 4096) != 0) {
+		close(descriptor);
+		return 72;
+	}
 	if (lseek(descriptor, 0, 0) != 0) {
 		close(descriptor);
 		return 65;

@@ -25,9 +25,13 @@ remaining mapping is `PROT_NONE`, raw Darwin
 `svc #0x80` syscall 197 replaces its middle page with `MAP_FIXED`; the imported
 `_mmap` bridge then replaces the first page. The fixture writes through both
 replacements and restores protection across the full mapping. This covers
-partial anonymous mappings owned by the ARM64 guest bridge. File-backed views
-still require a whole-view unmap; cross-allocation, image, and file-view
-replacements with `MAP_FIXED` remain unsupported.
+partial anonymous mappings owned by the ARM64 guest bridge. The file fixture
+also maps a page-offset `MAP_SHARED` view with page-granular `MAP_FIXED` into a
+free address after releasing its seed view, then verifies the mapped byte and
+unmaps it. This exercises the placeholder path around Windows' allocation
+granularity. On older fallback paths file-backed views still require a
+whole-view unmap; replacing occupied partial file views, cross-allocation, and
+image mappings with `MAP_FIXED` remain unsupported.
 
 The guest fixture also creates a file with `open`, writes seed bytes, maps it
 with `MAP_SHARED`, changes bytes on both sides of a removed middle page, and

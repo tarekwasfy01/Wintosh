@@ -182,6 +182,25 @@ int main()
 			if (fixed_file_descriptor >= 0) darling_windows_close(fixed_file_descriptor);
 			throw std::runtime_error("fixed file mmap replacement failed");
 		}
+		const int subgranular_fixed_descriptor = darling_windows_open(file_name.c_str(), 0x0002, 0);
+		void* fixed_seed_view = subgranular_fixed_descriptor < 0 ?
+			reinterpret_cast<void*>(-1) : darling_windows_mmap(nullptr, 4096, 3,
+			0x0001, subgranular_fixed_descriptor, offset_page);
+		void* fixed_subgranular_target = fixed_seed_view == reinterpret_cast<void*>(-1) ?
+			reinterpret_cast<void*>(-1) : static_cast<char*>(fixed_seed_view) + 4096;
+		const auto fixed_seed_unmap = fixed_seed_view == reinterpret_cast<void*>(-1) ? -1 :
+			darling_windows_munmap(fixed_seed_view, 4096);
+		void* subgranular_fixed_view = fixed_seed_unmap != 0 ?
+			reinterpret_cast<void*>(-1) : darling_windows_mmap(fixed_subgranular_target,
+			4096, 3, 0x0001 | 0x0010, subgranular_fixed_descriptor, offset_page);
+		if (subgranular_fixed_view != fixed_subgranular_target ||
+			static_cast<char*>(subgranular_fixed_view)[0] != 'S' ||
+			darling_windows_munmap(subgranular_fixed_view, 4096) != 0 ||
+			darling_windows_close(subgranular_fixed_descriptor) != 0) {
+			if (subgranular_fixed_descriptor >= 0)
+				darling_windows_close(subgranular_fixed_descriptor);
+			throw std::runtime_error("sub-granularity MAP_FIXED file mapping failed");
+		}
 		const int offset_verify_descriptor = darling_windows_open(file_name.c_str(), 0, 0);
 		char offset_verify[4]{};
 		const auto offset_seek = offset_verify_descriptor < 0 ? -1 :

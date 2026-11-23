@@ -159,6 +159,30 @@ V₁ = L ∪ R = V₀ \ U
 offset₁(v) = offset₀ + (v-b)    für jedes v ∈ L ∪ R
 ```
 
+Page-granular file-backed `MAP_FIXED` on Windows is represented by a larger
+allocation-granularity placeholder window. Let `G` be Windows' allocation
+granularity, `p` Darwin's page size, `x` the requested guest address, and `s`
+the page-rounded view length. The outer reservation starts at the nearest
+lower `G` boundary; its prefix and suffix lengths are:
+
+```text
+q = G floor(x / G)
+r = x - q
+t = G ceil((r + s) / G) - (r + s)
+O = [q, q + r + s + t)
+P = [q, x)                  prefix placeholder, length r
+V = [x, x + s)              file view, length s
+S = [x + s, q + r + s + t)  suffix placeholder, length t
+O = P ∪ V ∪ S
+```
+
+The implementation reserves `O` only when the entire outer window is free,
+splits and releases `P` and `S`, then replaces the exact `V` placeholder with
+the file view. The file offset must satisfy `offset mod p = 0`; `x` need not
+satisfy `x mod G = 0`. This removes the Windows allocation-granularity
+constraint for addresses in a free envelope without claiming replacement of
+arbitrary occupied neighboring mappings.
+
 Mit Seitengröße `p` und Seitenzahlen `a = ℓ/p`, `m = k/p` und
 `c = (n-ℓ-k)/p` entspricht die Erhaltung der beiden Restbereiche auf dem
 Seitenvektor `x₀` der Selektionsmatrix

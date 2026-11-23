@@ -260,6 +260,79 @@ bool MapPlaceholderFileView(const std::shared_ptr<DarwinFileMappingOwner>& owner
 		nullptr, 0) != nullptr;
 }
 
+void* MapFixedPlaceholderFileView(const WindowsPlaceholderApis& apis,
+	HANDLE mapping, void* requested_base, std::uint64_t file_offset,
+	std::size_t bytes, DWORD protection, std::uint64_t allocation_granularity)
+{
+	if (apis.virtual_alloc2 == nullptr || apis.map_view_of_file3 == nullptr ||
+		apis.unmap_view_of_file2 == nullptr || allocation_granularity == 0)
+		return nullptr;
+	const auto requested = reinterpret_cast<std::uintptr_t>(requested_base);
+	if (bytes > (std::numeric_limits<std::uintptr_t>::max)() - requested)
+		return nullptr;
+	const auto granularity = static_cast<std::uintptr_t>(allocation_granularity);
+	const auto reservation = requested - requested % granularity;
+	const auto prefix = static_cast<std::size_t>(requested - reservation);
+	if (prefix > (std::numeric_limits<std::size_t>::max)() - bytes)
+		return nullptr;
+	const auto needed = prefix + bytes;
+	if (needed > (std::numeric_limits<std::size_t>::max)() -
+		static_cast<std::size_t>(granularity - 1))
+		return nullptr;
+	const auto reservation_bytes = ((needed + static_cast<std::size_t>(granularity) - 1) /
+		static_cast<std::size_t>(granularity)) * static_cast<std::size_t>(granularity);
+	constexpr ULONG mem_reserve = 0x00002000;
+	constexpr ULONG mem_reserve_placeholder = 0x00040000;
+	constexpr ULONG mem_replace_placeholder = 0x00004000;
+	constexpr ULONG mem_release = 0x00008000;
+	constexpr ULONG mem_preserve_placeholder = 0x00000002;
+	constexpr ULONG mem_coalesce_placeholders = 0x00000001;
+	void* outer = apis.virtual_alloc2(GetCurrentProcess(),
+		reinterpret_cast<void*>(reservation), reservation_bytes,
+		mem_reserve | mem_reserve_placeholder, PAGE_NOACCESS, nullptr, 0);
+	if (outer == nullptr)
+		return nullptr;
+	void* target_placeholder = outer;
+	if (prefix != 0) {
+		if (!VirtualFree(outer, prefix, MEM_RELEASE | mem_preserve_placeholder)) {
+			(void)VirtualFree(outer, 0, MEM_RELEASE);
+			return nullptr;
+		}
+		target_placeholder = static_cast<std::uint8_t*>(outer) + prefix;
+		if (!VirtualFree(outer, 0, MEM_RELEASE)) {
+			(void)VirtualFree(outer, reservation_bytes,
+				MEM_RELEASE | mem_coalesce_placeholders);
+			(void)VirtualFree(outer, 0, MEM_RELEASE);
+			return nullptr;
+		}
+	}
+	const auto suffix_bytes = reservation_bytes - prefix - bytes;
+	if (suffix_bytes != 0) {
+		if (!VirtualFree(target_placeholder, bytes,
+			MEM_RELEASE | mem_preserve_placeholder)) {
+			(void)VirtualFree(target_placeholder, 0, MEM_RELEASE);
+			return nullptr;
+		}
+		void* suffix = static_cast<std::uint8_t*>(target_placeholder) + bytes;
+		if (!VirtualFree(suffix, 0, MEM_RELEASE)) {
+			(void)VirtualFree(target_placeholder, bytes + suffix_bytes,
+				MEM_RELEASE | mem_coalesce_placeholders);
+			(void)VirtualFree(target_placeholder, 0, MEM_RELEASE);
+			return nullptr;
+		}
+	}
+	void* view = apis.map_view_of_file3(mapping, GetCurrentProcess(),
+		target_placeholder, file_offset, bytes, mem_replace_placeholder,
+		protection, nullptr, 0);
+	if (view == nullptr) {
+		const DWORD error = GetLastError();
+		(void)VirtualFree(target_placeholder, 0, MEM_RELEASE);
+		SetLastError(error);
+		return nullptr;
+	}
+	return view;
+}
+
 bool ReleaseOwnedFileMapping(void* user_address)
 {
 	std::lock_guard lock(darwin_file_mapping_mutex);
@@ -5015,16 +5088,15 @@ extern "C" void* darling_windows_mmap(void* address, std::size_t length,
 		desired_access |= FILE_MAP_WRITE;
 	}
 	void* requested_base = nullptr;
+	bool requested_base_granularity_aligned = false;
 	if ((flags & map_fixed) != 0) {
 		if (address == nullptr || reinterpret_cast<std::uintptr_t>(address) < delta) {
 			darling::windows_host::DarwinErrno::Set(22);
 			return reinterpret_cast<void*>(-1);
 		}
 		requested_base = static_cast<std::uint8_t*>(address) - delta;
-		if ((reinterpret_cast<std::uintptr_t>(requested_base) % granularity) != 0) {
-			darling::windows_host::DarwinErrno::Set(95);
-			return reinterpret_cast<void*>(-1);
-		}
+		requested_base_granularity_aligned =
+			reinterpret_cast<std::uintptr_t>(requested_base) % granularity == 0;
 	}
 	const auto high = static_cast<DWORD>(mapping_size >> 32);
 	const auto low = static_cast<DWORD>(mapping_size & 0xffffffffu);
@@ -5042,7 +5114,19 @@ extern "C" void* darling_windows_mmap(void* address, std::size_t length,
 	std::size_t guest_offset = delta;
 	std::uint64_t mapped_file_offset = aligned_offset;
 	bool placeholder_backed = false;
-	if ((flags & map_fixed) == 0 && placeholder_apis.virtual_alloc2 != nullptr &&
+	auto map_fixed_placeholder = [&]() -> void* {
+		return MapFixedPlaceholderFileView(placeholder_apis, mapping, address,
+			unsigned_offset, placeholder_view_bytes, view_protection, granularity);
+	};
+	if ((flags & map_fixed) != 0) {
+		base = map_fixed_placeholder();
+		if (base != nullptr) {
+			actual_view_bytes = placeholder_view_bytes;
+			guest_offset = 0;
+			mapped_file_offset = unsigned_offset;
+			placeholder_backed = true;
+		}
+	} else if (placeholder_apis.virtual_alloc2 != nullptr &&
 		placeholder_apis.map_view_of_file3 != nullptr &&
 		placeholder_apis.unmap_view_of_file2 != nullptr) {
 		constexpr ULONG mem_reserve = 0x00002000;
@@ -5067,16 +5151,23 @@ extern "C" void* darling_windows_mmap(void* address, std::size_t length,
 	}
 	if (base == nullptr) {
 		base = (flags & map_fixed) != 0 ?
+			(requested_base_granularity_aligned ?
 			MapViewOfFileEx(mapping, desired_access, view_offset_high, view_offset_low,
-				view_bytes, requested_base) :
+				view_bytes, requested_base) : nullptr) :
 			MapViewOfFile(mapping, desired_access, view_offset_high, view_offset_low, view_bytes);
 	}
 	if (base == nullptr) {
-		if ((flags & map_fixed) != 0) {
-			(void)ReleaseOwnedFileMapping(address);
-			base = (flags & map_fixed) != 0 ?
-				MapViewOfFileEx(mapping, desired_access, view_offset_high, view_offset_low,
-					view_bytes, requested_base) : nullptr;
+		if ((flags & map_fixed) != 0 && ReleaseOwnedFileMapping(address)) {
+			base = map_fixed_placeholder();
+			if (base != nullptr) {
+				actual_view_bytes = placeholder_view_bytes;
+				guest_offset = 0;
+				mapped_file_offset = unsigned_offset;
+				placeholder_backed = true;
+			} else if (requested_base_granularity_aligned) {
+				base = MapViewOfFileEx(mapping, desired_access, view_offset_high,
+					view_offset_low, view_bytes, requested_base);
+			}
 		}
 	}
 	if (base == nullptr) {

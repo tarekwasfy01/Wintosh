@@ -34,7 +34,8 @@ read/write/execute permissions, and remove only whole mappings owned by the
 guest bridge. The Objective-C e2e fixture writes and reads an anonymous page,
 changes it to read-only, and verifies one-shot unmapping. The fixture also
 exercises guest `open`/`write`/`mmap(MAP_SHARED)`/`munmap`/`lseek`/`read`/`close`
-with a persisted byte change. Private file-map copy semantics are unverified.
+with a persisted byte change, then modifies a `MAP_PRIVATE` view and verifies
+that the file remains unchanged after unmapping.
 Fixed replacement of existing
 guest regions (overlaps are rejected even for `PROT_NONE` memory), partial
 unmapping, and full syscall error/errno parity remain incomplete. Nested Darwin

@@ -23,9 +23,10 @@ guest bridge; partial unmaps and replacing an already mapped guest region with
 
 The guest fixture also creates a file with `open`, writes seed bytes, maps it
 with `MAP_SHARED`, changes one byte, unmaps it, seeks back, reads the bytes, and
-closes the descriptor. This covers the shared file-backed guest mapping path;
-private copy-on-write mappings and descriptor inheritance from the runner are
-not covered.
+closes the descriptor. It then maps the file with `MAP_PRIVATE`, changes the
+private view and confirms that the file contents stay unchanged after unmapping.
+This covers shared persistence and private copy-on-write isolation; descriptor
+inheritance from the runner is not covered.
 
 The ARM64 Objective-C fixture also verifies class inheritance by invoking a
 class method implemented on its guest superclass.

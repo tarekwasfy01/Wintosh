@@ -102,11 +102,39 @@ static long WintoshFileMappedRoundTrip(const char *path)
 		close(descriptor);
 		return 65;
 	}
-	char result[4] = {};
-	const int bytes_read = read(descriptor, result, sizeof(result));
+	char shared_result[4] = {};
+	if (read(descriptor, shared_result, sizeof(shared_result)) != 4) {
+		close(descriptor);
+		return 66;
+	}
+	memory = (volatile char *)mmap((void *)0, 4096, 3, 0x0002, descriptor, 0);
+	if (memory == (volatile char *)-1) {
+		close(descriptor);
+		return 67;
+	}
+	if (memory[0] != 'M' || memory[1] != 'A' ||
+		memory[2] != 'T' || memory[3] != 'A') {
+		munmap((void *)memory, 4096);
+		close(descriptor);
+		return 68;
+	}
+	memory[0] = 'P';
+	if (munmap((void *)memory, 4096) != 0) {
+		close(descriptor);
+		return 69;
+	}
+	if (lseek(descriptor, 0, 0) != 0) {
+		close(descriptor);
+		return 70;
+	}
+	char private_result[4] = {};
+	const int bytes_read = read(descriptor, private_result, sizeof(private_result));
 	const int close_result = close(descriptor);
-	return bytes_read == 4 && close_result == 0 && result[0] == 'M' &&
-		result[1] == 'A' && result[2] == 'T' && result[3] == 'A' ? 1 : 66;
+	return bytes_read == 4 && close_result == 0 &&
+		shared_result[0] == 'M' && shared_result[1] == 'A' &&
+		shared_result[2] == 'T' && shared_result[3] == 'A' &&
+		private_result[0] == 'M' && private_result[1] == 'A' &&
+		private_result[2] == 'T' && private_result[3] == 'A' ? 1 : 71;
 }
 
 __attribute__((used, section("__DATA,__mod_term_func")))

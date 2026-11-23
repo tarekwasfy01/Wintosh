@@ -202,4 +202,4 @@ Write-Output (
 	'ARM64_HOST_IMPORT_E2E=PASS IMPORT=_strlen EXIT=42 ' +
 	'OBJC=objc_msgSend_scalar_pointer_stack_hfa_indirect_nested_heap_svc ' +
 	'MEMORY=anonymous_mmap_mprotect_munmap_MAP_FIXED_overlap ' +
-	'FILE=open_write_shared_mmap_persist_lseek_read_close')
+	'FILE=open_write_shared_mmap_persist_private_cow_lseek_read_close')

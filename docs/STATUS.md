@@ -11,6 +11,17 @@ map.
 
 Status date: 2026-11-23
 
+### NSView affine coordinate transforms and rotation (2026-11-23)
+
+NSView coordinate chains now compose full affine matrices, including bounds
+scaling/flips and the `frameRotation`/`boundsRotation` properties in degrees.
+Point, size, and rectangle conversions, view drawing CTMs, dirty-rectangle
+mapping, native-control placement, scroll visibility, and scrollbar placement
+use the same transforms. Rotated clipping and native controls are represented
+by axis-aligned bounding rectangles on Win32, so their edge geometry is
+approximate. The x64 executable and ARM64 host library compile; no guest Mach-O
+fixture has exercised rotated view behavior.
+
 ### AppKit NSAffineTransform subset (2026-11-23)
 
 `NSAffineTransform` now creates an identity matrix and supports ordered

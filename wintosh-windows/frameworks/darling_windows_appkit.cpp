@@ -179,6 +179,8 @@ struct AppKitWindowState final {
 struct AppKitViewState final {
 	DarlingObjcRect frame{};
 	DarlingObjcRect bounds{};
+	double frame_rotation{};
+	double bounds_rotation{};
 	bool has_custom_bounds{};
 	std::uint64_t autoresizing_mask{};
 	id window{};
@@ -242,10 +244,7 @@ struct AppKitMouseTrackingState final {
 };
 struct ViewCoordinateOrigin final {
 	id window{};
-	double scale_x{1.0};
-	double scale_y{1.0};
-	double translate_x{};
-	double translate_y{};
+	darling_windows_CGAffineTransform transform{1.0, 0.0, 0.0, 1.0, 0.0, 0.0};
 	bool valid{};
 };
 struct ViewCoordinateStep final {
@@ -253,7 +252,69 @@ struct ViewCoordinateStep final {
 	id superview{};
 	DarlingObjcRect frame{};
 	DarlingObjcRect bounds{};
+	double frame_rotation{};
+	double bounds_rotation{};
 };
+
+DarlingObjcPoint ViewApplyTransform(darling_windows_CGAffineTransform transform,
+	DarlingObjcPoint point)
+{
+	return {transform.a * point.x + transform.c * point.y + transform.tx,
+		transform.b * point.x + transform.d * point.y + transform.ty};
+}
+
+darling_windows_CGAffineTransform ViewComposeTransform(
+	darling_windows_CGAffineTransform outer,
+	darling_windows_CGAffineTransform inner)
+{
+	return {
+		outer.a * inner.a + outer.c * inner.b,
+		outer.b * inner.a + outer.d * inner.b,
+		outer.a * inner.c + outer.c * inner.d,
+		outer.b * inner.c + outer.d * inner.d,
+		outer.a * inner.tx + outer.c * inner.ty + outer.tx,
+		outer.b * inner.tx + outer.d * inner.ty + outer.ty};
+}
+
+bool ViewInvertTransform(darling_windows_CGAffineTransform transform,
+	darling_windows_CGAffineTransform& inverse)
+{
+	const double determinant = transform.a * transform.d -
+		transform.b * transform.c;
+	if (!std::isfinite(determinant) || determinant == 0.0) return false;
+	const double reciprocal = 1.0 / determinant;
+	inverse = {transform.d * reciprocal, -transform.b * reciprocal,
+		-transform.c * reciprocal, transform.a * reciprocal,
+		(transform.c * transform.ty - transform.d * transform.tx) * reciprocal,
+		(transform.b * transform.tx - transform.a * transform.ty) * reciprocal};
+	return std::isfinite(inverse.a) && std::isfinite(inverse.b) &&
+		std::isfinite(inverse.c) && std::isfinite(inverse.d) &&
+		std::isfinite(inverse.tx) && std::isfinite(inverse.ty);
+}
+
+DarlingObjcRect ViewTransformRectBounds(
+	darling_windows_CGAffineTransform transform, DarlingObjcRect rect)
+{
+	const DarlingObjcPoint corners[] = {
+		ViewApplyTransform(transform, {rect.x, rect.y}),
+		ViewApplyTransform(transform, {rect.x + rect.width, rect.y}),
+		ViewApplyTransform(transform, {rect.x, rect.y + rect.height}),
+		ViewApplyTransform(transform, {rect.x + rect.width,
+			rect.y + rect.height})};
+	double minimum_x = corners[0].x;
+	double maximum_x = corners[0].x;
+	double minimum_y = corners[0].y;
+	double maximum_y = corners[0].y;
+	for (const DarlingObjcPoint corner : corners) {
+		if (!std::isfinite(corner.x) || !std::isfinite(corner.y)) return {};
+		minimum_x = (std::min)(minimum_x, corner.x);
+		maximum_x = (std::max)(maximum_x, corner.x);
+		minimum_y = (std::min)(minimum_y, corner.y);
+		maximum_y = (std::max)(maximum_y, corner.y);
+	}
+	return {minimum_x, minimum_y, maximum_x - minimum_x, maximum_y - minimum_y};
+}
+
 std::mutex g_windows_mutex;
 std::unordered_map<id, AppKitWindowState> g_windows;
 std::unordered_map<id, AppKitViewState> g_views;
@@ -658,6 +719,10 @@ DarlingObjcRect NSViewBounds(id self, SEL selector);
 DarlingObjcRect NSViewFrame(id self, SEL selector);
 DarlingObjcRect NSViewVisibleRect(id self, SEL selector);
 bool NSViewScrollRectToVisible(id self, SEL selector, DarlingObjcRect rect);
+DarlingObjcRect NSViewConvertRectToView(id self, SEL selector,
+	DarlingObjcRect rect, id target_view);
+DarlingObjcRect NSViewConvertRectFromView(id self, SEL selector,
+	DarlingObjcRect rect, id source_view);
 void NSViewSetBounds(id self, SEL selector, DarlingObjcRect bounds);
 void NSViewSetAutoresizingMask(id self, SEL selector, std::uint64_t mask);
 void NSViewResizeSubviewsWithOldSize(id self, SEL selector,
@@ -14540,7 +14605,6 @@ void PositionNativeControl(id view)
 	std::vector<std::wstring> popup_titles;
 	std::int64_t popup_selected_index = -1;
 	HWND recreate_control = nullptr;
-	DarlingObjcRect frame{};
 	id superview = nullptr;
 	double window_x = 0.0;
 	double window_y = 0.0;
@@ -14551,7 +14615,6 @@ void PositionNativeControl(id view)
 		const auto view_found = g_views.find(view);
 		if (view_found == g_views.end()) return;
 		window_object = view_found->second.window;
-		frame = view_found->second.frame;
 		title = view_found->second.title;
 		placeholder = view_found->second.placeholder;
 		control = view_found->second.control;
@@ -14602,25 +14665,14 @@ void PositionNativeControl(id view)
 	}
 	if (recreate_control != nullptr) DestroyWindow(recreate_control);
 	if (parent == nullptr) return;
-	if (superview != nullptr) {
-		const ViewCoordinateOrigin transform = NSViewOriginInWindow(superview);
-		if (!transform.valid || transform.window != window_object) return;
-		const double x0 = transform.scale_x * frame.x + transform.translate_x;
-		const double x1 = transform.scale_x * (frame.x + frame.width) +
-			transform.translate_x;
-		const double y0 = transform.scale_y * frame.y + transform.translate_y;
-		const double y1 = transform.scale_y * (frame.y + frame.height) +
-			transform.translate_y;
-		window_x = std::min(x0, x1);
-		window_y = std::min(y0, y1);
-		window_width = std::abs(x1 - x0);
-		window_height = std::abs(y1 - y0);
-	} else {
-		window_x = frame.x;
-		window_y = frame.y;
-		window_width = frame.width;
-		window_height = frame.height;
-	}
+	const ViewCoordinateOrigin transform = NSViewOriginInWindow(view);
+	if (!transform.valid || transform.window != window_object) return;
+	const DarlingObjcRect window_frame = ViewTransformRectBounds(
+		transform.transform, NSViewBounds(view, nullptr));
+	window_x = window_frame.x;
+	window_y = window_frame.y;
+	window_width = window_frame.width;
+	window_height = window_frame.height;
 	if (!std::isfinite(window_x) || !std::isfinite(window_y) ||
 		!std::isfinite(window_width) || !std::isfinite(window_height)) return;
 	RECT client{};
@@ -14783,14 +14835,12 @@ void PositionNativeControl(id view)
 			NSViewOriginInWindow(clipping_view);
 		const DarlingObjcRect clip_bounds = NSViewBounds(clipping_view, nullptr);
 		if (clip_origin.valid) {
-			const double clip_x0 = clip_origin.scale_x * clip_bounds.x +
-				clip_origin.translate_x;
-			const double clip_x1 = clip_origin.scale_x *
-				(clip_bounds.x + clip_bounds.width) + clip_origin.translate_x;
-			const double clip_y0 = clip_origin.scale_y * clip_bounds.y +
-				clip_origin.translate_y;
-			const double clip_y1 = clip_origin.scale_y *
-				(clip_bounds.y + clip_bounds.height) + clip_origin.translate_y;
+			const DarlingObjcRect clip_rect = ViewTransformRectBounds(
+				clip_origin.transform, clip_bounds);
+			const double clip_x0 = clip_rect.x;
+			const double clip_x1 = clip_rect.x + clip_rect.width;
+			const double clip_y0 = clip_rect.y;
+			const double clip_y1 = clip_rect.y + clip_rect.height;
 			const int left = ClampWindowCoordinate((std::max)(
 				static_cast<double>(x), (std::min)(clip_x0, clip_x1)),
 				0, client.right);
@@ -15625,6 +15675,46 @@ bool NSViewIsFlipped(id, SEL)
 	return false;
 }
 
+double NSViewFrameRotation(id self, SEL)
+{
+	std::lock_guard<std::mutex> lock(g_windows_mutex);
+	const auto found = g_views.find(self);
+	return found == g_views.end() ? 0.0 : found->second.frame_rotation;
+}
+
+void NSViewSetFrameRotation(id self, SEL, double degrees)
+{
+	if (!std::isfinite(degrees)) return;
+	{
+		std::lock_guard<std::mutex> lock(g_windows_mutex);
+		const auto found = g_views.find(self);
+		if (found == g_views.end()) return;
+		found->second.frame_rotation = std::remainder(degrees, 360.0);
+	}
+	RepositionViewTree(self);
+	InvalidateAppKitView(self);
+}
+
+double NSViewBoundsRotation(id self, SEL)
+{
+	std::lock_guard<std::mutex> lock(g_windows_mutex);
+	const auto found = g_views.find(self);
+	return found == g_views.end() ? 0.0 : found->second.bounds_rotation;
+}
+
+void NSViewSetBoundsRotation(id self, SEL, double degrees)
+{
+	if (!std::isfinite(degrees)) return;
+	{
+		std::lock_guard<std::mutex> lock(g_windows_mutex);
+		const auto found = g_views.find(self);
+		if (found == g_views.end()) return;
+		found->second.bounds_rotation = std::remainder(degrees, 360.0);
+	}
+	RepositionViewTree(self);
+	InvalidateAppKitView(self);
+}
+
 ViewCoordinateOrigin NSViewOriginInWindow(id view)
 {
 	ViewCoordinateOrigin origin{};
@@ -15642,7 +15732,8 @@ ViewCoordinateOrigin NSViewOriginInWindow(id view)
 			if (found == g_views.end() || found->second.window != origin.window)
 				return {};
 			steps.push_back(ViewCoordinateStep{current, found->second.superview,
-				found->second.frame, found->second.bounds});
+				found->second.frame, found->second.bounds,
+				found->second.frame_rotation, found->second.bounds_rotation});
 			current = found->second.superview;
 		}
 		if (current != nullptr) return {};
@@ -15660,17 +15751,40 @@ ViewCoordinateOrigin NSViewOriginInWindow(id view)
 		if (!std::isfinite(scale_x) || !std::isfinite(scale_magnitude_y)) return {};
 		const double scale_y = child_flipped == parent_flipped ?
 			scale_magnitude_y : -scale_magnitude_y;
-		const double translate_x = step.frame.x - step.bounds.x * scale_x;
-		const double translate_y = scale_y >= 0.0 ?
-			step.frame.y - step.bounds.y * scale_y :
-			step.frame.y + step.frame.height + step.bounds.y * scale_magnitude_y;
-		origin.translate_x = scale_x * origin.translate_x + translate_x;
-		origin.translate_y = scale_y * origin.translate_y + translate_y;
-		origin.scale_x *= scale_x;
-		origin.scale_y *= scale_y;
-		if (!std::isfinite(origin.scale_x) || !std::isfinite(origin.scale_y) ||
-			!std::isfinite(origin.translate_x) ||
-			!std::isfinite(origin.translate_y)) return {};
+		const double bounds_radians = -step.bounds_rotation *
+			(3.14159265358979323846 / 180.0);
+		const double frame_radians = step.frame_rotation *
+			(3.14159265358979323846 / 180.0);
+		if (!std::isfinite(bounds_radians) || !std::isfinite(frame_radians))
+			return {};
+		const auto translation = [](double x, double y) {
+			return darling_windows_CGAffineTransform{1.0, 0.0, 0.0, 1.0, x, y};
+		};
+		const double bounds_cosine = std::cos(bounds_radians);
+		const double bounds_sine = std::sin(bounds_radians);
+		const double frame_cosine = std::cos(frame_radians);
+		const double frame_sine = std::sin(frame_radians);
+		const darling_windows_CGAffineTransform bounds_rotation{
+			bounds_cosine, bounds_sine, -bounds_sine, bounds_cosine, 0.0, 0.0};
+		const darling_windows_CGAffineTransform frame_rotation{
+			frame_cosine, frame_sine, -frame_sine, frame_cosine, 0.0, 0.0};
+		const darling_windows_CGAffineTransform scale{scale_x, 0.0, 0.0,
+			scale_y, 0.0, 0.0};
+		auto local_to_parent = translation(-step.bounds.x, -step.bounds.y);
+		local_to_parent = ViewComposeTransform(bounds_rotation, local_to_parent);
+		local_to_parent = ViewComposeTransform(scale, local_to_parent);
+		if (scale_y < 0.0)
+			local_to_parent = ViewComposeTransform(
+				translation(0.0, step.frame.height), local_to_parent);
+		local_to_parent = ViewComposeTransform(frame_rotation, local_to_parent);
+		local_to_parent = ViewComposeTransform(
+			translation(step.frame.x, step.frame.y), local_to_parent);
+		origin.transform = ViewComposeTransform(local_to_parent,
+			origin.transform);
+		const auto& transform = origin.transform;
+		if (!std::isfinite(transform.a) || !std::isfinite(transform.b) ||
+			!std::isfinite(transform.c) || !std::isfinite(transform.d) ||
+			!std::isfinite(transform.tx) || !std::isfinite(transform.ty)) return {};
 	}
 	origin.valid = true;
 	return origin;
@@ -15691,16 +15805,15 @@ void DrawViewTree(id view, darling_windows_CGContextRef context,
 		catch (...) { return; }
 	}
 	const ViewCoordinateOrigin origin = NSViewOriginInWindow(view);
-	if (!origin.valid || origin.scale_x == 0.0 || origin.scale_y == 0.0)
+	darling_windows_CGAffineTransform window_to_local{};
+	if (!origin.valid || !ViewInvertTransform(origin.transform, window_to_local))
 		return;
-	const double local_x0 = (dirty_window_rect.x - origin.translate_x) /
-		origin.scale_x;
-	const double local_x1 = (dirty_window_rect.x + dirty_window_rect.width -
-		origin.translate_x) / origin.scale_x;
-	const double local_y0 = (dirty_window_rect.y - origin.translate_y) /
-		origin.scale_y;
-	const double local_y1 = (dirty_window_rect.y + dirty_window_rect.height -
-		origin.translate_y) / origin.scale_y;
+	const DarlingObjcRect local_dirty_bounds = ViewTransformRectBounds(
+		window_to_local, dirty_window_rect);
+	const double local_x0 = local_dirty_bounds.x;
+	const double local_x1 = local_dirty_bounds.x + local_dirty_bounds.width;
+	const double local_y0 = local_dirty_bounds.y;
+	const double local_y1 = local_dirty_bounds.y + local_dirty_bounds.height;
 	const double dirty_x0 = (std::max)(bounds.x, (std::min)(local_x0, local_x1));
 	const double dirty_y0 = (std::max)(bounds.y, (std::min)(local_y0, local_y1));
 	const double dirty_x1 = (std::min)(bounds.x + bounds.width,
@@ -15713,8 +15826,7 @@ void DrawViewTree(id view, darling_windows_CGContextRef context,
 	const COLORREF saved_text_color = g_current_text_color;
 	const double saved_text_alpha = g_current_text_alpha;
 	CGContextSaveGState(context);
-	CGContextSetCTM(context, {origin.scale_x, 0.0, 0.0, origin.scale_y,
-		origin.translate_x, origin.translate_y});
+	CGContextSetCTM(context, origin.transform);
 	CGContextClipToRect(context, {{bounds.x, bounds.y},
 		{bounds.width, bounds.height}});
 	darling_objc_msgSend_void_rect1(view, sel_registerName("drawRect:"),
@@ -15750,12 +15862,12 @@ void NSViewSetNeedsDisplayInRect(id self, SEL, DarlingObjcRect dirty_rect)
 	if (window == nullptr) return;
 	RECT client{};
 	if (!GetClientRect(window, &client)) return;
-	const double x0 = origin.scale_x * dirty_rect.x + origin.translate_x;
-	const double x1 = origin.scale_x * (dirty_rect.x + dirty_rect.width) +
-		origin.translate_x;
-	const double y0 = origin.scale_y * dirty_rect.y + origin.translate_y;
-	const double y1 = origin.scale_y * (dirty_rect.y + dirty_rect.height) +
-		origin.translate_y;
+	const DarlingObjcRect window_rect = ViewTransformRectBounds(
+		origin.transform, dirty_rect);
+	const double x0 = window_rect.x;
+	const double x1 = window_rect.x + window_rect.width;
+	const double y0 = window_rect.y;
+	const double y1 = window_rect.y + window_rect.height;
 	if (!std::isfinite(x0) || !std::isfinite(x1) || !std::isfinite(y0) ||
 		!std::isfinite(y1)) return;
 	const auto clamp_coordinate = [](double value, LONG low, LONG high) {
@@ -15780,15 +15892,13 @@ DarlingObjcPoint NSViewConvertPointToView(id self, SEL,
 	const ViewCoordinateOrigin source = NSViewOriginInWindow(self);
 	if (!source.valid) return point;
 	const ViewCoordinateOrigin target = target_view == nullptr ?
-		ViewCoordinateOrigin{source.window, 1.0, 1.0, 0.0, 0.0, true} :
+		ViewCoordinateOrigin{source.window, {1.0, 0.0, 0.0, 1.0, 0.0, 0.0}, true} :
 		NSViewOriginInWindow(target_view);
+	darling_windows_CGAffineTransform target_inverse{};
 	if (!target.valid || target.window != source.window ||
-		target.scale_x == 0.0 || target.scale_y == 0.0) return point;
-	point.x = (source.scale_x * point.x + source.translate_x -
-		target.translate_x) / target.scale_x;
-	point.y = (source.scale_y * point.y + source.translate_y -
-		target.translate_y) / target.scale_y;
-	return point;
+		!ViewInvertTransform(target.transform, target_inverse)) return point;
+	return ViewApplyTransform(target_inverse,
+		ViewApplyTransform(source.transform, point));
 }
 
 DarlingObjcPoint NSViewConvertPointFromView(id self, SEL,
@@ -15797,47 +15907,29 @@ DarlingObjcPoint NSViewConvertPointFromView(id self, SEL,
 	const ViewCoordinateOrigin target = NSViewOriginInWindow(self);
 	if (!target.valid) return point;
 	const ViewCoordinateOrigin source = source_view == nullptr ?
-		ViewCoordinateOrigin{target.window, 1.0, 1.0, 0.0, 0.0, true} :
+		ViewCoordinateOrigin{target.window, {1.0, 0.0, 0.0, 1.0, 0.0, 0.0}, true} :
 		NSViewOriginInWindow(source_view);
+	darling_windows_CGAffineTransform target_inverse{};
 	if (!source.valid || source.window != target.window ||
-		target.scale_x == 0.0 || target.scale_y == 0.0) return point;
-	point.x = (source.scale_x * point.x + source.translate_x -
-		target.translate_x) / target.scale_x;
-	point.y = (source.scale_y * point.y + source.translate_y -
-		target.translate_y) / target.scale_y;
-	return point;
+		!ViewInvertTransform(target.transform, target_inverse)) return point;
+	return ViewApplyTransform(target_inverse,
+		ViewApplyTransform(source.transform, point));
 }
 
 DarlingObjcPoint NSViewConvertSizeToView(id self, SEL,
 	DarlingObjcPoint size, id target_view)
 {
-	const ViewCoordinateOrigin source = NSViewOriginInWindow(self);
-	if (!source.valid) return size;
-	const ViewCoordinateOrigin target = target_view == nullptr ?
-		ViewCoordinateOrigin{source.window, 1.0, 1.0, 0.0, 0.0, true} :
-		NSViewOriginInWindow(target_view);
-	if (!target.valid || target.window != source.window ||
-		target.scale_x == 0.0 || target.scale_y == 0.0) return size;
-	size.x = std::abs(source.scale_x * size.x / target.scale_x);
-	size.y = std::abs(source.scale_y * size.y / target.scale_y);
-	if (!std::isfinite(size.x) || !std::isfinite(size.y)) return {};
-	return size;
+	const DarlingObjcRect converted = NSViewConvertRectToView(self, nullptr,
+		{0.0, 0.0, size.x, size.y}, target_view);
+	return {converted.width, converted.height};
 }
 
 DarlingObjcPoint NSViewConvertSizeFromView(id self, SEL,
 	DarlingObjcPoint size, id source_view)
 {
-	const ViewCoordinateOrigin target = NSViewOriginInWindow(self);
-	if (!target.valid) return size;
-	const ViewCoordinateOrigin source = source_view == nullptr ?
-		ViewCoordinateOrigin{target.window, 1.0, 1.0, 0.0, 0.0, true} :
-		NSViewOriginInWindow(source_view);
-	if (!source.valid || source.window != target.window ||
-		target.scale_x == 0.0 || target.scale_y == 0.0) return size;
-	size.x = std::abs(source.scale_x * size.x / target.scale_x);
-	size.y = std::abs(source.scale_y * size.y / target.scale_y);
-	if (!std::isfinite(size.x) || !std::isfinite(size.y)) return {};
-	return size;
+	const DarlingObjcRect converted = NSViewConvertRectFromView(self, nullptr,
+		{0.0, 0.0, size.x, size.y}, source_view);
+	return {converted.width, converted.height};
 }
 
 DarlingObjcRect NSViewConvertRectToView(id self, SEL,
@@ -16121,34 +16213,23 @@ DarlingObjcRect NSClipViewDocumentVisibleRect(id self, SEL)
 	const ViewCoordinateOrigin document_origin =
 		NSViewOriginInWindow(document_view);
 	if (!clip_origin.valid || !document_origin.valid ||
-		clip_origin.window != document_origin.window ||
-		document_origin.scale_x == 0.0 || document_origin.scale_y == 0.0)
+		clip_origin.window != document_origin.window)
 		return {};
-	const double world_x0 = clip_origin.scale_x * bounds.x +
-		clip_origin.translate_x;
-	const double world_x1 = clip_origin.scale_x * (bounds.x + bounds.width) +
-		clip_origin.translate_x;
-	const double world_y0 = clip_origin.scale_y * bounds.y +
-		clip_origin.translate_y;
-	const double world_y1 = clip_origin.scale_y * (bounds.y + bounds.height) +
-		clip_origin.translate_y;
-	const double local_x0 = (world_x0 - document_origin.translate_x) /
-		document_origin.scale_x;
-	const double local_x1 = (world_x1 - document_origin.translate_x) /
-		document_origin.scale_x;
-	const double local_y0 = (world_y0 - document_origin.translate_y) /
-		document_origin.scale_y;
-	const double local_y1 = (world_y1 - document_origin.translate_y) /
-		document_origin.scale_y;
+	darling_windows_CGAffineTransform document_inverse{};
+	if (!ViewInvertTransform(document_origin.transform, document_inverse)) return {};
+	const DarlingObjcRect clip_world = ViewTransformRectBounds(
+		clip_origin.transform, bounds);
+	const DarlingObjcRect document_local = ViewTransformRectBounds(
+		document_inverse, clip_world);
 	const DarlingObjcRect document_bounds = NSViewBounds(document_view, nullptr);
 	const double x0 = (std::max)(document_bounds.x,
-		(std::min)(local_x0, local_x1));
+		document_local.x);
 	const double y0 = (std::max)(document_bounds.y,
-		(std::min)(local_y0, local_y1));
+		document_local.y);
 	const double x1 = (std::min)(document_bounds.x + document_bounds.width,
-		(std::max)(local_x0, local_x1));
+		document_local.x + document_local.width);
 	const double y1 = (std::min)(document_bounds.y + document_bounds.height,
-		(std::max)(local_y0, local_y1));
+		document_local.y + document_local.height);
 	return {x0, y0, (std::max)(0.0, x1 - x0),
 		(std::max)(0.0, y1 - y0)};
 }
@@ -16188,12 +16269,11 @@ void NSViewScrollPoint(id self, SEL, DarlingObjcPoint point)
 	if (clip_view == nullptr || document_view == nullptr) return;
 	const ViewCoordinateOrigin source = NSViewOriginInWindow(self);
 	const ViewCoordinateOrigin document = NSViewOriginInWindow(document_view);
+	darling_windows_CGAffineTransform document_inverse{};
 	if (!source.valid || !document.valid || source.window != document.window ||
-		document.scale_x == 0.0 || document.scale_y == 0.0) return;
-	point.x = (source.scale_x * point.x + source.translate_x -
-		document.translate_x) / document.scale_x;
-	point.y = (source.scale_y * point.y + source.translate_y -
-		document.translate_y) / document.scale_y;
+		!ViewInvertTransform(document.transform, document_inverse)) return;
+	point = ViewApplyTransform(document_inverse,
+		ViewApplyTransform(source.transform, point));
 	NSClipViewScrollToPoint(clip_view, nullptr, point);
 }
 
@@ -16225,21 +16305,17 @@ DarlingObjcRect NSViewVisibleRect(id self, SEL)
 		const ViewCoordinateOrigin ancestor_origin = NSViewOriginInWindow(ancestor);
 		const DarlingObjcRect ancestor_bounds = NSViewBounds(ancestor, nullptr);
 		if (!ancestor_origin.valid || ancestor_origin.window != source.window ||
-			source.scale_x == 0.0 || source.scale_y == 0.0) return {};
-		const double x0 = (ancestor_origin.scale_x * ancestor_bounds.x +
-			ancestor_origin.translate_x - source.translate_x) / source.scale_x;
-		const double x1 = (ancestor_origin.scale_x *
-			(ancestor_bounds.x + ancestor_bounds.width) + ancestor_origin.translate_x -
-			source.translate_x) / source.scale_x;
-		const double y0 = (ancestor_origin.scale_y * ancestor_bounds.y +
-			ancestor_origin.translate_y - source.translate_y) / source.scale_y;
-		const double y1 = (ancestor_origin.scale_y *
-			(ancestor_bounds.y + ancestor_bounds.height) + ancestor_origin.translate_y -
-			source.translate_y) / source.scale_y;
-		left = (std::max)(left, (std::min)(x0, x1));
-		bottom = (std::max)(bottom, (std::min)(y0, y1));
-		right = (std::min)(right, (std::max)(x0, x1));
-		top = (std::min)(top, (std::max)(y0, y1));
+			!source.valid) return {};
+		darling_windows_CGAffineTransform source_inverse{};
+		if (!ViewInvertTransform(source.transform, source_inverse)) return {};
+		const DarlingObjcRect ancestor_world = ViewTransformRectBounds(
+			ancestor_origin.transform, ancestor_bounds);
+		const DarlingObjcRect ancestor_local = ViewTransformRectBounds(
+			source_inverse, ancestor_world);
+		left = (std::max)(left, ancestor_local.x);
+		bottom = (std::max)(bottom, ancestor_local.y);
+		right = (std::min)(right, ancestor_local.x + ancestor_local.width);
+		top = (std::min)(top, ancestor_local.y + ancestor_local.height);
 	}
 	return {left, bottom, (std::max)(0.0, right - left),
 		(std::max)(0.0, top - bottom)};
@@ -16268,20 +16344,16 @@ bool NSViewScrollRectToVisible(id self, SEL, DarlingObjcRect rect)
 	if (clip_view == nullptr) return false;
 	const ViewCoordinateOrigin source = NSViewOriginInWindow(self);
 	const ViewCoordinateOrigin clip_origin = NSViewOriginInWindow(clip_view);
+	darling_windows_CGAffineTransform clip_inverse{};
 	if (!source.valid || !clip_origin.valid || source.window != clip_origin.window ||
-		clip_origin.scale_x == 0.0 || clip_origin.scale_y == 0.0) return false;
-	const double x0 = (source.scale_x * rect.x + source.translate_x -
-		clip_origin.translate_x) / clip_origin.scale_x;
-	const double x1 = (source.scale_x * (rect.x + rect.width) +
-		source.translate_x - clip_origin.translate_x) / clip_origin.scale_x;
-	const double y0 = (source.scale_y * rect.y + source.translate_y -
-		clip_origin.translate_y) / clip_origin.scale_y;
-	const double y1 = (source.scale_y * (rect.y + rect.height) +
-		source.translate_y - clip_origin.translate_y) / clip_origin.scale_y;
-	const double rect_left = (std::min)(x0, x1);
-	const double rect_right = (std::max)(x0, x1);
-	const double rect_bottom = (std::min)(y0, y1);
-	const double rect_top = (std::max)(y0, y1);
+		!ViewInvertTransform(clip_origin.transform, clip_inverse)) return false;
+	const DarlingObjcRect rect_world = ViewTransformRectBounds(source.transform, rect);
+	const DarlingObjcRect clip_rect = ViewTransformRectBounds(clip_inverse,
+		rect_world);
+	const double rect_left = clip_rect.x;
+	const double rect_right = clip_rect.x + clip_rect.width;
+	const double rect_bottom = clip_rect.y;
+	const double rect_top = clip_rect.y + clip_rect.height;
 	const DarlingObjcRect clip_bounds = NSViewBounds(clip_view, nullptr);
 	DarlingObjcPoint target{clip_bounds.x, clip_bounds.y};
 	if (rect_left < clip_bounds.x) target.x = rect_left;
@@ -16462,12 +16534,12 @@ void PositionScrollViewScrollbars(id view)
 	const auto place = [&](HWND scrollbar, double local_x, double local_y,
 		double local_width, double local_height, bool is_vertical) {
 		if (scrollbar == nullptr) return;
-		const double x0 = origin.scale_x * local_x + origin.translate_x;
-		const double x1 = origin.scale_x * (local_x + local_width) +
-			origin.translate_x;
-		const double y0 = origin.scale_y * local_y + origin.translate_y;
-		const double y1 = origin.scale_y * (local_y + local_height) +
-			origin.translate_y;
+		const DarlingObjcRect world_rect = ViewTransformRectBounds(origin.transform,
+			{local_x, local_y, local_width, local_height});
+		const double x0 = world_rect.x;
+		const double x1 = world_rect.x + world_rect.width;
+		const double y0 = world_rect.y;
+		const double y1 = world_rect.y + world_rect.height;
 		const int x = ClampWindowCoordinate((std::min)(x0, x1), -16000, 16000);
 		const int y = ClampWindowCoordinate(client.bottom - (std::max)(y0, y1),
 			-16000, 16000);
@@ -21971,6 +22043,14 @@ void RegisterAppKitClasses()
 			"B@:{CGRect={CGPoint=dd}{CGSize=dd}}");
 		class_addMethod(view, sel_registerName("isFlipped"),
 			reinterpret_cast<IMP>(&NSViewIsFlipped), "B@:");
+		class_addMethod(view, sel_registerName("frameRotation"),
+			reinterpret_cast<IMP>(&NSViewFrameRotation), "d@:");
+		class_addMethod(view, sel_registerName("setFrameRotation:"),
+			reinterpret_cast<IMP>(&NSViewSetFrameRotation), "v@:d");
+		class_addMethod(view, sel_registerName("boundsRotation"),
+			reinterpret_cast<IMP>(&NSViewBoundsRotation), "d@:");
+		class_addMethod(view, sel_registerName("setBoundsRotation:"),
+			reinterpret_cast<IMP>(&NSViewSetBoundsRotation), "v@:d");
 		class_addMethod(view, sel_registerName("convertPoint:toView:"),
 			reinterpret_cast<IMP>(&NSViewConvertPointToView),
 			"{CGPoint=dd}@:{CGPoint=dd}@");

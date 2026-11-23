@@ -67,6 +67,9 @@ int wmain(int argc, wchar_t** argv)
 		struct PortRights final { std::uint32_t receive = 1; std::uint32_t send = 0; std::uint32_t send_once = 0; };
 		std::unordered_map<std::uint64_t, PortRights> port_rights;
 		std::unordered_map<std::uint64_t, std::uint64_t> port_session_owners;
+		struct PortSendRights final { std::uint32_t send = 0; std::uint32_t send_once = 0; };
+		std::unordered_map<std::uint64_t,
+			std::unordered_map<std::uint64_t, PortSendRights>> port_session_send_rights;
 		std::unordered_map<std::uint64_t, std::deque<darling::windows_host::MachIpcEnvelope>> port_queues;
 		std::unordered_map<std::uint64_t, std::uint32_t> port_receive_sequences;
 		std::unordered_map<std::uint64_t, darling::windows_host::MachIpcSharedMemory> out_of_line_regions;
@@ -126,11 +129,28 @@ int wmain(int argc, wchar_t** argv)
 							abandoned_ports.insert(it->first);
 							allocated_ports.erase(it->first);
 							port_rights.erase(it->first);
+							port_session_send_rights.erase(it->first);
 							port_queues.erase(it->first);
 							it = port_session_owners.erase(it);
 						} else {
 							++it;
 						}
+					}
+					for (auto it = port_session_send_rights.begin();
+						it != port_session_send_rights.end();) {
+						auto holder = it->second.find(session_token);
+						if (holder != it->second.end()) {
+							auto totals = port_rights.find(it->first);
+							if (totals != port_rights.end()) {
+								totals->second.send -= (std::min)(totals->second.send,
+									holder->second.send);
+								totals->second.send_once -= (std::min)(totals->second.send_once,
+									holder->second.send_once);
+							}
+							it->second.erase(holder);
+						}
+						if (it->second.empty()) it = port_session_send_rights.erase(it);
+						else ++it;
 					}
 					for (auto it = out_of_line_session_owners.begin();
 						it != out_of_line_session_owners.end();) {
@@ -242,6 +262,19 @@ int wmain(int argc, wchar_t** argv)
 					if (owner == port_session_owners.end() || owner->second != session_token)
 						throw std::invalid_argument("Mach IPC capability is not owned by this session");
 					owner->second = target_session;
+					if (target_session != session_token) {
+						if (auto rights = port_session_send_rights.find(envelope.port_token);
+							rights != port_session_send_rights.end()) {
+							auto source_rights = rights->second.find(session_token);
+							if (source_rights != rights->second.end()) {
+								const auto moved_rights = source_rights->second;
+								auto& target_rights = rights->second[target_session];
+								target_rights.send += moved_rights.send;
+								target_rights.send_once += moved_rights.send_once;
+								rights->second.erase(session_token);
+							}
+						}
+					}
 					for (const auto& [ool_token, owning_port] : out_of_line_owners) {
 						if (owning_port == envelope.port_token) {
 							auto ool_owner = out_of_line_session_owners.find(ool_token);
@@ -282,6 +315,19 @@ int wmain(int argc, wchar_t** argv)
 					}
 					for (const auto token : tokens) {
 						port_session_owners[token] = target_session;
+						if (target_session != session_token) {
+							if (auto rights = port_session_send_rights.find(token);
+								rights != port_session_send_rights.end()) {
+								auto source_rights = rights->second.find(session_token);
+								if (source_rights != rights->second.end()) {
+									const auto moved_rights = source_rights->second;
+									auto& target_rights = rights->second[target_session];
+									target_rights.send += moved_rights.send;
+									target_rights.send_once += moved_rights.send_once;
+									rights->second.erase(session_token);
+								}
+							}
+						}
 						for (const auto& [ool_token, owning_port] : out_of_line_owners) {
 							if (owning_port == token) {
 								auto ool_owner = out_of_line_session_owners.find(ool_token);
@@ -437,6 +483,7 @@ int wmain(int argc, wchar_t** argv)
 						throw std::invalid_argument("unknown Mach IPC port token");
 					port_session_owners.erase(envelope.port_token);
 					port_rights.erase(envelope.port_token);
+					port_session_send_rights.erase(envelope.port_token);
 					port_queues.erase(envelope.port_token);
 					broker_state_condition.notify_all();
 					for (auto it = out_of_line_owners.begin(); it != out_of_line_owners.end();) {
@@ -458,18 +505,25 @@ int wmain(int argc, wchar_t** argv)
 					if (!allocated_ports.contains(envelope.port_token))
 						throw std::invalid_argument("unknown Mach IPC port token");
 					auto owner = port_session_owners.find(envelope.port_token);
-					if (owner != port_session_owners.end() && owner->second != envelope.session_token)
-						throw std::invalid_argument("Mach IPC port belongs to another session");
+					if (owner != port_session_owners.end() && owner->second != envelope.session_token) {
+						bool has_send_right = false;
+						const auto port_rights_by_session =
+							port_session_send_rights.find(envelope.port_token);
+						if (port_rights_by_session != port_session_send_rights.end()) {
+							const auto sender_rights = port_rights_by_session->second.find(
+								envelope.session_token);
+							has_send_right = sender_rights != port_rights_by_session->second.end() &&
+								sender_rights->second.send != 0;
+						}
+						if (!has_send_right)
+							throw std::invalid_argument("Mach IPC send right is not held by this session");
+					}
 					if (envelope.disposition_count == 0 &&
 						(envelope.out_of_line_token != 0 || envelope.out_of_line_size != 0))
 						throw std::invalid_argument("invalid Mach IPC send descriptors");
 					for (const auto descriptor_token : envelope.port_descriptor_tokens) {
 						if (!allocated_ports.contains(descriptor_token))
 							throw std::invalid_argument("unknown Mach IPC port descriptor token");
-						const auto descriptor_owner = port_session_owners.find(descriptor_token);
-						if (descriptor_owner != port_session_owners.end() &&
-							descriptor_owner->second != envelope.session_token)
-							throw std::invalid_argument("Mach IPC port descriptor belongs to another session");
 					}
 					if (envelope.port_descriptor_dispositions.size() !=
 						envelope.port_descriptor_tokens.size())
@@ -479,8 +533,39 @@ int wmain(int argc, wchar_t** argv)
 					std::vector<std::pair<std::uint64_t, PortRights>> rights_snapshot;
 					for (const auto descriptor_token : envelope.port_descriptor_tokens)
 						rights_snapshot.emplace_back(descriptor_token, port_rights.at(descriptor_token));
+					struct SendRightsSnapshot final {
+						std::uint64_t token;
+						bool existed;
+						PortSendRights rights;
+					};
+					std::vector<SendRightsSnapshot> send_rights_snapshot;
+					std::unordered_set<std::uint64_t> snapshotted_tokens;
+					for (const auto token : envelope.port_descriptor_tokens) {
+						if (!snapshotted_tokens.insert(token).second) continue;
+						const auto per_port = port_session_send_rights.find(token);
+						if (per_port == port_session_send_rights.end()) {
+							send_rights_snapshot.push_back({token, false, {}});
+							continue;
+						}
+						const auto sender = per_port->second.find(envelope.session_token);
+						send_rights_snapshot.push_back({token,
+							sender != per_port->second.end(),
+							sender == per_port->second.end() ? PortSendRights{} : sender->second});
+					}
 					auto restore_rights = [&] {
 						for (const auto& [token, rights] : rights_snapshot) port_rights[token] = rights;
+						for (const auto& snapshot : send_rights_snapshot) {
+							auto per_port = port_session_send_rights.find(snapshot.token);
+							if (!snapshot.existed) {
+								if (per_port != port_session_send_rights.end()) {
+									per_port->second.erase(envelope.session_token);
+									if (per_port->second.empty()) port_session_send_rights.erase(per_port);
+								}
+							} else {
+								port_session_send_rights[snapshot.token][envelope.session_token] =
+									snapshot.rights;
+							}
+						}
 					};
 					for (const auto disposition : envelope.port_descriptor_dispositions) {
 						if (disposition != 16 && disposition != 17 && disposition != 18 &&
@@ -489,32 +574,45 @@ int wmain(int argc, wchar_t** argv)
 					}
 					try {
 						for (std::size_t index = 0; index < envelope.port_descriptor_tokens.size(); ++index) {
-							auto rights = port_rights.find(envelope.port_descriptor_tokens[index]);
+							const auto token = envelope.port_descriptor_tokens[index];
+							auto rights = port_rights.find(token);
 							if (rights == port_rights.end())
 								throw std::invalid_argument("missing Mach IPC port rights");
+							const auto descriptor_owner = port_session_owners.find(token);
+							const bool owns_receive_right = descriptor_owner !=
+								port_session_owners.end() && descriptor_owner->second == envelope.session_token;
+							auto& sender_rights = port_session_send_rights[token][envelope.session_token];
 							switch (envelope.port_descriptor_dispositions[index]) {
 							case 16:
-								if (rights->second.receive == 0) throw std::invalid_argument("no receive right");
+								if (!owns_receive_right || rights->second.receive == 0)
+									throw std::invalid_argument("no receive right");
 								--rights->second.receive;
 								break;
 							case 17:
-								if (rights->second.send == 0) throw std::invalid_argument("no send right");
+								if (sender_rights.send == 0 || rights->second.send == 0)
+									throw std::invalid_argument("no send right");
 								--rights->second.send;
+								--sender_rights.send;
 								break;
 							case 18:
-								if (rights->second.send_once == 0) throw std::invalid_argument("no send-once right");
+								if (sender_rights.send_once == 0 || rights->second.send_once == 0)
+									throw std::invalid_argument("no send-once right");
 								--rights->second.send_once;
+								--sender_rights.send_once;
 								break;
 							case 19:
-								if (rights->second.send == 0) throw std::invalid_argument("no send right");
+								if (sender_rights.send == 0 || rights->second.send == 0)
+									throw std::invalid_argument("no send right");
 								++rights->second.send;
 								break;
 							case 20:
-								if (rights->second.receive == 0) throw std::invalid_argument("no receive right");
+								if (!owns_receive_right || rights->second.receive == 0)
+									throw std::invalid_argument("no receive right");
 								++rights->second.send;
 								break;
 							case 21:
-								if (rights->second.receive == 0) throw std::invalid_argument("no receive right");
+								if (!owns_receive_right || rights->second.receive == 0)
+									throw std::invalid_argument("no receive right");
 								++rights->second.send_once;
 								break;
 							default: throw std::invalid_argument("unsupported Mach IPC port disposition");
@@ -664,6 +762,15 @@ int wmain(int argc, wchar_t** argv)
 							ool_owner->second != envelope.session_token)
 							throw std::invalid_argument("Mach IPC OOL mapping belongs to another session");
 					}
+					for (std::size_t index = 0;
+						index < queue.front().port_descriptor_tokens.size(); ++index) {
+						const auto disposition = queue.front().port_descriptor_dispositions[index];
+						if (disposition >= 17 && disposition <= 21) {
+							const auto token = queue.front().port_descriptor_tokens[index];
+							port_session_send_rights[token].try_emplace(
+								envelope.session_token);
+						}
+					}
 					auto message = std::move(queue.front());
 					queue.pop_front();
 					for (std::size_t index = 0; index < message.port_descriptor_tokens.size(); ++index) {
@@ -678,14 +785,21 @@ int wmain(int argc, wchar_t** argv)
 							break; // move receive
 						case 17:
 							++rights->second.send;
-							if (envelope.session_token != 0 && port_session_owners.contains(token))
-								port_session_owners[token] = envelope.session_token;
+							++port_session_send_rights[token][envelope.session_token].send;
 							break; // move send
 						case 18:
 							++rights->second.send_once;
-							if (envelope.session_token != 0 && port_session_owners.contains(token))
-								port_session_owners[token] = envelope.session_token;
+							++port_session_send_rights[token][envelope.session_token].send_once;
 							break; // move send-once
+						case 19:
+							++port_session_send_rights[token][envelope.session_token].send;
+							break; // copy send
+						case 20:
+							++port_session_send_rights[token][envelope.session_token].send;
+							break; // make send
+						case 21:
+							++port_session_send_rights[token][envelope.session_token].send_once;
+							break; // make send-once
 						default: break;
 						}
 					}

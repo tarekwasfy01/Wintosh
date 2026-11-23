@@ -5,11 +5,13 @@ Wintosh Windows adapter.
 
 ## Broker Mach rights
 
-Each broker port stores the right-count vector
-`r = (receive, send, send-once)`. A `MOVE_*` descriptor subtracts one right
-from the sender while the message is queued; successful receive adds that
-right to the receiver and changes the port's session owner from sender to
-receiver. The send-side count update is rolled back if validation or queueing
-fails. `COPY_SEND` and `MAKE_SEND*` update aggregate counts, but this broker
-still has one session owner per port; independent simultaneous per-session
-send rights are not represented yet.
+For port `p` and session `s`, the broker models the send-right row
+`R[p,s] = (send, send-once)`; each port's receive right has one session owner.
+`MOVE_SEND*` subtracts from the sender when queued and adds to the receiver
+after successful receive. `COPY_SEND` and `MAKE_SEND*` preserve the sender's
+row and assign the new right to the receiver when delivered. The aggregate
+`PortRights` totals are updated at send time; a move temporarily leaves the
+aggregate while in flight, whereas a copy or make is counted while queued.
+Failed validation or queueing restores the aggregate and sender row. A full
+receive-right reference count and consumption semantics for sending with a
+send-once right are still needed for complete Mach behavior.

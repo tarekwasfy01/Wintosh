@@ -48,25 +48,28 @@ static void WintoshTerminatorMarker(void)
 
 static long WintoshMappedMemoryRoundTrip(void)
 {
+	const unsigned long page_size = 4096;
 	volatile unsigned char *memory = (volatile unsigned char *)mmap(
-		(void *)0, 4096, 3, 0x1002, -1, 0);
+		(void *)0, page_size * 3, 3, 0x1002, -1, 0);
 	if (memory == (volatile unsigned char *)-1)
 		return 10;
-	if (mprotect((void *)memory, 4096, 0) != 0)
+	if (mprotect((void *)memory, page_size * 3, 0) != 0)
 		return 12;
-	void *fixed_overlap = mmap((void *)memory, 4096, 3, 0x1012, -1, 0);
+	void *fixed_overlap = mmap((void *)memory, page_size, 3, 0x1012, -1, 0);
 	if (fixed_overlap != (void *)-1)
 		return 15;
-	if (mprotect((void *)memory, 4096, 3) != 0)
+	if (mprotect((void *)memory, page_size * 3, 3) != 0)
 		return 16;
 	memory[0] = 42;
 	const long value = memory[0];
-	const int protected = mprotect((void *)memory, 4096, 1);
-	const int unmapped = munmap((void *)memory, 4096);
-	const int repeated_unmap = munmap((void *)memory, 4096);
+	const int protected = mprotect((void *)memory, page_size * 3, 1);
+	const int middle_unmap = munmap((void *)(memory + page_size), page_size);
+	const int repeated_unmap = munmap((void *)(memory + page_size), page_size);
+	const int left_unmap = munmap((void *)memory, page_size);
+	const int right_unmap = munmap((void *)(memory + page_size * 2), page_size);
 	if (value != 42) return 20;
 	if (protected != 0) return 30;
-	if (unmapped != 0) return 40;
+	if (middle_unmap != 0 || left_unmap != 0 || right_unmap != 0) return 40;
 	if (repeated_unmap != -1) return 50;
 	return 1;
 }

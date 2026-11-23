@@ -76,7 +76,11 @@ public:
 	[[nodiscard]] bool HasDynamicGuestMapping(std::uint64_t address) const noexcept;
 	[[nodiscard]] std::optional<std::size_t> DynamicGuestMappingSize(
 		std::uint64_t address) const noexcept;
+	[[nodiscard]] std::optional<std::uint64_t> DynamicGuestMappingBaseForRange(
+		std::uint64_t address, std::size_t bytes) const noexcept;
 	[[nodiscard]] bool RemoveDynamicGuestMapping(std::uint64_t address) noexcept;
+	[[nodiscard]] bool RemoveDynamicGuestMappingRange(std::uint64_t address,
+		std::size_t bytes) noexcept;
 	[[nodiscard]] bool CanProtectGuestRange(std::uint64_t address,
 		std::size_t bytes) const noexcept;
 	[[nodiscard]] bool ProtectGuestRange(std::uint64_t address,

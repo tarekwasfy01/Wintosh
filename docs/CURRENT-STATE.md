@@ -29,16 +29,18 @@ macOS application support. Guest callbacks also allocate, write, read, and free
 heap memory through nested `_malloc`/`_realloc`/`_free` imports; allocations
 are registered in the bounded guest address space and their mappings are
 updated or removed on resize/free. Imported ARM64 `_mmap`/`_munmap`/`_mprotect`
-calls now register anonymous guest mappings with the CPU backend, apply guest
-read/write/execute permissions, and remove only whole mappings owned by the
-guest bridge. The Objective-C e2e fixture writes and reads an anonymous page,
-changes it to read-only, and verifies one-shot unmapping. The fixture also
+calls now register guest mappings with the CPU backend, apply guest
+read/write/execute permissions, and remove page-aligned anonymous subranges
+while retaining the mapping's remaining intervals. File-backed views still
+unmap as complete views. The Objective-C e2e fixture writes and reads a
+three-page anonymous mapping, unmaps its middle page, rejects a repeated
+unmap, and then unmaps both remaining pages. The fixture also
 exercises guest `open`/`write`/`mmap(MAP_SHARED)`/`munmap`/`lseek`/`read`/`close`
 with a persisted byte change, then modifies a `MAP_PRIVATE` view and verifies
 that the file remains unchanged after unmapping.
 Fixed replacement of existing
 guest regions (overlaps are rejected even for `PROT_NONE` memory), partial
-unmapping, and full syscall error/errno parity remain incomplete. Nested Darwin
+file-view unmapping, and full syscall error/errno parity remain incomplete. Nested Darwin
 syscalls, Mach traps, broader import catalog coverage, full framework coverage,
 and a reproducible Dynarmic dependency pin remain open.
 

@@ -3774,17 +3774,31 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 				return std::uint64_t{static_cast<std::uint64_t>(-1)};
 			}
 			const auto length = static_cast<std::size_t>(state.x[1]);
-			const auto found = std::find(guest_mmap_allocations.begin(),
-				guest_mmap_allocations.end(), std::pair{address, length});
-			if (found == guest_mmap_allocations.end()) {
+			const auto page_size = static_cast<std::size_t>(darling_windows_getpagesize());
+			if (page_size == 0 || length == 0 ||
+				length > (std::numeric_limits<std::size_t>::max)() - (page_size - 1)) {
+				darling::windows_host::DarwinErrno::Set(EINVAL);
+				return std::uint64_t{static_cast<std::uint64_t>(-1)};
+			}
+			const auto rounded_length = ((length + page_size - 1) / page_size) * page_size;
+			const auto allocation_base = backend.DynamicGuestMappingBaseForRange(
+				address, rounded_length);
+			if (!allocation_base || std::none_of(guest_mmap_allocations.begin(),
+				guest_mmap_allocations.end(), [allocation_base](const auto& allocation) {
+					return allocation.first == *allocation_base;
+				})) {
 				darling::windows_host::DarwinErrno::Set(EINVAL);
 				return std::uint64_t{static_cast<std::uint64_t>(-1)};
 			}
 			const auto result = darling_windows_munmap(
-				reinterpret_cast<void*>(address), length);
+				reinterpret_cast<void*>(address), rounded_length);
 			if (result == 0) {
-				(void)backend.RemoveDynamicGuestMapping(address);
-				guest_mmap_allocations.erase(found);
+				(void)backend.RemoveDynamicGuestMappingRange(address, rounded_length);
+				if (!backend.HasDynamicGuestMapping(*allocation_base)) {
+					std::erase_if(guest_mmap_allocations, [allocation_base](const auto& allocation) {
+						return allocation.first == *allocation_base;
+					});
+				}
 			}
 			return static_cast<std::uint64_t>(static_cast<std::int64_t>(result));
 		};
@@ -4428,23 +4442,40 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 					}
 					break;
 				}
-				case 73: { // SYS_munmap (whole owned mappings only)
+				case 73: { // SYS_munmap (owned anonymous subranges; file views whole only)
 					if (arguments[0] > std::numeric_limits<std::uintptr_t>::max() ||
 						arguments[1] > std::numeric_limits<std::size_t>::max() ||
 						arguments[1] == 0) {
 						error_number = EINVAL;
 						break;
 					}
-					const auto mapping_size = backend.DynamicGuestMappingSize(arguments[0]);
-					if (!mapping_size || *mapping_size != arguments[1]) {
+					const auto page_size = static_cast<std::size_t>(darling_windows_getpagesize());
+					if (page_size == 0 || arguments[1] >
+						(std::numeric_limits<std::size_t>::max)() - (page_size - 1)) {
+						error_number = EINVAL;
+						break;
+					}
+					const auto rounded_length = ((static_cast<std::size_t>(arguments[1]) + page_size - 1) /
+						page_size) * page_size;
+					const auto allocation_base = backend.DynamicGuestMappingBaseForRange(
+						arguments[0], rounded_length);
+					if (!allocation_base || std::none_of(guest_mmap_allocations.begin(),
+						guest_mmap_allocations.end(), [allocation_base](const auto& allocation) {
+							return allocation.first == *allocation_base;
+						})) {
 						error_number = EINVAL;
 						break;
 					}
 					syscall_result = darling_windows_munmap(
 						reinterpret_cast<void*>(static_cast<std::uintptr_t>(arguments[0])),
-						static_cast<std::size_t>(arguments[1]));
-					if (syscall_result == 0)
-						(void)backend.RemoveDynamicGuestMapping(arguments[0]);
+						rounded_length);
+					if (syscall_result == 0) {
+						(void)backend.RemoveDynamicGuestMappingRange(arguments[0], rounded_length);
+						if (!backend.HasDynamicGuestMapping(*allocation_base))
+							std::erase_if(guest_mmap_allocations, [allocation_base](const auto& allocation) {
+								return allocation.first == *allocation_base;
+							});
+					}
 					break;
 				}
 				case 74: { // SYS_mprotect
@@ -4527,6 +4558,14 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 					if (!backend.RegisterDynamicGuestMapping(region)) {
 						(void)darling_windows_munmap(mapped, length);
 						error_number = EINVAL;
+						break;
+					}
+					try {
+						guest_mmap_allocations.emplace_back(mapped_address, length);
+					} catch (...) {
+						(void)backend.RemoveDynamicGuestMapping(mapped_address);
+						(void)darling_windows_munmap(mapped, length);
+						error_number = ENOMEM;
 						break;
 					}
 					syscall_result = static_cast<std::int64_t>(mapped_address);

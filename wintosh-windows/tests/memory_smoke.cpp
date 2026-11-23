@@ -50,6 +50,18 @@ int main()
 			else darling_windows_munmap(fixed_probe, 65536);
 			throw std::runtime_error("MAP_FIXED address placement failed");
 		}
+		const auto page_size = static_cast<std::size_t>(darling_windows_getpagesize());
+		void* partial_mapping = darling_windows_mmap(nullptr, page_size * 3, 3,
+			0x1000 | 2, -1, 0);
+		if (partial_mapping == reinterpret_cast<void*>(-1) ||
+			darling_windows_munmap(static_cast<char*>(partial_mapping) + page_size, page_size) != 0 ||
+			darling_windows_munmap(static_cast<char*>(partial_mapping) + page_size, page_size) == 0 ||
+			darling_windows_munmap(partial_mapping, page_size) != 0 ||
+			darling_windows_munmap(static_cast<char*>(partial_mapping) + page_size * 2, page_size) != 0) {
+			if (partial_mapping != reinterpret_cast<void*>(-1))
+				darling_windows_munmap(partial_mapping, page_size * 3);
+			throw std::runtime_error("partial anonymous munmap interval handling failed");
+		}
 		const auto file_path = std::filesystem::temp_directory_path() /
 			"darling_windows_mmap_smoke.bin";
 		const auto file_name = file_path.string();
@@ -110,7 +122,9 @@ int main()
 			throw std::runtime_error("private offset mmap contents failed");
 		}
 		static_cast<char*>(private_mapping)[0] = 'P';
-		if (darling_windows_munmap(private_mapping, 4) != 0) {
+		const auto private_unmap_result = darling_windows_munmap(private_mapping, 4);
+		if (private_unmap_result != 0) {
+			std::cerr << "private unmap errno=" << *darling_windows_errno() << "\n";
 			darling_windows_close(offset_descriptor);
 			throw std::runtime_error("private offset mmap unmap failed");
 		}

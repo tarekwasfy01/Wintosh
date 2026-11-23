@@ -401,6 +401,31 @@ std::optional<std::size_t> DarlingWindowsA64Backend::DynamicGuestMappingSize(
 	return found->allocation_size;
 }
 
+std::optional<std::uint64_t> DarlingWindowsA64Backend::DynamicGuestMappingBaseForRange(
+	std::uint64_t address, std::size_t bytes) const noexcept
+{
+	if (bytes == 0 || address > std::numeric_limits<std::uint64_t>::max() - bytes)
+		return std::nullopt;
+	const auto end = address + bytes;
+	auto cursor = address;
+	std::optional<std::uint64_t> base;
+	while (cursor < end) {
+		const A64GuestMemoryRegion* covering = nullptr;
+		for (const auto& region : m_memory) {
+			if (!region.dynamically_allocated || region.address > cursor ||
+				cursor - region.address >= region.bytes)
+				continue;
+			if (covering == nullptr || region.address + region.bytes > covering->address + covering->bytes)
+				covering = &region;
+		}
+		if (covering == nullptr || (base && *base != covering->allocation_base))
+			return std::nullopt;
+		base = covering->allocation_base;
+		cursor = (std::min)(end, covering->address + covering->bytes);
+	}
+	return base;
+}
+
 bool DarlingWindowsA64Backend::RemoveDynamicGuestMapping(
 	std::uint64_t address) noexcept
 {
@@ -409,6 +434,42 @@ bool DarlingWindowsA64Backend::RemoveDynamicGuestMapping(
 		return region.dynamically_allocated && region.allocation_base == address;
 	});
 	return m_memory.size() != previous_size;
+}
+
+bool DarlingWindowsA64Backend::RemoveDynamicGuestMappingRange(
+	std::uint64_t address, std::size_t bytes) noexcept
+{
+	const auto base = DynamicGuestMappingBaseForRange(address, bytes);
+	if (!base || address > std::numeric_limits<std::uint64_t>::max() - bytes)
+		return false;
+	const auto end = address + bytes;
+	std::vector<A64GuestMemoryRegion> updated;
+	try {
+		updated.reserve(m_memory.size() + 1);
+		for (const auto& region : m_memory) {
+			const auto region_end = region.address + region.bytes;
+			if (!region.dynamically_allocated || region.allocation_base != *base ||
+				region_end <= address || region.address >= end) {
+				updated.push_back(region);
+				continue;
+			}
+			if (region.address < address) {
+				auto left = region;
+				left.bytes = static_cast<std::size_t>(address - region.address);
+				updated.push_back(left);
+			}
+			if (region_end > end) {
+				auto right = region;
+				right.address = end;
+				right.bytes = static_cast<std::size_t>(region_end - end);
+				updated.push_back(right);
+			}
+		}
+	} catch (...) {
+		return false;
+	}
+	m_memory.swap(updated);
+	return true;
 }
 
 bool DarlingWindowsA64Backend::CanProtectGuestRange(std::uint64_t address,

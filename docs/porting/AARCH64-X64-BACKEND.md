@@ -209,11 +209,19 @@ Symboladapter geleitet; nicht unterstützte Symbole schlagen kontrolliert fehl.
 Darwin-Argumente an den vorhandenen Windows-Adapter weiter und registriert
 erfolgreiche Bereiche samt Gastrechten. `mprotect` akzeptiert nur vollständig
 abgedeckte, explizit schützbare Bereiche (Executable-Segmente und registrierte
-Mappings) und aktualisiert Host- sowie Gastschutzrechte. `munmap` gibt nur eine
-vollständige, exakt registrierte Mapping-Länge frei; Teilbereiche, feste
+Mappings) und aktualisiert Host- sowie Gastschutzrechte. `munmap` kann
+page-ausgerichtete Teilbereiche anonymer Gast-Mappings abtrennen. Host- und
+Gasttabellen werden dabei gemeinsam in linke und rechte Restintervalle zerlegt;
+die Windows-Reservierung bleibt erhalten, bis kein aktiver Teil mehr existiert.
+Datei-Views werden weiterhin nur als vollständige View freigegeben. Feste
 Ersetzungen bestehender Gast-Mappings und nicht registrierte Bereiche schlagen
 geschlossen fehl. Dadurch bleibt die Backend-Tabelle mit dem tatsächlich
-besessenen Hostspeicher synchron. `sysctl` ist auf die im vorhandenen Adapter
+besessenen Hostspeicher synchron. Formal ist eine Reservierung
+`R = [b, b + n)` und ihre aktive Gastabbildung die Intervallmenge
+`M = ⋃ᵢ [lᵢ, rᵢ)`. Ein Unmap-Intervall `U = [u, u + k)` ist nur gültig, wenn
+`U ⊆ M` innerhalb derselben Reservierung gilt; danach wird `M′ = M \ U`
+sowohl im Host-Ownership-Index als auch im Gast-Backend gespeichert.
+`sysctl` ist auf die im vorhandenen Adapter
 implementierten zweistufigen `KERN`- und `HW`-MIBs beschränkt. MIB und
 Eingabewerte werden vorab kopiert beziehungsweise geprüft; Ausgaben laufen
 über einen begrenzten Hostpuffer und werden danach in den Gast geschrieben.

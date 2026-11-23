@@ -83,6 +83,7 @@ struct DarwinFileMapping final {
 	void* base = nullptr;
 	HANDLE mapping = nullptr;
 	std::size_t bytes = 0;
+	std::size_t guest_offset = 0;
 };
 
 std::mutex darwin_file_mapping_mutex;
@@ -4859,7 +4860,7 @@ extern "C" void* darling_windows_mmap(void* address, std::size_t length,
 	void* result = static_cast<std::uint8_t*>(base) + delta;
 	{
 		std::lock_guard lock(darwin_file_mapping_mutex);
-		darwin_file_mappings.emplace(result, DarwinFileMapping{base, mapping, view_bytes});
+		darwin_file_mappings.emplace(result, DarwinFileMapping{base, mapping, view_bytes, delta});
 	}
 	return result;
 }
@@ -4880,6 +4881,17 @@ extern "C" int darling_windows_munmap(void* address, std::size_t length)
 		}
 	}
 	if (mapping.base != nullptr) {
+		const auto page_size = static_cast<std::size_t>(darling_windows_getpagesize());
+		if (page_size == 0 || mapping.guest_offset >
+			(std::numeric_limits<std::size_t>::max)() - length ||
+			mapping.guest_offset + length >
+			(std::numeric_limits<std::size_t>::max)() - (page_size - 1) ||
+			((mapping.guest_offset + length + page_size - 1) / page_size) * page_size != mapping.bytes) {
+			std::lock_guard lock(darwin_file_mapping_mutex);
+			darwin_file_mappings.emplace(address, mapping);
+			darling::windows_host::DarwinErrno::Set(22);
+			return -1;
+		}
 		(void)FlushViewOfFile(mapping.base, mapping.bytes);
 		if (!UnmapViewOfFile(mapping.base)) {
 			darling::windows_host::DarwinErrno::SetFromWin32(GetLastError());

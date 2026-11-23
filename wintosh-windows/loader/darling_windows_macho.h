@@ -410,6 +410,10 @@ public:
 	[[nodiscard]] static bool IsFlatLookupUndefined(const MachOSymbol& symbol) noexcept;
 	[[nodiscard]] const std::vector<MachORelocation>& Relocations() const noexcept { return m_relocations; }
 	[[nodiscard]] const std::vector<DyldBindAction>& BindActions() const noexcept { return m_bind_actions; }
+	[[nodiscard]] const std::vector<DyldBindAction>& ThreadedBindTargets() const noexcept
+	{
+		return m_threaded_bind_targets;
+	}
 	[[nodiscard]] const std::vector<DyldRebaseAction>& RebaseActions() const noexcept { return m_rebase_actions; }
 	[[nodiscard]] const std::vector<DyldChainedFixup>& ChainedFixups() const noexcept { return m_chained_fixups; }
 	[[nodiscard]] const std::vector<DyldChainedImport>& ChainedImports() const noexcept { return m_chained_imports; }

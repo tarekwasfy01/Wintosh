@@ -597,9 +597,14 @@ std::vector<DylibBinding> DylibGraph::BindImports(
 				MachOLibraryOrdinalFromSymbolDescription(symbol.description);
 			add_import(symbol.name, ordinal, MachOImage::IsWeakUndefined(symbol), false);
 		}
-		for (const auto& action : image.BindActions())
-			add_import(action.symbol, action.dylib_ordinal, action.weak,
-				action.weak_bind);
+		for (const auto& action : image.BindActions()) {
+			if (!action.threaded)
+				add_import(action.symbol, action.dylib_ordinal, action.weak,
+					action.weak_bind);
+		}
+		for (const auto& target : image.ThreadedBindTargets())
+			add_import(target.symbol, target.dylib_ordinal, target.weak,
+				target.weak_bind);
 		for (const auto& import : image.ChainedImports()) {
 			add_import(import.symbol, import.dylib_ordinal, import.weak, false);
 		}
@@ -703,7 +708,8 @@ std::vector<DylibBinding> DylibGraph::BindImports(
 						node.path, binding_ordinal, two_level});
 					continue;
 				}
-				throw std::runtime_error("unresolved Mach-O import from ordinal " +
+				throw std::runtime_error("unresolved Mach-O import in " +
+					node.path.filename().string() + " from ordinal " +
 					std::to_string(import.ordinal) + ": " + import.name);
 			}
 		}

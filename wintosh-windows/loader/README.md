@@ -17,7 +17,9 @@ chained imports merge by symbol and lookup ordinal so bind-only and lazy symbols
 also receive providers. Bind actions, chained imports, indirect symbol slots,
 and relocation symbol vectors resolve within that client image's
 binding set, avoiding accidental selection of a same-named export from an
-unrelated dependency. `MH_FORCE_FLAT` and images without `MH_TWOLEVEL` use the
+unrelated dependency. Threaded-bind ordinal tables contribute their actual
+symbol imports; the threaded-apply marker is not treated as a separate strong
+import. `MH_FORCE_FLAT` and images without `MH_TWOLEVEL` use the
 flat fallback path, searching the main image before dependencies in recursive
 load-command order; a strong definition overrides an earlier weak definition,
 while the first weak definition is retained if no strong one exists. Undefined
@@ -70,7 +72,9 @@ Classic x86_64 images without chained fixups now keep lazy bind actions and
 passes the image-cache address and lazy-stream offset; the host selects the
 session by mapped image range and resolves the import on first call. Sessions
 remain active across initializers, guest entry and terminators, including
-calls from guest-created host threads. Dynamic classic x86_64 images keep
+calls from guest-created host threads. Bootstrap unwinds nested session
+activations in LIFO order so a completed launch leaves no active session.
+Dynamic classic x86_64 images keep
 thread-neutral sessions registered until `dlclose`. The pointer-import walk
 uses each section's Mach-O `reserved1` index, so non-lazy GOT entries do not
 shift subsequent imports onto unrelated symbols. ARM64, 32-bit and

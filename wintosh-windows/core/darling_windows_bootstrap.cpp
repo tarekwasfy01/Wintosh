@@ -90,6 +90,24 @@ bool BindLazyAtLaunch(const MachOImage& image)
 	return bind_lazy;
 }
 
+class LazyBindingActivationStack final {
+public:
+	void reserve(std::size_t count) { activations_.reserve(count); }
+	void activate(const MachOLazyBindingSession& session)
+	{
+		activations_.push_back(session.Activate());
+	}
+	~LazyBindingActivationStack() noexcept
+	{
+		// Nested activation restores the previous session, so teardown must be LIFO.
+		while (!activations_.empty())
+			activations_.pop_back();
+	}
+
+private:
+	std::vector<MachOLazyBindingSession::Activation> activations_;
+};
+
 std::vector<std::byte> BuildTLVTemplate(const MachOImage& image,
 	const MachOImage::Mapping& mapping)
 {
@@ -664,10 +682,10 @@ int DarwinBootstrap::Run(const std::filesystem::path& image_path,
 		main_bindings));
 	lazy_sessions.push_back(std::make_unique<MachOLazyBindingSession>(
 		image, mapping, *lazy_bindings.back()));
-	std::vector<MachOLazyBindingSession::Activation> lazy_activations;
+	LazyBindingActivationStack lazy_activations;
 	lazy_activations.reserve(lazy_sessions.size());
 	for (const auto& session : lazy_sessions)
-		lazy_activations.push_back(session->Activate());
+		lazy_activations.activate(*session);
 	// Every image is bound before initializers run; an initializer may call
 	// into the main image or any dependency.
 	for (auto& provider : providers) {

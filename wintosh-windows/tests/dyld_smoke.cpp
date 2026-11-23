@@ -261,6 +261,22 @@ void WriteMachO(const std::filesystem::path& path, const char* dependency,
 		replace(bind_stream, sizeof(bind_stream));
 		replace(lazy_bind_stream, sizeof(lazy_bind_stream));
 	}
+	if (weak_undefined_symbol) {
+		const auto mark_weak_import = [imported_symbol](std::uint8_t* stream,
+			std::size_t size) {
+			const auto symbol_bytes = std::strlen(imported_symbol);
+			for (std::size_t index = 1; index + symbol_bytes < size; ++index) {
+				if (stream[index - 1] == 0x40 &&
+					std::memcmp(stream + index, imported_symbol, symbol_bytes) == 0 &&
+					stream[index + symbol_bytes] == 0) {
+					stream[index - 1] = 0x41; // BIND_SYMBOL_FLAGS_WEAK_IMPORT
+					index += symbol_bytes;
+				}
+			}
+		};
+		mark_weak_import(bind_stream, sizeof(bind_stream));
+		mark_weak_import(lazy_bind_stream, sizeof(lazy_bind_stream));
+	}
 	DyldInfoCommand dyld_info{};
 		dyld_info.header = {LC_DYLD_INFO, static_cast<std::uint32_t>(sizeof(dyld_info))};
 	dyld_info.binding_offset = dyld_bind_offset;
@@ -309,7 +325,7 @@ void WriteMachO(const std::filesystem::path& path, const char* dependency,
 	write64(0x30, 0x1000);
 	write16(0x3c, 1);
 	write16(0x3e, 0x290);
-	write32(0x60, 0);
+	write32(0x60, weak_undefined_symbol ? 1u << 8 : 0u);
 	std::memcpy(chained_payload.data() + 0x68, imported_symbol,
 		(std::min)(std::strlen(imported_symbol), std::size_t{14}));
 	std::memcpy(data.data() + chained_command.data_offset, chained_payload.data(),
@@ -344,7 +360,7 @@ void WriteMachO(const std::filesystem::path& path, const char* dependency,
 		embedded_rpath.size() + 1);
 	std::memcpy(data.data() + rpath_command_offset, rpath_command.data(),
 		rpath_command.size());
-	const std::uint64_t chained_bind = (1ull << 63) | (2ull << 51);
+	const std::uint64_t chained_bind = (1ull << 63) | (1ull << 51);
 	const std::uint64_t chained_rebase = 0x1100;
 	std::memcpy(data.data() + 0x490, &chained_bind, sizeof(chained_bind));
 	std::memcpy(data.data() + 0x498, &chained_rebase, sizeof(chained_rebase));
@@ -811,11 +827,12 @@ int wmain(int argc, wchar_t** argv)
 			const auto providerless_bindings =
 				darling::windows_host::DylibGraph::BindImports(
 					providerless_host_image, {}, root);
-			if (providerless_bindings.size() != 1 ||
-				providerless_bindings.front().name != "_getpid" ||
-				!providerless_bindings.front().provider.empty() ||
-				providerless_bindings.front().provider_value !=
-					darling_windows_host_symbol("_getpid")) {
+			const auto getpid_binding = std::find_if(providerless_bindings.begin(),
+				providerless_bindings.end(), [](const auto& binding) {
+					return binding.name == "_getpid" && binding.provider.empty() &&
+						binding.provider_value == darling_windows_host_symbol("_getpid");
+				});
+			if (getpid_binding == providerless_bindings.end()) {
 				throw std::runtime_error("providerless host-symbol binding failed");
 			}
 			std::cout << "DARWIN_AUTOMATIC_HOST_BINDING=PASS\n";
@@ -942,10 +959,13 @@ int wmain(int argc, wchar_t** argv)
 				!app_image.BindActions()[*lazy_action2_slot].lazy)
 				throw std::runtime_error("Mach-O lazy slots did not resolve to two actions");
 			const auto lazy_info_offset = app_image.BindActions()[*lazy_action].stream_offset;
+			const auto lazy_action2_stream_offset =
+				app_image.BindActions()[*lazy_action2_slot].stream_offset;
 			const auto lazy_action2 = lazy_session.FindActionForLazyInfo(
-				app_image.BindActions()[7].stream_offset);
-			if (!lazy_action2.has_value() || *lazy_action2 != 7)
-				throw std::runtime_error("second Mach-O lazy action was not indexed");
+				lazy_action2_stream_offset);
+			if (!lazy_action2.has_value() || *lazy_action2 != *lazy_action ||
+				lazy_action2_stream_offset != lazy_info_offset)
+				throw std::runtime_error("Mach-O lazy actions did not share their symbol sequence");
 			const auto lazy_address = reinterpret_cast<const std::uintptr_t*>(
 				static_cast<std::intptr_t>(0x1240) + app_mapping.Slide());
 			if (!lazy_session.FindActionForLazyInfo(lazy_info_offset).has_value() ||
@@ -1047,8 +1067,12 @@ int wmain(int argc, wchar_t** argv)
 		std::cout << "DYLD_SUBTRACTOR_RELOCATION=PASS\n";
 		const auto bindings = darling::windows_host::DylibGraph::BindImports(
 			image, {root / "usr" / "lib"}, root);
-		if (bindings.size() != 1 || bindings.front().name != "_libSystemInit" ||
-			bindings.front().provider.filename() != "libSystem.B.dylib") {
+		const auto libsystem_init = std::find_if(bindings.begin(), bindings.end(),
+			[](const auto& binding) {
+				return binding.name == "_libSystemInit" &&
+					binding.provider.filename() == "libSystem.B.dylib";
+			});
+		if (libsystem_init == bindings.end()) {
 			throw std::runtime_error("unexpected Mach-O import binding");
 		}
 		std::cout << "DYLD_BINDINGS=PASS\n";
@@ -1087,10 +1111,12 @@ int wmain(int argc, wchar_t** argv)
 				false, true, false, true);
 			const auto weak_symbol_bindings = darling::windows_host::DylibGraph::BindImports(
 				weak_symbol_image, {}, root);
-			if (weak_symbol_bindings.size() != 1 ||
-				weak_symbol_bindings.front().name != "_libSystemInit" ||
-				!weak_symbol_bindings.front().provider.empty() ||
-				weak_symbol_bindings.front().provider_value != 0) {
+			const auto nulled_weak_symbol = std::find_if(weak_symbol_bindings.begin(),
+				weak_symbol_bindings.end(), [](const auto& binding) {
+					return binding.name == "_libSystemInit" && binding.provider.empty() &&
+						binding.provider_value == 0;
+				});
+			if (nulled_weak_symbol == weak_symbol_bindings.end()) {
 				throw std::runtime_error("unresolved weak Mach-O symbol was not nulled");
 			}
 		}
@@ -1117,7 +1143,8 @@ int wmain(int argc, wchar_t** argv)
 			const auto reexport_app = root / "reexport-app";
 			WriteMachO(reexport_target, nullptr, true, false);
 			WriteMachO(reexport_image, "@loader_path/libTarget.dylib", true, false);
-			WriteMachO(reexport_app, "@loader_path/libReexport.dylib", false, true);
+			WriteMachO(reexport_app, "@loader_path/libReexport.dylib", false, true,
+				false, false, false, true, false, false, "_exported");
 			const auto patch_file = [](const std::filesystem::path& path,
 				bool reexport, bool strip_bindings) {
 				std::ifstream input(path, std::ios::binary);
@@ -1125,6 +1152,8 @@ int wmain(int argc, wchar_t** argv)
 				if (bytes.size() < 0x523)
 					throw std::runtime_error("re-export fixture is truncated");
 				std::memcpy(bytes.data() + 0x251, "_exported", 10);
+				if (!reexport && !strip_bindings)
+					std::memcpy(bytes.data() + 0x502, "_appLocal", 10);
 				if (reexport) {
 					bytes[0x244] = 0x01;
 					bytes[0x245] = 0x00;

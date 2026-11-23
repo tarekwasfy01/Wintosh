@@ -94,22 +94,14 @@ extern "C" DARLING_SYSV void* darling_windows_abi_tlv_get_addr(
 extern "C" DARLING_SYSV void darling_windows_abi_tlv_atexit(
 	void (*function)(void*), void* argument) noexcept
 {
-	if (darling::windows_host::darling_windows_tlv_atexit_guest(function, argument) == 0)
-		darling_windows_pin_dynamic_image_for_guest_callback(
-			reinterpret_cast<const void*>(function));
+	(void)darling::windows_host::darling_windows_tlv_atexit_guest(function, argument);
 }
 
 extern "C" DARLING_SYSV int darling_windows_abi_cxa_thread_atexit(
 	void (*function)(void*), void* argument, void* dso_handle) noexcept
 {
-	const auto result = darling::windows_host::darling_windows_cxa_thread_atexit_impl(
+	return darling::windows_host::darling_windows_cxa_thread_atexit_impl(
 		function, argument, dso_handle);
-	if (result == 0) {
-		darling_windows_pin_dynamic_image_for_guest_callback(dso_handle);
-		darling_windows_pin_dynamic_image_for_guest_callback(
-			reinterpret_cast<const void*>(function));
-	}
-	return result;
 }
 
 extern "C" std::uintptr_t darling_windows_abi_call_export_resolver(

@@ -746,6 +746,7 @@ std::unordered_map<void*, darling::windows_host::DarwinDynamicImage*> dynamic_im
 std::unordered_map<void*, std::size_t> dynamic_image_references;
 std::unordered_map<std::wstring, void*> dynamic_image_paths;
 std::unordered_set<void*> dynamic_image_nodelete;
+std::unordered_map<void*, std::size_t> dynamic_image_callback_references;
 std::unordered_set<const void*> pending_dynamic_image_callback_pins;
 constexpr int kDarwinRtldNoLoad = 0x10;
 constexpr int kDarwinRtldNoDelete = 0x80;
@@ -7798,22 +7799,62 @@ extern "C" std::int64_t darling_windows_times(darling_tms* result)
 	return static_cast<std::int64_t>(GetTickCount64() / 10ull);
 }
 
-extern "C" void darling_windows_pin_dynamic_image_for_guest_callback(
+extern "C" void* darling_windows_retain_dynamic_image_for_guest_callback(
 	const void* address) noexcept
 {
-	if (address == nullptr) return;
+	if (address == nullptr) return nullptr;
 	try {
 		std::lock_guard lock(dynamic_image_mutex);
 		for (const auto& [handle, image] : dynamic_images) {
 			if (darling::windows_host::DynamicImageContainsMappedAddress(*image, address)) {
-				dynamic_image_nodelete.insert(handle);
-				return;
+				++dynamic_image_callback_references[handle];
+				return handle;
 			}
 		}
 		// Initializers run before OpenDynamicImage is published in dynamic_images.
 		// Defer the pin until that same mapped image is registered below.
 		if (!dynamic_image_loads.empty())
 			pending_dynamic_image_callback_pins.insert(address);
+	} catch (...) {
+	}
+	return nullptr;
+}
+
+extern "C" void darling_windows_release_dynamic_image_callback(void* handle) noexcept
+{
+	if (handle == nullptr) return;
+	try {
+		std::lock_guard notification_lock(guest_dyld_notification_mutex);
+		darling::windows_host::DarwinDynamicImage* image_to_close = nullptr;
+		{
+			std::lock_guard lock(dynamic_image_mutex);
+			const auto callback_reference = dynamic_image_callback_references.find(handle);
+			if (callback_reference == dynamic_image_callback_references.end()) return;
+			if (callback_reference->second > 1) {
+				--callback_reference->second;
+				return;
+			}
+			dynamic_image_callback_references.erase(callback_reference);
+			const auto external_reference = dynamic_image_references.find(handle);
+			if (external_reference == dynamic_image_references.end() ||
+				external_reference->second != 0 || dynamic_image_nodelete.contains(handle))
+				return;
+			const auto image = dynamic_images.find(handle);
+			if (image == dynamic_images.end()) return;
+			image_to_close = image->second;
+			dynamic_images.erase(image);
+			dynamic_image_references.erase(external_reference);
+			for (auto path = dynamic_image_paths.begin(); path != dynamic_image_paths.end();) {
+				if (path->second == handle)
+					path = dynamic_image_paths.erase(path);
+				else
+					++path;
+			}
+		}
+		if (image_to_close != nullptr) {
+			NotifyGuestDyldImageChanges();
+			darling::windows_host::CloseDynamicImage(image_to_close);
+		}
 	} catch (...) {
 	}
 }
@@ -8476,6 +8517,14 @@ extern "C" int darling_windows_dlclose(void* handle)
 			auto reference = dynamic_image_references.find(handle);
 			if (reference != dynamic_image_references.end() && reference->second > 1) {
 				--reference->second;
+				dynamic_loader_error.clear();
+				return 0;
+			}
+			const auto callback_reference = dynamic_image_callback_references.find(handle);
+			if (callback_reference != dynamic_image_callback_references.end() &&
+				callback_reference->second != 0) {
+				if (reference != dynamic_image_references.end())
+					reference->second = 0;
 				dynamic_loader_error.clear();
 				return 0;
 			}

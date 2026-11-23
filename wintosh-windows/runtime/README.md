@@ -58,12 +58,15 @@ thread handles at the Darwin C boundary. Guest `_tlv_atexit` and
 `__cxa_thread_atexit_impl` now enter through Darwin-ABI wrappers; the latter
 accepts the three-argument `(destructor, object, dso_handle)` contract and
 returns registration status. Registered guest callbacks are invoked in reverse
-registration order when their owning host thread exits. When a registered
-guest destructor points into a dynamically loaded image, that image is pinned
-until process exit so `dlclose` cannot unmap its callback code prematurely.
-This is a conservative `RTLD_NODELETE`-like lifetime rule; exact Darwin unload
-timing and release after all relevant threads exit are not implemented. The
-x64 Clang and MSVC Release targets build, but x64/ARM64 runtime fixtures remain
+registration order when their owning host thread exits. A registered guest
+destructor now holds an image reference: the final `dlclose` defers unmapping
+until all registered thread destructors for that image have run. Registrations
+made by an image initializer before it is published use a conservative
+`RTLD_NODELETE` fallback until process exit. Exact dyld concurrency and unload
+parity still need runtime fixtures. The lifetime rule follows Apple's
+documented [`dlclose` reference-count contract](https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man3/dlclose.3.html);
+it is an independently written adapter, not copied dyld code. The x64 Clang
+and MSVC Release targets build, but x64/ARM64 runtime fixtures remain
 unverified. The
 thread-exit ABI shape follows the [Itanium C++ ABI DSO destructor API](https://itanium-cxx-abi.github.io/cxx-abi/abi.html#dso-dtor-runtime-api).
 The linker also retains `__DATA,__mod_term_func`; a combined constructor and

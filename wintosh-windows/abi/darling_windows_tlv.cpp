@@ -20,6 +20,10 @@
 
 namespace darling::windows_host {
 
+extern "C" void* darling_windows_retain_dynamic_image_for_guest_callback(
+	const void* address) noexcept;
+extern "C" void darling_windows_release_dynamic_image_callback(void* handle) noexcept;
+
 #if defined(_M_IX86)
 extern "C" void* darling_windows_tlv_get_addr_i386(DarwinTLVDescriptor* descriptor);
 #endif
@@ -37,6 +41,7 @@ struct ThreadStorage final {
 		void (*function)(void*) = nullptr;
 		void* argument = nullptr;
 		void* dso_handle = nullptr;
+		void* dynamic_image_handle = nullptr;
 		bool guest_abi = false;
 	};
 	std::unordered_map<std::uintptr_t, std::vector<std::byte>> objects;
@@ -66,6 +71,7 @@ struct ThreadStorage final {
 				} catch (...) {
 				}
 			}
+			darling_windows_release_dynamic_image_callback(iterator->dynamic_image_handle);
 		}
 	}
 };
@@ -79,10 +85,15 @@ int RegisterDestructor(void (*function)(void*), void* argument, void* dso_handle
 	bool guest_abi) noexcept
 {
 	if (function == nullptr) return 0;
+	void* dynamic_image_handle = guest_abi ?
+		darling_windows_retain_dynamic_image_for_guest_callback(
+			reinterpret_cast<const void*>(function)) : nullptr;
 	try {
-		storage.destructors.push_back({function, argument, dso_handle, guest_abi});
+		storage.destructors.push_back({function, argument, dso_handle,
+			dynamic_image_handle, guest_abi});
 		return 0;
 	} catch (...) {
+		darling_windows_release_dynamic_image_callback(dynamic_image_handle);
 		return -1;
 	}
 }

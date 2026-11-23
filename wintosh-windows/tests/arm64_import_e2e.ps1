@@ -64,4 +64,4 @@ if ($objcText -match 'DARLING_(GUEST_EXCEPTION|RUNNER_ERROR)' -or
 	$objcText -match 'no ABI adapter|unsupported SVC|unknown thunk') {
 	throw "ARM64 Objective-C fixture reported an execution failure: $objcText"
 }
-Write-Output 'ARM64_HOST_IMPORT_E2E=PASS IMPORT=_strlen EXIT=42 OBJC=objc_msgSend_scalar_object_pointer_stack_args'
+Write-Output 'ARM64_HOST_IMPORT_E2E=PASS IMPORT=_strlen EXIT=42 OBJC=objc_msgSend_scalar_pointer_stack_hfa_indirect_structs'

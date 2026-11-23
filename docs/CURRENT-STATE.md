@@ -19,11 +19,13 @@ exit with status 42 on x64 Windows. The Objective-C fixture covers compact
 relative method lists, selector references, two integer arguments, one double
 argument, object identity, pointer dereference, seven integer arguments
 (including one stack-passed argument), and integer/double guest returns through
-`objc_msgSend`. It does not establish the general Objective-C ABI,
-aggregate/block/variadic callbacks, framework startup, or arbitrary macOS
-application support. The Darwin/XNU syscall surface, Mach traps, callbacks,
-dynamic imports during execution, full framework coverage, and a reproducible
-Dynarmic dependency pin remain open.
+`objc_msgSend`. It also verifies two- and four-double homogeneous floating
+aggregates and a 24-byte structure returned through the ARM64 indirect-result
+register. These fixtures do not establish the general Objective-C ABI,
+arbitrary aggregates, block/variadic callbacks, framework startup, or arbitrary
+macOS application support. The Darwin/XNU syscall surface, Mach traps,
+callbacks, dynamic imports during execution, full framework coverage, and a
+reproducible Dynarmic dependency pin remain open.
 
 ## Mach broker update, 2026-11-23
 

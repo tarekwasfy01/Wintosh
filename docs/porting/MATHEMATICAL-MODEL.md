@@ -134,7 +134,7 @@ The separate i386 object-to-image experiment is bounded as follows:
 | i386 cross-object global via `__IMPORT,__pointers` | 1§ |
 | i386 pointer into `__cstring` and literal read | 1§ |
 | i386 host-bound `_puts` and `_printf` calls | 1§ |
-| i386 host-bound heap and `_exit` calls | 1§ |
+| i386 host-bound heap, `_exit`, and `_atexit` lifecycle calls | 1§ |
 | Compiler-produced image started by Wintosh | 1§ |
 
 `1§` covers a local same-section call, a two-object `_main` to `_helper` call,
@@ -147,7 +147,8 @@ values 65 and 66. Host-bound `_puts` printed a line, and `_printf` formatted
 `guest=7` and returned status 3. The linker emits constant bytes in a
 non-writable `__TEXT,__const` section. `_malloc`/`_free` allocated, mutated,
 and released a guest buffer whose sum returned 42; `_exit(23)` terminated with
-status 23. These are host-backed functions, not a complete Darwin libc.
+status 23; `_atexit` ran a `_puts` callback after normal `main` return 3.
+These are host-backed functions, not a complete Darwin libc.
 A common slide `δ` preserves a same-section displacement:
 `(S + δ) - (P + 4 + δ) = S - (P + 4)`. For the measured external Clang
 relocation, the linker combines the stored addend with the resolved symbol

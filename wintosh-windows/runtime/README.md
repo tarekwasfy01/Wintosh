@@ -33,8 +33,9 @@ For unresolved PC-relative calls it emits a guest thunk and dyld flat-lookup
 bind action. The current Win32 fixture bound `_puts` and `_printf` through the
 existing host-symbol resolver; this mechanism does not provide Darwin dylib
 loading or missing host APIs. Additional i386 fixtures bound `_malloc`,
-`_free`, and `_exit`: allocate/write/read/free returned 42, and `_exit(23)`
-terminated with status 23.
+`_free`, `_exit`, and `_atexit`: allocate/write/read/free returned 42,
+`_exit(23)` terminated with status 23, and a normal-return cleanup callback
+called `_puts` after `main` returned 3.
 Apple's [dyld4 design notes](https://github.com/apple-oss-distributions/dyld/blob/main/doc/dyld4.md)
 describe process startup with argc, argv, envp, and Apple parameters on the
 initial stack. That current description does not establish compatibility with

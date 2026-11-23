@@ -2442,3 +2442,8 @@ and summed values 40 and 2, then returned 42 after freeing the allocation.
 Another guest called `_exit(23)` and terminated with process status 23. These
 fixtures verify a small set of host-backed libc operations through generated
 stubs and bind streams; they do not establish full libSystem or CRT behavior.
+
+A further guest registered a local cleanup callback with `_atexit`; after
+`main` returned 3, the callback called `_puts` and printed `guest cleanup`.
+The Win32 runner preserved status 3. This verifies one normal-return cleanup
+path, not general CRT constructor/terminator behavior.

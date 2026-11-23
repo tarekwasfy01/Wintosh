@@ -143,6 +143,12 @@ mit **42**. Ein Gast rief `_exit(23)` auf und beendete den Prozess mit Status
 Initialisierung, errno-Interoperabilität und umfassende libSystem-Semantik sind
 damit nicht nachgewiesen.
 
+Ein weiterer Gast registrierte mit `_atexit` einen lokalen Cleanup-Callback,
+gab regulär Status **3** aus `main` zurück und rief im Callback `_puts` auf.
+Wintosh druckte `guest cleanup` nach der Rückkehr aus `main` und behielt den
+Status 3 bei. Das belegt den normalen atexit-Pfad für einen Callback, keine
+vollständige Mach-O-CRT-Initialisierung.
+
 Als Nächstes kommen weitere getrennte Literaltypen und Section-Kombinationen.
 Danach folgen zusätzliche CRT/libc-Aufrufe und Darwin-Imports. Der Windows-
 Host besitzt weder `C:\msys64` noch `C:\cygwin64`; `ld64-msys` ist hier derzeit

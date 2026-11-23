@@ -962,6 +962,11 @@ font face. `drawAtPoint:withAttributes:` reads font and foreground-color values
 using the exported `NSFontAttributeName` and `NSForegroundColorAttributeName`
 data symbols. Paragraph styling, wrapping, text measurement, advanced
 typographic layout, and verified Cocoa baseline parity remain absent.
+`drawInRect:` and `drawInRect:withAttributes:` now clip and draw one left-aligned
+line using the selected font's ascent to place its baseline; the temporary font
+and color attributes are restored after drawing. `NSAttributedString` also
+implements `drawInRect:`. These rectangle methods do not wrap text or apply
+paragraph alignment.
 `NSAttributedString` now has immutable string/attributes construction,
 `string`, `length`, and `drawAtPoint:`; its retained dictionary feeds the same
 font/color renderer. `NSMutableAttributedString` adds mutable construction,

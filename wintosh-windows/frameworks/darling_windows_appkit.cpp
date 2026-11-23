@@ -1074,9 +1074,24 @@ void NSStringDrawAtPoint(id self, SEL, darling_windows_CGPoint point)
 	DeleteDC(memory);
 }
 
+struct AppKitTextStyleScope final {
+	id previous_font{g_current_font == nullptr ? nullptr :
+		objc_retain(g_current_font)};
+	COLORREF previous_color{g_current_text_color};
+	double previous_alpha{g_current_text_alpha};
+	~AppKitTextStyleScope()
+	{
+		NSFontSet(previous_font, nullptr);
+		if (previous_font != nullptr) objc_release(previous_font);
+		g_current_text_color = previous_color;
+		g_current_text_alpha = previous_alpha;
+	}
+};
+
 void NSStringDrawAtPointWithAttributes(id self, SEL,
 	darling_windows_CGPoint point, id attributes)
 {
+	const AppKitTextStyleScope style_scope;
 	if (attributes != nullptr) {
 		if (NSFontAttributeName != nullptr) {
 			const id font = NSDictionaryObjectForKey(attributes, nullptr,
@@ -1159,15 +1174,70 @@ id NSFontWithNameSize(Class cls, SEL, id name_object, double point_size)
 
 void NSFontSet(id self, SEL)
 {
-	{
+	if (self != nullptr) {
 		std::lock_guard lock(g_fonts_mutex);
 		if (!g_fonts.contains(self)) return;
 	}
 	if (g_current_font == self) return;
-	objc_retain(self);
+	if (self != nullptr) objc_retain(self);
 	id previous = g_current_font;
 	g_current_font = self;
 	if (previous != nullptr) objc_release(previous);
+}
+
+void NSStringDrawInRectWithAttributes(id self, DarlingObjcRect rect,
+	id attributes)
+{
+	if (self == nullptr || g_current_cg_context == nullptr ||
+		!std::isfinite(rect.x) || !std::isfinite(rect.y) ||
+		!std::isfinite(rect.width) || !std::isfinite(rect.height) ||
+		rect.width <= 0.0 || rect.height <= 0.0) return;
+	const AppKitTextStyleScope style_scope;
+	if (attributes != nullptr) {
+		if (NSFontAttributeName != nullptr) {
+			const id font = NSDictionaryObjectForKey(attributes, nullptr,
+				NSFontAttributeName);
+			if (font != nullptr) NSFontSet(font, nullptr);
+		}
+		if (NSForegroundColorAttributeName != nullptr) {
+			const id color = NSDictionaryObjectForKey(attributes, nullptr,
+				NSForegroundColorAttributeName);
+			if (color != nullptr) NSColorApply(color, true, false);
+		}
+	}
+	int ascent = 12;
+	HDC metrics_context = CreateCompatibleDC(nullptr);
+	if (metrics_context != nullptr) {
+		HGDIOBJ font = GetStockObject(DEFAULT_GUI_FONT);
+		std::unique_lock font_lock(g_fonts_mutex);
+		const auto selected_font = g_fonts.find(g_current_font);
+		if (selected_font != g_fonts.end()) font = selected_font->second.handle;
+		HGDIOBJ previous_font = font == nullptr ? nullptr :
+			SelectObject(metrics_context, font);
+		TEXTMETRICW metrics{};
+		if (GetTextMetricsW(metrics_context, &metrics)) ascent = metrics.tmAscent;
+		if (previous_font != nullptr && previous_font != HGDI_ERROR)
+			SelectObject(metrics_context, previous_font);
+		font_lock.unlock();
+		DeleteDC(metrics_context);
+	}
+	CGContextSaveGState(g_current_cg_context);
+	CGContextClipToRect(g_current_cg_context, {{rect.x, rect.y},
+		{rect.width, rect.height}});
+	NSStringDrawAtPoint(self, nullptr,
+		{rect.x, rect.y + rect.height - static_cast<double>(ascent)});
+	CGContextRestoreGState(g_current_cg_context);
+}
+
+void NSStringDrawInRect(id self, SEL, DarlingObjcRect rect)
+{
+	NSStringDrawInRectWithAttributes(self, rect, nullptr);
+}
+
+void NSStringDrawInRectWithAttributesMethod(id self, SEL, DarlingObjcRect rect,
+	id attributes)
+{
+	NSStringDrawInRectWithAttributes(self, rect, attributes);
 }
 
 void NSAttributedStringFinalize(id object)
@@ -1338,6 +1408,22 @@ void NSAttributedStringDrawAtPoint(id self, SEL, darling_windows_CGPoint point)
 	}
 	NSStringDrawAtPointWithAttributes(state.string, nullptr, point,
 		state.attributes);
+	objc_release(state.string);
+	if (state.attributes != nullptr) objc_release(state.attributes);
+}
+
+void NSAttributedStringDrawInRect(id self, SEL, DarlingObjcRect rect)
+{
+	AppKitAttributedStringState state{};
+	{
+		std::lock_guard lock(g_attributed_strings_mutex);
+		const auto found = g_attributed_strings.find(self);
+		if (found == g_attributed_strings.end()) return;
+		state = {objc_retain(found->second.string),
+			found->second.attributes == nullptr ? nullptr :
+				objc_retain(found->second.attributes)};
+	}
+	NSStringDrawInRectWithAttributes(state.string, rect, state.attributes);
 	objc_release(state.string);
 	if (state.attributes != nullptr) objc_release(state.attributes);
 }
@@ -20968,6 +21054,12 @@ void RegisterAppKitClasses()
 	class_addMethod(string, sel_registerName("drawAtPoint:withAttributes:"),
 		reinterpret_cast<IMP>(&NSStringDrawAtPointWithAttributes),
 		"v@:{CGPoint=dd}@");
+	class_addMethod(string, sel_registerName("drawInRect:"),
+		reinterpret_cast<IMP>(&NSStringDrawInRect),
+		"v@:{CGRect={CGPoint=dd}{CGSize=dd}}");
+	class_addMethod(string, sel_registerName("drawInRect:withAttributes:"),
+		reinterpret_cast<IMP>(&NSStringDrawInRectWithAttributesMethod),
+		"v@:{CGRect={CGPoint=dd}{CGSize=dd}}@");
 	if (NSFontAttributeName == nullptr) {
 		NSFontAttributeName = objc_retain(NSStringStringWithUTF8String(
 			string, nullptr, "NSFont"));
@@ -21057,6 +21149,9 @@ void RegisterAppKitClasses()
 	class_addMethod(attributed_string, sel_registerName("drawAtPoint:"),
 		reinterpret_cast<IMP>(&NSAttributedStringDrawAtPoint),
 		"v@:{CGPoint=dd}");
+	class_addMethod(attributed_string, sel_registerName("drawInRect:"),
+		reinterpret_cast<IMP>(&NSAttributedStringDrawInRect),
+		"v@:{CGRect={CGPoint=dd}{CGSize=dd}}");
 
 	Class mutable_attributed_string = RegisterHostClass(
 		"NSMutableAttributedString", attributed_string);

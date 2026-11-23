@@ -72,9 +72,22 @@ bool BindLazyAtLaunch(const MachOImage& image)
 {
 	// The classic x86_64 stub-helper protocol is the only path currently wired
 	// to the Windows binder trampoline. Other formats remain eagerly resolved.
-	return image.IsArm64() || image.Is32Bit() || !image.ChainedFixups().empty() ||
-		std::none_of(image.BindActions().begin(), image.BindActions().end(),
-			[](const DyldBindAction& action) { return action.lazy; });
+	const auto has_lazy_actions = std::any_of(image.BindActions().begin(),
+		image.BindActions().end(), [](const DyldBindAction& action) { return action.lazy; });
+	// The classic x86_64 stub-helper path remains unverified for linker-produced
+	// guests. Eager binding is a compatibility fallback for images whose imports
+	// all resolve at launch.
+	const auto force_eager = std::getenv("WINTOSH_FORCE_EAGER_BIND") != nullptr;
+	const auto bind_lazy = force_eager || image.IsArm64() || image.Is32Bit() ||
+		!image.ChainedFixups().empty() || !has_lazy_actions;
+	if (std::getenv("WINTOSH_TRACE_LAZY_BIND") != nullptr) {
+		std::fprintf(stderr,
+			"WINTOSH_LAZY_IMAGE arm64=%d i386=%d chained=%zu actions=%zu has_lazy=%d eager=%d\n",
+			image.IsArm64() ? 1 : 0, image.Is32Bit() ? 1 : 0,
+			image.ChainedFixups().size(), image.BindActions().size(),
+			has_lazy_actions ? 1 : 0, bind_lazy ? 1 : 0);
+	}
+	return bind_lazy;
 }
 
 std::vector<std::byte> BuildTLVTemplate(const MachOImage& image,

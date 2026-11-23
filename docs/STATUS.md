@@ -2182,8 +2182,14 @@ per-image sessions use the stub-helper image-cache address and lazy-stream
 offset to select and resolve the import on first call. The session registry
 also supports guest calls made from another host thread. ARM64, 32-bit and
 chained-fixup images remain eager, as does dynamic loading. The x64 executable
-and ARM64 host library build successfully. No guest fixture or runtime test
-was run, so the actual Apple stub-helper-to-slot path remains unverified.
+and ARM64 host library build successfully. A compiler- and `ld64.lld`-produced
+x86_64 Mach-O now confirms the standard lazy path is still broken: it prints
+from the first import, then faults while reaching the next lazy import; the
+binder resolver trace is not reached. `WINTOSH_FORCE_EAGER_BIND=1` provides a
+launch-time fallback when all imports resolve. The same linked guest verifies
+its two imports and exits 42 under that fallback via
+`wintosh-windows/tests/macho_real_import_eager_e2e.ps1`. The real first-call
+stub-helper path and slot update remain open.
 
 ### Trampoline extended-state preservation (2026-11-23)
 

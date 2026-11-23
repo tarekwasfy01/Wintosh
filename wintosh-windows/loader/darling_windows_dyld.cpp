@@ -14,6 +14,7 @@
 #include "darling_windows_tlv.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <cstring>
 #include <functional>
 #include <limits>
@@ -30,7 +31,9 @@ namespace {
 
 bool BindLazyAtLaunch(const MachOImage& image)
 {
-	return image.IsArm64() || image.Is32Bit() || !image.ChainedFixups().empty() ||
+	const bool force_eager = std::getenv("WINTOSH_FORCE_EAGER_BIND") != nullptr;
+	return force_eager || image.IsArm64() || image.Is32Bit() ||
+		!image.ChainedFixups().empty() ||
 		std::none_of(image.BindActions().begin(), image.BindActions().end(),
 			[](const DyldBindAction& action) { return action.lazy; });
 }

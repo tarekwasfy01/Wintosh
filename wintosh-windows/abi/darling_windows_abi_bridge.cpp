@@ -48,6 +48,13 @@ extern "C" DARLING_SYSV std::uintptr_t darling_windows_abi_resolve_lazy_binding(
 	try {
 		const auto target = darling::windows_host::MachOLazyBindingSession::ResolveActiveForImage(
 			image_cache, lazy_binding_info);
+		if (std::getenv("WINTOSH_TRACE_LAZY_BIND") != nullptr) {
+			std::fprintf(stderr,
+				"WINTOSH_LAZY_BIND cache=0x%llx info=0x%llx target=0x%llx\n",
+				static_cast<unsigned long long>(image_cache),
+				static_cast<unsigned long long>(lazy_binding_info),
+				static_cast<unsigned long long>(target.value_or(0)));
+		}
 		return target.value_or(0);
 	} catch (...) {
 		// Exceptions cannot unwind safely through the hand-written binder frame.

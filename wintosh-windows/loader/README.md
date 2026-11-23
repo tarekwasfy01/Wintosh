@@ -72,6 +72,12 @@ session by mapped image range and resolves the import on first call. Sessions
 remain active across initializers, guest entry and terminators, including
 calls from guest-created host threads. Dynamic classic x86_64 images keep
 thread-neutral sessions registered until `dlclose`. ARM64, 32-bit and
-chained-fixup images remain eager. A real macOS Mach-O fixture has not yet
-verified the end-to-end stub-helper call and slot update. A lazy-info offset
-selects and applies every action in its sequence through the sequence boundary.
+chained-fixup images remain eager. A Clang/`ld64.lld` guest with real
+`__stub_helper` and `__la_symbol_ptr` sections exposed that the default first-
+call path still faults before the second import, without reaching the resolver.
+Set `WINTOSH_FORCE_EAGER_BIND=1` to bind classic lazy imports at launch when all
+symbols resolve; the compiler-linked two-import fixture passes under this
+fallback. `WINTOSH_TRACE_LAZY_BIND=1` reports image classification and resolver
+calls while debugging. The default stub-helper-to-slot path remains open. A
+lazy-info offset selects and applies every action in its sequence through the
+sequence boundary.

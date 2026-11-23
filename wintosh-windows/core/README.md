@@ -16,9 +16,10 @@ Failed validation or queueing restores the aggregate and sender row. Full
 receive-right reference counting and complete port-death/notification
 propagation remain open Mach-kernel behaviors.
 
-The broker envelope protocol is version 7. Its `remote_disposition` field
-keeps the `msgh_remote_port` right separate from the message's port
-descriptors, so the broker can validate and consume a move-send or move-send-once
-right at send time.
-The broker path accepts remote dispositions 17–21; local loopback currently
-does not support header `MAKE_SEND` or `MAKE_SEND_ONCE`.
+The broker envelope protocol is version 8. `remote_disposition` carries the
+destination right, while `local_port_token` and `local_disposition` carry the
+reply capability independently of body descriptors. Send validates the
+session's right, accounts move/copy/make reply rights while queued, and
+materializes the reply port in the receiver's local capability table. This is
+a selected Mach header-right subset; vouchers, complete receive-right
+accounting, and complete port-death/notification propagation remain open.

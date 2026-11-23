@@ -1,5 +1,16 @@
 # Wintosh current status
 
+## Update, 2026-11-23: brokered reply ports
+
+WIPC version 8 adds `local_port_token` and `local_disposition` so brokered
+Mach messages can carry a reply port separately from their body descriptors.
+The broker checks the sender session's send, send-once, or receive right,
+accounts for selected move/copy/make dispositions, and returns the capability
+metadata for receiver-side materialization. Local Release builds of both
+`wintosh.exe` and `wintosh_broker.exe` passed. No runtime tests were run in
+this update; full voucher, port-death, and XNU-compatible right semantics
+remain open.
+
 ## Reading this status
 
 This file records implemented behavior and known limits; it is not a claim of

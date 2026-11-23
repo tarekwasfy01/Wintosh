@@ -59,8 +59,10 @@ right counts atomically with queue insertion. Wintosh previously laid out only
 five words, aliasing `msgh_id` with the voucher slot. The ABI structure now
 includes `msgh_voucher_port` and `msgh_id` at offsets 16 and 20. The current
 message path uses `msgh_remote_port` as its destination and implements selected
-`R` and `L` dispositions on local queues. Voucher behavior is unsupported, and
-complex body port descriptors have a separate, partial transfer path.
+`R` and `L` dispositions on local queues and brokered messages. The broker
+carries a reply capability separately from body descriptors and materializes
+it in the receiving session. Voucher behavior is unsupported, and complex
+body port descriptors have a separate, partial transfer path.
 Therefore the current header contract is:
 
 | Header contract | Wintosh | XNU reference |
@@ -76,9 +78,11 @@ dispositions, preflights combined same-port deltas, reserves moved header
 rights as in-transit before queue insertion, and rolls those reservations back
 if insertion fails. Receive materializes transit rights, swaps the header
 fields and disposition bits, and `mach_msg_destroy` deallocates copied-out
-header rights. It rejects
-voucher dispositions and brokered move or reply transfers because those routes
-do not yet materialize target-session rights. The local transition tracks
+header rights. The broker path now serializes reply-port tokens and selected
+reply dispositions, validates them against session rights, and creates a
+receiver-local capability when the message arrives. Voucher dispositions
+remain unsupported; cross-session lifecycle races and full XNU right semantics
+are not established. The local transition tracks
 `r_s/r_t/r_r` as sender, in-transit, and receiver counts: a move obeys
 `(Q=0,r_s=n,r_t=k) -> (Q=1,r_s=n-1,r_t=k+1)` at send and
 `(Q=1,r_t=k+1) -> (Q=0,r_t=k,r_r=m+1)` at receive. Failed insertion rolls

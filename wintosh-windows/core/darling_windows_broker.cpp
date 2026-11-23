@@ -548,10 +548,38 @@ int wmain(int argc, wchar_t** argv)
 					if (envelope.port_descriptor_dispositions.size() !=
 						envelope.port_descriptor_tokens.size())
 						throw std::invalid_argument("Mach IPC port descriptor metadata mismatch");
+					if ((envelope.local_port_token == 0) != (envelope.local_disposition == 0))
+						throw std::invalid_argument("invalid Mach IPC reply port metadata");
+					if (envelope.local_port_token != 0) {
+						if (!allocated_ports.contains(envelope.local_port_token))
+							throw std::invalid_argument("unknown Mach IPC reply port token");
+						if (envelope.local_disposition != 17 && envelope.local_disposition != 18 &&
+							envelope.local_disposition != 19 && envelope.local_disposition != 21)
+							throw std::invalid_argument("unsupported Mach IPC reply port disposition");
+						const auto reply_owner = port_session_owners.find(envelope.local_port_token);
+						const bool owns_reply_receive = reply_owner != port_session_owners.end() ?
+							reply_owner->second == envelope.session_token : envelope.session_token == 0;
+						const auto reply_port_rights = port_session_send_rights.find(envelope.local_port_token);
+						PortSendRights reply_sender_rights{};
+						if (reply_port_rights != port_session_send_rights.end()) {
+							const auto sender = reply_port_rights->second.find(envelope.session_token);
+							if (sender != reply_port_rights->second.end()) reply_sender_rights = sender->second;
+						}
+						if ((envelope.local_disposition == 17 || envelope.local_disposition == 19) &&
+							reply_sender_rights.send == 0)
+							throw std::invalid_argument("Mach IPC reply send right is not held by this session");
+						if (envelope.local_disposition == 18 && reply_sender_rights.send_once == 0)
+							throw std::invalid_argument("Mach IPC reply send-once right is not held by this session");
+						if (envelope.local_disposition == 21 && (!owns_reply_receive ||
+							port_rights.at(envelope.local_port_token).receive == 0))
+							throw std::invalid_argument("Mach IPC reply receive right is not held by this session");
+					}
 					if (port_queues.at(envelope.port_token).size() >= max_port_queue_depth)
 						throw std::runtime_error("Mach IPC send queue is full");
 					std::vector<std::uint64_t> affected_tokens = envelope.port_descriptor_tokens;
 					affected_tokens.push_back(envelope.port_token);
+					if (envelope.local_port_token != 0)
+						affected_tokens.push_back(envelope.local_port_token);
 					std::vector<std::pair<std::uint64_t, PortRights>> rights_snapshot;
 					for (const auto token : affected_tokens)
 						rights_snapshot.emplace_back(token, port_rights.at(token));
@@ -613,6 +641,28 @@ int wmain(int argc, wchar_t** argv)
 							break;
 						default:
 							break;
+						}
+						if (envelope.local_port_token != 0) {
+							auto reply_count = port_rights.find(envelope.local_port_token);
+							auto& reply_sender = port_session_send_rights[envelope.local_port_token][envelope.session_token];
+							switch (envelope.local_disposition) {
+							case 17:
+								--reply_count->second.send;
+								--reply_sender.send;
+								break;
+							case 18:
+								--reply_count->second.send_once;
+								--reply_sender.send_once;
+								break;
+							case 19:
+								++reply_count->second.send;
+								break;
+							case 21:
+								++reply_count->second.send_once;
+								break;
+							default:
+								throw std::invalid_argument("unsupported Mach IPC reply port disposition");
+							}
 						}
 						for (std::size_t index = 0; index < envelope.port_descriptor_tokens.size(); ++index) {
 							const auto token = envelope.port_descriptor_tokens[index];
@@ -814,6 +864,12 @@ int wmain(int argc, wchar_t** argv)
 								envelope.session_token);
 						}
 					}
+					if (queue.front().local_port_token != 0 &&
+						(queue.front().local_disposition == 17 || queue.front().local_disposition == 18 ||
+						 queue.front().local_disposition == 19 || queue.front().local_disposition == 21)) {
+						port_session_send_rights[queue.front().local_port_token].try_emplace(
+							envelope.session_token);
+					}
 					auto message = std::move(queue.front());
 					queue.pop_front();
 					for (std::size_t index = 0; index < message.port_descriptor_tokens.size(); ++index) {
@@ -844,6 +900,31 @@ int wmain(int argc, wchar_t** argv)
 							++port_session_send_rights[token][envelope.session_token].send_once;
 							break; // make send-once
 						default: break;
+						}
+					}
+					if (message.local_port_token != 0) {
+						auto rights = port_rights.find(message.local_port_token);
+						if (rights == port_rights.end())
+							throw std::invalid_argument("missing received Mach IPC reply rights");
+						switch (message.local_disposition) {
+						case 17:
+							++rights->second.send;
+							++port_session_send_rights[message.local_port_token][envelope.session_token].send;
+							break;
+						case 18:
+							++rights->second.send_once;
+							++port_session_send_rights[message.local_port_token][envelope.session_token].send_once;
+							break;
+						case 19:
+							++rights->second.send;
+							++port_session_send_rights[message.local_port_token][envelope.session_token].send;
+							break;
+						case 21:
+							++rights->second.send_once;
+							++port_session_send_rights[message.local_port_token][envelope.session_token].send_once;
+							break;
+						default:
+							throw std::invalid_argument("unsupported received Mach IPC reply disposition");
 						}
 					}
 					// Receiving an OOL descriptor transfers the broker's owning
@@ -883,6 +964,9 @@ int wmain(int argc, wchar_t** argv)
 					response.port_descriptor_tokens = std::move(message.port_descriptor_tokens);
 					response.port_descriptor_dispositions = std::move(message.port_descriptor_dispositions);
 					response.inline_payload = std::move(message.inline_payload);
+					response.remote_disposition = message.remote_disposition;
+					response.local_port_token = message.local_port_token;
+					response.local_disposition = message.local_disposition;
 					response.out_of_line_handle = duplicated_handle;
 					server.Write(AsString(darling::windows_host::EncodeMachIpcEnvelope(response)));
 					continue;

@@ -1320,3 +1320,14 @@ the child is resumed, and the port is destroyed through the child connection.
 This proves session/process hand-off only; it is not proof of address-space
 inheritance or Darwin `fork` semantics.
 
+## Brokered Mach reply-port header rights (2026-11-23)
+
+WIPC version 8 adds a reply-port token and disposition separate from the
+destination and body descriptors. Broker send validates the selected held
+right and accounts move-send, move-send-once, copy-send, and make-send-once
+rights while queued. Receive restores the right into the receiver's local
+capability table and applies the normal Mach header field/disposition swap.
+The local Release targets build; no end-to-end runtime test was run for this
+increment. Voucher transfers, full right lifetime semantics, and races across
+session teardown remain unimplemented or unverified.
+

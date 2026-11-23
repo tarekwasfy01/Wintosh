@@ -3097,8 +3097,14 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 			std::lock_guard broker_lock(mach_broker_mutex);
 			const auto capability = mach_ipc_capabilities.Lookup(message->msgh_remote_port);
 			if (mach_broker_client && capability) {
-				if ((message->msgh_bits &
-					(mach_header_local_mask | mach_header_voucher_mask)) != 0)
+				if ((message->msgh_bits & mach_header_voucher_mask) != 0)
+					return darling_kern_not_supported;
+				const auto local_disposition =
+					(message->msgh_bits & mach_header_local_mask) >> 8;
+				auto local_capability = message->msgh_local_port != 0 ?
+					mach_ipc_capabilities.Lookup(message->msgh_local_port) : std::nullopt;
+				if ((local_disposition != 0 && !local_capability) ||
+					(local_disposition == 0 && message->msgh_local_port != 0))
 					return darling_kern_not_supported;
 				const auto remote_disposition = message->msgh_bits & mach_header_remote_mask;
 				bool broker_descriptors_available = true;
@@ -3127,17 +3133,11 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 					bool carried;
 				};
 				std::vector<BrokerTransitRight> broker_transit_rights;
+				broker_transit_rights.reserve(2);
 				if ((message->msgh_bits & darling_mach_msg_complex) != 0) {
 					const auto* body = reinterpret_cast<const darling_mach_msg_body*>(
 						reinterpret_cast<const std::uint8_t*>(message) + sizeof(darling_mach_msg_header));
-					const auto* descriptor_bytes = reinterpret_cast<const std::uint8_t*>(body + 1);
-					const auto descriptor_bytes_count = send_size - sizeof(darling_mach_msg_header) - sizeof(*body);
-					const auto first_type = descriptor_bytes_count >=
-						offsetof(darling_mach_msg_ool_descriptor, type) + sizeof(std::uint32_t) ?
-						descriptor_bytes[offsetof(darling_mach_msg_ool_descriptor, type)] : 0;
-					if (!(body->msgh_descriptor_count == 1 &&
-						first_type == darling_mach_msg_descriptor_ool))
-						broker_transit_rights.reserve(body->msgh_descriptor_count + 1);
+					broker_transit_rights.reserve(body->msgh_descriptor_count + 2);
 				}
 				const auto remote_right = remote_disposition == darling_mach_make_send ?
 					darling_mach_port_type_send : remote_disposition == darling_mach_make_send_once ?
@@ -3176,6 +3176,12 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 				rollback_broker_rights();
 				return 3;
 			}
+			if (local_capability && (local_disposition == darling_mach_move_send ||
+				local_disposition == darling_mach_move_send_once) &&
+				!move_to_broker_transit(message->msgh_local_port, local_disposition, true)) {
+				rollback_broker_rights();
+				return 3;
+			}
 			if ((message->msgh_bits & darling_mach_msg_complex) != 0) {
 				const auto* body = reinterpret_cast<const darling_mach_msg_body*>(
 					reinterpret_cast<const std::uint8_t*>(message) + sizeof(darling_mach_msg_header));
@@ -3209,6 +3215,10 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 					request.port_token = capability->broker_token;
 					request.session_token = capability->session_token;
 					request.remote_disposition = remote_disposition;
+					if (local_capability) {
+						request.local_port_token = local_capability->broker_token;
+						request.local_disposition = local_disposition;
+					}
 					if (copied_ool_address != nullptr) {
 						request.disposition_count = 1;
 						const auto* body = reinterpret_cast<const darling_mach_msg_body*>(
@@ -3435,6 +3445,20 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 						response.request_id != request.request_id ||
 						response.port_token != request.port_token)
 						return 0x10004003;
+					const auto apply_broker_header_rights = [&] {
+						if ((response.local_port_token == 0) != (response.local_disposition == 0))
+							throw std::invalid_argument("invalid received Mach IPC reply right");
+						darling_mach_port_name_t reply_port = 0;
+						if (response.local_port_token != 0)
+							reply_port = BindReceivedBrokerPortRight(response.local_port_token,
+								capability->session_token, response.local_disposition);
+						message->msgh_remote_port = reply_port;
+						message->msgh_local_port = receive_name;
+						message->msgh_bits = (message->msgh_bits &
+							~(mach_header_remote_mask | mach_header_local_mask)) |
+							(response.local_disposition & mach_header_remote_mask) |
+							((response.remote_disposition << 8) & mach_header_local_mask);
+					};
 					if (response.out_of_line_handle != 0 || response.out_of_line_size != 0) {
 						if (!response.payload.empty() || response.out_of_line_handle == 0 ||
 							response.out_of_line_size == 0 ||
@@ -3467,12 +3491,7 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 							}
 							std::memcpy(message, response.inline_payload.data(), response.inline_payload.size());
 							message->msgh_size = static_cast<std::uint32_t>(response.inline_payload.size());
-							const auto target_disposition = message->msgh_bits & mach_header_remote_mask;
-							message->msgh_remote_port = 0;
-							message->msgh_local_port = receive_name;
-							message->msgh_bits = (message->msgh_bits &
-								~(mach_header_remote_mask | mach_header_local_mask)) |
-								((target_disposition << 8) & mach_header_local_mask);
+							apply_broker_header_rights();
 							auto* inline_descriptor = reinterpret_cast<darling_mach_msg_ool_descriptor*>(
 								reinterpret_cast<std::uint8_t*>(message) + sizeof(darling_mach_msg_header) + sizeof(darling_mach_msg_body));
 							inline_descriptor->address = static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(local));
@@ -3481,8 +3500,7 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 						message->msgh_bits = darling_mach_msg_complex;
 						message->msgh_size = sizeof(darling_mach_msg_header) + sizeof(darling_mach_msg_body) +
 							sizeof(darling_mach_msg_ool_descriptor);
-						message->msgh_remote_port = 0;
-						message->msgh_local_port = receive_name;
+						apply_broker_header_rights();
 						message->msgh_id = 0;
 						auto* body = reinterpret_cast<darling_mach_msg_body*>(
 							reinterpret_cast<std::uint8_t*>(message) + sizeof(darling_mach_msg_header));
@@ -3497,12 +3515,7 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 						return 0x10004003;
 					std::memcpy(message, response.payload.data(), response.payload.size());
 					message->msgh_size = static_cast<std::uint32_t>(response.payload.size());
-					const auto target_disposition = message->msgh_bits & mach_header_remote_mask;
-					message->msgh_remote_port = 0;
-					message->msgh_local_port = receive_name;
-					message->msgh_bits = (message->msgh_bits &
-						~(mach_header_remote_mask | mach_header_local_mask)) |
-						((target_disposition << 8) & mach_header_local_mask);
+					apply_broker_header_rights();
 					if (!response.port_descriptor_tokens.empty()) {
 						if (response.payload.size() < sizeof(darling_mach_msg_header) +
 							sizeof(darling_mach_msg_body)) return 4;

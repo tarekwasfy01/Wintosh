@@ -66,6 +66,9 @@ struct MachIpcEnvelope final {
 	std::uint32_t mig_routine_id = 0;
 	// MACH_MSG_TYPE_* disposition for the destination port in msgh_remote_port.
 	std::uint32_t remote_disposition = 0;
+	// Capability and disposition for the reply port in msgh_local_port.
+	std::uint64_t local_port_token = 0;
+	std::uint32_t local_disposition = 0;
 };
 
 [[nodiscard]] MachIpcEnvelope EncodeMachMessageForIpc(

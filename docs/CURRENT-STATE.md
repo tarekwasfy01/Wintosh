@@ -1,5 +1,15 @@
 # Complete current workspace state
 
+## Mach broker update, 2026-11-23
+
+The Windows Release targets `wintosh.exe` and `wintosh_broker.exe` build with
+the WIPC version-8 Mach reply-port transport. Brokered send requests now carry
+the local/reply-port capability and disposition independently from body
+descriptors; receive reconstructs the reply right in the receiving process.
+This is a selected Mach IPC slice, not proof that arbitrary Cocoa applications
+run. Voucher rights, full XNU lifecycle behavior, and end-to-end runtime
+coverage remain open.
+
 This file closes the gap between the working directory and the release
 documentation. The machine-readable inventory is
 [CURRENT-STATE-MANIFEST.csv](../CURRENT-STATE-MANIFEST.csv).

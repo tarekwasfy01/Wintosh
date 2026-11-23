@@ -819,6 +819,12 @@ offsets to the current point and appends the resulting cubic Bézier segment.
 the corner-circle center, appends a line to the first tangent, then cubic
 segments no larger than 90 degrees. The radius is reduced when either adjacent
 segment is too short; degenerate corners become a line to the corner.
+`appendBezierPathWithArcWithCenter:radius:startAngle:endAngle:clockwise:`
+interprets both angles in degrees, normalizes the sweep to the requested
+direction (at most one full circle), connects to the arc start or moves there
+for an empty path, and approximates the arc with cubic segments of at most
+90 degrees. Its x86_64 guest ABI path reads the center and four scalar values
+from XMM registers and the clockwise flag from a general-purpose register.
 `containsPoint:` tests the filled path area and boundary, including implicitly
 closed open subpaths, with cubic curves flattened according to path flatness.
 Following AppKit's contract, hit-testing uses nonzero winding regardless of the

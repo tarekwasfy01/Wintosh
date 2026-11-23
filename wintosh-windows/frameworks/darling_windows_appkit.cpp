@@ -2420,6 +2420,86 @@ void NSBezierPathAppendRoundedRect(id self, SEL, DarlingObjcRect rect,
 	}
 }
 
+void NSBezierPathAppendArcWithCenter(id self, SEL, DarlingObjcPoint center,
+	double radius, double start_degrees, double end_degrees, bool clockwise)
+{
+	if (self == nullptr || !std::isfinite(center.x) ||
+		!std::isfinite(center.y) || !std::isfinite(radius) || radius < 0.0 ||
+		!std::isfinite(start_degrees) || !std::isfinite(end_degrees)) return;
+	constexpr double degrees_to_radians =
+		0.017453292519943295769236907684886;
+	constexpr double radians_per_degree = degrees_to_radians;
+	constexpr double tau = 6.283185307179586476925286766559;
+	double sweep_degrees = end_degrees - start_degrees;
+	if (!std::isfinite(sweep_degrees)) return;
+	if (clockwise) {
+		if (sweep_degrees > 0.0) {
+			sweep_degrees = std::fmod(sweep_degrees, 360.0);
+			if (sweep_degrees == 0.0) sweep_degrees = -360.0;
+			else sweep_degrees -= 360.0;
+		} else if (sweep_degrees < 0.0) {
+			sweep_degrees = std::fmod(sweep_degrees, 360.0);
+			if (sweep_degrees == 0.0) sweep_degrees = -360.0;
+		}
+	} else if (sweep_degrees < 0.0) {
+		sweep_degrees = std::fmod(sweep_degrees, 360.0);
+		if (sweep_degrees == 0.0) sweep_degrees = 360.0;
+		else sweep_degrees += 360.0;
+	} else if (sweep_degrees > 360.0) {
+		sweep_degrees = std::fmod(sweep_degrees, 360.0);
+		if (sweep_degrees == 0.0) sweep_degrees = 360.0;
+	}
+	const double start = std::remainder(start_degrees, 360.0) *
+		radians_per_degree;
+	const double sweep = sweep_degrees * radians_per_degree;
+	const DarlingObjcPoint first{center.x + radius * std::cos(start),
+		center.y + radius * std::sin(start)};
+	if (!std::isfinite(first.x) || !std::isfinite(first.y)) return;
+	bool empty = true;
+	{
+		std::lock_guard lock(g_bezier_mutex);
+		const auto found = g_bezier_paths.find(self);
+		empty = found == g_bezier_paths.end() ||
+			found->second.commands.empty();
+	}
+	std::vector<BezierCommand> commands;
+	try {
+		commands.reserve(6);
+		if (empty) commands.push_back({BezierCommandKind::Move, {first}});
+		else commands.push_back({BezierCommandKind::Line, {first}});
+		if (radius > 0.0 && sweep != 0.0) {
+			const auto segments = static_cast<std::size_t>(std::ceil(
+				std::abs(sweep) / (tau / 4.0)));
+			if (segments == 0 || segments > 4) return;
+			commands.reserve(segments + 1);
+			const double step = sweep / static_cast<double>(segments);
+			for (std::size_t index = 0; index < segments; ++index) {
+				const double angle0 = start + step * static_cast<double>(index);
+				const double angle1 = angle0 + step;
+				const DarlingObjcPoint point0{center.x + radius * std::cos(angle0),
+					center.y + radius * std::sin(angle0)};
+				const DarlingObjcPoint point3{center.x + radius * std::cos(angle1),
+					center.y + radius * std::sin(angle1)};
+				const double tangent = (4.0 / 3.0) * std::tan(step / 4.0) * radius;
+				const DarlingObjcPoint control1{point0.x - tangent * std::sin(angle0),
+					point0.y + tangent * std::cos(angle0)};
+				const DarlingObjcPoint control2{point3.x + tangent * std::sin(angle1),
+					point3.y - tangent * std::cos(angle1)};
+				if (!std::isfinite(point3.x) || !std::isfinite(point3.y) ||
+					!std::isfinite(control1.x) || !std::isfinite(control1.y) ||
+					!std::isfinite(control2.x) || !std::isfinite(control2.y))
+					return;
+				commands.push_back({BezierCommandKind::Curve,
+					{point3, control1, control2}});
+			}
+		}
+		std::lock_guard lock(g_bezier_mutex);
+		auto& target = g_bezier_paths[self].commands;
+		target.insert(target.end(), commands.begin(), commands.end());
+	} catch (...) {
+	}
+}
+
 void NSBezierPathAppend(id self, BezierCommand command)
 {
 	try {
@@ -21324,6 +21404,10 @@ void RegisterAppKitClasses()
 			sel_registerName("appendBezierPathWithArcFromPoint:toPoint:radius:"),
 			reinterpret_cast<IMP>(&NSBezierPathAppendArcFromPoint),
 			"v@:{CGPoint=dd}{CGPoint=dd}d");
+		class_addMethod(bezier_path,
+			sel_registerName("appendBezierPathWithArcWithCenter:radius:startAngle:endAngle:clockwise:"),
+			reinterpret_cast<IMP>(&NSBezierPathAppendArcWithCenter),
+			"v@:{CGPoint=dd}dddB");
 		class_addMethod(bezier_path,
 			sel_registerName("appendBezierPathWithRect:"),
 			reinterpret_cast<IMP>(&NSBezierPathAppendRect),

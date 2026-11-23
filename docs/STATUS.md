@@ -939,6 +939,16 @@ control-point offsets to `currentPoint`, then appends a cubic segment. The
 existing Objective-C ABI dispatcher already handles the three CGPoint
 arguments. No Mach-O guest fixture has exercised this selector yet.
 
+### NSBezierPath center arcs (2026-11-23)
+
+`appendBezierPathWithArcWithCenter:radius:startAngle:endAngle:clockwise:`
+converts degree angles to a direction-normalized sweep, connects the starting
+arc point to the current path (or moves there for an empty path), and emits
+cubic segments no larger than 90 degrees, capped at one full circle. The x86_64
+guest dispatcher decodes the CGPoint plus four scalar XMM arguments and the
+BOOL from a general-purpose register. No Mach-O fixture has verified the
+selector ABI or rendered pixels.
+
 ### NSColor RGBA accessors (2026-11-16)
 
 The four stored RGBA components are available through `redComponent`,

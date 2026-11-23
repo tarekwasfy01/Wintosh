@@ -924,6 +924,20 @@ std::uintptr_t DispatchSysVObjcCall(DarlingSysVObjcCallFrame* input,
 			imp, method.guest_abi, receiver, selector, corner, next, radius);
 		return 0;
 	}
+	if (types == "v@:{CGPoint=dd}dddB") {
+		DarlingObjcPoint center{};
+		std::memcpy(&center.x, frame->xmm[0], sizeof(center.x));
+		std::memcpy(&center.y, frame->xmm[1], sizeof(center.y));
+		double radius = 0.0, start_angle = 0.0, end_angle = 0.0;
+		std::memcpy(&radius, frame->xmm[2], sizeof(radius));
+		std::memcpy(&start_angle, frame->xmm[3], sizeof(start_angle));
+		std::memcpy(&end_angle, frame->xmm[4], sizeof(end_angle));
+		const bool clockwise = (frame->gp[argument_index] & 0xffu) != 0;
+		InvokeObjcImplementation<void, DarlingObjcPoint, double, double,
+			double, bool>(imp, method.guest_abi, receiver, selector, center,
+				radius, start_angle, end_angle, clockwise);
+		return 0;
+	}
 	constexpr std::string_view rect_argument_encoding =
 		"{CGRect={CGPoint=dd}{CGSize=dd}}";
 	constexpr std::string_view affine_transform_argument_encoding =

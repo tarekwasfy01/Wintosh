@@ -3431,6 +3431,147 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 		cpu.x = registers;
 		cpu.sp = stack_pointer;
 		cpu.pc = mapping.EntryAddress();
+		std::function<A64ExecutionResult(A64CpuState, unsigned)> run_guest_callback;
+		std::function<A64CpuState(const A64ExecutionResult&, unsigned)>
+			dispatch_guest_import;
+		dispatch_guest_import = [&](const A64ExecutionResult& trap,
+			unsigned depth) -> A64CpuState {
+			if (!trap.svc || *trap.svc != 0x82)
+				throw std::runtime_error("ARM64 Objective-C guest callback issued an "
+					"unsupported nested SVC");
+			const auto identifier = static_cast<std::uint32_t>(trap.state.x[16]);
+			const auto imported = std::find_if(arm64_host_imports.begin(),
+				arm64_host_imports.end(), [identifier](const auto& item) {
+					return item.identifier == identifier;
+				});
+			if (imported == arm64_host_imports.end())
+				throw std::runtime_error("ARM64 nested import trap references unknown thunk " +
+					std::to_string(identifier));
+			A64CpuState resumed = trap.state;
+			const auto& x = trap.state.x;
+			const auto& name = imported->symbol;
+			if (name == "_objc_msgSend") {
+				const auto receiver = reinterpret_cast<id>(
+					static_cast<std::uintptr_t>(x[0]));
+				const auto selector = reinterpret_cast<SEL>(
+					static_cast<std::uintptr_t>(x[1]));
+				const auto cls = receiver && object_isClass(receiver) ?
+					reinterpret_cast<Class>(receiver) : nullptr;
+				const auto method = cls ? class_getClassMethod(cls, selector) :
+					receiver ? class_getInstanceMethod(object_getClass(receiver), selector) : nullptr;
+				const auto implementation = method ?
+					method_getImplementation(method) : nullptr;
+				const auto implementation_address =
+					reinterpret_cast<std::uintptr_t>(implementation);
+				if (backend.ContainsExecutableGuestAddress(implementation_address)) {
+					if (depth >= 64)
+						throw std::runtime_error("ARM64 Objective-C guest callback depth exceeded");
+					A64CpuState callback = trap.state;
+					callback.pc = implementation_address;
+					const auto result = run_guest_callback(callback, depth + 1);
+					resumed.x[0] = result.state.x[0];
+					resumed.x[1] = result.state.x[1];
+					for (std::size_t index = 0; index < 4; ++index)
+						resumed.v[index] = result.state.v[index];
+				} else {
+					struct alignas(16) ObjcReturn final {
+						std::uint64_t gp[2]{};
+						double fp[4]{};
+					} returned{};
+					darling_windows_objc_arm64_message_dispatch(
+						reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[0])),
+						selector,
+						reinterpret_cast<const void*>(static_cast<std::uintptr_t>(trap.state.sp)),
+						&returned, 0,
+						reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[8])));
+					resumed.x[0] = returned.gp[0];
+					resumed.x[1] = returned.gp[1];
+					for (std::size_t index = 0; index < 4; ++index)
+						std::memcpy(&resumed.v[index], &returned.fp[index], sizeof(double));
+				}
+			} else if (name == "_sel_registerName" || name == "_objc_getClass") {
+				if (!backend.ContainsGuestCString(x[0], 4096))
+					throw std::runtime_error("ARM64 nested Objective-C name import received "
+						"an invalid guest string");
+				resumed.x[0] = reinterpret_cast<DarlingObjcNameImport>(imported->target)(
+					reinterpret_cast<const char*>(static_cast<std::uintptr_t>(x[0])));
+			} else if (name == "_malloc") {
+				resumed.x[0] = reinterpret_cast<std::uintptr_t>(
+					reinterpret_cast<DarlingHostMallocImport>(imported->target)(
+						static_cast<std::size_t>(x[0])));
+			} else if (name == "_free" || name == "_objc_release" ||
+				name == "_CFRelease") {
+				reinterpret_cast<DarlingHostFreeImport>(imported->target)(
+					reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0])));
+				resumed.x[0] = 0;
+			} else if (name == "_objc_retain" ||
+				name == "_objc_autoreleaseReturnValue" ||
+				name == "_objc_retainAutoreleaseReturnValue") {
+				resumed.x[0] = reinterpret_cast<std::uintptr_t>(
+					reinterpret_cast<DarlingObjcUnaryImport>(imported->target)(
+						reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0]))));
+			} else if (name == "_strlen") {
+				if (!backend.ContainsGuestCString(x[0], 1u << 20))
+					throw std::runtime_error("ARM64 nested strlen import received an invalid "
+						"guest string");
+				resumed.x[0] = reinterpret_cast<std::size_t (*)(const char*)>(
+					imported->target)(reinterpret_cast<const char*>(
+						static_cast<std::uintptr_t>(x[0])));
+			} else if (name == "_memcpy" || name == "_memmove" ||
+				name == "_memcmp" || name == "_memset") {
+				const auto count = static_cast<std::size_t>(x[2]);
+				if (count > (1u << 30) ||
+					!backend.ContainsGuestRange(x[0], count, name != "_memcmp") ||
+					(name != "_memset" && !backend.ContainsGuestRange(x[1], count, false)))
+					throw std::runtime_error("ARM64 nested memory import received an invalid "
+						"guest range");
+				if (name == "_memcpy")
+					resumed.x[0] = reinterpret_cast<std::uintptr_t>(
+						reinterpret_cast<DarlingHostMemcpyImport>(imported->target)(
+							reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0])),
+							reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[1])), count));
+				else if (name == "_memmove")
+					resumed.x[0] = reinterpret_cast<std::uintptr_t>(
+						reinterpret_cast<void* (*)(void*, const void*, std::size_t)>(
+							imported->target)(reinterpret_cast<void*>(
+								static_cast<std::uintptr_t>(x[0])), reinterpret_cast<const void*>(
+								static_cast<std::uintptr_t>(x[1])), count));
+				else if (name == "_memcmp")
+					resumed.x[0] = static_cast<std::uint64_t>(static_cast<std::int64_t>(
+						reinterpret_cast<int (*)(const void*, const void*, std::size_t)>(
+							imported->target)(reinterpret_cast<const void*>(
+								static_cast<std::uintptr_t>(x[0])), reinterpret_cast<const void*>(
+								static_cast<std::uintptr_t>(x[1])), count)));
+				else
+					resumed.x[0] = reinterpret_cast<std::uintptr_t (*)(void*, int,
+						std::size_t)>(imported->target)(reinterpret_cast<void*>(
+						static_cast<std::uintptr_t>(x[0])), static_cast<int>(x[1]), count);
+			} else {
+				throw std::runtime_error("ARM64 nested host import has no ABI adapter: " + name);
+			}
+			return resumed;
+		};
+		run_guest_callback = [&](A64CpuState callback, unsigned depth) {
+			callback.x[30] = return_sentinel;
+			for (;;) {
+				const auto result = backend.Run(callback);
+				if (result.state.pc == return_sentinel ||
+					(result.fault_address == return_sentinel && result.fault ==
+						"AArch64 instruction fetch is outside executable guest memory"))
+					return result;
+				if (result.svc && *result.svc == 0x82) {
+					callback = dispatch_guest_import(result, depth);
+					continue;
+				}
+				if (!result.fault.empty())
+					throw std::runtime_error("ARM64 Objective-C guest callback failed: " +
+						result.fault);
+				if (result.svc)
+					throw std::runtime_error("ARM64 Objective-C guest callback issued unsupported SVC #" +
+						std::to_string(*result.svc));
+				throw std::runtime_error("ARM64 Objective-C guest callback stopped before return");
+			}
+		};
 		for (;;) {
 			const auto result = backend.Run(cpu);
 			if (result.state.pc == return_sentinel ||
@@ -3469,24 +3610,7 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 						if (backend.ContainsExecutableGuestAddress(implementation_address)) {
 							A64CpuState nested = result.state;
 							nested.pc = implementation_address;
-							nested.x[30] = return_sentinel;
-							A64ExecutionResult nested_result{};
-							for (;;) {
-								nested_result = backend.Run(nested);
-								if (nested_result.state.pc == return_sentinel ||
-									(nested_result.fault_address == return_sentinel &&
-										nested_result.fault ==
-										"AArch64 instruction fetch is outside executable guest memory"))
-									break;
-								if (!nested_result.fault.empty())
-									throw std::runtime_error("ARM64 Objective-C guest callback failed: " +
-										nested_result.fault);
-								if (nested_result.svc)
-									throw std::runtime_error("ARM64 Objective-C guest callback issued an "
-										"unsupported nested SVC #" +
-										std::to_string(*nested_result.svc));
-								throw std::runtime_error("ARM64 Objective-C guest callback stopped before return");
-							}
+							const auto nested_result = run_guest_callback(nested, 0);
 							cpu = result.state;
 							cpu.x[0] = nested_result.state.x[0];
 							cpu.x[1] = nested_result.state.x[1];

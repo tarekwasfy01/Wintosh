@@ -3,6 +3,7 @@
 extern Class objc_getClass(const char *name);
 extern SEL sel_registerName(const char *name);
 extern id objc_msgSend(id receiver, SEL selector, ...);
+extern unsigned long strlen(const char *value);
 
 typedef struct {
 	double x;
@@ -34,6 +35,8 @@ __attribute__((objc_root_class))
 + (WintoshPair)shiftPair:(WintoshPair)value;
 + (WintoshQuad)shiftQuad:(WintoshQuad)value;
 + (WintoshTriple)advanceTriple:(WintoshTriple)value;
++ (long)nestedAnswer;
++ (long)lengthPlus:(const char *)value;
 @end
 
 @implementation WintoshProbe
@@ -75,9 +78,20 @@ __attribute__((objc_root_class))
 {
 	return (WintoshTriple){value.a + 1, value.b + 2, value.c + 3};
 }
++ (long)nestedAnswer
+{
+	SEL nested_selector = sel_registerName("answer");
+	typedef long (*WintoshNestedSend)(id, SEL);
+	return ((WintoshNestedSend)objc_msgSend)((id)self, nested_selector);
+}
++ (long)lengthPlus:(const char *)value
+{
+	return (long)strlen(value) + 35;
+}
 @end
 
 typedef long (*WintoshSendLong)(id, SEL);
+typedef long (*WintoshSendLongString)(id, SEL, const char *);
 typedef long (*WintoshSendLongPair)(id, SEL, long, long);
 typedef double (*WintoshSendDouble)(id, SEL, double);
 typedef id (*WintoshSendObject)(id, SEL, id);
@@ -104,10 +118,13 @@ int main(int argc, char **argv, char **envp)
 	SEL shift_pair = sel_registerName("shiftPair:");
 	SEL shift_quad = sel_registerName("shiftQuad:");
 	SEL advance_triple = sel_registerName("advanceTriple:");
+	SEL nested_answer = sel_registerName("nestedAnswer");
+	SEL length_plus = sel_registerName("lengthPlus:");
 	if (probe == (Class)0 || answer == (SEL)0 || add == (SEL)0 ||
 		increment == (SEL)0 || echo == (SEL)0 || read_value == (SEL)0 ||
 		sum_seven == (SEL)0 || shift_pair == (SEL)0 || shift_quad == (SEL)0 ||
-		advance_triple == (SEL)0)
+		advance_triple == (SEL)0 || nested_answer == (SEL)0 ||
+		length_plus == (SEL)0)
 		return 1;
 	const long value = ((WintoshSendLong)objc_msgSend)((id)probe, answer);
 	const long sum = ((WintoshSendLongPair)objc_msgSend)((id)probe, add, 20, 22);
@@ -125,9 +142,13 @@ int main(int argc, char **argv, char **envp)
 		(id)probe, shift_quad, (WintoshQuad){10.0, 10.0, 10.0, 10.0});
 	const WintoshTriple triple = ((WintoshSendTriple)objc_msgSend)(
 		(id)probe, advance_triple, (WintoshTriple){10, 10, 10});
+	const long nested = ((WintoshSendLong)objc_msgSend)((id)probe, nested_answer);
+	const long nested_length = ((WintoshSendLongString)objc_msgSend)(
+		(id)probe, length_plus, "Wintosh");
 	return value == 42 && sum == 42 && incremented == 42.0 &&
 		echoed == (id)probe && dereferenced == 42 && seven == 42 &&
 		pair.x == 21.0 && pair.y == 22.0 && quad.a == 11.0 &&
 		quad.b == 12.0 && quad.c == 13.0 && quad.d == 14.0 &&
-		triple.a == 11 && triple.b == 12 && triple.c == 13 ? 42 : 1;
+		triple.a == 11 && triple.b == 12 && triple.c == 13 && nested == 42 &&
+		nested_length == 42 ? 42 : 1;
 }

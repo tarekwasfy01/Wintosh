@@ -144,7 +144,9 @@ Lokale Release-Fixtures belegen `_strlen`-Import und begrenzte
 Zeiger-Dereferenzierung und sieben Integerargumenten, von denen eines auf dem
 Gaststack übergeben wird. Zwei- und viergliedrige Double-HFAs sowie eine
 24-Byte-Struktur mit indirektem ARM64-Rückgabepointer werden ebenfalls
-verifiziert. Andere Aggregatlayouts und ein funktionierender macOS-App- oder
+verifiziert. Ein Gastmethoden-Callback führt außerdem während des Callbacks
+`sel_registerName`, rekursives `objc_msgSend` und `_strlen` über weitere SVCs
+aus. Andere Aggregatlayouts und ein funktionierender macOS-App- oder
 Frameworkstart sind damit nicht belegt.
 
 Der Adapterzustand ist als `A64CpuState` mit `x0..x30`, `v0..v31`, `SP`,
@@ -230,7 +232,7 @@ festgelegt werden.
 | A64-Trap-Zustand | x0–x30, v0–v31, SP, PC, PSTATE, FPCR und FPSR rückführbar und fortsetzbar |
 | Darwin-UNIX-SVC | `exit`, `wait4` (mit lokaler Status-/Rusage-Kopie), `read`, `write`, `readv`, `writev`, `pread`, `pwrite`, `open`, `close`, `link`, `unlink`, `chdir`, `chmod`, `fchmod`, `symlink`, `readlink`, `umask`, Prozess-/Gruppen-ID-Aufrufe, `dup`, `dup2`, `pipe`, `socket`, `socketpair`, `connect`, `bind`, `listen`, `accept`, `recvfrom`, `sendto`, `getpeername`, `getsockname`, `shutdown`, `gettimeofday`, `getrusage`, `getpriority`, `setpriority`, `access`, `rename`, `mkdir`, `rmdir`, `fsync`, `fdatasync`, `stat`, `lstat`, `fstat`, `lseek`, `truncate`, `ftruncate`, `mmap`, `munmap` (nur ganzes Mapping), `mprotect`, `msync`, `madvise`, `sysctl` (implementierte zweistufige `KERN`-/`HW`-MIBs), `kill`, `sigaction`, `sigprocmask`; andere UNIX-Nummern liefern `ENOSYS`; kein Mach-Trap-Dispatcher |
 | x64-Host-Gast-Speicherprüfung | Segmentrechte und Bereichsgrenzen im Callback umgesetzt; Hauptexecutable, Bootstrap-dylibs, Startpuffer und dynamische Mappings werden registriert; keine Laufzeit-Fixture |
-| A64-Import-Trampoline und ABI-Dispatcher | teilweise: `_strlen`, Objekt-/Zeigerwerte, Integer-/Double-Callbacks, Stackargument, 2-/4-Double-HFAs und indirektes 24-Byte-Struct-Return bestehen; übrige Aggregate/Blocks/Variadics bleiben offen |
+| A64-Import-Trampoline und ABI-Dispatcher | teilweise: `_strlen`, verschachtelte Objective-C-/String-Imports, Objekt-/Zeigerwerte, Integer-/Double-Callbacks, Stackargument, 2-/4-Double-HFAs und indirektes 24-Byte-Struct-Return bestehen; übrige Aggregate/Blocks/Variadics bleiben offen |
 | Schmale ARM64 Mach-O Runtime-Fixtures auf x64 Windows | `_strlen` und ein Objective-C-Gastcallback bestehen; App-Bundles/Frameworkstart fehlen |
 
 Die lokalen Fixtures belegen nur die jeweils beschriebenen AArch64-Instruktions-

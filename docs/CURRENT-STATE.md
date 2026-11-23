@@ -21,11 +21,13 @@ argument, object identity, pointer dereference, seven integer arguments
 (including one stack-passed argument), and integer/double guest returns through
 `objc_msgSend`. It also verifies two- and four-double homogeneous floating
 aggregates and a 24-byte structure returned through the ARM64 indirect-result
-register. These fixtures do not establish the general Objective-C ABI,
+register. A guest Objective-C method also performs nested `sel_registerName`,
+`objc_msgSend`, and `_strlen` imports while executing, including recursive guest
+method dispatch. These fixtures do not establish the general Objective-C ABI,
 arbitrary aggregates, block/variadic callbacks, framework startup, or arbitrary
-macOS application support. The Darwin/XNU syscall surface, Mach traps,
-callbacks, dynamic imports during execution, full framework coverage, and a
-reproducible Dynarmic dependency pin remain open.
+macOS application support. Nested Darwin syscalls, Mach traps, broader import
+catalog coverage, full framework coverage, and a reproducible Dynarmic
+dependency pin remain open.
 
 ## Mach broker update, 2026-11-23
 

@@ -560,6 +560,7 @@ extern "C" int darling_windows_dlclose(void* handle);
 extern "C" void* darling_windows_retain_dynamic_image_for_guest_callback(
 	const void* address) noexcept;
 extern "C" void darling_windows_release_dynamic_image_callback(void* handle) noexcept;
+extern "C" void darling_windows_abandon_dynamic_image_callback(void* handle) noexcept;
 extern "C" const char* darling_windows_dlerror();
 extern "C" int darling_windows_dladdr(const void* address, darling_dl_info* info);
 extern "C" DARLING_HOST_GUEST_ABI std::uint32_t darling_windows_dyld_image_count();

@@ -747,7 +747,6 @@ std::unordered_map<void*, std::size_t> dynamic_image_references;
 std::unordered_map<std::wstring, void*> dynamic_image_paths;
 std::unordered_set<void*> dynamic_image_nodelete;
 std::unordered_map<void*, std::size_t> dynamic_image_callback_references;
-std::unordered_set<const void*> pending_dynamic_image_callback_pins;
 constexpr int kDarwinRtldNoLoad = 0x10;
 constexpr int kDarwinRtldNoDelete = 0x80;
 struct DarwinDyldImageEntry final {
@@ -780,6 +779,7 @@ struct DynamicImageLoadState final {
 	std::condition_variable condition;
 	bool complete = false;
 	std::thread::id owner;
+	std::vector<const void*> pending_callback_pins;
 };
 struct DarlingObjectFileImageToken final {
 	void* handle = nullptr;
@@ -7804,6 +7804,9 @@ extern "C" void* darling_windows_retain_dynamic_image_for_guest_callback(
 {
 	if (address == nullptr) return nullptr;
 	try {
+		// Serialize acquisition against final dlclose while permitting the
+		// recursive dlopen initializer path on the loading thread.
+		std::lock_guard notification_lock(guest_dyld_notification_mutex);
 		std::lock_guard lock(dynamic_image_mutex);
 		for (const auto& [handle, image] : dynamic_images) {
 			if (darling::windows_host::DynamicImageContainsMappedAddress(*image, address)) {
@@ -7812,9 +7815,14 @@ extern "C" void* darling_windows_retain_dynamic_image_for_guest_callback(
 			}
 		}
 		// Initializers run before OpenDynamicImage is published in dynamic_images.
-		// Defer the pin until that same mapped image is registered below.
-		if (!dynamic_image_loads.empty())
-			pending_dynamic_image_callback_pins.insert(address);
+		// Keep the address with its owning load so a failed load cannot leave a
+		// stale process-global pin that might match a later address reuse.
+		const auto owner = std::this_thread::get_id();
+		for (const auto& [key, state] : dynamic_image_loads) {
+			(void)key;
+			if (state->owner == owner)
+				state->pending_callback_pins.push_back(address);
+		}
 	} catch (...) {
 	}
 	return nullptr;
@@ -7856,6 +7864,25 @@ extern "C" void darling_windows_release_dynamic_image_callback(void* handle) noe
 			darling::windows_host::CloseDynamicImage(image_to_close);
 		}
 	} catch (...) {
+	}
+}
+
+extern "C" void darling_windows_abandon_dynamic_image_callback(void* handle) noexcept
+{
+	if (handle == nullptr) return;
+	try {
+		std::lock_guard notification_lock(guest_dyld_notification_mutex);
+		std::lock_guard lock(dynamic_image_mutex);
+		dynamic_image_nodelete.insert(handle);
+		const auto callback_reference = dynamic_image_callback_references.find(handle);
+		if (callback_reference == dynamic_image_callback_references.end()) return;
+		if (callback_reference->second > 1)
+			--callback_reference->second;
+		else
+			dynamic_image_callback_references.erase(callback_reference);
+	} catch (...) {
+		// If bookkeeping allocation fails, retaining the callback reference is
+		// safer than allowing a possible unload while guest code is still active.
 	}
 }
 
@@ -7918,11 +7945,11 @@ extern "C" void* darling_windows_dlopen(const char* path, int mode)
 			std::lock_guard lock(dynamic_image_mutex);
 			const auto apply_pending_callback_pins = [&](
 				const darling::windows_host::DarwinDynamicImage& candidate, void* target_handle) {
-				for (auto pin = pending_dynamic_image_callback_pins.begin();
-					pin != pending_dynamic_image_callback_pins.end();) {
+				for (auto pin = load_state->pending_callback_pins.begin();
+					pin != load_state->pending_callback_pins.end();) {
 					if (darling::windows_host::DynamicImageContainsMappedAddress(candidate, *pin)) {
 						dynamic_image_nodelete.insert(target_handle);
-						pin = pending_dynamic_image_callback_pins.erase(pin);
+						pin = load_state->pending_callback_pins.erase(pin);
 					} else {
 						++pin;
 					}

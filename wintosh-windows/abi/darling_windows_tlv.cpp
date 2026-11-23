@@ -23,6 +23,7 @@ namespace darling::windows_host {
 extern "C" void* darling_windows_retain_dynamic_image_for_guest_callback(
 	const void* address) noexcept;
 extern "C" void darling_windows_release_dynamic_image_callback(void* handle) noexcept;
+extern "C" void darling_windows_abandon_dynamic_image_callback(void* handle) noexcept;
 
 #if defined(_M_IX86)
 extern "C" void* darling_windows_tlv_get_addr_i386(DarwinTLVDescriptor* descriptor);
@@ -59,19 +60,21 @@ struct ThreadStorage final {
 			std::lock_guard lock(storage_mutex);
 			storages.erase(this);
 		}
-		for (auto iterator = destructors.rbegin(); iterator != destructors.rend(); ++iterator) {
-			if (iterator->function != nullptr) {
+		while (!destructors.empty()) {
+			const auto destructor = destructors.back();
+			destructors.pop_back();
+			if (destructor.function != nullptr) {
 				try {
-					if (iterator->guest_abi) {
+					if (destructor.guest_abi) {
 						using GuestDestructor = darling::windows_host::abi::GuestFn<void, void*>;
-						reinterpret_cast<GuestDestructor>(iterator->function)(iterator->argument);
+						reinterpret_cast<GuestDestructor>(destructor.function)(destructor.argument);
 					} else {
-						iterator->function(iterator->argument);
+						destructor.function(destructor.argument);
 					}
 				} catch (...) {
 				}
 			}
-			darling_windows_release_dynamic_image_callback(iterator->dynamic_image_handle);
+			darling_windows_release_dynamic_image_callback(destructor.dynamic_image_handle);
 		}
 	}
 };
@@ -85,15 +88,25 @@ int RegisterDestructor(void (*function)(void*), void* argument, void* dso_handle
 	bool guest_abi) noexcept
 {
 	if (function == nullptr) return 0;
-	void* dynamic_image_handle = guest_abi ?
-		darling_windows_retain_dynamic_image_for_guest_callback(
-			reinterpret_cast<const void*>(function)) : nullptr;
+	void* dynamic_image_handle = nullptr;
+	if (guest_abi) {
+		const auto* function_address = reinterpret_cast<const void*>(function);
+		const auto* owner_address = dso_handle != nullptr ? dso_handle : function_address;
+		dynamic_image_handle =
+			darling_windows_retain_dynamic_image_for_guest_callback(owner_address);
+		if (dynamic_image_handle == nullptr && owner_address != function_address)
+			dynamic_image_handle =
+				darling_windows_retain_dynamic_image_for_guest_callback(function_address);
+	}
 	try {
 		storage.destructors.push_back({function, argument, dso_handle,
 			dynamic_image_handle, guest_abi});
 		return 0;
 	} catch (...) {
-		darling_windows_release_dynamic_image_callback(dynamic_image_handle);
+		// The caller is still executing guest code from this image. If we could
+		// not record the destructor, preserve the mapping instead of releasing it
+		// while the caller may still return through guest instructions.
+		darling_windows_abandon_dynamic_image_callback(dynamic_image_handle);
 		return -1;
 	}
 }

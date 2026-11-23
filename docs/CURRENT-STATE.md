@@ -12,12 +12,14 @@ coverage remain open.
 
 The guest thread-destructor exports also now use explicit Darwin ABI bridges:
 `__cxa_thread_atexit_impl` accepts its DSO handle and registered guest
-callbacks are invoked with the guest calling convention at thread exit. The
+callbacks are invoked with the guest calling convention at thread exit; newly
+registered callbacks are drained in LIFO order during that same teardown. The
 x64 Clang and MSVC Release targets build. A registered guest thread destructor
 retains its dynamic image, so the final `dlclose` waits until the last such
 callback has run before unmapping it. Initializer-time registrations before
-image publication use a conservative process-lifetime `RTLD_NODELETE` fallback.
-Dyld concurrency parity and ARM64 runtime behavior remain unverified.
+image publication and callback-record allocation failures use a conservative
+process-lifetime `RTLD_NODELETE` fallback. Dyld concurrency parity and ARM64
+runtime behavior remain unverified.
 
 This file closes the gap between the working directory and the release
 documentation. The machine-readable inventory is

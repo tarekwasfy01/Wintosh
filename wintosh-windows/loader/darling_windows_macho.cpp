@@ -9,6 +9,7 @@
 #include "darling_windows_macho.h"
 #include "darling_windows_stdio.h"
 #include "../platform/darling_windows_errno.h"
+#include "../platform/darling_windows_signals.h"
 #include "darling_windows_abi_bridge.h"
 #include "darling_windows_tlv.h"
 #if defined(WINTOSH_HAS_DYNARMIC)
@@ -3399,6 +3400,37 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 						reinterpret_cast<const char*>(static_cast<std::uintptr_t>(arguments[0])),
 						reinterpret_cast<const char*>(static_cast<std::uintptr_t>(arguments[1])));
 					break;
+				case 7: { // SYS_wait4
+					if (arguments[0] > std::numeric_limits<std::uint32_t>::max() ||
+						arguments[2] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max())) {
+						error_number = EINVAL;
+						break;
+					}
+					if ((arguments[1] != 0 && !backend.ContainsGuestRange(arguments[1],
+							sizeof(int), true)) ||
+						(arguments[3] != 0 && !backend.ContainsGuestRange(arguments[3],
+							sizeof(darling_rusage), true))) {
+						error_number = EFAULT;
+						break;
+					}
+					int status = 0;
+					darling_rusage usage{};
+					syscall_result = darling_windows_wait4(
+						static_cast<std::int32_t>(static_cast<std::uint32_t>(arguments[0])),
+						arguments[1] == 0 ? nullptr : &status,
+						static_cast<int>(arguments[2]),
+						arguments[3] == 0 ? nullptr : &usage);
+					if (syscall_result > 0) {
+						if (arguments[1] != 0)
+							std::memcpy(reinterpret_cast<void*>(static_cast<std::uintptr_t>(
+								arguments[1])), &status, sizeof(status));
+						if (arguments[3] != 0)
+							std::memcpy(reinterpret_cast<void*>(static_cast<std::uintptr_t>(
+								arguments[3])), &usage, sizeof(usage));
+					}
+					break;
+				}
 				case 73: { // SYS_munmap (whole owned mappings only)
 					if (arguments[0] > std::numeric_limits<std::uintptr_t>::max() ||
 						arguments[1] > std::numeric_limits<std::size_t>::max() ||
@@ -3634,6 +3666,67 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 					syscall_result_x1 = static_cast<std::uint64_t>(
 						darling_windows_getppid());
 					break;
+				case 37: // SYS_kill
+					if (arguments[0] > std::numeric_limits<std::uint32_t>::max() ||
+						arguments[1] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max())) {
+						error_number = EINVAL;
+						break;
+					}
+					syscall_result = darling_windows_kill(
+						static_cast<std::int32_t>(static_cast<std::uint32_t>(arguments[0])),
+						static_cast<int>(arguments[1]));
+					break;
+				case 46: { // SYS_sigaction
+					if (arguments[0] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max()) ||
+						(arguments[1] != 0 && !backend.ContainsGuestRange(arguments[1],
+							sizeof(darling_darwin_sigaction_record), false)) ||
+						(arguments[2] != 0 && !backend.ContainsGuestRange(arguments[2],
+							sizeof(darling_darwin_sigaction_record), true))) {
+						error_number = EFAULT;
+						break;
+					}
+					darling_darwin_sigaction_record action{};
+					darling_darwin_sigaction_record previous{};
+					if (arguments[1] != 0)
+						std::memcpy(&action, reinterpret_cast<const void*>(
+							static_cast<std::uintptr_t>(arguments[1])), sizeof(action));
+					syscall_result = darling_windows_sigaction(
+						static_cast<int>(arguments[0]), arguments[1] == 0 ? nullptr : &action,
+						arguments[2] == 0 ? nullptr : &previous);
+					if (syscall_result != 0) {
+						error_number = EINVAL;
+					} else if (arguments[2] != 0) {
+						std::memcpy(reinterpret_cast<void*>(static_cast<std::uintptr_t>(
+							arguments[2])), &previous, sizeof(previous));
+					}
+					break;
+				}
+				case 48: { // SYS_sigprocmask
+					if ((arguments[1] != 0 && !backend.ContainsGuestRange(arguments[1],
+							sizeof(darling_darwin_sigset), false)) ||
+						(arguments[2] != 0 && !backend.ContainsGuestRange(arguments[2],
+							sizeof(darling_darwin_sigset), true))) {
+						error_number = EFAULT;
+						break;
+					}
+					darling_darwin_sigset set{};
+					darling_darwin_sigset previous{};
+					if (arguments[1] != 0)
+						std::memcpy(&set, reinterpret_cast<const void*>(
+							static_cast<std::uintptr_t>(arguments[1])), sizeof(set));
+					syscall_result = darling_windows_sigprocmask(
+						static_cast<int>(arguments[0]), arguments[1] == 0 ? nullptr : &set,
+						arguments[2] == 0 ? nullptr : &previous);
+					if (syscall_result != 0) {
+						error_number = EINVAL;
+					} else if (arguments[2] != 0) {
+						std::memcpy(reinterpret_cast<void*>(static_cast<std::uintptr_t>(
+							arguments[2])), &previous, sizeof(previous));
+					}
+					break;
+				}
 				case 24: // SYS_getuid
 					syscall_result = darling_windows_getuid();
 					syscall_result_x1 = static_cast<std::uint64_t>(

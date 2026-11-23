@@ -1160,14 +1160,22 @@ DarwinDynamicImage* OpenDynamicImage(const std::filesystem::path& path,
 			register_lazy_session(provider.image, provider.mapping, provider.bindings);
 		register_lazy_session(result->image, result->mapping, result->bindings);
 		for (auto& provider : result->providers) {
-			if (auto* token = RegisterDynamicObjectiveCSections(provider.image,
-				provider.mapping))
+			auto* token = RegisterDynamicObjectiveCSections(provider.image,
+				provider.mapping);
+			if (token)
 				result->objc_tokens.push_back(token);
 			provider.image.ExecuteInitializers(provider.mapping);
+			if (token && !darling_objc_load_image(token, provider.image.IsArm64()))
+				throw std::runtime_error(
+					"ARM64 Objective-C +load methods require the guest-call dispatcher");
 		}
-		if (auto* token = RegisterDynamicObjectiveCSections(result->image, result->mapping))
+		auto* token = RegisterDynamicObjectiveCSections(result->image, result->mapping);
+		if (token)
 			result->objc_tokens.push_back(token);
 		result->image.ExecuteInitializers(result->mapping);
+		if (token && !darling_objc_load_image(token, result->image.IsArm64()))
+			throw std::runtime_error(
+				"ARM64 Objective-C +load methods require the guest-call dispatcher");
 		return result;
 	} catch (...) {
 		delete result;

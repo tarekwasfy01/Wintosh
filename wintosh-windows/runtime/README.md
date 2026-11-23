@@ -29,6 +29,14 @@ and properties when the image unloads, restoring a replaced method's previous
 implementation. Override chains remain correct when two images unload out of
 order; the Objective-C smoke test covers instance/class methods, a shared
 protocol conformance, and a property overridden by both images.
+Image registration also captures Objective-C `+load` separately from regular
+method dispatch. After an image's C/C++ initializers, class `+load` callbacks
+run superclass first, followed by that image's category `+load` callbacks.
+The `objc_smoke` fixture checks both rules, including a subclass listed before
+its superclass. On x64 Windows, an ARM64 image containing `+load` is rejected
+until the cross-architecture guest-call trampoline supports this lifecycle;
+ARM64 images without `+load` retain the existing path. `+initialize` is not
+implemented yet.
 The Win32 target compiles the host library and runner and has launched a
 hand-built i386 `LC_MAIN` Mach-O with no imports; its compatible `main` returned
 42. This confirms the basic mapping and cdecl entry path, not general app

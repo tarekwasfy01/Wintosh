@@ -81,6 +81,8 @@ bool DARLING_OBJC_GUEST_ABI darling_objc_register_object_finalizer(id object,
 struct darling_objc_image_token;
 darling_objc_image_token* DARLING_OBJC_GUEST_ABI darling_objc_begin_image_registration();
 void DARLING_OBJC_GUEST_ABI darling_objc_end_image_registration(darling_objc_image_token* token);
+bool DARLING_OBJC_GUEST_ABI darling_objc_load_image(darling_objc_image_token* token,
+	bool arm64_guest);
 void DARLING_OBJC_GUEST_ABI darling_objc_unregister_image(darling_objc_image_token* token);
 Protocol DARLING_OBJC_GUEST_ABI objc_allocateProtocol(const char* name);
 Protocol DARLING_OBJC_GUEST_ABI objc_getProtocol(const char* name);

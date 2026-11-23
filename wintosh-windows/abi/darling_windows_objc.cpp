@@ -98,8 +98,15 @@ struct darling_objc_property_mutation final {
 	darling_objc_property_state installed;
 };
 
+struct darling_objc_load_method final {
+	Class target{};
+	IMP implementation{};
+	bool guest_abi{};
+};
+
 struct darling_objc_category_registration final {
 	Class target{};
+	std::optional<darling_objc_load_method> load_method;
 	std::unordered_map<SEL, darling_objc_method_mutation> instance_methods;
 	std::unordered_map<SEL, darling_objc_method_mutation> class_methods;
 	std::unordered_map<Protocol, bool> protocols;
@@ -108,10 +115,12 @@ struct darling_objc_category_registration final {
 
 struct darling_objc_image_token final {
 	std::vector<Class> classes;
+	std::vector<darling_objc_load_method> class_load_methods;
 	std::vector<std::uintptr_t> guest_class_addresses;
 	std::vector<darling_objc_category_registration> categories;
 	std::vector<Protocol> protocols;
 	std::vector<id> constant_strings;
+	bool load_methods_called{};
 };
 
 struct objc_object final {
@@ -2153,6 +2162,15 @@ extern "C" std::size_t darling_objc_register_macho_classlist(
 						image_vm_begin, image_vm_end);
 				}
 			}
+			if (active_image_token != nullptr) {
+				const SEL load_selector = sel_registerName("load");
+				const auto load_method = cls->class_methods.find(load_selector);
+				if (load_method != cls->class_methods.end() &&
+					CanonicalObjcEncoding(load_method->second.types) == "v@:")
+					active_image_token->class_load_methods.push_back({cls,
+						load_method->second.implementation,
+						load_method->second.guest_abi});
+			}
 		}
 	}
 	return registered;
@@ -2304,6 +2322,15 @@ static std::size_t RegisterMachOCategoriesWithImage(
 		RegisterProtocolList(cls, protocols, &referenced_protocols);
 		RegisterPropertyList(cls, instance_properties, &referenced_properties);
 		RegisterPropertyList(cls, class_properties, &referenced_properties);
+		const SEL load_selector = sel_registerName("load");
+		if (std::find(declared_class_methods.begin(),
+			declared_class_methods.end(), load_selector) != declared_class_methods.end()) {
+			const auto load_method = cls->class_methods.find(load_selector);
+			if (load_method != cls->class_methods.end() &&
+				CanonicalObjcEncoding(load_method->second.types) == "v@:")
+				contribution.load_method = darling_objc_load_method{cls,
+					load_method->second.implementation, load_method->second.guest_abi};
+		}
 		if (active_image_token != nullptr) {
 			for (SEL selector : declared_instance_methods) {
 				const auto method = cls->methods.find(selector);
@@ -2526,6 +2553,47 @@ extern "C" void darling_objc_end_image_registration(darling_objc_image_token* to
 {
 	if (active_image_token == token)
 		active_image_token = nullptr;
+}
+
+extern "C" bool darling_objc_load_image(darling_objc_image_token* token,
+	bool arm64_guest)
+{
+	if (token == nullptr)
+		return false;
+	if (token->load_methods_called)
+		return true;
+#if defined(_WIN64) && !defined(_M_ARM64) && !defined(__aarch64__)
+	if (arm64_guest && (!token->class_load_methods.empty() ||
+		std::any_of(token->categories.begin(), token->categories.end(),
+			[](const auto& category) { return category.load_method.has_value(); })))
+		return false;
+#else
+	(void)arm64_guest;
+#endif
+	token->load_methods_called = true;
+	const SEL load_selector = sel_registerName("load");
+	const auto superclass_depth = [](Class cls) {
+		std::size_t depth = 0;
+		std::unordered_set<Class> visited;
+		for (Class current = cls ? cls->superclass : nullptr;
+			current && visited.insert(current).second; current = current->superclass)
+			++depth;
+		return depth;
+	};
+	std::stable_sort(token->class_load_methods.begin(),
+		token->class_load_methods.end(), [&](const auto& left, const auto& right) {
+			return superclass_depth(left.target) < superclass_depth(right.target);
+		});
+	for (const auto& method : token->class_load_methods)
+		InvokeObjcImplementation<void>(method.implementation, method.guest_abi,
+			reinterpret_cast<id>(method.target), load_selector);
+	for (const auto& category : token->categories) {
+		if (category.load_method)
+			InvokeObjcImplementation<void>(category.load_method->implementation,
+				category.load_method->guest_abi,
+				reinterpret_cast<id>(category.load_method->target), load_selector);
+	}
+	return true;
 }
 
 extern "C" void darling_objc_unregister_image(darling_objc_image_token* token)

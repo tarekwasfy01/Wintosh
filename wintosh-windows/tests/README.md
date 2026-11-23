@@ -29,3 +29,6 @@ order.
 
 `objc_smoke` registers synthetic Mach-O class records with the subclass before
 the superclass and checks that the runtime still links the inheritance chain.
+It also runs class `+load` callbacks superclass-first despite reversed class
+list order, then confirms that category `+load` follows all class callbacks.
+The lifecycle is one-shot per image token.

@@ -19,6 +19,28 @@ namespace {
 
 std::int64_t observed_void_int64 = 0;
 int observed_void_int = 0;
+int objc_load_order = 0;
+int objc_superclass_load_order = 0;
+
+void ImageClassLoad(id, SEL)
+{
+	objc_load_order = objc_load_order == 0 ? 1 : -1;
+}
+
+void ImageCategoryLoad(id, SEL)
+{
+	objc_load_order = objc_load_order == 1 ? 2 : -1;
+}
+
+void ReverseParentLoad(id, SEL)
+{
+	objc_superclass_load_order = objc_superclass_load_order == 0 ? 1 : -1;
+}
+
+void ReverseChildLoad(id, SEL)
+{
+	objc_superclass_load_order = objc_superclass_load_order == 1 ? 2 : -1;
+}
 
 id ReturnSelf(id receiver, SEL)
 {
@@ -851,6 +873,11 @@ int main()
 		std::uint32_t count{};
 		RawMethod method{};
 	};
+	struct RawMethodListTwo final {
+		std::uint32_t entry_size{};
+		std::uint32_t count{};
+		RawMethod methods[2]{};
+	};
 	const char image_method_name[] = "imageMethod";
 	const char image_method_types[] = "@@:";
 	RawMethodList raw_methods{sizeof(RawMethod), 1,
@@ -859,10 +886,13 @@ int main()
 			reinterpret_cast<std::uintptr_t>(&ImageMethod)}};
 	raw_data.methods = &raw_methods;
 	RawClassData raw_meta_data{};
-	RawMethodList raw_meta_methods{sizeof(RawMethod), 1,
-		{reinterpret_cast<std::uintptr_t>("imageClassMethod"),
+	RawMethodListTwo raw_meta_methods{sizeof(RawMethod), 2,
+		{{reinterpret_cast<std::uintptr_t>("imageClassMethod"),
 			reinterpret_cast<std::uintptr_t>(image_method_types),
-			reinterpret_cast<std::uintptr_t>(&ClassIdentity)}};
+			reinterpret_cast<std::uintptr_t>(&ClassIdentity)},
+		 {reinterpret_cast<std::uintptr_t>("load"),
+			reinterpret_cast<std::uintptr_t>("v@:"),
+			reinterpret_cast<std::uintptr_t>(&ImageClassLoad)}}};
 	raw_meta_data.methods = &raw_meta_methods;
 	struct RawProtocolMethod final {
 		std::uintptr_t name{};
@@ -960,6 +990,26 @@ int main()
 	reverse_child_data.name = "ReverseOrderGuestChild";
 	RawClass reverse_parent{};
 	RawClass reverse_child{};
+	RawClass reverse_parent_meta{};
+	RawClass reverse_child_meta{};
+	RawClassData reverse_parent_meta_data{};
+	RawClassData reverse_child_meta_data{};
+	RawMethodList reverse_parent_load{sizeof(RawMethod), 1,
+		{reinterpret_cast<std::uintptr_t>("load"),
+			reinterpret_cast<std::uintptr_t>("v@:"),
+			reinterpret_cast<std::uintptr_t>(&ReverseParentLoad)}};
+	RawMethodList reverse_child_load{sizeof(RawMethod), 1,
+		{reinterpret_cast<std::uintptr_t>("load"),
+			reinterpret_cast<std::uintptr_t>("v@:"),
+			reinterpret_cast<std::uintptr_t>(&ReverseChildLoad)}};
+	reverse_parent_meta_data.methods = &reverse_parent_load;
+	reverse_child_meta_data.methods = &reverse_child_load;
+	reverse_parent_meta.data = reinterpret_cast<std::uintptr_t>(
+		&reverse_parent_meta_data);
+	reverse_child_meta.data = reinterpret_cast<std::uintptr_t>(
+		&reverse_child_meta_data);
+	reverse_parent.isa = reinterpret_cast<std::uintptr_t>(&reverse_parent_meta);
+	reverse_child.isa = reinterpret_cast<std::uintptr_t>(&reverse_child_meta);
 	reverse_parent.data = reinterpret_cast<std::uintptr_t>(&reverse_parent_data);
 	reverse_child.data = reinterpret_cast<std::uintptr_t>(&reverse_child_data);
 	reverse_child.superclass = reinterpret_cast<std::uintptr_t>(&reverse_parent);
@@ -973,10 +1023,12 @@ int main()
 		reverse_classlist, sizeof(reverse_classlist));
 	const Class reverse_parent_class = objc_getClass("ReverseOrderGuestParent");
 	const Class reverse_child_class = objc_getClass("ReverseOrderGuestChild");
+	const bool reverse_loads_called = darling_objc_load_image(reverse_image, false);
 	darling_objc_end_image_registration(reverse_image);
 	if (reverse_registered != 2 || reverse_parent_class == nullptr ||
 		reverse_child_class == nullptr ||
-		class_getSuperclass(reverse_child_class) != reverse_parent_class) {
+		class_getSuperclass(reverse_child_class) != reverse_parent_class ||
+		!reverse_loads_called || objc_superclass_load_order != 2) {
 		darling_objc_unregister_image(reverse_image);
 		return 47;
 	}
@@ -1070,11 +1122,6 @@ int main()
 	const char category_class_method_name[] = "categoryClassMethod";
 	const char category_property_name[] = "categoryProperty";
 	const char category_property_attributes[] = "T@,N,V_categoryValue";
-	struct RawMethodListTwo final {
-		std::uint32_t entry_size{};
-		std::uint32_t count{};
-		RawMethod methods[2]{};
-	};
 	RawMethodListTwo category_methods{sizeof(RawMethod), 2,
 		{{reinterpret_cast<std::uintptr_t>(category_method_name),
 			reinterpret_cast<std::uintptr_t>(image_method_types),
@@ -1082,13 +1129,21 @@ int main()
 		 {reinterpret_cast<std::uintptr_t>(image_method_name),
 			reinterpret_cast<std::uintptr_t>(image_method_types),
 			reinterpret_cast<std::uintptr_t>(&CategoryOverrideImageMethod)}}};
-	RawMethodListTwo category_class_methods{sizeof(RawMethod), 2,
+	struct RawMethodListThree final {
+		std::uint32_t entry_size{};
+		std::uint32_t count{};
+		RawMethod methods[3]{};
+	};
+	RawMethodListThree category_class_methods{sizeof(RawMethod), 3,
 		{{reinterpret_cast<std::uintptr_t>(category_class_method_name),
 			reinterpret_cast<std::uintptr_t>(image_method_types),
 		reinterpret_cast<std::uintptr_t>(&ClassIdentity)},
 		 {reinterpret_cast<std::uintptr_t>("imageClassMethod"),
 			reinterpret_cast<std::uintptr_t>(image_method_types),
-			reinterpret_cast<std::uintptr_t>(&CategoryOverrideClassMethod)}}};
+			reinterpret_cast<std::uintptr_t>(&CategoryOverrideClassMethod)},
+		 {reinterpret_cast<std::uintptr_t>("load"),
+			reinterpret_cast<std::uintptr_t>("v@:"),
+			reinterpret_cast<std::uintptr_t>(&ImageCategoryLoad)}}};
 	RawCategory category{0, raw_class_address,
 		reinterpret_cast<std::uintptr_t>(&category_methods),
 		reinterpret_cast<std::uintptr_t>(&category_class_methods),
@@ -1098,6 +1153,8 @@ int main()
 	auto* category_image = darling_objc_begin_image_registration();
 	if (category_image == nullptr)
 		return 49;
+	(void)darling_objc_register_macho_classlist(&raw_class_address,
+		sizeof(raw_class_address));
 	if (darling_objc_register_macho_categories(&category_address,
 		sizeof(category_address)) != 1 ||
 		class_getMethodImplementation(objc_getClass("ImageRegisteredClass"),
@@ -1118,6 +1175,8 @@ int main()
 			sel_registerName(category_class_method_name)) !=
 		reinterpret_cast<id>(objc_getClass("ImageRegisteredClass")))
 		return 23;
+	if (!darling_objc_load_image(category_image, false) || objc_load_order != 2)
+		return 61;
 	unsigned int copied_method_count = 0;
 	Method* copied_methods = class_copyMethodList(
 		objc_getClass("ImageRegisteredClass"), &copied_method_count);

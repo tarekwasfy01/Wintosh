@@ -60,6 +60,17 @@ sharing a protocol conformance and overriding the same property name: the
 newer metadata remains installed until its owner unloads, then the property,
 conformance, and image-owned protocol are removed.
 
+Image registration now captures Objective-C `+load` methods separately from
+ordinary dispatch. After each image's C/C++ module initializers, the loader
+calls class `+load` methods in superclass-first order and then each category's
+own `+load` implementation. `objc_smoke` verifies superclass order even when
+the subclass appears first in `__objc_classlist`, as well as class-before-
+category ordering. The order follows Apple's documented load contract
+([`NSObject +load`](https://developer.apple.com/documentation/objectivec/nsobject-swift.class/load%28%29)).
+Cross-architecture ARM64 `+load` on x64 Windows is rejected until a guest-call
+trampoline is available; ARM64 images without `+load` continue through the
+existing path. `+initialize` remains a separate unimplemented runtime feature.
+
 ## Mach broker update, 2026-11-23
 
 The Windows Release targets `wintosh.exe` and `wintosh_broker.exe` build with

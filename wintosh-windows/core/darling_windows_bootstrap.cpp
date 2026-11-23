@@ -177,9 +177,12 @@ void RestoreSectionProtection(const WritableSection& section)
 	}
 }
 
-void RegisterObjectiveCSections(const MachOImage& image,
+darling_objc_image_token* RegisterObjectiveCSections(const MachOImage& image,
 	const MachOImage::Mapping& mapping)
 {
+	auto* token = darling_objc_begin_image_registration();
+	if (token == nullptr)
+		throw std::runtime_error("Objective-C image registration is already active");
 	std::uintptr_t image_vm_begin = std::numeric_limits<std::uintptr_t>::max();
 	std::uintptr_t image_vm_end = 0;
 	for (const auto& segment : image.Segments()) {
@@ -221,6 +224,8 @@ void RegisterObjectiveCSections(const MachOImage& image,
 				static_cast<std::size_t>(section.size), mapping.Slide(),
 				image_vm_begin, image_vm_end);
 	}
+	darling_objc_end_image_registration(token);
+	return token;
 }
 
 void InitializeTLVSections(const MachOImage& image,
@@ -726,11 +731,18 @@ int DarwinBootstrap::Run(const std::filesystem::path& image_path,
 	// Every image is bound before initializers run; an initializer may call
 	// into the main image or any dependency.
 	for (auto& provider : providers) {
-		RegisterObjectiveCSections(provider.image, provider.mapping);
+		auto* objc_token = RegisterObjectiveCSections(provider.image,
+			provider.mapping);
 		provider.image.ExecuteInitializers(provider.mapping);
+		if (!darling_objc_load_image(objc_token, provider.image.IsArm64()))
+			throw std::runtime_error(
+				"ARM64 Objective-C +load methods require the guest-call dispatcher");
 	}
-	RegisterObjectiveCSections(image, mapping);
+	auto* objc_token = RegisterObjectiveCSections(image, mapping);
 	image.ExecuteInitializers(mapping);
+	if (!darling_objc_load_image(objc_token, image.IsArm64()))
+		throw std::runtime_error(
+			"ARM64 Objective-C +load methods require the guest-call dispatcher");
 	if (std::getenv("WINTOSH_TRACE_LAZY_BIND") != nullptr && !image.Is32Bit()) {
 		for (const auto& section : image.Sections()) {
 			if (section.section_name != "__la_symbol_ptr" &&

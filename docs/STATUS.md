@@ -2436,3 +2436,9 @@ Clang-produced guests called `_puts` and `_printf`. `puts` printed
 `va_list` path for `printf`, which printed `guest=7` and returned status 3.
 This proves two host exports through the bind path, not libSystem or arbitrary
 Darwin imports.
+
+Additional guests bound `_malloc` and `_free`, allocated eight bytes, wrote
+and summed values 40 and 2, then returned 42 after freeing the allocation.
+Another guest called `_exit(23)` and terminated with process status 23. These
+fixtures verify a small set of host-backed libc operations through generated
+stubs and bind streams; they do not establish full libSystem or CRT behavior.

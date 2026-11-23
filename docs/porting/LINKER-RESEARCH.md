@@ -136,6 +136,13 @@ Host-Symboltabelle: `puts` druckte die Zeile, `printf` druckte `guest=7` und
 der Gast endete mit Status 3. Das ist die vorhandene Host-Bridge, keine
 Darwin-libSystem-Implementierung. Unbekannte Symbole bleiben ein Linkfehler.
 
+Weitere Clang-Gäste banden `_malloc` und `_free`; sie reservierten acht Bytes,
+schrieben 40 und 2, lasen die Summe nach dem `free`-Aufruf zurück und endeten
+mit **42**. Ein Gast rief `_exit(23)` auf und beendete den Prozess mit Status
+**23**. Die i386-Host-Bridge deckt damit einige elementare libc-Pfade ab; CRT-
+Initialisierung, errno-Interoperabilität und umfassende libSystem-Semantik sind
+damit nicht nachgewiesen.
+
 Als Nächstes kommen weitere getrennte Literaltypen und Section-Kombinationen.
 Danach folgen zusätzliche CRT/libc-Aufrufe und Darwin-Imports. Der Windows-
 Host besitzt weder `C:\msys64` noch `C:\cygwin64`; `ld64-msys` ist hier derzeit

@@ -55,7 +55,9 @@ metadata such as unwind sections. Two-object call and data fixtures, plus
 single-object initialized and zero-initialized global fixtures, ran in Wintosh
 and returned 42. `__cstring` pointer and direct references returned 65 and 66.
 Host-bound `_puts` and `_printf` calls also ran; the formatted guest returned
-3. See
+3. A heap guest called `_malloc`/`_free` and returned 42, and `_exit(23)`
+terminated with status 23. These are host exports, not a complete libSystem.
+See
 [LINKER-RESEARCH.md](../docs/porting/LINKER-RESEARCH.md) for the exact contract.
 
 The scripts and this documentation are original Wintosh tooling. Upstream

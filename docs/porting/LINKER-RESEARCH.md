@@ -7,8 +7,9 @@ Stand: 2026-11-23
 Clang erzeugt auf diesem Windows-Host i386-Mach-O-Objekte. Das vorhandene
 `ld64.lld.exe` weist `-arch i386` zurück. `tools/link_i386_macho.py` ist ein
 begrenzter i386-Linker-Prototyp: Er kombiniert `__TEXT,__text` und optionale
-`__DATA,__data`-Sections mehrerer `MH_OBJECT`-Dateien, löst externe Text- und
-Daten-Symbole aus diesen Sections auf und verarbeitet 32-Bit-
+`__DATA,__data`-Sections sowie nullinitialisierte `__bss`/`__common`-Bereiche
+mehrerer `MH_OBJECT`-Dateien, löst externe Text- und Daten-Symbole aus diesen
+Bereichen auf und verarbeitet 32-Bit-
 `GENERIC_RELOC_VANILLA`-Relokationen. Absolute interne Adressen erhalten
 `DYLD_INFO_ONLY`-Rebases für den Laufzeit-Slide.
 
@@ -44,11 +45,12 @@ werden. Es wurde kein fremder Linker-Code in Wintosh kopiert.
 ## Unterstützter Link-Vertrag
 
 Jedes Objekt muss little-endian i386 `MH_OBJECT` mit genau einer
-`__TEXT,__text`-Section, höchstens einer `__DATA,__data`-Section und
-`LC_SYMTAB` sein. Die Sections werden in Eingabereihenfolge mit ihrer
-Alignment-Anforderung platziert. Externe `N_SECT`-Definitionen müssen in
-einer dieser Sections liegen; alle externen `N_UNDF`-Symbole müssen durch ein
-Eingabeobjekt definiert sein. Doppelte Definitionen werden abgewiesen.
+`__TEXT,__text`-Section, höchstens einer `__DATA,__data`-Section und einer
+zerofill-Section `__bss` oder `__common` sowie `LC_SYMTAB` sein. Die Sections
+werden in Eingabereihenfolge mit ihrer Alignment-Anforderung platziert.
+Externe `N_SECT`-Definitionen müssen in diesen Sections liegen; undefinierte
+externe Symbole müssen durch ein Eingabeobjekt definiert sein. Doppelte
+starke Definitionen werden abgewiesen.
 
 | i386 Relokation | Behandlung |
 |---|---|
@@ -99,14 +101,17 @@ Rebases ausgegeben. `llvm-objdump` bestätigte die Text- und Datensections sowie
 des globalen Datenbereichs mit Laufzeit-Slide.
 
 Das beweist begrenztes i386-Linken und Ausführen, keine beliebigen macOS-
-Programme. Noch offen sind BSS, Clangs Cross-File-Datenreferenz über
+Programme. Die Zerofill-Bytes werden derzeit in den prototypischen
+`__DATA,__data`-Dateibereich zusammengeführt und nicht als separates
+`__bss`-Output-Section-Headerfeld abgebildet. Noch offen sind Clangs
+Cross-File-Datenreferenz über
 `__IMPORT,__pointers`/`SECTDIFF`, weitere Relokationen, Darwin-CRT,
 Systembibliotheken, Host-Imports und Frameworks.
 
 ## Nächster Ausbau
 
-Als Nächstes kommen BSS sowie Datenreferenzen zwischen Objektdateien. Danach
-folgen importierte Darwin-Symbole und ausgewählte CRT/libc-Pfade. Der Windows-
+Als Nächstes kommen Datenreferenzen zwischen Objektdateien. Danach folgen
+importierte Darwin-Symbole und ausgewählte CRT/libc-Pfade. Der Windows-
 Host besitzt weder `C:\msys64` noch `C:\cygwin64`; `ld64-msys` ist hier derzeit
 keine baubare lokale Alternative. Die Datei-für-Datei-Lizenzprüfung bleibt
 Pflicht, bevor Quellcode daraus übernommen wird.

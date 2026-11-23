@@ -19,9 +19,10 @@ The `tools/link_i386_macho.py` prototype links Clang-produced i386 `__text`
 and optional `__data` sections. It resolves cross-object symbols and handles
 32-bit Vanilla PC-relative and absolute relocations; absolute pointers receive
 dyld type-2 rebases. The two-object `_main` to `_helper` fixture returned 42
-in either input order. A mutable global initialized to 40 was incremented,
-read back, and returned as 42 under the Win32 runner. BSS, imports, CRT, dylib,
-and framework linking remain outside the prototype.
+in either input order. A mutable global initialized to 40 and an uninitialized
+`__common` global were each written, read back, and returned as 42 under the
+Win32 runner. Zerofill is folded into the prototype's zero-initialized data
+segment. Imports, CRT, dylib, and framework linking remain outside it.
 Apple's [dyld4 design notes](https://github.com/apple-oss-distributions/dyld/blob/main/doc/dyld4.md)
 describe process startup with argc, argv, envp, and Apple parameters on the
 initial stack. That current description does not establish compatibility with

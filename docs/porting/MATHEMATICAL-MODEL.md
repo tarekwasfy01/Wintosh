@@ -104,6 +104,7 @@ the stage is not demonstrated on that host:
 | i386 parse, map, relocation subset | 1 | 1 | 1 |
 | i386 entry path (source + host build) | 0 | 0 | 1 |
 | i386 guest execution verified at runtime | 0 | 0 | 1† |
+| i386 Darwin-start + host `_exit` bind verified | 0 | 0 | 1‡ |
 | arm64 parse, map, relocation subset | 1 | 1 | 0 |
 | arm64 execution | 0 | ? | 0 |
 
@@ -116,12 +117,15 @@ order and flavor numbers follow Apple's [XNU i386 thread-state definitions](http
 Win32 records a hand-built 32-bit `LC_MAIN` Mach-O with no imports; its entry
 returned 42 through the cdecl path. It does not cover compiler-produced
 applications, dynamic imports, chained fixups, Darwin-start, or frameworks.
+`1‡` records a separate hand-built i386 image that entered through the Darwin
+initial stack, resolved one `_exit` bind, and exited with code 42. It does not
+cover compiler CRT startup or app dependencies.
 The ARM64
 source path now admits matching-architecture ARM64 code and includes a
 Darwin-start transfer, but execution remains `?` because this environment has
 not produced an ARM64 runner or executed an ARM64 guest. The Win32 target now
 builds the host library and runner and includes an i386 Darwin-start trampoline;
-runtime guest execution remains `?` until a 32-bit Mach-O fixture is launched.
+the minimal startup/bind fixture described above exits with code 42.
 All 32 host C++ source files and the ARM64 trampoline compile and archive as
 33 ARM64 COFF members;
 `llvm-readobj` confirms every member has machine type `IMAGE_FILE_MACHINE_ARM64`.

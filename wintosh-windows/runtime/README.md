@@ -11,8 +11,10 @@ are compatible with the Wintosh bridge.
 The Win32 target compiles the host library and runner and has launched a
 hand-built i386 `LC_MAIN` Mach-O with no imports; its compatible `main` returned
 42. This confirms the basic mapping and cdecl entry path, not general app
-compatibility. The i386 Darwin-start path and compiler-produced app execution
-remain unverified.
+compatibility. A separate hand-built i386 image has also entered through the
+Darwin-start stack, resolved `_exit` through `LC_DYLD_INFO_ONLY`, and exited
+with code 42. Compiler-generated CRT startup, app dependencies, and framework
+behavior remain unverified.
 Apple's [dyld4 design notes](https://github.com/apple-oss-distributions/dyld/blob/main/doc/dyld4.md)
 describe process startup with argc, argv, envp, and Apple parameters on the
 initial stack. That current description does not establish compatibility with
@@ -76,7 +78,8 @@ for a matching-architecture Mach-O whose entrypoint is a Darwin `crt1`/`dyld`
 start routine. The Win32 i386 library and runner build successfully and use a
 MASM trampoline to install argc, argv, envp, and Apple parameters on the guest
 initial stack. The i386 Darwin-start transfer remains unverified. The ARM64
-path requires Clang and remains source/build verified only; an ARM64 runner
+transfer has only been exercised by the minimal host-`_exit` fixture described
+above. The ARM64 path requires Clang and remains source/build verified only; an ARM64 runner
 executable and guest runtime have not yet been verified.
 `--startup-abi main` is the real compatible `int(argc, argv, envp)` path and
 requires Clang's System-V ABI support on x86_64. On Win32, Darwin i386 and

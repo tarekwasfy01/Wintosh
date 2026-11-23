@@ -1121,10 +1121,13 @@ The Win32 build now compiles the host library and runner. It includes i386
 exception PC/SP reporting and a MASM Darwin-start trampoline that installs the
 initial argc/argv/envp/apple stack before transferring to guest code. A
 hand-built i386 `LC_MAIN` Mach-O with no imports was launched through the Win32
-runner and returned exit code 42; the Darwin-start trampoline itself remains
-unverified by a guest. Win32 also maps Mach `i386_THREAD_STATE` get/set calls
-to the native 16-register `CONTEXT` layout; float, debug, and exception state
-flavors remain unsupported. The x86 runner now resolves `TaskDialogIndirect`
+runner and returned exit code 42. A second hand-built i386 image used the
+Darwin-start trampoline and one `LC_DYLD_INFO_ONLY` binding for `_exit`; it
+also exited with code 42. These prove the basic guest entry, initial stack, and
+host-symbol bind paths, not a compiled CRT or framework application. Win32
+also maps Mach `i386_THREAD_STATE` get/set calls to the native 16-register
+`CONTEXT` layout; float, debug, and exception state flavors remain unsupported.
+The x86 runner now resolves `TaskDialogIndirect`
 by name and retains its `MessageBox` fallback, avoiding a hard import by
 ordinal that prevented the process from loading with the host's older
 `comctl32`. CI runs the complete suite serially because filesystem, path and

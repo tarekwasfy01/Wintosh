@@ -1472,6 +1472,66 @@ void NSStringDrawInRectWithAttributes(id self, DarlingObjcRect rect,
 		} catch (...) {
 			lines.clear();
 		}
+		if (line_break_mode >= 3 && line_break_mode <= 5) {
+			const auto measure_width = [metrics_context](std::wstring_view value) -> int {
+				SIZE extent{};
+				if (value.empty() || value.size() > static_cast<std::size_t>(INT_MAX) ||
+					!GetTextExtentPoint32W(metrics_context, value.data(),
+						static_cast<int>(value.size()), &extent)) return 0;
+				return static_cast<int>(extent.cx);
+			};
+			const auto avoid_surrogate_split = [](const std::wstring& value,
+				std::size_t& prefix, std::size_t& suffix) {
+				if (prefix > 0 && prefix < value.size() &&
+					value[prefix - 1] >= 0xd800 && value[prefix - 1] <= 0xdbff &&
+					value[prefix] >= 0xdc00 && value[prefix] <= 0xdfff) --prefix;
+				if (suffix > 0 && suffix < value.size() &&
+					value[suffix - 1] >= 0xd800 && value[suffix - 1] <= 0xdbff &&
+					value[suffix] >= 0xdc00 && value[suffix] <= 0xdfff) ++suffix;
+			};
+			const std::wstring ellipsis(1, L'\u2026');
+			for (std::wstring& line : lines) {
+				if (measure_width(line) <= max_width) continue;
+				if (measure_width(ellipsis) > max_width) {
+					line.clear();
+					continue;
+				}
+				std::size_t low = 0;
+				std::size_t high = line.size();
+				std::wstring best = ellipsis;
+				while (low <= high) {
+					const std::size_t retained = low + (high - low) / 2;
+					std::size_t prefix = 0;
+					std::size_t suffix = line.size();
+					if (line_break_mode == 3) suffix = line.size() - retained;
+					else if (line_break_mode == 4) {
+						prefix = (retained + 1) / 2;
+						suffix = line.size() - retained / 2;
+					} else prefix = retained;
+					avoid_surrogate_split(line, prefix, suffix);
+					std::wstring candidate;
+					if (line_break_mode == 3) {
+						candidate = ellipsis;
+						candidate.append(line, suffix, std::wstring::npos);
+					} else if (line_break_mode == 4) {
+						candidate.assign(line, 0, prefix);
+						candidate += ellipsis;
+						candidate.append(line, suffix, std::wstring::npos);
+					} else {
+						candidate.assign(line, 0, prefix);
+						candidate += ellipsis;
+					}
+					if (measure_width(candidate) <= max_width) {
+						best = std::move(candidate);
+						low = retained + 1;
+					} else {
+						if (retained == 0) break;
+						high = retained - 1;
+					}
+				}
+				line = std::move(best);
+			}
+		}
 		if (previous_font != nullptr && previous_font != HGDI_ERROR)
 			SelectObject(metrics_context, previous_font);
 		font_lock.unlock();

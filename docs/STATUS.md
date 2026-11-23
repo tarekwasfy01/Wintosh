@@ -966,10 +966,12 @@ using the selected font's GDI metrics. Temporary font and color attributes are
 restored after drawing. `NSParagraphStyle` and `NSMutableParagraphStyle` expose
 default style, `alloc/init`, alignment, line-break mode, and line spacing; the standard
 `NSParagraphStyleAttributeName` symbol is exported. `NSAttributedString` also
-implements `drawInRect:` using those style attributes. Justification,
-natural-direction/RTL layout, truncation modes, per-run attributes, glyph
-shaping, full text measurement, and verified Cocoa baseline parity remain
-absent. No Mach-O drawing fixture has verified rendered pixels.
+implements `drawInRect:` using those style attributes. Clipping mode clips
+without wrapping; head, middle, and tail truncation use a measured Unicode
+ellipsis and preserve UTF-16 surrogate pairs. Justification,
+natural-direction/RTL layout, per-run attributes, glyph shaping, full text
+measurement, and verified Cocoa baseline parity remain absent. No Mach-O
+drawing fixture has verified rendered pixels.
 `NSAttributedString` now has immutable string/attributes construction,
 `string`, `length`, and `drawAtPoint:`; its retained dictionary feeds the same
 font/color renderer. `NSMutableAttributedString` adds mutable construction,

@@ -86,6 +86,7 @@ struct DarwinFileMappingOwner final {
 	DWORD view_protection = PAGE_READONLY;
 	bool placeholder_backed = false;
 	bool private_mapping = false;
+	bool private_writable = false;
 	std::size_t active_views = 1;
 };
 
@@ -111,6 +112,12 @@ struct WindowsPlaceholderApis final {
 	UnmapViewOfFile2Proc unmap_view_of_file2 = nullptr;
 };
 
+struct DarwinFileViewProtection final {
+	std::size_t offset = 0;
+	std::size_t bytes = 0;
+	DWORD protection = PAGE_READONLY;
+};
+
 const WindowsPlaceholderApis& PlaceholderApis()
 {
 	static const WindowsPlaceholderApis apis = [] {
@@ -131,6 +138,128 @@ const WindowsPlaceholderApis& PlaceholderApis()
 	return apis;
 }
 
+bool CaptureFileViewProtections(void* base, std::size_t bytes,
+	std::vector<DarwinFileViewProtection>& protections)
+{
+	const auto start = reinterpret_cast<std::uintptr_t>(base);
+	if (bytes > (std::numeric_limits<std::uintptr_t>::max)() - start)
+		return false;
+	const auto end = start + bytes;
+	auto cursor = start;
+	while (cursor < end) {
+		MEMORY_BASIC_INFORMATION info{};
+		if (VirtualQuery(reinterpret_cast<void*>(cursor), &info, sizeof(info)) == 0 ||
+			info.State != MEM_COMMIT || info.RegionSize == 0)
+			return false;
+		const auto region_start = reinterpret_cast<std::uintptr_t>(info.BaseAddress);
+		if (info.RegionSize > (std::numeric_limits<std::uintptr_t>::max)() - region_start)
+			return false;
+		const auto region_end = region_start + info.RegionSize;
+		const auto span_end = (std::min)(end, region_end);
+		if (span_end <= cursor)
+			return false;
+		protections.push_back(DarwinFileViewProtection{
+			static_cast<std::size_t>(cursor - start),
+			static_cast<std::size_t>(span_end - cursor), info.Protect});
+		cursor = span_end;
+	}
+	return true;
+}
+
+bool RestoreFileViewProtection(void* base, std::size_t bytes,
+	std::size_t original_offset,
+	const std::vector<DarwinFileViewProtection>& protections,
+	bool private_mapping);
+
+bool ReadPrivateFileView(void* base, std::size_t bytes,
+	const std::vector<DarwinFileViewProtection>& protections,
+	std::vector<std::uint8_t>& snapshot, bool private_mapping)
+{
+	try {
+		snapshot.resize(bytes);
+	} catch (...) {
+		return false;
+	}
+	std::size_t changed = 0;
+	for (; changed < protections.size(); ++changed) {
+		const auto& span = protections[changed];
+		const DWORD readable = (span.protection & 0xf0u) != 0 ? PAGE_EXECUTE_READ : PAGE_READONLY;
+		DWORD previous = 0;
+		if (!VirtualProtect(static_cast<std::uint8_t*>(base) + span.offset,
+			span.bytes, readable, &previous))
+			break;
+	}
+	if (changed == protections.size())
+		std::memcpy(snapshot.data(), base, bytes);
+	const bool captured = changed == protections.size();
+	const bool restored = RestoreFileViewProtection(base, bytes, 0,
+		protections, private_mapping);
+	return captured && restored && !protections.empty();
+}
+
+bool RestoreFileViewProtection(void* base, std::size_t bytes,
+	std::size_t original_offset,
+	const std::vector<DarwinFileViewProtection>& protections,
+	bool private_mapping)
+{
+	for (const auto& span : protections) {
+		const auto span_start = span.offset;
+		const auto span_end = span_start + span.bytes;
+		const auto range_start = original_offset;
+		const auto range_end = range_start + bytes;
+		const auto overlap_start = (std::max)(span_start, range_start);
+		const auto overlap_end = (std::min)(span_end, range_end);
+		if (overlap_start >= overlap_end)
+			continue;
+		DWORD desired_protection = span.protection;
+		if (private_mapping) {
+			if ((desired_protection & 0xffu) == PAGE_READWRITE)
+				desired_protection = (desired_protection & ~0xffu) | PAGE_WRITECOPY;
+			else if ((desired_protection & 0xffu) == PAGE_EXECUTE_READWRITE)
+				desired_protection = (desired_protection & ~0xffu) | PAGE_EXECUTE_WRITECOPY;
+		}
+		DWORD previous = 0;
+		if (!VirtualProtect(static_cast<std::uint8_t*>(base) + overlap_start - range_start,
+			overlap_end - overlap_start, desired_protection, &previous)) {
+			return false;
+		}
+	}
+	return true;
+}
+
+bool RestorePrivateFileView(const std::shared_ptr<DarwinFileMappingOwner>& owner,
+	void* base, std::size_t original_offset, std::size_t bytes,
+	const std::vector<std::uint8_t>& snapshot,
+	const std::vector<DarwinFileViewProtection>& protections)
+{
+	if (owner == nullptr)
+		return false;
+	if (owner->private_writable) {
+		if (original_offset > snapshot.size() || bytes > snapshot.size() - original_offset)
+			return false;
+		DWORD previous = 0;
+		if (!VirtualProtect(base, bytes, owner->view_protection, &previous)) {
+			return false;
+		}
+		std::memcpy(base, snapshot.data() + original_offset, bytes);
+	}
+	return RestoreFileViewProtection(base, bytes, original_offset,
+		protections, owner->private_mapping);
+}
+
+bool MapPlaceholderFileView(const std::shared_ptr<DarwinFileMappingOwner>& owner,
+	void* base, std::uint64_t file_offset, std::size_t bytes)
+{
+	const auto& apis = PlaceholderApis();
+	if (owner == nullptr || !owner->placeholder_backed ||
+		apis.map_view_of_file3 == nullptr)
+		return false;
+	constexpr ULONG mem_replace_placeholder = 0x00004000;
+	return apis.map_view_of_file3(owner->mapping, GetCurrentProcess(), base,
+		file_offset, bytes, mem_replace_placeholder, owner->view_protection,
+		nullptr, 0) != nullptr;
+}
+
 bool ReleaseOwnedFileMapping(void* user_address)
 {
 	std::lock_guard lock(darwin_file_mapping_mutex);
@@ -140,7 +269,7 @@ bool ReleaseOwnedFileMapping(void* user_address)
 	}
 	const auto mapping = found->second;
 	const auto owner = mapping.owner;
-	if (owner == nullptr || owner->active_views != 1) {
+	if (owner == nullptr || owner->active_views == 0) {
 		darling::windows_host::DarwinErrno::Set(22);
 		return false;
 	}
@@ -152,10 +281,12 @@ bool ReleaseOwnedFileMapping(void* user_address)
 		darling::windows_host::DarwinErrno::SetFromWin32(GetLastError());
 		return false;
 	}
-	CloseHandle(owner->mapping);
-	owner->mapping = nullptr;
-	owner->active_views = 0;
 	darwin_file_mappings.erase(found);
+	--owner->active_views;
+	if (owner->active_views == 0) {
+		CloseHandle(owner->mapping);
+		owner->mapping = nullptr;
+	}
 	return true;
 }
 
@@ -4973,6 +5104,7 @@ extern "C" void* darling_windows_mmap(void* address, std::size_t length,
 	owner->view_protection = view_protection;
 	owner->placeholder_backed = placeholder_backed;
 	owner->private_mapping = private_mapping;
+	owner->private_writable = private_mapping && write;
 	try {
 		std::lock_guard lock(darwin_file_mapping_mutex);
 		darwin_file_mappings.emplace(result, DarwinFileMapping{base, actual_view_bytes,
@@ -4995,31 +5127,62 @@ extern "C" int darling_windows_munmap(void* address, std::size_t length)
 		darling::windows_host::DarwinErrno::Set(22);
 		return -1;
 	}
+	const auto page_size = static_cast<std::size_t>(darling_windows_getpagesize());
+	const auto requested_start = reinterpret_cast<std::uintptr_t>(address);
+	if (page_size == 0 || requested_start % page_size != 0 ||
+		length > (std::numeric_limits<std::size_t>::max)() - (page_size - 1)) {
+		darling::windows_host::DarwinErrno::Set(22);
+		return -1;
+	}
+	const auto requested_bytes = ((length + page_size - 1) / page_size) * page_size;
+	if (requested_bytes > (std::numeric_limits<std::uintptr_t>::max)() - requested_start) {
+		darling::windows_host::DarwinErrno::Set(22);
+		return -1;
+	}
+
 	DarwinFileMapping mapping{};
-	{
-		std::lock_guard lock(darwin_file_mapping_mutex);
-		const auto found = darwin_file_mappings.find(address);
-		if (found != darwin_file_mappings.end()) {
-			mapping = found->second;
+	void* mapping_key = nullptr;
+	std::size_t mapping_delta = 0;
+	std::unique_lock mapping_lock(darwin_file_mapping_mutex);
+	for (const auto& [key, candidate] : darwin_file_mappings) {
+		const auto user_start = reinterpret_cast<std::uintptr_t>(key);
+		if (candidate.guest_offset > candidate.bytes)
+			continue;
+		const auto user_bytes = candidate.bytes - candidate.guest_offset;
+		if (requested_start >= user_start && requested_start - user_start < user_bytes) {
+			mapping = candidate;
+			mapping_key = key;
+			mapping_delta = static_cast<std::size_t>(requested_start - user_start);
+			break;
 		}
 	}
-	if (mapping.base != nullptr) {
-		const auto page_size = static_cast<std::size_t>(darling_windows_getpagesize());
-		if (page_size == 0 || mapping.guest_offset >
-			(std::numeric_limits<std::size_t>::max)() - length ||
-			mapping.guest_offset + length >
-			(std::numeric_limits<std::size_t>::max)() - (page_size - 1) ||
-			((mapping.guest_offset + length + page_size - 1) / page_size) * page_size != mapping.bytes) {
-			darling::windows_host::DarwinErrno::Set(22);
-			return -1;
-		}
-		(void)FlushViewOfFile(mapping.base, mapping.bytes);
-		const auto owner = mapping.owner;
-		if (owner == nullptr || owner->active_views != 1) {
-			darling::windows_host::DarwinErrno::Set(22);
-			return -1;
-		}
-		const auto& apis = PlaceholderApis();
+	if (mapping.base == nullptr) {
+		mapping_lock.unlock();
+		return darling_windows_munmap_anonymous(address, length);
+	}
+	const auto owner = mapping.owner;
+	const auto user_bytes = mapping.bytes - mapping.guest_offset;
+	if (owner == nullptr || owner->active_views == 0 || mapping_delta > user_bytes ||
+		requested_bytes > user_bytes - mapping_delta || mapping_delta % page_size != 0) {
+		darling::windows_host::DarwinErrno::Set(22);
+		return -1;
+	}
+	const bool whole_view = mapping_delta == 0 && requested_bytes == user_bytes;
+	if (!whole_view && !owner->placeholder_backed) {
+		darling::windows_host::DarwinErrno::Set(95);
+		return -1;
+	}
+	if (owner->placeholder_backed && mapping.guest_offset != 0) {
+		darling::windows_host::DarwinErrno::Set(95);
+		return -1;
+	}
+	if (!owner->private_mapping && !FlushViewOfFile(mapping.base, mapping.bytes)) {
+		darling::windows_host::DarwinErrno::SetFromWin32(GetLastError());
+		return -1;
+	}
+
+	const auto& apis = PlaceholderApis();
+	if (whole_view) {
 		const bool unmapped = owner->placeholder_backed && apis.unmap_view_of_file2 != nullptr ?
 			apis.unmap_view_of_file2(GetCurrentProcess(), mapping.base, 0) != FALSE :
 			UnmapViewOfFile(mapping.base) != FALSE;
@@ -5027,20 +5190,140 @@ extern "C" int darling_windows_munmap(void* address, std::size_t length)
 			darling::windows_host::DarwinErrno::SetFromWin32(GetLastError());
 			return -1;
 		}
-		{
-			std::lock_guard lock(darwin_file_mapping_mutex);
-			const auto found = darwin_file_mappings.find(address);
-			if (found != darwin_file_mappings.end() && found->second.base == mapping.base)
-				darwin_file_mappings.erase(found);
+		darwin_file_mappings.erase(mapping_key);
+		if (owner->active_views > 0)
+			--owner->active_views;
+		if (owner->active_views == 0) {
+			CloseHandle(owner->mapping);
+			owner->mapping = nullptr;
 		}
-		CloseHandle(owner->mapping);
-		owner->mapping = nullptr;
-		owner->active_views = 0;
 		return 0;
 	}
-	return darling_windows_munmap_anonymous(address, length);
-}
 
+	const auto left_bytes = mapping_delta;
+	const auto right_offset = mapping_delta + requested_bytes;
+	const auto right_bytes = user_bytes - right_offset;
+	std::vector<DarwinFileViewProtection> protections;
+	std::vector<std::uint8_t> private_snapshot;
+	std::unordered_map<void*, DarwinFileMapping> staged_views;
+	try {
+		if (!CaptureFileViewProtections(mapping.base, mapping.bytes, protections) ||
+			(owner->private_writable && !ReadPrivateFileView(mapping.base,
+				mapping.bytes, protections, private_snapshot, owner->private_mapping))) {
+			darling::windows_host::DarwinErrno::Set(12);
+			return -1;
+		}
+		staged_views.reserve(2);
+		if (left_bytes != 0) {
+			staged_views.emplace(mapping.base, DarwinFileMapping{mapping.base,
+				left_bytes, 0, mapping.file_offset, owner});
+		}
+		if (right_bytes != 0) {
+			void* right_base = static_cast<std::uint8_t*>(mapping.base) + right_offset;
+			staged_views.emplace(right_base, DarwinFileMapping{right_base,
+				right_bytes, 0, mapping.file_offset + right_offset, owner});
+		}
+		darwin_file_mappings.reserve(darwin_file_mappings.size() + staged_views.size());
+	} catch (...) {
+		darling::windows_host::DarwinErrno::Set(12);
+		return -1;
+	}
+
+	constexpr ULONG mem_preserve_placeholder = 0x00000002;
+	constexpr ULONG mem_release = 0x00008000;
+	constexpr ULONG mem_coalesce_placeholders = 0x00000001;
+	if (apis.unmap_view_of_file2 == nullptr ||
+		!apis.unmap_view_of_file2(GetCurrentProcess(), mapping.base,
+			mem_preserve_placeholder)) {
+		darling::windows_host::DarwinErrno::SetFromWin32(GetLastError());
+		return -1;
+	}
+	const auto original_base = mapping.base;
+	const auto original_bytes = mapping.bytes;
+	bool did_split = false;
+	auto restore_original = [&] {
+		if (did_split)
+			(void)VirtualFree(original_base, original_bytes,
+				MEM_RELEASE | mem_coalesce_placeholders);
+		if (MapPlaceholderFileView(owner, original_base,
+			mapping.file_offset, original_bytes))
+			(void)RestorePrivateFileView(owner, original_base, 0,
+				original_bytes, private_snapshot, protections);
+	};
+	if (left_bytes != 0) {
+		if (!VirtualFree(original_base, left_bytes,
+			MEM_RELEASE | mem_preserve_placeholder)) {
+			const auto error = GetLastError();
+			restore_original();
+			darling::windows_host::DarwinErrno::SetFromWin32(error);
+			return -1;
+		}
+		did_split = true;
+	}
+	if (right_bytes != 0) {
+		void* middle_placeholder = static_cast<std::uint8_t*>(original_base) + left_bytes;
+		if (!VirtualFree(middle_placeholder, requested_bytes,
+			MEM_RELEASE | mem_preserve_placeholder)) {
+			const auto error = GetLastError();
+			restore_original();
+			darling::windows_host::DarwinErrno::SetFromWin32(error);
+			return -1;
+		}
+		did_split = true;
+	}
+
+	void* right_base = static_cast<std::uint8_t*>(original_base) + right_offset;
+	bool left_mapped = false;
+	bool right_mapped = false;
+	auto rollback = [&] {
+		if (left_mapped)
+			(void)apis.unmap_view_of_file2(GetCurrentProcess(), original_base,
+				mem_preserve_placeholder);
+		if (right_mapped)
+			(void)apis.unmap_view_of_file2(GetCurrentProcess(), right_base,
+				mem_preserve_placeholder);
+		restore_original();
+	};
+	if (left_bytes != 0) {
+		left_mapped = MapPlaceholderFileView(owner, original_base,
+			mapping.file_offset, left_bytes);
+		if (!left_mapped || !RestorePrivateFileView(owner, original_base, 0,
+			left_bytes, private_snapshot, protections)) {
+			const auto error = GetLastError();
+			rollback();
+			darling::windows_host::DarwinErrno::SetFromWin32(error);
+			return -1;
+		}
+	}
+	if (right_bytes != 0) {
+		right_mapped = MapPlaceholderFileView(owner, right_base,
+			mapping.file_offset + right_offset, right_bytes);
+		if (!right_mapped || !RestorePrivateFileView(owner, right_base,
+			right_offset, right_bytes, private_snapshot, protections)) {
+			const auto error = GetLastError();
+			rollback();
+			darling::windows_host::DarwinErrno::SetFromWin32(error);
+			return -1;
+		}
+	}
+	void* removed_placeholder = static_cast<std::uint8_t*>(original_base) + left_bytes;
+	if (!VirtualFree(removed_placeholder, 0, MEM_RELEASE)) {
+		const auto error = GetLastError();
+		rollback();
+		darling::windows_host::DarwinErrno::SetFromWin32(error);
+		return -1;
+	}
+
+	darwin_file_mappings.erase(mapping_key);
+	for (auto node = staged_views.begin(); node != staged_views.end();) {
+		auto extracted = staged_views.extract(node++);
+		darwin_file_mappings.insert(std::move(extracted));
+	}
+	const auto retained_views = (left_bytes != 0 ? 1u : 0u) +
+		(right_bytes != 0 ? 1u : 0u);
+	owner->active_views = owner->active_views - 1 + retained_views;
+	return 0;
+}
 extern "C" int darling_windows_madvise(void* address, std::size_t length,
 	int advice)
 {

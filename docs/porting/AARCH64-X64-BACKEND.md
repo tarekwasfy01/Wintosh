@@ -210,16 +210,20 @@ Darwin-Argumente an den vorhandenen Windows-Adapter weiter und registriert
 erfolgreiche Bereiche samt Gastrechten. `mprotect` akzeptiert nur vollständig
 abgedeckte, explizit schützbare Bereiche (Executable-Segmente und registrierte
 Mappings) und aktualisiert Host- sowie Gastschutzrechte. `munmap` kann
-page-ausgerichtete Teilbereiche anonymer Gast-Mappings abtrennen. Host- und
+page-ausgerichtete Teilbereiche anonymer und placeholder-basierter Datei-
+Mappings abtrennen. Host- und
 Gasttabellen werden dabei gemeinsam in linke und rechte Restintervalle zerlegt;
 die Windows-Reservierung bleibt erhalten, bis kein aktiver Teil mehr existiert.
-Datei-Views werden weiterhin nur als vollständige View freigegeben. Nicht feste
-Datei-Views verwenden auf Windows-Versionen mit `VirtualAlloc2`,
+Schreibbare `MAP_PRIVATE`-Datei-Views sichern die Bytes der überlebenden
+Intervalle vor dem Split und stellen sie in den privaten Kopien wieder her;
+der temporäre Speicherbedarf wächst mit der View-Größe. Nicht feste Datei-Views
+verwenden auf Windows-Versionen mit `VirtualAlloc2`,
 `MapViewOfFile3` und `UnmapViewOfFile2` eine Placeholder-Reservierung. Damit
 können Darwin-seitige, seitenorientierte Datei-Offsets auch dann abgebildet
 werden, wenn sie nicht an Windows' 64-KiB-Allokationsgranularität ausgerichtet
 sind. Auf älteren Versionen bleibt der Granularitäts-Offset-und-Delta-Fallback
-aktiv. Feste
+aktiv; dort ist `munmap` für Datei-Views weiterhin nur als Ganzes möglich.
+Datei-View-Ersetzungen mit `MAP_FIXED` bleiben nicht unterstützt. Feste
 Ersetzungen sind auf `MAP_FIXED`-Teilbereiche beschränkt, die vollständig von
 derselben besessenen anonymen Reservierung abgedeckt sind; dazu zählt auch eine
 decommittete Lücke, solange die Windows-Reservierung noch durch aktive

@@ -189,12 +189,69 @@ int main()
 		const auto offset_verified = offset_seek != offset_page ? -1 :
 			darling_windows_read(offset_verify_descriptor, offset_verify, sizeof(offset_verify));
 		if (offset_verify_descriptor >= 0) darling_windows_close(offset_verify_descriptor);
-		(void)std::filesystem::remove(file_path);
 		if (offset_verified != static_cast<int>(sizeof(offset_verify)) ||
 			offset_verify[0] != 'S' || offset_verify[1] != 'I' ||
 			offset_verify[2] != 'L' || offset_verify[3] != 'E') {
 			throw std::runtime_error("offset mmap persistence/COW failed");
 		}
+		const int split_descriptor = darling_windows_open(file_name.c_str(), 0x0002, 0);
+		if (split_descriptor < 0 ||
+			darling_windows_lseek(split_descriptor, offset_page * 2, 0) != offset_page * 2 ||
+			darling_windows_write(split_descriptor, "Z", 1) != 1) {
+			if (split_descriptor >= 0) darling_windows_close(split_descriptor);
+			throw std::runtime_error("partial file mmap seed failed");
+		}
+		constexpr std::size_t split_view_bytes = 4096 * 3;
+		void* shared_split = darling_windows_mmap(nullptr, split_view_bytes, 3,
+			0x0001, split_descriptor, 0);
+		if (shared_split == reinterpret_cast<void*>(-1)) {
+			darling_windows_close(split_descriptor);
+			throw std::runtime_error("partial shared file mmap failed");
+		}
+		auto* shared_split_bytes = static_cast<char*>(shared_split);
+		shared_split_bytes[0] = 'A';
+		shared_split_bytes[4096] = 'B';
+		shared_split_bytes[8192] = 'C';
+		if (darling_windows_msync(shared_split, split_view_bytes, 16) != 0 ||
+			darling_windows_munmap(shared_split_bytes + 4096, 4096) != 0 ||
+			shared_split_bytes[0] != 'A' || shared_split_bytes[8192] != 'C' ||
+			darling_windows_munmap(shared_split_bytes + 4096, 4096) == 0 ||
+			darling_windows_munmap(shared_split_bytes, 4096) != 0 ||
+			darling_windows_munmap(shared_split_bytes + 8192, 4096) != 0) {
+			darling_windows_close(split_descriptor);
+			throw std::runtime_error("partial shared file munmap interval handling failed");
+		}
+		void* private_split = darling_windows_mmap(nullptr, split_view_bytes, 3,
+			0x0002, split_descriptor, 0);
+		if (private_split == reinterpret_cast<void*>(-1)) {
+			darling_windows_close(split_descriptor);
+			throw std::runtime_error("partial private file mmap failed");
+		}
+		auto* private_split_bytes = static_cast<char*>(private_split);
+		private_split_bytes[0] = 'P';
+		private_split_bytes[8192] = 'Q';
+		const auto private_middle_unmap = darling_windows_munmap(private_split_bytes + 4096, 4096);
+		const char private_left_value = private_split_bytes[0];
+		const char private_right_value = private_split_bytes[8192];
+		const auto private_left_unmap = darling_windows_munmap(private_split_bytes, 4096);
+		const auto private_right_unmap = darling_windows_munmap(private_split_bytes + 8192, 4096);
+		if (private_middle_unmap != 0 || private_left_value != 'P' ||
+			private_right_value != 'Q' || private_left_unmap != 0 ||
+			private_right_unmap != 0) {
+			darling_windows_close(split_descriptor);
+			throw std::runtime_error("partial private file munmap did not preserve retained COW bytes");
+		}
+		void* split_verify = darling_windows_mmap(nullptr, split_view_bytes, 1,
+			0x0001, split_descriptor, 0);
+		if (split_verify == reinterpret_cast<void*>(-1) ||
+			static_cast<char*>(split_verify)[0] != 'A' ||
+			static_cast<char*>(split_verify)[4096] != 'B' ||
+			static_cast<char*>(split_verify)[8192] != 'C' ||
+			darling_windows_munmap(split_verify, split_view_bytes) != 0 ||
+			darling_windows_close(split_descriptor) != 0) {
+			throw std::runtime_error("partial private file munmap changed shared file bytes");
+		}
+		(void)std::filesystem::remove(file_path);
 		std::cout << "DARWIN_SYSCALL_MEMORY=PASS\n";
 		return 0;
 	} catch (const std::exception& error) {

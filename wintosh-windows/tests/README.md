@@ -30,11 +30,11 @@ still require a whole-view unmap; cross-allocation, image, and file-view
 replacements with `MAP_FIXED` remain unsupported.
 
 The guest fixture also creates a file with `open`, writes seed bytes, maps it
-with `MAP_SHARED`, changes one byte, unmaps it, seeks back, reads the bytes, and
-closes the descriptor. It then maps the file with `MAP_PRIVATE`, changes the
-private view and confirms that the file contents stay unchanged after unmapping.
-This covers shared persistence and private copy-on-write isolation; descriptor
-inheritance from the runner is not covered.
+with `MAP_SHARED`, changes bytes on both sides of a removed middle page, and
+confirms the retained intervals and persisted file bytes. It then maps the
+three-page file with `MAP_PRIVATE`, changes retained pages, removes the middle,
+and confirms the private copy-on-write bytes survive while the file remains
+unchanged. Descriptor inheritance from the runner is not covered.
 
 The ARM64 Objective-C fixture also verifies class inheritance by invoking a
 class method implemented on its guest superclass.

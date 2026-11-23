@@ -31,29 +31,35 @@ are registered in the bounded guest address space and their mappings are
 updated or removed on resize/free. Imported ARM64 `_mmap`/`_munmap`/`_mprotect`
 calls now register guest mappings with the CPU backend, apply guest
 read/write/execute permissions, and remove page-aligned anonymous subranges
-while retaining the mapping's remaining intervals. File-backed views still
-unmap as complete views. The Objective-C e2e fixture writes and reads a
+while retaining the mapping's remaining intervals. Placeholder-backed file
+views now split into surviving left/right mappings; writable private views
+snapshot and restore retained bytes and protections, using temporary memory
+proportional to the view size. The Objective-C e2e fixture writes and reads a
 three-page anonymous mapping, unmaps its middle page, rejects a repeated
 unmap, and then unmaps both remaining pages. Raw `svc #0x80` syscall 73 and the
 imported `_munmap` bridge both operate on that shared interval state. The fixture also
-exercises guest `open`/`write`/`mmap(MAP_SHARED)`/`munmap`/`lseek`/`read`/`close`
-with a persisted byte change, then modifies a `MAP_PRIVATE` view and verifies
-that the file remains unchanged after unmapping.
+exercises guest `open`/`write`/three-page `mmap(MAP_SHARED)`/middle-page
+`munmap`/`lseek`/`read`/`close`, verifies that both retained views persist,
+then performs a three-page `MAP_PRIVATE` split and checks COW retention without
+changing the file.
 Non-fixed file-backed views now use Windows placeholder replacement when
 `VirtualAlloc2`, `MapViewOfFile3`, and `UnmapViewOfFile2` are available. That
 allows Darwin page-aligned file offsets even when they are not aligned to
 Windows' 64 KiB allocation granularity; the view is tracked with its mapping
 owner and can be released as a complete view. Older Windows versions fall back
-to the allocation-granularity-aligned `MapViewOfFile` path. Partial
-file-backed `munmap`, file-view `MAP_FIXED`, and error-path parity are still
-open; this is a memory primitive, not a claim that arbitrary macOS apps run.
+to the allocation-granularity-aligned `MapViewOfFile` path. File-backed partial
+`munmap` is supported on the placeholder path; fallback views remain whole-view
+only. Partial file-view `MAP_FIXED` and full syscall error/errno parity remain
+open; an exact whole-view host-adapter replacement has a smoke check. This is a
+memory primitive, not a claim that arbitrary macOS apps run.
 Raw `SYS_mmap` 197 and imported `_mmap` can replace page-aligned subranges fully
 covered by one guest-owned anonymous reservation, including pages previously
 set to `PROT_NONE`; raw `SYS_mmap` also recommits a previously unmapped hole,
 which imported `_munmap` then frees again. The fixture writes through all
-replacement pages. Cross-
-allocation, image, and file-view replacements remain unsupported. Partial
-file-view unmapping and full syscall error/errno parity remain incomplete. Nested Darwin
+replacement pages. Cross-allocation, image, and partial file-view replacements
+remain unsupported. Legacy
+file-view partial unmapping and full syscall error/errno parity remain
+incomplete. Nested Darwin
 syscalls, Mach traps, broader import catalog coverage, full framework coverage,
 and a reproducible Dynarmic dependency pin remain open.
 

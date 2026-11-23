@@ -147,6 +147,33 @@ across mapped ARM64 images addressable by the CPU backend. It does not convert
 a guest ARM64 call into a Windows x64 host ABI call; that import bridge remains
 a separate required transition.
 
+Dateigestützte `munmap`-Teilbereiche werden als Intervalltransformation
+modelliert. Für eine View `V₀ = [b,b+n)`, ein gültiges Unmap-Intervall
+`U = [b+ℓ,b+ℓ+k)` und Seitenlängen `ℓ`, `k` gilt:
+
+```text
+0 ≤ ℓ, 0 < k, ℓ + k ≤ n
+L = [b,b+ℓ)              falls ℓ > 0
+R = [b+ℓ+k,b+n)          falls ℓ+k < n
+V₁ = L ∪ R = V₀ \ U
+offset₁(v) = offset₀ + (v-b)    für jedes v ∈ L ∪ R
+```
+
+Mit Seitengröße `p` und Seitenzahlen `a = ℓ/p`, `m = k/p` und
+`c = (n-ℓ-k)/p` entspricht die Erhaltung der beiden Restbereiche auf dem
+Seitenvektor `x₀` der Selektionsmatrix
+
+```text
+Qᵤ = [ Ia  0   0 ]
+     [  0   0  Ic ]       x₁ = Qᵤ x₀
+```
+
+`Qᵤ` hat `(a+c) × (a+m+c)` Dimensionen; der mittlere Block der `m` entfernten
+Seiten wird verworfen. Für `MAP_SHARED` werden die Restbereiche auf dieselben
+Dateioffsets zurückgemappt. Für schreibbares `MAP_PRIVATE` sichert die Laufzeit
+`x₀` vor dem Entladen und schreibt `Qᵤx₀` in die neu erzeugten privaten Views
+zurück. Die Schutzfunktion wird auf dieselben Restintervalle eingeschränkt.
+
 The separate i386 object-to-image experiment is bounded as follows:
 
 | Build transition | Windows Win32 |

@@ -4457,7 +4457,7 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 					}
 					break;
 				}
-				case 73: { // SYS_munmap (owned anonymous subranges; file views whole only)
+				case 73: { // SYS_munmap (owned anonymous or placeholder-backed file subranges)
 					if (arguments[0] > std::numeric_limits<std::uintptr_t>::max() ||
 						arguments[1] > std::numeric_limits<std::size_t>::max() ||
 						arguments[1] == 0) {

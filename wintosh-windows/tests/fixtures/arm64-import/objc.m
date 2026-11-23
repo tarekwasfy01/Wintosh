@@ -132,7 +132,7 @@ static long WintoshFileMappedRoundTrip(const char *path)
 		return 61;
 	}
 	volatile char *memory = (volatile char *)mmap(
-		(void *)0, 4096, 3, 0x0001, descriptor, 0);
+		(void *)0, 4096 * 3, 3, 0x0001, descriptor, 0);
 	if (memory == (volatile char *)-1) {
 		close(descriptor);
 		return 62;
@@ -144,7 +144,13 @@ static long WintoshFileMappedRoundTrip(const char *path)
 		return 63;
 	}
 	memory[0] = 'M';
-	if (munmap((void *)memory, 4096) != 0) {
+	memory[4096] = 'I';
+	memory[8192] = 'L';
+	if (munmap((void *)(memory + 4096), 4096) != 0 ||
+		memory[0] != 'M' || memory[8192] != 'L' ||
+		munmap((void *)(memory + 4096), 4096) == 0 ||
+		munmap((void *)memory, 4096) != 0 ||
+		munmap((void *)(memory + 8192), 4096) != 0) {
 		close(descriptor);
 		return 64;
 	}
@@ -153,11 +159,17 @@ static long WintoshFileMappedRoundTrip(const char *path)
 		return 65;
 	}
 	char shared_result[4] = {};
-	if (read(descriptor, shared_result, sizeof(shared_result)) != 4) {
+	char page_result = 0;
+	if (read(descriptor, shared_result, sizeof(shared_result)) != 4 ||
+		shared_result[0] != 'M' || shared_result[1] != 'A' ||
+		shared_result[2] != 'T' || shared_result[3] != 'A' ||
+		lseek(descriptor, 4096, 0) != 4096 || read(descriptor, &page_result, 1) != 1 ||
+		page_result != 'I' || lseek(descriptor, 8192, 0) != 8192 ||
+		read(descriptor, &page_result, 1) != 1 || page_result != 'L') {
 		close(descriptor);
 		return 66;
 	}
-	memory = (volatile char *)mmap((void *)0, 4096, 3, 0x0002, descriptor, 0);
+	memory = (volatile char *)mmap((void *)0, 4096 * 3, 3, 0x0002, descriptor, 0);
 	if (memory == (volatile char *)-1) {
 		close(descriptor);
 		return 67;
@@ -169,7 +181,11 @@ static long WintoshFileMappedRoundTrip(const char *path)
 		return 68;
 	}
 	memory[0] = 'P';
-	if (munmap((void *)memory, 4096) != 0) {
+	memory[8192] = 'Q';
+	if (munmap((void *)(memory + 4096), 4096) != 0 ||
+		memory[0] != 'P' || memory[8192] != 'Q' ||
+		munmap((void *)memory, 4096) != 0 ||
+		munmap((void *)(memory + 8192), 4096) != 0) {
 		close(descriptor);
 		return 69;
 	}
@@ -179,12 +195,20 @@ static long WintoshFileMappedRoundTrip(const char *path)
 	}
 	char private_result[4] = {};
 	const int bytes_read = read(descriptor, private_result, sizeof(private_result));
+	const int private_left_seek = lseek(descriptor, 4096, 0);
+	char private_left_file = 0;
+	const int private_left_read = read(descriptor, &private_left_file, 1);
+	const int private_right_seek = lseek(descriptor, 8192, 0);
+	char private_right_file = 0;
+	const int private_right_read = read(descriptor, &private_right_file, 1);
 	const int close_result = close(descriptor);
 	return bytes_read == 4 && close_result == 0 &&
 		shared_result[0] == 'M' && shared_result[1] == 'A' &&
 		shared_result[2] == 'T' && shared_result[3] == 'A' &&
 		private_result[0] == 'M' && private_result[1] == 'A' &&
-		private_result[2] == 'T' && private_result[3] == 'A' ? 1 : 71;
+		private_result[2] == 'T' && private_result[3] == 'A' &&
+		private_left_seek == 4096 && private_left_read == 1 && private_left_file == 'I' &&
+		private_right_seek == 8192 && private_right_read == 1 && private_right_file == 'L' ? 1 : 71;
 }
 
 __attribute__((used, section("__DATA,__mod_term_func")))

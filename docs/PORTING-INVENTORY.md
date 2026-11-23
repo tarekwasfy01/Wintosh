@@ -3167,6 +3167,12 @@ The file-backed virtual-memory family now connects Darwin descriptors to
 `CreateFileMappingW`/`MapViewOfFile` and tracks the aligned Windows view base
 and mapping handle until `munmap`; shared writes are flushed before the view is
 released, and private mappings use Windows copy-on-write views. The memory
+smoke now also removes the middle page from three-page `MAP_SHARED` and
+`MAP_PRIVATE` views, verifies the left/right intervals, and checks that private
+COW bytes survive without reaching the file. Placeholder-capable Windows
+versions support page-aligned file-view subranges; writable private splits
+snapshot the entire original view, so temporary memory scales with view size.
+Older Windows fallback views remain whole-view only. The memory
 smoke now proves `open -> write -> mmap(MAP_SHARED) -> modify -> munmap ->
 reopen/read` on both x64 and Win32, including a nonzero offset, a byte-aligned
 Darwin view over a page-rounded Windows view, and a private write that does not

@@ -2230,3 +2230,13 @@ The classic threaded-bind ordinal-table limit is raised from 4096 to
 rejecting large images solely because they have many threaded imports while
 retaining a bounded allocation. Both Windows targets compile; no guest image
 with a large threaded-bind table has been run.
+
+### Chained-fixup multi-start pages (2026-11-23)
+
+Chained-fixup page-start decoding now follows the selected segment-start table
+base and supports `START_MULTI` pages by walking the bounded `chain_starts`
+list through its `START_LAST` entry. Each chain is constrained to its page and
+uses the pointer-format stride; supported page sizes are 4 KiB and 16 KiB.
+This also avoids 32-bit overflow while calculating the segment-start location.
+Both Windows targets compile; no multi-start Mach-O fixture has exercised the
+new path.

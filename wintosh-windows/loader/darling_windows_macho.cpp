@@ -1242,6 +1242,9 @@ MachOImage MachOImage::Open(const std::wstring& path)
 				const auto* segment_starts = starts_relative &&
 					supported_pointer_format(starts_candidate->pointer_format) ?
 					starts_candidate : payload_candidate;
+				const auto starts_location = segment_starts == starts_candidate ?
+					static_cast<std::uint64_t>(header->starts_offset) + segment_offset :
+					static_cast<std::uint64_t>(segment_offset);
 				const auto pointer_format = segment_starts->pointer_format;
 				Require(pointer_format == 1 || pointer_format == 2 || pointer_format == 6 ||
 					pointer_format == 7 || pointer_format == 9 || pointer_format == 10 ||
@@ -1250,30 +1253,51 @@ MachOImage MachOImage::Open(const std::wstring& path)
 				const auto starts_bytes = segment_starts->size;
 				Require(starts_bytes >= sizeof(ChainedStartsSegment) +
 					static_cast<std::uint64_t>(segment_starts->page_count) * sizeof(std::uint16_t) &&
-					(segment_starts == starts_candidate ? header->starts_offset + segment_offset :
-						segment_offset) + starts_bytes <=
-					chained_command->data_size,
+					starts_location <= chained_command->data_size &&
+					starts_bytes <= chained_command->data_size - starts_location,
 					"Mach-O chained-fixups page starts are invalid");
+				Require(segment_starts->page_size == 0x1000 ||
+					segment_starts->page_size == 0x4000,
+					"Mach-O chained-fixups page size is unsupported");
 				const auto* page_starts = reinterpret_cast<const std::uint16_t*>(
-					payload + segment_offset + sizeof(ChainedStartsSegment));
+					payload + starts_location + sizeof(ChainedStartsSegment));
 				Require(segment_index < segments.size(), "Mach-O chained-fixups segment index is invalid");
-				for (std::uint16_t page = 0; page < segment_starts->page_count; ++page) {
-					if (page_starts[page] == 0xffff) {
-						continue;
-					}
-					std::uint64_t vm = segments[segment_index].vm_address +
-						static_cast<std::uint64_t>(page) * segment_starts->page_size + page_starts[page];
-					for (unsigned chain = 0; chain < 4096; ++chain) {
+				const auto segment_page_count = segments[segment_index].vm_size /
+					segment_starts->page_size +
+					(segments[segment_index].vm_size % segment_starts->page_size != 0);
+				Require(segment_starts->page_count <= segment_page_count,
+					"Mach-O chained-fixups page count exceeds its segment");
+				const auto chain_starts_count = (starts_bytes -
+					sizeof(ChainedStartsSegment) -
+					static_cast<std::uint64_t>(segment_starts->page_count) *
+					sizeof(std::uint16_t)) / sizeof(std::uint16_t);
+				const auto* chain_starts = page_starts + segment_starts->page_count;
+				const bool arm64e_format = pointer_format == 1 || pointer_format == 7 ||
+					pointer_format == 9 || pointer_format == 10 || pointer_format == 12;
+				const std::uint64_t chain_stride = arm64e_format &&
+					pointer_format != 7 && pointer_format != 10 ? 8u : 4u;
+				const auto walk_chain = [&](std::uint16_t start, std::uint16_t page) {
+					Require(start < segment_starts->page_size,
+						"Mach-O chained-fixup start exceeds its page");
+					const auto page_vm = segments[segment_index].vm_address +
+						static_cast<std::uint64_t>(page) * segment_starts->page_size;
+					auto vm = page_vm + start;
+					const auto max_nodes = segment_starts->page_size / chain_stride + 1;
+					for (std::uint64_t chain = 0; chain < max_nodes; ++chain) {
+						const auto page_offset = vm - page_vm;
+						Require(page_offset <= segment_starts->page_size &&
+							segment_starts->page_size - page_offset >= sizeof(std::uint64_t),
+							"Mach-O chained-fixup pointer crosses its page");
 						const auto* segment = &segments[segment_index];
-						Require(vm >= segment->vm_address && vm - segment->vm_address < segment->file_size,
+						Require(vm >= segment->vm_address &&
+							vm - segment->vm_address < segment->file_size,
 							"Mach-O chained-fixup location is not file-backed");
-						const auto file_offset = segment->file_offset + (vm - segment->vm_address);
+						const auto file_offset = segment->file_offset +
+							(vm - segment->vm_address);
 						Require(RangeFits(file_bytes, file_offset, sizeof(std::uint64_t)),
 							"Mach-O chained-fixup pointer is outside the file");
 						std::uint64_t raw = 0;
 						std::memcpy(&raw, view + file_offset, sizeof(raw));
-						const bool arm64e_format = pointer_format == 1 || pointer_format == 7 ||
-							pointer_format == 9 || pointer_format == 10 || pointer_format == 12;
 						const bool authenticated = arm64e_format && (raw >> 63) != 0;
 						const bool bind = arm64e_format ?
 							((raw >> 62) & 1) != 0 : (raw >> 63) != 0;
@@ -1300,12 +1324,34 @@ MachOImage MachOImage::Open(const std::wstring& path)
 						chained_fixups.push_back({segment_index, vm, bind,
 							bind_ordinal, addend, target, next, pointer_format,
 							authenticated});
-						if (next == 0) {
-							break;
-						}
-						vm += static_cast<std::uint64_t>(next) *
-							(arm64e_format && pointer_format != 7 && pointer_format != 10 ? 8 : 4);
+						if (next == 0) return;
+						const auto advance = static_cast<std::uint64_t>(next) * chain_stride;
+						Require(advance <= segment_starts->page_size - page_offset,
+							"Mach-O chained-fixup link exceeds its page");
+						vm += advance;
 					}
+					throw std::runtime_error("Mach-O chained-fixup chain does not terminate");
+				};
+				for (std::uint16_t page = 0; page < segment_starts->page_count; ++page) {
+					const auto page_start = page_starts[page];
+					if (page_start == 0xffff) {
+						continue;
+					}
+					if ((page_start & 0x8000u) == 0) {
+						walk_chain(page_start, page);
+						continue;
+					}
+					std::uint64_t chain_start_index = page_start & 0x7fffu;
+					bool last_start = false;
+					while (chain_start_index < chain_starts_count) {
+						const auto chain_start = chain_starts[chain_start_index];
+						walk_chain(static_cast<std::uint16_t>(chain_start & 0x7fffu), page);
+						last_start = (chain_start & 0x8000u) != 0;
+						if (last_start) break;
+						++chain_start_index;
+					}
+					Require(last_start,
+						"Mach-O chained-fixup multi-start list has no terminator");
 				}
 			}
 		}

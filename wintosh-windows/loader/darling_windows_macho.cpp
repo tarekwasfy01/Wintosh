@@ -777,6 +777,7 @@ MachOImage MachOImage::Open(const std::wstring& path)
 						SegmentName(section[section_index].section_name),
 						section[section_index].address, section[section_index].size,
 						section[section_index].file_offset, section[section_index].flags,
+						section[section_index].reserved1,
 						section[section_index].reserved2});
 				}
 			} else if (command->command == LC_SEGMENT) {
@@ -799,6 +800,7 @@ MachOImage MachOImage::Open(const std::wstring& path)
 						SegmentName(section[section_index].section_name),
 						section[section_index].address, section[section_index].size,
 						section[section_index].file_offset, section[section_index].flags,
+						section[section_index].reserved1,
 						section[section_index].reserved2});
 				}
 			} else if (command->command == LC_SYMTAB) {
@@ -1690,13 +1692,11 @@ std::vector<MachOImage::IndirectImportSlot> MachOImage::IndirectImportSlots() co
 {
 	std::vector<IndirectImportSlot> slots;
 	const auto pointer_size = Is32Bit() ? sizeof(std::uint32_t) : sizeof(std::uint64_t);
-	std::size_t indirect_index = 0;
 	for (const auto& section : m_sections) {
 		const auto section_type = section.flags & 0xffu;
 		if (section_type == 0x8u) {
 			if (section.reserved2 == 0 || section.size % section.reserved2 != 0)
 				throw std::runtime_error("Mach-O symbol-stub section is misaligned");
-			indirect_index += static_cast<std::size_t>(section.size / section.reserved2);
 			continue;
 		}
 		if (section_type != 0x6u && section_type != 0x7u &&
@@ -1707,9 +1707,14 @@ std::vector<MachOImage::IndirectImportSlot> MachOImage::IndirectImportSlots() co
 			throw std::runtime_error("Mach-O indirect symbol section is misaligned");
 		const bool lazy = section_type == 0x7u ||
 			section.section_name == "__la_symbol_ptr";
-		for (std::uint64_t offset = 0; offset < section.size; offset += pointer_size)
+		for (std::uint64_t offset = 0; offset < section.size; offset += pointer_size) {
+			const auto indirect_index = static_cast<std::uint64_t>(section.reserved1) +
+				offset / pointer_size;
+			if (indirect_index > std::numeric_limits<std::uint32_t>::max())
+				throw std::out_of_range("Mach-O indirect symbol index overflows");
 			slots.push_back({section.address + offset,
-				static_cast<std::uint32_t>(indirect_index++), lazy});
+				static_cast<std::uint32_t>(indirect_index), lazy});
+		}
 	}
 	return slots;
 }
@@ -1731,8 +1736,24 @@ void MachOImage::ApplyIndirectImportBindings(const Mapping& mapping,
 	for (const auto& slot : slots) {
 		if (slot.symbol_index >= m_indirect_symbols.size())
 			throw std::out_of_range("Mach-O indirect symbol table exceeds import slots");
-		if (slot.lazy && !bind_lazy)
+		const auto slot_address = static_cast<std::uintptr_t>(
+			static_cast<std::intptr_t>(slot.address) + mapping.Slide());
+		const bool trace_lazy_slot = slot.lazy &&
+			std::getenv("WINTOSH_TRACE_LAZY_BIND") != nullptr;
+		std::uintptr_t old_value = 0;
+		if (trace_lazy_slot) {
+			old_value = Is32Bit() ? static_cast<std::uintptr_t>(
+				*reinterpret_cast<const std::uint32_t*>(slot_address)) :
+				*reinterpret_cast<const std::uintptr_t*>(slot_address);
+		}
+		if (slot.lazy && !bind_lazy) {
+			if (trace_lazy_slot)
+				std::fprintf(stderr,
+					"WINTOSH_LAZY_SLOT address=0x%llx value=0x%llx deferred=1\n",
+					static_cast<unsigned long long>(slot_address),
+					static_cast<unsigned long long>(old_value));
 			continue;
+		}
 		const auto symbol_index = m_indirect_symbols[slot.symbol_index];
 		if ((symbol_index & 0xC0000000u) != 0)
 			continue; // LOCAL and ABSOLUTE entries are not imported bindings.
@@ -1756,6 +1777,12 @@ void MachOImage::ApplyIndirectImportBindings(const Mapping& mapping,
 		}
 		if (Is32Bit()) ApplyAbsolute32(mapping, slot.address, match->address);
 		else ApplyAbsolute64(mapping, slot.address, match->address);
+		if (trace_lazy_slot)
+			std::fprintf(stderr,
+				"WINTOSH_LAZY_SLOT address=0x%llx old=0x%llx target=0x%llx deferred=0\n",
+				static_cast<unsigned long long>(slot_address),
+				static_cast<unsigned long long>(old_value),
+				static_cast<unsigned long long>(match->address));
 	}
 }
 
@@ -2574,12 +2601,30 @@ void MachOImage::ApplyBindActions(const Mapping& mapping,
 		const auto target = AddSignedAddress(match == bindings.end() ? 0 :
 			match->address, action.addend);
 		const auto vm_address = segment.vm_address + action.segment_offset;
+		if (std::getenv("WINTOSH_TRACE_LAZY_BIND") != nullptr &&
+			action.symbol.find("dyld_stub_binder") != std::string::npos) {
+			std::fprintf(stderr,
+				"WINTOSH_STUB_BINDER_BIND symbol=%s type=%u target=0x%llx site=0x%llx\n",
+				action.symbol.c_str(), static_cast<unsigned>(action.type),
+				static_cast<unsigned long long>(target),
+				static_cast<unsigned long long>(static_cast<std::intptr_t>(vm_address) + mapping.Slide()));
+		}
 		if (action.type == 1)
 			ApplyAbsolute64(mapping, vm_address, target);
 		else if (action.type == 2)
 			ApplyAbsolute32(mapping, vm_address, target);
 		else
 			ApplyRelative32(mapping, vm_address, target);
+		if (std::getenv("WINTOSH_TRACE_LAZY_BIND") != nullptr &&
+			action.symbol.find("dyld_stub_binder") != std::string::npos &&
+			!Is32Bit()) {
+			const auto site = static_cast<std::uintptr_t>(
+				static_cast<std::intptr_t>(vm_address) + mapping.Slide());
+			std::fprintf(stderr,
+				"WINTOSH_STUB_BINDER_AFTER value=0x%llx\n",
+				static_cast<unsigned long long>(
+					*reinterpret_cast<const std::uintptr_t*>(site)));
+		}
 	}
 }
 

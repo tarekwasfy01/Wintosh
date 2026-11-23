@@ -188,15 +188,15 @@ if (WIN32)
         get_filename_component(WINTOSH_LLVM_BIN "${CMAKE_CXX_COMPILER}" DIRECTORY)
         set(WINTOSH_LD64_LLD "${WINTOSH_LLVM_BIN}/ld64.lld.exe")
         set(WINTOSH_LLVM_OBJDUMP "${WINTOSH_LLVM_BIN}/llvm-objdump.exe")
-        add_test(NAME wintosh_real_import_eager_e2e
+        add_test(NAME wintosh_real_import_lazy_e2e
             COMMAND powershell.exe -NoProfile -ExecutionPolicy Bypass -File
-                "${CMAKE_CURRENT_SOURCE_DIR}/tests/macho_real_import_eager_e2e.ps1"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/macho_real_import_lazy_e2e.ps1"
                 -Clang "${CMAKE_CXX_COMPILER}"
                 -Linker "${WINTOSH_LD64_LLD}"
                 -Objdump "${WINTOSH_LLVM_OBJDUMP}"
                 -Runner "$<TARGET_FILE:wintosh>"
-                -OutputDirectory "${CMAKE_CURRENT_BINARY_DIR}/real-import-eager-e2e")
-        set_tests_properties(wintosh_real_import_eager_e2e PROPERTIES RUN_SERIAL TRUE)
+                -OutputDirectory "${CMAKE_CURRENT_BINARY_DIR}/real-import-lazy-e2e")
+        set_tests_properties(wintosh_real_import_lazy_e2e PROPERTIES RUN_SERIAL TRUE)
         add_test(NAME wintosh_macho_printf_e2e
             COMMAND powershell.exe -NoProfile -ExecutionPolicy Bypass -File
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/macho_printf_e2e.ps1"

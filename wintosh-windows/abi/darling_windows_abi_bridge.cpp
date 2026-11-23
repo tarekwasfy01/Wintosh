@@ -45,10 +45,17 @@ extern "C" DARLING_SYSV int* darling_windows_abi_error()
 extern "C" DARLING_SYSV std::uintptr_t darling_windows_abi_resolve_lazy_binding(
 	std::uintptr_t image_cache, std::uintptr_t lazy_binding_info) noexcept
 {
+	const bool trace = std::getenv("WINTOSH_TRACE_LAZY_BIND") != nullptr;
+	if (trace) {
+		std::fprintf(stderr,
+			"WINTOSH_LAZY_RESOLVE_ENTER cache=0x%llx info=0x%llx\n",
+			static_cast<unsigned long long>(image_cache),
+			static_cast<unsigned long long>(lazy_binding_info));
+	}
 	try {
 		const auto target = darling::windows_host::MachOLazyBindingSession::ResolveActiveForImage(
 			image_cache, lazy_binding_info);
-		if (std::getenv("WINTOSH_TRACE_LAZY_BIND") != nullptr) {
+		if (trace) {
 			std::fprintf(stderr,
 				"WINTOSH_LAZY_BIND cache=0x%llx info=0x%llx target=0x%llx\n",
 				static_cast<unsigned long long>(image_cache),
@@ -57,6 +64,8 @@ extern "C" DARLING_SYSV std::uintptr_t darling_windows_abi_resolve_lazy_binding(
 		}
 		return target.value_or(0);
 	} catch (...) {
+		if (trace)
+			std::fputs("WINTOSH_LAZY_RESOLVE_ERROR\n", stderr);
 		// Exceptions cannot unwind safely through the hand-written binder frame.
 		return 0;
 	}
@@ -241,6 +250,12 @@ darling_windows_abi_aggregate_triple(darling::windows_host::abi::DarwinAggregate
 extern "C" DARLING_SYSV std::uintptr_t darling_windows_darwin_stub_probe_resolver(
 	std::uintptr_t image_cache, std::uintptr_t lazy_binding_info)
 {
+	if (std::getenv("WINTOSH_TRACE_LAZY_BIND") != nullptr) {
+		std::fprintf(stderr,
+			"WINTOSH_STUB_PROBE cache=0x%llx info=0x%llx\n",
+			static_cast<unsigned long long>(image_cache),
+			static_cast<unsigned long long>(lazy_binding_info));
+	}
 	return darling_windows_abi_resolve_lazy_binding(image_cache, lazy_binding_info);
 }
 

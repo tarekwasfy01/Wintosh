@@ -54,6 +54,15 @@ darling_windows_darwin_stub_trampoline_probe:
     mov qword ptr [rbp-0x20], 1
     mov eax, [rbp-0x10]
     mov edx, [rbp-0x18]
+    /* XSAVE requires a clean, 64-byte header at offset 512. */
+    mov qword ptr [rsp+0x200], 0
+    mov qword ptr [rsp+0x208], 0
+    mov qword ptr [rsp+0x210], 0
+    mov qword ptr [rsp+0x218], 0
+    mov qword ptr [rsp+0x220], 0
+    mov qword ptr [rsp+0x228], 0
+    mov qword ptr [rsp+0x230], 0
+    mov qword ptr [rsp+0x238], 0
     xsave64 [rsp]
     jmp darling_windows_stub_state_saved
 

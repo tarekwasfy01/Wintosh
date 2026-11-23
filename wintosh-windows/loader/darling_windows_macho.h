@@ -255,6 +255,7 @@ struct MachOSection final {
 	std::uint64_t size = 0;
 	std::uint32_t file_offset = 0;
 	std::uint32_t flags = 0;
+	std::uint32_t reserved1 = 0;
 	std::uint32_t reserved2 = 0;
 };
 

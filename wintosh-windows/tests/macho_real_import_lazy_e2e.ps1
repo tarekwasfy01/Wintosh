@@ -32,19 +32,26 @@ foreach ($required in @('__stub_helper', '__la_symbol_ptr', '_exit', '_puts')) {
 $priorForce = [Environment]::GetEnvironmentVariable('WINTOSH_FORCE_EAGER_BIND', 'Process')
 $priorTrace = [Environment]::GetEnvironmentVariable('WINTOSH_TRACE_LAZY_BIND', 'Process')
 try {
-	$env:WINTOSH_FORCE_EAGER_BIND = '1'
-	Remove-Item Env:WINTOSH_TRACE_LAZY_BIND -ErrorAction SilentlyContinue
-	$output = & $Runner --startup-abi main $image 2>&1
-	$code = $LASTEXITCODE
-	$text = $output -join "`n"
+	Remove-Item Env:WINTOSH_FORCE_EAGER_BIND -ErrorAction SilentlyContinue
+	$env:WINTOSH_TRACE_LAZY_BIND = '1'
+	$stderrPath = Join-Path $OutputDirectory 'lazy-import.stderr.txt'
+	$stdoutPath = Join-Path $OutputDirectory 'lazy-import.stdout.txt'
+	$process = Start-Process -FilePath $Runner -ArgumentList @('--startup-abi',
+		'main', "`"$image`"") -Wait -PassThru -NoNewWindow `
+		-RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath
+	$code = $process.ExitCode
+	$text = (@(Get-Content -LiteralPath $stdoutPath) +
+		@(Get-Content -LiteralPath $stderrPath)) -join "`n"
 } finally {
 	if ($null -eq $priorForce) { Remove-Item Env:WINTOSH_FORCE_EAGER_BIND -ErrorAction SilentlyContinue }
 	else { $env:WINTOSH_FORCE_EAGER_BIND = $priorForce }
 	if ($null -eq $priorTrace) { Remove-Item Env:WINTOSH_TRACE_LAZY_BIND -ErrorAction SilentlyContinue }
 	else { $env:WINTOSH_TRACE_LAZY_BIND = $priorTrace }
 }
-if ($code -ne 42) { throw "Compiler-linked Mach-O eager-import run expected 42, got $code; output=$text" }
-if ($text -notmatch 'compiler-linked Mach-O import' -or $text -match 'DARLING_(GUEST_EXCEPTION|RUNNER_ERROR)') {
-	throw "Compiler-linked Mach-O eager-import output was invalid: $text"
+if ($code -ne 42) { throw "Compiler-linked Mach-O lazy-import run expected 42, got $code; output=$text" }
+if ($text -notmatch 'compiler-linked Mach-O import' -or
+	$text -match 'DARLING_(GUEST_EXCEPTION|RUNNER_ERROR)' -or
+	([regex]::Matches($text, 'WINTOSH_LAZY_BIND\b').Count -ne 2)) {
+	throw "Compiler-linked Mach-O lazy-import output was invalid: $text"
 }
-Write-Output 'MACHO_REAL_IMPORT_EAGER_E2E=PASS LAZY_IMPORTS=2 EXIT=42'
+Write-Output 'MACHO_REAL_IMPORT_LAZY_E2E=PASS LAZY_IMPORTS=2 EXIT=42'

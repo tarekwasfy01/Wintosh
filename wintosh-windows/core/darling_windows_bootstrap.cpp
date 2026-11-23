@@ -676,6 +676,23 @@ int DarwinBootstrap::Run(const std::filesystem::path& image_path,
 	}
 	RegisterObjectiveCSections(image, mapping);
 	image.ExecuteInitializers(mapping);
+	if (std::getenv("WINTOSH_TRACE_LAZY_BIND") != nullptr && !image.Is32Bit()) {
+		for (const auto& section : image.Sections()) {
+			if (section.section_name != "__la_symbol_ptr" &&
+				section.section_name != "__got") continue;
+			for (std::uint64_t offset = 0; offset + sizeof(std::uintptr_t) <= section.size;
+				offset += sizeof(std::uintptr_t)) {
+				const auto slot = static_cast<std::uintptr_t>(
+					static_cast<std::intptr_t>(section.address + offset) + mapping.Slide());
+				std::fprintf(stderr,
+					"WINTOSH_LAZY_ENTRY_SLOT section=%s address=0x%llx value=0x%llx\n",
+					section.section_name.c_str(),
+					static_cast<unsigned long long>(slot),
+					static_cast<unsigned long long>(
+						*reinterpret_cast<const std::uintptr_t*>(slot)));
+			}
+		}
+	}
 	// Activations above remain alive until terminators finish.
 	const auto exit_code = image.ExecuteEntry(mapping, options.arguments,
 		options.environment, options.apple_parameters, options.entry_abi);

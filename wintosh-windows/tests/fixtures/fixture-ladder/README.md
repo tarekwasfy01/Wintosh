@@ -13,9 +13,8 @@ i386 TLV and pthread isolation have a separate runner fixture at
 Fixtures: `argv-env.c`, `memory.c`, `qsort-callback.c`, `file-io.c`,
 `pthread-tlv.c`, `crash.c`, and `lazy-import.c`. Each is an independent gate
 fixture. `lazy-import.c` is linked into a real x86_64 Mach-O with LLVM
-`ld64.lld`; its two imports currently execute on Windows using the explicit
-`WINTOSH_FORCE_EAGER_BIND=1` launch fallback. Default first-call binding
-remains a separate failing gate.
+`ld64.lld`; its two imports execute on Windows through default first-call lazy
+binding and the compiler-produced stub helper.
 
 Copyright (C) 2026 Wintosh contributors. Licensed under GPL-3.0-only; see the
 repository license inventory.

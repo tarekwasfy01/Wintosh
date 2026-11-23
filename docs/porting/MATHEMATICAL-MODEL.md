@@ -216,6 +216,30 @@ arguments retain their width/signedness, and the complete point range is
 copied. The source implements these edges; a guest fixture has not yet checked
 selector dispatch or the resulting path elements.
 
+## NSBezierPath associated-point replacement
+
+Let the expanded element sequence be `E = (e₀, …, eₘ₋₁)`. The associated
+point cardinality is
+
+`k(eᵢ) = 3 if kind(eᵢ) = Curve, otherwise 1 for Move, Line, or Close`.
+
+The setter is a partial state transform: `Set(E, i, P)` is defined only for
+`0 ≤ i < m`, a supported element kind, and a readable finite point vector `P`
+of exactly `k(eᵢ)` points. It preserves `kind(eᵢ)` and every other element.
+For a cubic, the public vector is `(control₁, control₂, endpoint)` while the
+host command stores `(endpoint, control₁, control₂)`, so its permutation is
+
+`(p₀, p₁, p₂) ↦ (host₂, host₀, host₁)`.
+
+Rectangles and ovals first map to their enumerated Move/Line/Curve/Close
+sequence, after which `Set` replaces one member and the sequence becomes the
+path's stored representation. The ABI encoding is `v@:^{CGPoint=dd}q`: the
+guest passes a point-array pointer followed by a signed 64-bit element index.
+The x86_64 dispatcher reads the two SysV GP slots; the Windows ARM64 guest
+reader consumes the corresponding Darwin variadic stack slots. This proves
+the source-level mapping only; a guest fixture is still needed to verify the
+selector ABI and observed geometry.
+
 Therefore architecture support composes as
 
 `E(host, guest) = P(host, guest) AND M(host, guest) AND X(host, guest)`,

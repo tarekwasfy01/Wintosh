@@ -790,8 +790,16 @@ line, cubic-curve, and close elements. Rectangles expand to a move, three lines,
 and close; ovals expand to one move, four cubic curves, and close. Associated
 curve points are returned in Cocoa order (first control point, second control
 point, end point); the optional output pointer is honored. Out-of-range indices return
-`-1` because Objective-C exception unwinding is not implemented. Winding-rule
-`windingRule` reads/sets nonzero (0) or even-odd (1); ordinary `fill` honors
+`-1` because Objective-C exception unwinding is not implemented.
+`setAssociatedPoints:atIndex:` replaces the associated point or three curve
+points without changing the element kind. Rectangles and ovals are expanded
+before mutation, so subsequent enumeration and rendering use the updated
+primitive elements. Close elements expose their associated point and rendering,
+bounds, and hit-testing honor it. Invalid indices and unreadable or non-finite
+point arrays are ignored. The pointer-plus-index selector uses the x86_64 SysV
+and Windows ARM64 guest dispatch paths. A guest fixture has not verified this
+mutation ABI. `windingRule` reads/sets nonzero (0) or even-odd (1); ordinary
+`fill` honors
 that setting while `evenOddFill` always uses even-odd. Unsupported rule values
 are ignored. `flatness` defaults to 0.6 and controls recursive De Casteljau
 curve subdivision when the path is replayed into CoreGraphics. The context's

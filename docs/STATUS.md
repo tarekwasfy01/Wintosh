@@ -958,6 +958,19 @@ guest dispatcher decodes the CGPoint plus four scalar XMM arguments and the
 BOOL from a general-purpose register. No Mach-O fixture has verified the
 selector ABI or rendered pixels.
 
+### NSBezierPath associated-point mutation (2026-11-23)
+
+`setAssociatedPoints:atIndex:` updates a move, line, close, or cubic element
+without changing its kind. Cubic input follows Cocoa order (control point 1,
+control point 2, endpoint) and is mapped to the host command's internal order.
+Rectangles and ovals expand before an element is edited; close-point values are
+used by rendering, bounds, and hit-testing. The selector is registered with
+the pointer-plus-`NSInteger` encoding and dispatched through the x86_64 SysV
+and Windows ARM64 guest paths. Documentation records the point-cardinality
+and permutation model in `porting/MATHEMATICAL-MODEL.md`. The local Clang x64
+Release runner and Windows ARM64 host archive build successfully; no guest
+fixture verifies mutation or resulting geometry.
+
 ### NSColor RGBA accessors (2026-11-16)
 
 The four stored RGBA components are available through `redComponent`,

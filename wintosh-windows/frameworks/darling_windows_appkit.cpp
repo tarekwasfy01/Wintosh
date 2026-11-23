@@ -2014,19 +2014,14 @@ std::vector<BezierCommand> NSBezierPathRoundedRectCommands(
 	commands.push_back({BezierCommandKind::Curve,
 		{point(x0 + rx, y0), point(x0, y0 + ry - kappa * ry),
 			point(x0 + rx - kappa * rx, y0)}});
-	commands.push_back({BezierCommandKind::Close});
+	commands.push_back({BezierCommandKind::Close,
+		{point(x0 + rx, y0)}});
 	return commands;
 }
 
-std::vector<BezierCommand> NSBezierPathElementSnapshot(id self)
+std::vector<BezierCommand> NSBezierPathExpandElements(
+	const std::vector<BezierCommand>& commands)
 {
-	std::vector<BezierCommand> commands;
-	{
-		std::lock_guard lock(g_bezier_mutex);
-		const auto found = g_bezier_paths.find(self);
-		if (found == g_bezier_paths.end()) return commands;
-		commands = found->second.commands;
-	}
 	std::vector<BezierCommand> elements;
 	for (const auto& command : commands) {
 		if (command.kind == BezierCommandKind::Rect) {
@@ -2043,7 +2038,8 @@ std::vector<BezierCommand> NSBezierPathElementSnapshot(id self)
 				{{x1, y1}, {}, {}}});
 			elements.push_back({BezierCommandKind::Line,
 				{{x0, y1}, {}, {}}});
-			elements.push_back({BezierCommandKind::Close});
+			elements.push_back({BezierCommandKind::Close,
+				{{x0, y0}, {}, {}}});
 		} else if (command.kind == BezierCommandKind::Oval) {
 			const auto& rect = command.rect;
 			const double x0 = (std::min)(rect.x, rect.x + rect.width);
@@ -2065,10 +2061,23 @@ std::vector<BezierCommand> NSBezierPathElementSnapshot(id self)
 				{{x0, cy}, {cx - kappa * rx, y1}, {x0, cy + kappa * ry}}});
 			elements.push_back({BezierCommandKind::Curve,
 				{{cx, y0}, {x0, cy - kappa * ry}, {cx - kappa * rx, y0}}});
-			elements.push_back({BezierCommandKind::Close});
+			elements.push_back({BezierCommandKind::Close,
+				{{cx, y0}, {}, {}}});
 		} else elements.push_back(command);
 	}
 	return elements;
+}
+
+std::vector<BezierCommand> NSBezierPathElementSnapshot(id self)
+{
+	std::vector<BezierCommand> commands;
+	{
+		std::lock_guard lock(g_bezier_mutex);
+		const auto found = g_bezier_paths.find(self);
+		if (found == g_bezier_paths.end()) return commands;
+		commands = found->second.commands;
+	}
+	return NSBezierPathExpandElements(commands);
 }
 
 std::int64_t NSBezierPathElementCount(id self, SEL)
@@ -2097,6 +2106,8 @@ std::int64_t NSBezierPathElementAtIndex(id self, SEL,
 				associated_points[2] = element.points[0];
 				break;
 			case BezierCommandKind::Close:
+				associated_points[0] = element.points[0];
+				break;
 			case BezierCommandKind::Rect:
 			case BezierCommandKind::Oval:
 				break;
@@ -2104,6 +2115,47 @@ std::int64_t NSBezierPathElementAtIndex(id self, SEL,
 		}
 		return static_cast<std::int64_t>(element.kind);
 	} catch (...) { return -1; }
+}
+
+void NSBezierPathSetAssociatedPoints(id self, SEL,
+	const DarlingObjcPoint* guest_points, std::int64_t index)
+{
+	if (self == nullptr || guest_points == nullptr || index < 0) return;
+	try {
+		std::lock_guard lock(g_bezier_mutex);
+		const auto found = g_bezier_paths.find(self);
+		if (found == g_bezier_paths.end()) return;
+		auto elements = NSBezierPathExpandElements(found->second.commands);
+		if (static_cast<std::uint64_t>(index) >= elements.size()) return;
+		auto& element = elements[static_cast<std::size_t>(index)];
+		const std::size_t point_count =
+			element.kind == BezierCommandKind::Curve ? 3u : 1u;
+		DarlingObjcPoint replacement[3]{};
+		SIZE_T bytes_read = 0;
+		const SIZE_T byte_count = point_count * sizeof(DarlingObjcPoint);
+		if (!ReadProcessMemory(GetCurrentProcess(), guest_points, replacement,
+			byte_count, &bytes_read) || bytes_read != byte_count) return;
+		for (std::size_t point_index = 0; point_index < point_count; ++point_index)
+			if (!std::isfinite(replacement[point_index].x) ||
+				!std::isfinite(replacement[point_index].y)) return;
+		switch (element.kind) {
+		case BezierCommandKind::Move:
+		case BezierCommandKind::Line:
+		case BezierCommandKind::Close:
+			element.points[0] = replacement[0];
+			break;
+		case BezierCommandKind::Curve:
+			element.points[1] = replacement[0];
+			element.points[2] = replacement[1];
+			element.points[0] = replacement[2];
+			break;
+		case BezierCommandKind::Rect:
+		case BezierCommandKind::Oval:
+			return;
+		}
+		found->second.commands = std::move(elements);
+	} catch (...) {
+	}
 }
 
 DarlingObjcPoint NSBezierPathCurrentPoint(id self, SEL)
@@ -2375,6 +2427,7 @@ bool NSBezierPathContainsPoint(id self, SEL, DarlingObjcPoint point)
 				current = element.points[0];
 				break;
 			case BezierCommandKind::Close:
+				if (has_current) polygon.push_back(element.points[0]);
 				if (finish_polygon()) return true;
 				current = subpath_start;
 				has_current = true;
@@ -2562,9 +2615,22 @@ void NSBezierPathCurveToPoint(id self, SEL, DarlingObjcPoint end,
 		{end, control1, control2}});
 }
 
+DarlingObjcPoint NSBezierPathSubpathStart(id self)
+{
+	DarlingObjcPoint start{};
+	try {
+		for (const auto& element : NSBezierPathElementSnapshot(self))
+			if (element.kind == BezierCommandKind::Move)
+				start = element.points[0];
+	} catch (...) {}
+	return start;
+}
+
 void NSBezierPathClose(id self, SEL)
 {
-	NSBezierPathAppend(self, BezierCommand{BezierCommandKind::Close});
+	if (NSBezierPathElementSnapshot(self).empty()) return;
+	NSBezierPathAppend(self, BezierCommand{BezierCommandKind::Close,
+		{NSBezierPathSubpathStart(self)}});
 }
 
 void NSBezierPathRender(id self, bool fill, bool even_odd = false);
@@ -2790,6 +2856,8 @@ void NSBezierPathReplayPath(const BezierPathState& path)
 				command.points[0].x, command.points[0].y);
 			break;
 		case BezierCommandKind::Close:
+			CGContextAddLineToPoint(g_current_cg_context,
+				command.points[0].x, command.points[0].y);
 			CGContextClosePath(g_current_cg_context);
 			break;
 		case BezierCommandKind::Rect:
@@ -2820,7 +2888,8 @@ bool NSBezierPathTransformState(BezierPathState& path,
 		for (auto& command : path.commands) {
 			const std::size_t count = command.kind == BezierCommandKind::Curve ? 3 :
 				(command.kind == BezierCommandKind::Move ||
-				 command.kind == BezierCommandKind::Line ? 1 : 0);
+				 command.kind == BezierCommandKind::Line ||
+				 command.kind == BezierCommandKind::Close ? 1 : 0);
 			for (std::size_t index = 0; index < count; ++index) {
 				const auto source = command.points[index];
 				const DarlingObjcPoint result{
@@ -3007,11 +3076,13 @@ DarlingObjcRect NSBezierPathBounds(id self, SEL)
 	const BezierPathState path = NSBezierPathSnapshot(self);
 	BezierBounds bounds;
 	DarlingObjcPoint current{};
+	DarlingObjcPoint subpath_start{};
 	bool has_current = false;
 	for (const BezierCommand& command : path.commands) {
 		switch (command.kind) {
 		case BezierCommandKind::Move:
 			current = command.points[0];
+			subpath_start = current;
 			has_current = true;
 			bounds.Include(current);
 			break;
@@ -3046,6 +3117,8 @@ DarlingObjcRect NSBezierPathBounds(id self, SEL)
 			break;
 		}
 		case BezierCommandKind::Close:
+			bounds.Include(command.points[0]);
+			current = subpath_start;
 			break;
 		case BezierCommandKind::Rect:
 		case BezierCommandKind::Oval:
@@ -3076,6 +3149,7 @@ DarlingObjcRect NSBezierPathControlPointBounds(id self, SEL)
 			bounds.Include(command.rect);
 			break;
 		case BezierCommandKind::Close:
+			bounds.Include(command.points[0]);
 			break;
 		}
 	}
@@ -21520,6 +21594,10 @@ void RegisterAppKitClasses()
 			sel_registerName("elementAtIndex:associatedPoints:"),
 			reinterpret_cast<IMP>(&NSBezierPathElementAtIndex),
 			"q@:q^{CGPoint=dd}");
+		class_addMethod(bezier_path,
+			sel_registerName("setAssociatedPoints:atIndex:"),
+			reinterpret_cast<IMP>(&NSBezierPathSetAssociatedPoints),
+			"v@:^{CGPoint=dd}q");
 		class_addMethod(bezier_path, sel_registerName("fill"),
 			reinterpret_cast<IMP>(&NSBezierPathFill), "v@:");
 		class_addMethod(bezier_path, sel_registerName("evenOddFill"),

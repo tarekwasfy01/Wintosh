@@ -221,6 +221,16 @@ id ImageMethod(id receiver, SEL)
 	return receiver;
 }
 
+id CategoryOverrideImageMethod(id, SEL)
+{
+	return reinterpret_cast<id>(static_cast<std::uintptr_t>(0x9876));
+}
+
+id CategoryOverrideClassMethod(id, SEL)
+{
+	return reinterpret_cast<id>(static_cast<std::uintptr_t>(0x6789));
+}
+
 id ApplyBlock(id, SEL, DarlingObjcCallbackBlock* block)
 {
 	return darling_objc_block_invoke1(block, reinterpret_cast<id>(block));
@@ -1050,14 +1060,25 @@ int main()
 	const char category_class_method_name[] = "categoryClassMethod";
 	const char category_property_name[] = "categoryProperty";
 	const char category_property_attributes[] = "T@,N,V_categoryValue";
-	RawMethodList category_methods{sizeof(RawMethod), 1,
-		{reinterpret_cast<std::uintptr_t>(category_method_name),
+	struct RawMethodListTwo final {
+		std::uint32_t entry_size{};
+		std::uint32_t count{};
+		RawMethod methods[2]{};
+	};
+	RawMethodListTwo category_methods{sizeof(RawMethod), 2,
+		{{reinterpret_cast<std::uintptr_t>(category_method_name),
 			reinterpret_cast<std::uintptr_t>(image_method_types),
-			reinterpret_cast<std::uintptr_t>(&ImageMethod)}};
-	RawMethodList category_class_methods{sizeof(RawMethod), 1,
-		{reinterpret_cast<std::uintptr_t>(category_class_method_name),
+			reinterpret_cast<std::uintptr_t>(&ImageMethod)},
+		 {reinterpret_cast<std::uintptr_t>(image_method_name),
 			reinterpret_cast<std::uintptr_t>(image_method_types),
-			reinterpret_cast<std::uintptr_t>(&ClassIdentity)}};
+			reinterpret_cast<std::uintptr_t>(&CategoryOverrideImageMethod)}}};
+	RawMethodListTwo category_class_methods{sizeof(RawMethod), 2,
+		{{reinterpret_cast<std::uintptr_t>(category_class_method_name),
+			reinterpret_cast<std::uintptr_t>(image_method_types),
+		reinterpret_cast<std::uintptr_t>(&ClassIdentity)},
+		 {reinterpret_cast<std::uintptr_t>("imageClassMethod"),
+			reinterpret_cast<std::uintptr_t>(image_method_types),
+			reinterpret_cast<std::uintptr_t>(&CategoryOverrideClassMethod)}}};
 	RawCategory category{0, raw_class_address,
 		reinterpret_cast<std::uintptr_t>(&category_methods),
 		reinterpret_cast<std::uintptr_t>(&category_class_methods),
@@ -1069,6 +1090,13 @@ int main()
 		return 49;
 	if (darling_objc_register_macho_categories(&category_address,
 		sizeof(category_address)) != 1 ||
+		class_getMethodImplementation(objc_getClass("ImageRegisteredClass"),
+			sel_registerName(image_method_name)) !=
+			reinterpret_cast<IMP>(&CategoryOverrideImageMethod) ||
+		method_getImplementation(class_getClassMethod(
+			objc_getClass("ImageRegisteredClass"),
+			sel_registerName("imageClassMethod"))) !=
+			reinterpret_cast<IMP>(&CategoryOverrideClassMethod) ||
 		class_getMethodImplementation(objc_getClass("ImageRegisteredClass"),
 			sel_registerName(category_method_name)) !=
 		reinterpret_cast<IMP>(&ImageMethod) ||
@@ -1158,6 +1186,13 @@ int main()
 			sel_registerName(category_method_name)) ||
 		class_respondsToSelector(objc_getClass("ImageRegisteredClass"),
 			sel_registerName(category_class_method_name)) ||
+		class_getMethodImplementation(objc_getClass("ImageRegisteredClass"),
+			sel_registerName(image_method_name)) !=
+			reinterpret_cast<IMP>(&ImageMethod) ||
+		method_getImplementation(class_getClassMethod(
+			objc_getClass("ImageRegisteredClass"),
+			sel_registerName("imageClassMethod"))) !=
+			reinterpret_cast<IMP>(&ClassIdentity) ||
 		class_getProperty(objc_getClass("ImageRegisteredClass"),
 			category_property_name) != nullptr ||
 		class_conformsToProtocol(objc_getClass("ImageRegisteredClass"),

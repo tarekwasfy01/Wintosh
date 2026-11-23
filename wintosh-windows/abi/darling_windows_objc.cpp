@@ -84,8 +84,8 @@ struct objc_protocol final {
 
 struct darling_objc_category_registration final {
 	Class target{};
-	std::vector<SEL> instance_methods;
-	std::vector<SEL> class_methods;
+	std::unordered_map<SEL, std::optional<objc_class::Method>> instance_methods;
+	std::unordered_map<SEL, std::optional<objc_class::Method>> class_methods;
 	std::vector<Protocol> protocols;
 	std::vector<std::string> properties;
 };
@@ -1666,7 +1666,8 @@ std::uintptr_t NormalizeImagePointer(std::uintptr_t address,
 
 void RegisterMethodList(Class cls, std::uintptr_t method_list_address,
 	bool class_method = false, std::intptr_t image_slide = 0,
-	std::uintptr_t image_vm_begin = 0, std::uintptr_t image_vm_end = 0)
+	std::uintptr_t image_vm_begin = 0, std::uintptr_t image_vm_end = 0,
+	bool replace_existing = false)
 {
 	if (!cls || !method_list_address)
 		return;
@@ -1732,6 +1733,15 @@ void RegisterMethodList(Class cls, std::uintptr_t method_list_address,
 			strnlen_s(types, 1024) == 1024)
 			continue;
 		const SEL selector = sel_registerName(name);
+		if (replace_existing) {
+			std::lock_guard lock(RuntimeMutex());
+			auto& methods = class_method ? cls->class_methods : cls->methods;
+			methods[selector] = objc_class::Method{
+				reinterpret_cast<IMP>(implementation), types, true};
+			if (class_method && cls->metaclass)
+				cls->metaclass->methods[selector] = methods[selector];
+			continue;
+		}
 		const bool added = class_method ?
 			class_addClassMethod(cls, selector, reinterpret_cast<IMP>(implementation), types) :
 			class_addMethod(cls, selector, reinterpret_cast<IMP>(implementation), types);
@@ -2238,16 +2248,8 @@ static std::size_t RegisterMachOCategoriesWithImage(
 			continue;
 		darling_objc_category_registration contribution;
 		contribution.target = cls;
-		std::unordered_set<SEL> old_instance_methods;
-		std::unordered_set<SEL> old_class_methods;
-		for (const auto& [selector, method] : cls->methods) {
-			(void)method;
-			old_instance_methods.insert(selector);
-		}
-		for (const auto& [selector, method] : cls->class_methods) {
-			(void)method;
-			old_class_methods.insert(selector);
-		}
+		const auto old_instance_methods = cls->methods;
+		const auto old_class_methods = cls->class_methods;
 		const auto old_protocols = cls->protocols;
 		std::unordered_set<std::string> old_properties;
 		for (const auto& [property_name, property] : cls->properties) {
@@ -2255,22 +2257,30 @@ static std::size_t RegisterMachOCategoriesWithImage(
 			old_properties.insert(property_name);
 		}
 		RegisterMethodList(cls, instance_methods, false, image_slide,
-			image_vm_begin, image_vm_end);
+			image_vm_begin, image_vm_end, true);
 		RegisterMethodList(cls, class_methods, true, image_slide,
-			image_vm_begin, image_vm_end);
+			image_vm_begin, image_vm_end, true);
 		RegisterProtocolList(cls, protocols);
 		RegisterPropertyList(cls, instance_properties);
 		RegisterPropertyList(cls, class_properties);
 		if (active_image_token != nullptr) {
 			for (const auto& [selector, method] : cls->methods) {
-				(void)method;
-				if (!old_instance_methods.contains(selector))
-					contribution.instance_methods.push_back(selector);
+				const auto old = old_instance_methods.find(selector);
+				if (old == old_instance_methods.end())
+					contribution.instance_methods.emplace(selector, std::nullopt);
+				else if (old->second.implementation != method.implementation ||
+					old->second.types != method.types ||
+					old->second.guest_abi != method.guest_abi)
+					contribution.instance_methods.emplace(selector, old->second);
 			}
 			for (const auto& [selector, method] : cls->class_methods) {
-				(void)method;
-				if (!old_class_methods.contains(selector))
-					contribution.class_methods.push_back(selector);
+				const auto old = old_class_methods.find(selector);
+				if (old == old_class_methods.end())
+					contribution.class_methods.emplace(selector, std::nullopt);
+				else if (old->second.implementation != method.implementation ||
+					old->second.types != method.types ||
+					old->second.guest_abi != method.guest_abi)
+					contribution.class_methods.emplace(selector, old->second);
 			}
 			for (Protocol protocol : cls->protocols) {
 				if (!old_protocols.contains(protocol))
@@ -2473,12 +2483,23 @@ extern "C" void darling_objc_unregister_image(darling_objc_image_token* token)
 		category != token->categories.rend(); ++category) {
 		Class cls = category->target;
 		if (cls == nullptr) continue;
-		for (SEL selector : category->instance_methods)
-			cls->methods.erase(selector);
-		for (SEL selector : category->class_methods) {
-			cls->class_methods.erase(selector);
-			if (cls->metaclass)
-				cls->metaclass->methods.erase(selector);
+		for (const auto& [selector, previous] : category->instance_methods) {
+			if (previous)
+				cls->methods[selector] = *previous;
+			else
+				cls->methods.erase(selector);
+		}
+		for (const auto& [selector, previous] : category->class_methods) {
+			if (previous)
+				cls->class_methods[selector] = *previous;
+			else
+				cls->class_methods.erase(selector);
+			if (cls->metaclass) {
+				if (previous)
+					cls->metaclass->methods[selector] = *previous;
+				else
+					cls->metaclass->methods.erase(selector);
+			}
 		}
 		for (Protocol protocol : category->protocols)
 			cls->protocols.erase(protocol);

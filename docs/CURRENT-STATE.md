@@ -49,8 +49,11 @@ Mach-O fixture with an actual `__objc_catlist` invokes a category class method
 through `objc_msgSend`. Dynamic image tokens now track category-added methods,
 protocol conformances, and properties and remove those additions on image
 unload; `objc_smoke` checks that the category stops responding, its property
-disappears, and its image-owned protocol is unregistered. Category replacement
-of a selector that already exists on the target class is still unsupported.
+disappears, and its image-owned protocol is unregistered. Categories can
+replace existing instance or class methods; unloading restores the captured
+prior implementation, including its type encoding and guest-ABI marker.
+Overlapping replacements from multiple independently unloaded images are not
+yet covered.
 
 ## Mach broker update, 2026-11-23
 

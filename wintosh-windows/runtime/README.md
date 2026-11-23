@@ -25,8 +25,9 @@ needed by classes in other images; the ARM64 fixture verifies an inherited
 class method. Both static and dynamic image paths register classes before
 categories, and the ARM64 Mach-O fixture exercises a category-defined class
 method. Dynamic image tokens also remove category-added methods, protocols,
-and properties when the image unloads. Category replacement of an existing
-selector is not yet implemented.
+and properties when the image unloads, restoring a replaced method's previous
+implementation. Overlapping category overrides across independently unloaded
+images have not been verified.
 The Win32 target compiles the host library and runner and has launched a
 hand-built i386 `LC_MAIN` Mach-O with no imports; its compatible `main` returned
 42. This confirms the basic mapping and cdecl entry path, not general app

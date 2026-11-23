@@ -4,6 +4,9 @@ extern Class objc_getClass(const char *name);
 extern SEL sel_registerName(const char *name);
 extern id objc_msgSend(id receiver, SEL selector, ...);
 extern unsigned long strlen(const char *value);
+extern void *malloc(unsigned long bytes);
+extern void *realloc(void *allocation, unsigned long bytes);
+extern void free(void *allocation);
 
 typedef struct {
 	double x;
@@ -37,6 +40,7 @@ __attribute__((objc_root_class))
 + (WintoshTriple)advanceTriple:(WintoshTriple)value;
 + (long)nestedAnswer;
 + (long)lengthPlus:(const char *)value;
++ (long)heapRoundTrip;
 @end
 
 @implementation WintoshProbe
@@ -88,6 +92,24 @@ __attribute__((objc_root_class))
 {
 	return (long)strlen(value) + 35;
 }
++ (long)heapRoundTrip
+{
+	volatile long *value = (volatile long *)malloc(sizeof(long));
+	if (value == (volatile long *)0)
+		return 0;
+	*value = 40;
+	volatile long *resized = (volatile long *)realloc(
+		(void *)value, 2 * sizeof(long));
+	if (resized == (volatile long *)0) {
+		free((void *)value);
+		return 0;
+	}
+	value = resized;
+	value[1] = 2;
+	const long result = value[0] + value[1];
+	free((void *)value);
+	return result;
+}
 @end
 
 typedef long (*WintoshSendLong)(id, SEL);
@@ -120,11 +142,12 @@ int main(int argc, char **argv, char **envp)
 	SEL advance_triple = sel_registerName("advanceTriple:");
 	SEL nested_answer = sel_registerName("nestedAnswer");
 	SEL length_plus = sel_registerName("lengthPlus:");
+	SEL heap_round_trip = sel_registerName("heapRoundTrip");
 	if (probe == (Class)0 || answer == (SEL)0 || add == (SEL)0 ||
 		increment == (SEL)0 || echo == (SEL)0 || read_value == (SEL)0 ||
 		sum_seven == (SEL)0 || shift_pair == (SEL)0 || shift_quad == (SEL)0 ||
 		advance_triple == (SEL)0 || nested_answer == (SEL)0 ||
-		length_plus == (SEL)0)
+		length_plus == (SEL)0 || heap_round_trip == (SEL)0)
 		return 1;
 	const long value = ((WintoshSendLong)objc_msgSend)((id)probe, answer);
 	const long sum = ((WintoshSendLongPair)objc_msgSend)((id)probe, add, 20, 22);
@@ -145,10 +168,12 @@ int main(int argc, char **argv, char **envp)
 	const long nested = ((WintoshSendLong)objc_msgSend)((id)probe, nested_answer);
 	const long nested_length = ((WintoshSendLongString)objc_msgSend)(
 		(id)probe, length_plus, "Wintosh");
+	const long heap_value = ((WintoshSendLong)objc_msgSend)(
+		(id)probe, heap_round_trip);
 	return value == 42 && sum == 42 && incremented == 42.0 &&
 		echoed == (id)probe && dereferenced == 42 && seven == 42 &&
 		pair.x == 21.0 && pair.y == 22.0 && quad.a == 11.0 &&
 		quad.b == 12.0 && quad.c == 13.0 && quad.d == 14.0 &&
 		triple.a == 11 && triple.b == 12 && triple.c == 13 && nested == 42 &&
-		nested_length == 42 ? 42 : 1;
+		nested_length == 42 && heap_value == 42 ? 42 : 1;
 }

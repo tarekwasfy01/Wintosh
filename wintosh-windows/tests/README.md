@@ -9,5 +9,6 @@ runs them through the optional Dynarmic backend. It covers `_strlen` and
 Objective-C integer/double arguments and returns, object identity, pointer
 dereference, a stack-passed seventh integer, two-/four-double HFA returns, and
 a 24-byte indirect structure return through `objc_msgSend`. A guest method also
-performs nested `sel_registerName`, `objc_msgSend`, and `_strlen` imports. It is
+performs nested `sel_registerName`, `objc_msgSend`, `_strlen`, `_malloc`, and
+`_realloc`/`_free` imports, verifying guest heap write/read/resize/free. It is
 not a general Objective-C or macOS application test.

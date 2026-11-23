@@ -143,10 +143,11 @@ calls `objc_msgSend` with integer, double, object, pointer, and stack-passed
 arguments, executes guest method callbacks, and returns 42. The fixture checks
 two-/four-double homogeneous aggregates and a 24-byte indirect result through
 x8. A guest callback also makes nested `sel_registerName`, `objc_msgSend`, and
-`_strlen` imports, including recursive guest-method dispatch. Other aggregate
-layouts, nested Darwin syscalls, variadic dispatch, blocks, framework startup,
-and arbitrary application behavior remain unsupported or unverified. Other
-host imports fail closed.
+`_strlen` imports, including recursive guest-method dispatch. It also allocates
+guest-readable/writable memory through `_malloc`, grows it through `_realloc`,
+then frees it through `_free`. Other aggregate layouts, nested Darwin syscalls, variadic dispatch,
+blocks, framework startup, and arbitrary application behavior remain
+unsupported or unverified. Other host imports fail closed.
 `--diagnose-host` is independent of an input image and reports the current
 Windows architecture, pointer width, supported native Mach-O target, prefix
 source, preferred universal-binary slice, and configured cross-architecture

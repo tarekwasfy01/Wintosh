@@ -25,8 +25,11 @@ register. A guest Objective-C method also performs nested `sel_registerName`,
 `objc_msgSend`, and `_strlen` imports while executing, including recursive guest
 method dispatch. These fixtures do not establish the general Objective-C ABI,
 arbitrary aggregates, block/variadic callbacks, framework startup, or arbitrary
-macOS application support. Nested Darwin syscalls, Mach traps, broader import
-catalog coverage, full framework coverage, and a reproducible Dynarmic
+macOS application support. Guest callbacks also allocate, write, read, and free
+heap memory through nested `_malloc`/`_realloc`/`_free` imports; allocations
+are registered in the bounded guest address space and their mappings are
+updated or removed on resize/free. Nested Darwin syscalls, Mach traps, broader
+import catalog coverage, full framework coverage, and a reproducible Dynarmic
 dependency pin remain open.
 
 ## Mach broker update, 2026-11-23

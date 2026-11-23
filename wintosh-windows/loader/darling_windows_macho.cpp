@@ -55,11 +55,19 @@ std::vector<const MachOLazyBindingSession*> active_lazy_binding_sessions;
 std::atomic<std::uint32_t> next_arm64_import_identifier{1};
 using DarlingHostMallocImport = void* (DARLING_HOST_GUEST_ABI *)(std::size_t);
 using DarlingHostFreeImport = void (DARLING_HOST_GUEST_ABI *)(void*);
+using DarlingHostReallocImport = void* (DARLING_HOST_GUEST_ABI *)(
+	void*, std::size_t);
 using DarlingHostMemcpyImport = void* (DARLING_HOST_GUEST_ABI *)(
 	void*, const void*, std::size_t);
 using DarlingObjcUnaryImport = void* (DARLING_HOST_GUEST_ABI *)(void*);
+using DarlingObjcReleaseImport = void (DARLING_HOST_GUEST_ABI *)(void*);
 using DarlingObjcNameImport = std::uintptr_t (DARLING_HOST_GUEST_ABI *)(
 	const char*);
+
+void DARLING_HOST_GUEST_ABI FreeStandardHostAllocation(void* allocation)
+{
+	std::free(allocation);
+}
 
 void RemoveActiveLazyBindingSession(const MachOLazyBindingSession* session) noexcept
 {
@@ -3427,6 +3435,57 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 		registers[30] = return_sentinel;
 
 		DarlingWindowsA64Backend backend(std::move(guest_memory));
+		std::vector<std::uintptr_t> guest_malloc_allocations;
+		const auto register_guest_malloc = [&](void* allocation, std::size_t requested_bytes,
+			DarlingHostFreeImport free_target) {
+			const auto address = reinterpret_cast<std::uintptr_t>(allocation);
+			if (address == 0)
+				return std::uintptr_t{0};
+			const auto bytes = (std::max)(requested_bytes, std::size_t{1});
+			A64GuestMemoryRegion region{address, bytes, true, true, false,
+				true, address, bytes, true};
+			if (!backend.RegisterDynamicGuestMapping(region)) {
+				free_target(allocation);
+				throw std::runtime_error("ARM64 malloc result overlaps a registered guest region");
+			}
+			guest_malloc_allocations.push_back(address);
+			return address;
+		};
+		const auto release_guest_malloc = [&](void* allocation,
+			DarlingHostFreeImport free_target) {
+			const auto address = reinterpret_cast<std::uintptr_t>(allocation);
+			const auto found = std::find(guest_malloc_allocations.begin(),
+				guest_malloc_allocations.end(), address);
+			if (found != guest_malloc_allocations.end()) {
+				(void)backend.RemoveDynamicGuestMapping(address);
+				guest_malloc_allocations.erase(found);
+			} else if (backend.HasDynamicGuestMapping(address)) {
+				throw std::runtime_error("ARM64 free received a non-malloc guest mapping");
+			}
+			free_target(allocation);
+		};
+		const auto resize_guest_malloc = [&](void* allocation,
+			std::size_t requested_bytes, DarlingHostReallocImport realloc_target,
+			DarlingHostFreeImport free_target) {
+			const auto old_address = reinterpret_cast<std::uintptr_t>(allocation);
+			if (allocation == nullptr)
+				return register_guest_malloc(realloc_target(nullptr, requested_bytes),
+					requested_bytes, free_target);
+			const auto found = std::find(guest_malloc_allocations.begin(),
+				guest_malloc_allocations.end(), old_address);
+			if (found == guest_malloc_allocations.end())
+				throw std::runtime_error("ARM64 realloc received an untracked guest pointer");
+			if (requested_bytes == 0) {
+				release_guest_malloc(allocation, free_target);
+				return std::uintptr_t{0};
+			}
+			void* resized = realloc_target(allocation, requested_bytes);
+			if (resized == nullptr)
+				return std::uintptr_t{0};
+			(void)backend.RemoveDynamicGuestMapping(old_address);
+			guest_malloc_allocations.erase(found);
+			return register_guest_malloc(resized, requested_bytes, free_target);
+		};
 		A64CpuState cpu{};
 		cpu.x = registers;
 		cpu.sp = stack_pointer;
@@ -3496,12 +3555,38 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 				resumed.x[0] = reinterpret_cast<DarlingObjcNameImport>(imported->target)(
 					reinterpret_cast<const char*>(static_cast<std::uintptr_t>(x[0])));
 			} else if (name == "_malloc") {
-				resumed.x[0] = reinterpret_cast<std::uintptr_t>(
-					reinterpret_cast<DarlingHostMallocImport>(imported->target)(
-						static_cast<std::size_t>(x[0])));
-			} else if (name == "_free" || name == "_objc_release" ||
-				name == "_CFRelease") {
-				reinterpret_cast<DarlingHostFreeImport>(imported->target)(
+				const auto requested_bytes = static_cast<std::size_t>(x[0]);
+				void* allocation = reinterpret_cast<DarlingHostMallocImport>(
+					imported->target)(requested_bytes);
+				const auto free_import = std::find_if(arm64_host_imports.begin(),
+					arm64_host_imports.end(), [](const auto& item) {
+						return item.symbol == "_free";
+					});
+				const auto free_target = free_import == arm64_host_imports.end() ?
+					&FreeStandardHostAllocation :
+					reinterpret_cast<DarlingHostFreeImport>(free_import->target);
+				resumed.x[0] = register_guest_malloc(allocation, requested_bytes,
+					free_target);
+			} else if (name == "_realloc") {
+				const auto free_import = std::find_if(arm64_host_imports.begin(),
+					arm64_host_imports.end(), [](const auto& item) {
+						return item.symbol == "_free";
+					});
+				const auto free_target = free_import == arm64_host_imports.end() ?
+					&FreeStandardHostAllocation :
+					reinterpret_cast<DarlingHostFreeImport>(free_import->target);
+				resumed.x[0] = resize_guest_malloc(
+					reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0])),
+					static_cast<std::size_t>(x[1]),
+					reinterpret_cast<DarlingHostReallocImport>(imported->target),
+					free_target);
+			} else if (name == "_free") {
+				release_guest_malloc(
+					reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0])),
+					reinterpret_cast<DarlingHostFreeImport>(imported->target));
+				resumed.x[0] = 0;
+			} else if (name == "_objc_release" || name == "_CFRelease") {
+				reinterpret_cast<DarlingObjcReleaseImport>(imported->target)(
 					reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0])));
 				resumed.x[0] = 0;
 			} else if (name == "_objc_retain" ||
@@ -3636,12 +3721,38 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 						for (std::size_t i = 0; i < 4; ++i)
 							std::memcpy(&cpu.v[i], &returned.fp[i], sizeof(double));
 					} else if (name == "_malloc") {
-						cpu.x[0] = reinterpret_cast<std::uintptr_t>(
-							reinterpret_cast<DarlingHostMallocImport>(imported->target)(
-								static_cast<std::size_t>(x[0])));
-					} else if (name == "_free" || name == "_objc_release" ||
-						name == "_CFRelease") {
-						reinterpret_cast<DarlingHostFreeImport>(imported->target)(
+						const auto requested_bytes = static_cast<std::size_t>(x[0]);
+						void* allocation = reinterpret_cast<DarlingHostMallocImport>(
+							imported->target)(requested_bytes);
+						const auto free_import = std::find_if(arm64_host_imports.begin(),
+							arm64_host_imports.end(), [](const auto& item) {
+								return item.symbol == "_free";
+							});
+						const auto free_target = free_import == arm64_host_imports.end() ?
+							&FreeStandardHostAllocation :
+							reinterpret_cast<DarlingHostFreeImport>(free_import->target);
+						cpu.x[0] = register_guest_malloc(allocation, requested_bytes,
+							free_target);
+					} else if (name == "_realloc") {
+						const auto free_import = std::find_if(arm64_host_imports.begin(),
+							arm64_host_imports.end(), [](const auto& item) {
+								return item.symbol == "_free";
+							});
+						const auto free_target = free_import == arm64_host_imports.end() ?
+							&FreeStandardHostAllocation :
+							reinterpret_cast<DarlingHostFreeImport>(free_import->target);
+						cpu.x[0] = resize_guest_malloc(
+							reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0])),
+							static_cast<std::size_t>(x[1]),
+							reinterpret_cast<DarlingHostReallocImport>(imported->target),
+							free_target);
+					} else if (name == "_free") {
+						release_guest_malloc(
+							reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0])),
+							reinterpret_cast<DarlingHostFreeImport>(imported->target));
+						cpu.x[0] = 0;
+					} else if (name == "_objc_release" || name == "_CFRelease") {
+						reinterpret_cast<DarlingObjcReleaseImport>(imported->target)(
 							reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0])));
 						cpu.x[0] = 0;
 					} else if (name == "_objc_retain" ||

@@ -532,6 +532,7 @@ std::unordered_map<id, AppKitFontState> g_fonts;
 thread_local id g_current_font = nullptr;
 std::mutex g_paragraph_styles_mutex;
 std::unordered_map<id, AppKitParagraphStyleState> g_paragraph_styles;
+std::unordered_set<id> g_paragraph_style_finalizers;
 id g_default_paragraph_style = nullptr;
 std::mutex g_attributed_strings_mutex;
 std::unordered_map<id, AppKitAttributedStringState> g_attributed_strings;
@@ -1204,7 +1205,28 @@ void NSParagraphStyleFinalize(id object)
 {
 	std::lock_guard lock(g_paragraph_styles_mutex);
 	g_paragraph_styles.erase(object);
+	g_paragraph_style_finalizers.erase(object);
 	if (g_default_paragraph_style == object) g_default_paragraph_style = nullptr;
+}
+
+id NSParagraphStyleInit(id self, SEL)
+{
+	if (self == nullptr) return nullptr;
+	bool needs_finalizer = false;
+	try {
+		std::lock_guard lock(g_paragraph_styles_mutex);
+		g_paragraph_styles.try_emplace(self, AppKitParagraphStyleState{});
+		needs_finalizer = g_paragraph_style_finalizers.insert(self).second;
+	} catch (...) {
+		NSParagraphStyleFinalize(self);
+		return nullptr;
+	}
+	if (needs_finalizer && !darling_objc_register_object_finalizer(self,
+		&NSParagraphStyleFinalize)) {
+		NSParagraphStyleFinalize(self);
+		return nullptr;
+	}
+	return self;
 }
 
 id NSParagraphStyleCreate(Class cls, const AppKitParagraphStyleState& state)
@@ -1215,7 +1237,9 @@ id NSParagraphStyleCreate(Class cls, const AppKitParagraphStyleState& state)
 	try {
 		std::lock_guard lock(g_paragraph_styles_mutex);
 		g_paragraph_styles.emplace(object, state);
+		g_paragraph_style_finalizers.insert(object);
 	} catch (...) {
+		NSParagraphStyleFinalize(object);
 		objc_release(object);
 		return nullptr;
 	}
@@ -1272,7 +1296,8 @@ void NSMutableParagraphStyleSetAlignment(id self, SEL, std::int64_t alignment)
 {
 	if (alignment < 0 || alignment > 4) return;
 	std::lock_guard lock(g_paragraph_styles_mutex);
-	g_paragraph_styles[self].alignment = alignment;
+	const auto found = g_paragraph_styles.find(self);
+	if (found != g_paragraph_styles.end()) found->second.alignment = alignment;
 }
 
 std::int64_t NSParagraphStyleLineBreakMode(id self, SEL)
@@ -1285,7 +1310,9 @@ void NSMutableParagraphStyleSetLineBreakMode(id self, SEL,
 {
 	if (line_break_mode < 0 || line_break_mode > 5) return;
 	std::lock_guard lock(g_paragraph_styles_mutex);
-	g_paragraph_styles[self].line_break_mode = line_break_mode;
+	const auto found = g_paragraph_styles.find(self);
+	if (found != g_paragraph_styles.end())
+		found->second.line_break_mode = line_break_mode;
 }
 
 double NSParagraphStyleLineSpacing(id self, SEL)
@@ -1297,7 +1324,8 @@ void NSMutableParagraphStyleSetLineSpacing(id self, SEL, double spacing)
 {
 	if (!std::isfinite(spacing)) return;
 	std::lock_guard lock(g_paragraph_styles_mutex);
-	g_paragraph_styles[self].line_spacing = spacing;
+	const auto found = g_paragraph_styles.find(self);
+	if (found != g_paragraph_styles.end()) found->second.line_spacing = spacing;
 }
 
 id NSParagraphStyleCopy(id self, SEL, void*)
@@ -21395,6 +21423,8 @@ void RegisterAppKitClasses()
 
 	Class paragraph_style = RegisterHostClass("NSParagraphStyle", root);
 	if (paragraph_style == nullptr) return;
+	class_addMethod(paragraph_style, sel_registerName("init"),
+		reinterpret_cast<IMP>(&NSParagraphStyleInit), "@@:");
 	class_addClassMethod(paragraph_style, sel_registerName("defaultParagraphStyle"),
 		reinterpret_cast<IMP>(&NSParagraphStyleDefault), "@@:");
 	class_addMethod(paragraph_style, sel_registerName("alignment"),

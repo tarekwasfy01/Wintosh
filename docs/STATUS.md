@@ -964,7 +964,7 @@ data symbols. `drawInRect:` and `drawInRect:withAttributes:` now clip within
 their rectangle, wrap by words or characters, and align left, center, or right
 using the selected font's GDI metrics. Temporary font and color attributes are
 restored after drawing. `NSParagraphStyle` and `NSMutableParagraphStyle` expose
-default style, alignment, line-break mode, and line spacing; the standard
+default style, `alloc/init`, alignment, line-break mode, and line spacing; the standard
 `NSParagraphStyleAttributeName` symbol is exported. `NSAttributedString` also
 implements `drawInRect:` using those style attributes. Justification,
 natural-direction/RTL layout, truncation modes, per-run attributes, glyph

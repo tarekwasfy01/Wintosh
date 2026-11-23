@@ -2149,6 +2149,24 @@ void NSBezierPathRelativeLineToPoint(id self, SEL, DarlingObjcPoint offset)
 		{{current.x + offset.x, current.y + offset.y}}});
 }
 
+void NSBezierPathRelativeCurveToPoint(id self, SEL,
+	DarlingObjcPoint end_offset, DarlingObjcPoint control1_offset,
+	DarlingObjcPoint control2_offset)
+{
+	const auto current = NSBezierPathCurrentPoint(self, nullptr);
+	const auto add = [current](DarlingObjcPoint offset) {
+		return DarlingObjcPoint{current.x + offset.x, current.y + offset.y};
+	};
+	const DarlingObjcPoint end = add(end_offset);
+	const DarlingObjcPoint control1 = add(control1_offset);
+	const DarlingObjcPoint control2 = add(control2_offset);
+	if (!std::isfinite(end.x) || !std::isfinite(end.y) ||
+		!std::isfinite(control1.x) || !std::isfinite(control1.y) ||
+		!std::isfinite(control2.x) || !std::isfinite(control2.y)) return;
+	NSBezierPathAppend(self, BezierCommand{BezierCommandKind::Curve,
+		{end, control1, control2}});
+}
+
 void NSBezierPathAppendArcFromPoint(id self, SEL, DarlingObjcPoint corner,
 	DarlingObjcPoint next, double radius)
 {
@@ -21292,6 +21310,10 @@ void RegisterAppKitClasses()
 			sel_registerName("relativeLineToPoint:"),
 			reinterpret_cast<IMP>(&NSBezierPathRelativeLineToPoint),
 			"v@:{CGPoint=dd}");
+		class_addMethod(bezier_path,
+			sel_registerName("relativeCurveToPoint:controlPoint1:controlPoint2:"),
+			reinterpret_cast<IMP>(&NSBezierPathRelativeCurveToPoint),
+			"v@:{CGPoint=dd}{CGPoint=dd}{CGPoint=dd}");
 		class_addMethod(bezier_path,
 			sel_registerName("curveToPoint:controlPoint1:controlPoint2:"),
 			reinterpret_cast<IMP>(&NSBezierPathCurveToPoint),

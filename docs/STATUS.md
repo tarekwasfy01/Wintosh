@@ -932,6 +932,13 @@ Clang and MSVC Release builds of `wintosh_windows_host` succeed. No Mach-O
 guest drawing fixture has verified rendered pixels, so this remains source and
 build evidence rather than AppKit runtime compatibility evidence.
 
+### NSBezierPath relative cubic segments (2026-11-23)
+
+`relativeCurveToPoint:controlPoint1:controlPoint2:` adds the end and both
+control-point offsets to `currentPoint`, then appends a cubic segment. The
+existing Objective-C ABI dispatcher already handles the three CGPoint
+arguments. No Mach-O guest fixture has exercised this selector yet.
+
 ### NSColor RGBA accessors (2026-11-16)
 
 The four stored RGBA components are available through `redComponent`,

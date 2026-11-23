@@ -813,6 +813,8 @@ intersects it with the existing clip, using the path's winding rule without
 mutating the NSBezierPath. The context flatness is restored before clipping.
 `currentPoint` returns the last endpoint (or the start point after close), and
 `relativeMoveToPoint:` / `relativeLineToPoint:` add offsets to that point.
+`relativeCurveToPoint:controlPoint1:controlPoint2:` adds all three supplied
+offsets to the current point and appends the resulting cubic Bézier segment.
 `appendBezierPathWithArcFromPoint:toPoint:radius:` computes tangent points and
 the corner-circle center, appends a line to the first tangent, then cubic
 segments no larger than 90 degrees. The radius is reduced when either adjacent

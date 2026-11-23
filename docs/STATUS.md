@@ -2313,3 +2313,12 @@ the window. If the window is unavailable, fallback mapping remains possible
 and out-of-range non-branch relocations still fail or defer according to the
 existing path. The Windows x64 build succeeds; no multi-dylib distance fixture
 has verified runtime placement yet.
+
+### Compressed chained-fixup import names (2026-11-23)
+
+Chained-fixup `symbols_format=1` now inflates its zlib/RFC-1951 string pool
+before resolving import-name offsets. The decoder validates the zlib header,
+DEFLATE block/Huffman structure, back-reference bounds, and Adler-32 trailer;
+the expanded pool is capped at 256 MiB. Format 0 remains zero-copy, and unknown
+symbol formats fail explicitly. The Windows x64 build succeeds; compressed
+Mach-O import fixtures have not exercised the decoder yet.

@@ -79,6 +79,237 @@ struct ChainedStartsSegment final {
 };
 #pragma pack(pop)
 
+class DeflateBitReader final {
+public:
+	explicit DeflateBitReader(const std::uint8_t* bytes, std::size_t size) :
+		m_bytes(bytes), m_size(size) {}
+
+	std::uint32_t Read(unsigned count)
+	{
+		if (count > 16)
+			throw std::runtime_error("invalid zlib deflate bit count");
+		std::uint32_t value = 0;
+		for (unsigned bit = 0; bit < count; ++bit) {
+			if (m_offset / 8 >= m_size)
+				throw std::runtime_error("truncated zlib deflate stream");
+			value |= static_cast<std::uint32_t>(
+				(m_bytes[m_offset / 8] >> (m_offset % 8)) & 1u) << bit;
+			++m_offset;
+		}
+		return value;
+	}
+
+	void AlignByte() noexcept { m_offset = (m_offset + 7) & ~std::size_t(7); }
+	[[nodiscard]] std::size_t ByteOffset() const noexcept { return m_offset / 8; }
+
+private:
+	const std::uint8_t* m_bytes;
+	std::size_t m_size;
+	std::size_t m_offset = 0;
+};
+
+class DeflateHuffman final {
+public:
+	explicit DeflateHuffman(const std::vector<std::uint8_t>& lengths,
+		bool allow_empty = false)
+	{
+		std::array<std::uint16_t, 16> counts{};
+		for (const auto length : lengths) {
+			if (length > 15)
+				throw std::runtime_error("invalid zlib deflate Huffman code length");
+			if (length != 0)
+				++counts[length];
+		}
+		std::int32_t remaining = 1;
+		for (std::size_t length = 1; length <= 15; ++length) {
+			remaining = (remaining << 1) - counts[length];
+			if (remaining < 0)
+				throw std::runtime_error("oversubscribed zlib deflate Huffman tree");
+		}
+		if (std::all_of(lengths.begin(), lengths.end(),
+			[](std::uint8_t length) { return length == 0; })) {
+			if (allow_empty)
+				return;
+			throw std::runtime_error("empty zlib deflate Huffman tree");
+		}
+		std::array<std::uint16_t, 16> next_code{};
+		std::uint16_t code = 0;
+		for (std::size_t length = 1; length <= 15; ++length) {
+			code = static_cast<std::uint16_t>((code + counts[length - 1]) << 1);
+			next_code[length] = code;
+		}
+		for (std::size_t symbol = 0; symbol < lengths.size(); ++symbol) {
+			const auto length = lengths[symbol];
+			if (length != 0)
+				m_codes[length].emplace_back(next_code[length]++,
+					static_cast<std::uint16_t>(symbol));
+		}
+	}
+
+	std::uint16_t Decode(DeflateBitReader& bits) const
+	{
+		std::uint16_t code = 0;
+		for (std::uint16_t length = 1; length <= 15; ++length) {
+			code = static_cast<std::uint16_t>((code << 1) | bits.Read(1));
+			const auto& entries = m_codes[length];
+			const auto found = std::lower_bound(entries.begin(), entries.end(), code,
+				[](const auto& entry, std::uint16_t value) { return entry.first < value; });
+			if (found != entries.end() && found->first == code)
+				return found->second;
+		}
+		throw std::runtime_error("invalid zlib deflate Huffman code");
+	}
+
+private:
+	std::vector<std::pair<std::uint16_t, std::uint16_t>> m_codes[16];
+};
+
+std::vector<std::uint8_t> InflateZlib(const std::uint8_t* bytes,
+	std::size_t size)
+{
+	constexpr std::size_t MaximumOutputBytes = 0x10000000;
+	if (bytes == nullptr || size < 6)
+		throw std::runtime_error("truncated zlib symbol pool");
+	const auto cmf = bytes[0];
+	const auto flg = bytes[1];
+	if ((cmf & 0x0f) != 8 || (cmf >> 4) > 7 ||
+		((static_cast<unsigned>(cmf) << 8) | flg) % 31 != 0 || (flg & 0x20) != 0)
+		throw std::runtime_error("invalid or unsupported zlib symbol-pool header");
+	DeflateBitReader bits(bytes + 2, size - 6);
+	std::vector<std::uint8_t> output;
+	output.reserve(size < MaximumOutputBytes / 2 ? size * 2 : MaximumOutputBytes);
+	const auto emit = [&](std::uint8_t byte) {
+		if (output.size() >= MaximumOutputBytes)
+			throw std::runtime_error("zlib symbol pool exceeds the 256 MiB limit");
+		output.push_back(byte);
+	};
+	static constexpr std::array<std::uint16_t, 29> length_base = {
+		3,4,5,6,7,8,9,10,11,13,15,17,19,23,27,31,35,43,51,59,67,83,99,115,
+		131,163,195,227,258};
+	static constexpr std::array<std::uint8_t, 29> length_extra = {
+		0,0,0,0,0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3,4,4,4,4,5,5,5,5,0};
+	static constexpr std::array<std::uint16_t, 30> distance_base = {
+		1,2,3,4,5,7,9,13,17,25,33,49,65,97,129,193,257,385,513,769,1025,
+		1537,2049,3073,4097,6145,8193,12289,16385,24577};
+	static constexpr std::array<std::uint8_t, 30> distance_extra = {
+		0,0,0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11,12,12,13,13};
+	const auto decode_compressed_block = [&](const DeflateHuffman& literals,
+		const DeflateHuffman& distances) {
+		for (;;) {
+			const auto symbol = literals.Decode(bits);
+			if (symbol < 256) {
+				emit(static_cast<std::uint8_t>(symbol));
+				continue;
+			}
+			if (symbol == 256)
+				return;
+			if (symbol < 257 || symbol > 285)
+				throw std::runtime_error("invalid zlib deflate length symbol");
+			const auto length_index = symbol - 257;
+			const auto length = length_base[length_index] +
+				bits.Read(length_extra[length_index]);
+			const auto distance_symbol = distances.Decode(bits);
+			if (distance_symbol >= distance_base.size())
+				throw std::runtime_error("invalid zlib deflate distance symbol");
+			const auto distance = distance_base[distance_symbol] +
+				bits.Read(distance_extra[distance_symbol]);
+			if (distance == 0 || distance > output.size() ||
+				length > MaximumOutputBytes - output.size())
+				throw std::runtime_error("invalid or excessive zlib deflate back-reference");
+			for (std::uint32_t index = 0; index < length; ++index)
+				emit(output[output.size() - distance]);
+		}
+	};
+	bool final_block = false;
+	while (!final_block) {
+		final_block = bits.Read(1) != 0;
+		const auto type = bits.Read(2);
+		if (type == 0) {
+			bits.AlignByte();
+			const auto length = bits.Read(16);
+			const auto inverse = bits.Read(16);
+			if ((length ^ 0xffffu) != inverse || length > MaximumOutputBytes - output.size())
+				throw std::runtime_error("invalid or excessive zlib stored block");
+			for (std::uint32_t index = 0; index < length; ++index)
+				emit(static_cast<std::uint8_t>(bits.Read(8)));
+			continue;
+		}
+		if (type == 3)
+			throw std::runtime_error("reserved zlib deflate block type");
+		std::vector<std::uint8_t> literal_lengths;
+		std::vector<std::uint8_t> distance_lengths;
+		if (type == 1) {
+			literal_lengths.resize(288);
+			for (std::size_t index = 0; index <= 143; ++index) literal_lengths[index] = 8;
+			for (std::size_t index = 144; index <= 255; ++index) literal_lengths[index] = 9;
+			for (std::size_t index = 256; index <= 279; ++index) literal_lengths[index] = 7;
+			for (std::size_t index = 280; index <= 287; ++index) literal_lengths[index] = 8;
+			distance_lengths.assign(32, 5);
+		} else {
+			const auto literal_count = bits.Read(5) + 257;
+			const auto distance_count = bits.Read(5) + 1;
+			const auto code_count = bits.Read(4) + 4;
+			if (literal_count > 286)
+				throw std::runtime_error("reserved zlib literal/length code count");
+			static constexpr std::array<std::uint8_t, 19> order = {
+				16,17,18,0,8,7,9,6,10,5,11,4,12,3,13,2,14,1,15};
+			std::vector<std::uint8_t> code_lengths(19, 0);
+			for (std::uint32_t index = 0; index < code_count; ++index)
+				code_lengths[order[index]] = static_cast<std::uint8_t>(bits.Read(3));
+			const DeflateHuffman code_tree(code_lengths);
+			std::vector<std::uint8_t> combined;
+			combined.reserve(literal_count + distance_count);
+			while (combined.size() < literal_count + distance_count) {
+				const auto symbol = code_tree.Decode(bits);
+				if (symbol <= 15) {
+					combined.push_back(static_cast<std::uint8_t>(symbol));
+				} else {
+					std::uint32_t repeat = 0;
+					std::uint8_t value = 0;
+					if (symbol == 16) {
+						if (combined.empty())
+							throw std::runtime_error("invalid zlib repeated code length");
+						repeat = bits.Read(2) + 3;
+						value = combined.back();
+					} else if (symbol == 17) {
+						repeat = bits.Read(3) + 3;
+					} else if (symbol == 18) {
+						repeat = bits.Read(7) + 11;
+					} else {
+						throw std::runtime_error("invalid zlib code-length symbol");
+					}
+					if (repeat > literal_count + distance_count - combined.size())
+						throw std::runtime_error("zlib code-length repeat exceeds its table");
+					combined.insert(combined.end(), repeat, value);
+				}
+			}
+			literal_lengths.assign(combined.begin(), combined.begin() + literal_count);
+			distance_lengths.assign(combined.begin() + literal_count, combined.end());
+			if (literal_lengths.size() <= 256 || literal_lengths[256] == 0)
+				throw std::runtime_error("zlib literal tree has no end-of-block code");
+		}
+		const DeflateHuffman literals(literal_lengths);
+		const DeflateHuffman distances(distance_lengths, true);
+		decode_compressed_block(literals, distances);
+	}
+	bits.AlignByte();
+	const auto trailer = 2 + bits.ByteOffset();
+	if (trailer > size || size - trailer < 4)
+		throw std::runtime_error("truncated zlib Adler-32 trailer");
+	const std::uint32_t expected = (static_cast<std::uint32_t>(bytes[trailer]) << 24) |
+		(static_cast<std::uint32_t>(bytes[trailer + 1]) << 16) |
+		(static_cast<std::uint32_t>(bytes[trailer + 2]) << 8) | bytes[trailer + 3];
+	std::uint32_t a = 1;
+	std::uint32_t b = 0;
+	for (const auto byte : output) {
+		a = (a + byte) % 65521;
+		b = (b + a) % 65521;
+	}
+	if (((b << 16) | a) != expected)
+		throw std::runtime_error("zlib symbol-pool Adler-32 mismatch");
+	return output;
+}
+
 [[noreturn]] void ThrowLastError(const char* operation)
 {
 	throw std::system_error(static_cast<int>(GetLastError()),
@@ -1064,6 +1295,8 @@ MachOImage MachOImage::Open(const std::wstring& path)
 			Require(header->version == 0, "unsupported Mach-O chained-fixups version");
 			Require(header->imports_format >= 1 && header->imports_format <= 3,
 				"unsupported Mach-O chained import format");
+			Require(header->symbols_format <= 1,
+				"unsupported Mach-O chained symbol format");
 			const std::uint64_t chained_import_size =
 				header->imports_format == 1 ? 4u :
 				header->imports_format == 2 ? 8u : 16u;
@@ -1075,7 +1308,18 @@ MachOImage MachOImage::Open(const std::wstring& path)
 			Require(header->symbols_offset < chained_command->data_size,
 				"Mach-O chained symbol pool is outside the payload");
 			const auto* import_bytes = payload + header->imports_offset;
-			const auto* symbol_bytes = reinterpret_cast<const char*>(payload + header->symbols_offset);
+			std::vector<std::uint8_t> decompressed_symbols;
+			const char* symbol_bytes = nullptr;
+			std::size_t symbol_pool_size = 0;
+			if (header->symbols_format == 0) {
+				symbol_bytes = reinterpret_cast<const char*>(payload + header->symbols_offset);
+				symbol_pool_size = chained_command->data_size - header->symbols_offset;
+			} else {
+				decompressed_symbols = InflateZlib(payload + header->symbols_offset,
+					chained_command->data_size - header->symbols_offset);
+				symbol_bytes = reinterpret_cast<const char*>(decompressed_symbols.data());
+				symbol_pool_size = decompressed_symbols.size();
+			}
 			const auto decode_ordinal8 = [](std::uint32_t raw_ordinal) {
 				const auto ordinal = static_cast<std::uint8_t>(raw_ordinal & 0xffu);
 				return ordinal > 0xf0u ? static_cast<std::int32_t>(ordinal) - 0x100 :
@@ -1116,11 +1360,11 @@ MachOImage MachOImage::Open(const std::wstring& path)
 					weak = (raw & (std::uint64_t{1} << 16)) != 0;
 					name_offset = static_cast<std::uint32_t>(raw >> 32);
 				}
-			Require(name_offset < chained_command->data_size - header->symbols_offset,
+			Require(name_offset < symbol_pool_size,
 				"Mach-O chained import name offset is outside the symbol pool");
 			const auto* name = symbol_bytes + name_offset;
 			const auto* end = static_cast<const char*>(std::memchr(name, '\0',
-				chained_command->data_size - header->symbols_offset - name_offset));
+				symbol_pool_size - name_offset));
 			Require(end != nullptr, "unterminated Mach-O chained import symbol");
 			chained_imports.push_back({dylib_ordinal, weak, std::string(name, end), addend});
 		}

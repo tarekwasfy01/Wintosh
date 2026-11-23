@@ -26,6 +26,19 @@ axis-aligned bounds for rotated clip views. The x64 executable and ARM64 host
 library compile; no guest Mach-O fixture has exercised rotated view behavior
 or input delivery.
 
+### NSView drawing and child clipping (2026-11-23)
+
+`wantsDefaultClipping` now defaults to true and clips only the view's own
+`drawRect:` call to its bounds. `clipsToBounds` controls whether child views
+are clipped and defaults to false, matching current AppKit behavior; `NSClipView`
+continues to clip its children regardless. Native child controls use matching
+Win32 regions, including polygon clips for rotated clipping ancestors. This
+follows Apple's [`wantsDefaultClipping`](https://developer.apple.com/documentation/appkit/nsview/wantsdefaultclipping)
+and [`clipsToBounds`](https://developer.apple.com/documentation/appkit/nsview/clipstobounds)
+semantics. The legacy pre-macOS-14 `clipsToBounds` default is not selected
+dynamically. The x64 executable and ARM64 host library compile; no guest
+drawing fixture has verified out-of-bounds drawing or clipping.
+
 ### AppKit NSAffineTransform subset (2026-11-23)
 
 `NSAffineTransform` now creates an identity matrix and supports ordered

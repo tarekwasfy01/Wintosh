@@ -181,6 +181,7 @@ struct AppKitViewState final {
 	DarlingObjcRect bounds{};
 	double frame_rotation{};
 	double bounds_rotation{};
+	bool clips_to_bounds{};
 	bool has_custom_bounds{};
 	std::uint64_t autoresizing_mask{};
 	id window{};
@@ -14824,7 +14825,8 @@ void PositionNativeControl(id view)
 		while (ancestor != nullptr && depth++ <= g_views.size()) {
 			const auto found = g_views.find(ancestor);
 			if (found == g_views.end()) break;
-			if (IsViewKindOf(ancestor, "NSClipView"))
+			if (found->second.clips_to_bounds ||
+				IsViewKindOf(ancestor, "NSClipView"))
 				clipping_views.push_back(ancestor);
 			ancestor = found->second.superview;
 		}
@@ -15728,6 +15730,31 @@ void NSViewSetBoundsRotation(id self, SEL, double degrees)
 	InvalidateAppKitView(self);
 }
 
+bool NSViewWantsDefaultClipping(id, SEL)
+{
+	return true;
+}
+
+bool NSViewClipsToBounds(id self, SEL)
+{
+	std::lock_guard<std::mutex> lock(g_windows_mutex);
+	const auto found = g_views.find(self);
+	return found != g_views.end() && found->second.clips_to_bounds;
+}
+
+void NSViewSetClipsToBounds(id self, SEL, bool clips)
+{
+	{
+		std::lock_guard<std::mutex> lock(g_windows_mutex);
+		const auto found = g_views.find(self);
+		if (found == g_views.end() || found->second.clips_to_bounds == clips)
+			return;
+		found->second.clips_to_bounds = clips;
+	}
+	RepositionViewTree(self);
+	InvalidateAppKitView(self);
+}
+
 ViewCoordinateOrigin NSViewOriginInWindow(id view)
 {
 	ViewCoordinateOrigin origin{};
@@ -15809,11 +15836,13 @@ void DrawViewTree(id view, darling_windows_CGContextRef context,
 	if (view == nullptr || context == nullptr || depth >= 256) return;
 	DarlingObjcRect bounds{};
 	std::vector<id> subviews;
+	bool clips_to_bounds = false;
 	{
 		std::lock_guard<std::mutex> lock(g_windows_mutex);
 		const auto found = g_views.find(view);
 		if (found == g_views.end() || found->second.hidden) return;
 		bounds = found->second.bounds;
+		clips_to_bounds = found->second.clips_to_bounds;
 		try { subviews = found->second.subviews; }
 		catch (...) { return; }
 	}
@@ -15823,29 +15852,43 @@ void DrawViewTree(id view, darling_windows_CGContextRef context,
 		return;
 	const DarlingObjcRect local_dirty_bounds = ViewTransformRectBounds(
 		window_to_local, dirty_window_rect);
-	const double local_x0 = local_dirty_bounds.x;
-	const double local_x1 = local_dirty_bounds.x + local_dirty_bounds.width;
-	const double local_y0 = local_dirty_bounds.y;
-	const double local_y1 = local_dirty_bounds.y + local_dirty_bounds.height;
-	const double dirty_x0 = (std::max)(bounds.x, (std::min)(local_x0, local_x1));
-	const double dirty_y0 = (std::max)(bounds.y, (std::min)(local_y0, local_y1));
-	const double dirty_x1 = (std::min)(bounds.x + bounds.width,
-		(std::max)(local_x0, local_x1));
-	const double dirty_y1 = (std::min)(bounds.y + bounds.height,
-		(std::max)(local_y0, local_y1));
-	if (!(dirty_x1 > dirty_x0 && dirty_y1 > dirty_y0)) return;
-	const DarlingObjcRect local_dirty_rect{dirty_x0, dirty_y0,
-		dirty_x1 - dirty_x0, dirty_y1 - dirty_y0};
+	const bool wants_default_clipping = darling_objc_msgSend_bool0(view,
+		sel_registerName("wantsDefaultClipping"));
+	const bool clips_children = clips_to_bounds || IsViewKindOf(view, "NSClipView");
+	DarlingObjcRect local_dirty_rect = local_dirty_bounds;
+	if (wants_default_clipping) {
+		const double dirty_x0 = (std::max)(bounds.x, local_dirty_bounds.x);
+		const double dirty_y0 = (std::max)(bounds.y, local_dirty_bounds.y);
+		const double dirty_x1 = (std::min)(bounds.x + bounds.width,
+			local_dirty_bounds.x + local_dirty_bounds.width);
+		const double dirty_y1 = (std::min)(bounds.y + bounds.height,
+			local_dirty_bounds.y + local_dirty_bounds.height);
+		local_dirty_rect = {dirty_x0, dirty_y0,
+			(std::max)(0.0, dirty_x1 - dirty_x0),
+			(std::max)(0.0, dirty_y1 - dirty_y0)};
+	}
 	const COLORREF saved_text_color = g_current_text_color;
 	const double saved_text_alpha = g_current_text_alpha;
 	CGContextSaveGState(context);
 	CGContextSetCTM(context, origin.transform);
-	CGContextClipToRect(context, {{bounds.x, bounds.y},
-		{bounds.width, bounds.height}});
-	darling_objc_msgSend_void_rect1(view, sel_registerName("drawRect:"),
-		local_dirty_rect);
+	if (local_dirty_rect.width > 0.0 && local_dirty_rect.height > 0.0) {
+		if (wants_default_clipping) {
+			CGContextSaveGState(context);
+			CGContextClipToRect(context, {{bounds.x, bounds.y},
+				{bounds.width, bounds.height}});
+		}
+		darling_objc_msgSend_void_rect1(view, sel_registerName("drawRect:"),
+			local_dirty_rect);
+		if (wants_default_clipping) CGContextRestoreGState(context);
+	}
+	if (clips_children) {
+		CGContextSaveGState(context);
+		CGContextClipToRect(context, {{bounds.x, bounds.y},
+			{bounds.width, bounds.height}});
+	}
 	for (id child : subviews)
 		DrawViewTree(child, context, dirty_window_rect, depth + 1);
+	if (clips_children) CGContextRestoreGState(context);
 	CGContextRestoreGState(context);
 	g_current_text_color = saved_text_color;
 	g_current_text_alpha = saved_text_alpha;
@@ -16303,7 +16346,9 @@ DarlingObjcRect NSViewVisibleRect(id self, SEL)
 			const auto found = g_views.find(current);
 			if (found == g_views.end()) break;
 			hidden = hidden || found->second.hidden;
-			if (current != self) clipping_ancestors.push_back(current);
+			if (current != self && (found->second.clips_to_bounds ||
+				IsViewKindOf(current, "NSClipView")))
+				clipping_ancestors.push_back(current);
 			current = found->second.superview;
 		}
 	}
@@ -22064,6 +22109,12 @@ void RegisterAppKitClasses()
 			reinterpret_cast<IMP>(&NSViewBoundsRotation), "d@:");
 		class_addMethod(view, sel_registerName("setBoundsRotation:"),
 			reinterpret_cast<IMP>(&NSViewSetBoundsRotation), "v@:d");
+		class_addMethod(view, sel_registerName("wantsDefaultClipping"),
+			reinterpret_cast<IMP>(&NSViewWantsDefaultClipping), "B@:");
+		class_addMethod(view, sel_registerName("clipsToBounds"),
+			reinterpret_cast<IMP>(&NSViewClipsToBounds), "B@:");
+		class_addMethod(view, sel_registerName("setClipsToBounds:"),
+			reinterpret_cast<IMP>(&NSViewSetClipsToBounds), "v@:B");
 		class_addMethod(view, sel_registerName("convertPoint:toView:"),
 			reinterpret_cast<IMP>(&NSViewConvertPointToView),
 			"{CGPoint=dd}@:{CGPoint=dd}@");

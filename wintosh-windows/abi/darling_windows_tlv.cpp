@@ -7,6 +7,7 @@
  */
 
 #include "darling_windows_tlv.h"
+#include "darling_windows_abi_bridge.h"
 
 #include <atomic>
 #include <cstring>
@@ -35,6 +36,8 @@ struct ThreadStorage final {
 	struct Destructor final {
 		void (*function)(void*) = nullptr;
 		void* argument = nullptr;
+		void* dso_handle = nullptr;
+		bool guest_abi = false;
 	};
 	std::unordered_map<std::uintptr_t, std::vector<std::byte>> objects;
 	std::vector<Destructor> destructors;
@@ -54,7 +57,12 @@ struct ThreadStorage final {
 		for (auto iterator = destructors.rbegin(); iterator != destructors.rend(); ++iterator) {
 			if (iterator->function != nullptr) {
 				try {
-					iterator->function(iterator->argument);
+					if (iterator->guest_abi) {
+						using GuestDestructor = darling::windows_host::abi::GuestFn<void, void*>;
+						reinterpret_cast<GuestDestructor>(iterator->function)(iterator->argument);
+					} else {
+						iterator->function(iterator->argument);
+					}
 				} catch (...) {
 				}
 			}
@@ -66,6 +74,18 @@ thread_local ThreadStorage storage;
 std::atomic<std::uintptr_t> next_key{1};
 std::mutex template_mutex;
 std::unordered_map<std::uintptr_t, std::vector<std::byte>> templates;
+
+int RegisterDestructor(void (*function)(void*), void* argument, void* dso_handle,
+	bool guest_abi) noexcept
+{
+	if (function == nullptr) return 0;
+	try {
+		storage.destructors.push_back({function, argument, dso_handle, guest_abi});
+		return 0;
+	} catch (...) {
+		return -1;
+	}
+}
 
 } // namespace
 
@@ -182,18 +202,25 @@ void DestroyDarwinTLV(DarwinTLVDescriptor* descriptors, std::size_t count) noexc
 extern "C" void darling_windows_tlv_atexit(void (*function)(void*),
 	void* argument) noexcept
 {
-	if (function == nullptr)
-		return;
-	try {
-		storage.destructors.push_back({function, argument});
-	} catch (...) {
-	}
+	(void)RegisterDestructor(function, argument, nullptr, false);
 }
 
 extern "C" void darling_windows_cxa_thread_atexit(void (*function)(void*),
 	void* argument) noexcept
 {
-	darling_windows_tlv_atexit(function, argument);
+	(void)RegisterDestructor(function, argument, nullptr, false);
+}
+
+extern "C" int darling_windows_cxa_thread_atexit_impl(
+	void (*function)(void*), void* argument, void* dso_handle) noexcept
+{
+	return RegisterDestructor(function, argument, dso_handle, true);
+}
+
+extern "C" void darling_windows_tlv_atexit_guest(void (*function)(void*),
+	void* argument) noexcept
+{
+	(void)RegisterDestructor(function, argument, nullptr, true);
 }
 
 } // namespace darling::windows_host

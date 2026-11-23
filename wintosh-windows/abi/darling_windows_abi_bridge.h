@@ -44,6 +44,10 @@ extern "C" DARLING_SYSV std::uintptr_t darling_windows_abi_resolve_lazy_binding(
 extern "C" DARLING_SYSV int darling_windows_abi_lazy_binding_session_active();
 extern "C" DARLING_SYSV void* darling_windows_abi_tlv_get_addr(
 	darling::windows_host::DarwinTLVDescriptor* descriptor);
+extern "C" DARLING_SYSV void darling_windows_abi_tlv_atexit(
+	void (*function)(void*), void* argument) noexcept;
+extern "C" DARLING_SYSV int darling_windows_abi_cxa_thread_atexit(
+	void (*function)(void*), void* argument, void* dso_handle) noexcept;
 // Export-trie resolvers are zero-argument Darwin functions returning the
 // selected implementation address.
 extern "C" std::uintptr_t darling_windows_abi_call_export_resolver(

@@ -5269,17 +5269,17 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 		{"_errno", reinterpret_cast<std::uintptr_t>(&darling_windows_errno)},
 		{"___error", reinterpret_cast<std::uintptr_t>(&darling_windows_errno)},
 		{"_tlv_atexit", reinterpret_cast<std::uintptr_t>(
-			&darling::windows_host::darling_windows_tlv_atexit)},
+			&darling::windows_host::abi::darling_windows_abi_tlv_atexit)},
 		{"__tlv_atexit", reinterpret_cast<std::uintptr_t>(
-			&darling::windows_host::darling_windows_tlv_atexit)},
+			&darling::windows_host::abi::darling_windows_abi_tlv_atexit)},
 		{"___tlv_atexit", reinterpret_cast<std::uintptr_t>(
-			&darling::windows_host::darling_windows_tlv_atexit)},
+			&darling::windows_host::abi::darling_windows_abi_tlv_atexit)},
 		{"___cxa_thread_atexit", reinterpret_cast<std::uintptr_t>(
-			&darling::windows_host::darling_windows_cxa_thread_atexit)},
+			&darling::windows_host::abi::darling_windows_abi_cxa_thread_atexit)},
 		{"___cxa_thread_atexit_impl", reinterpret_cast<std::uintptr_t>(
-			&darling::windows_host::darling_windows_cxa_thread_atexit)},
+			&darling::windows_host::abi::darling_windows_abi_cxa_thread_atexit)},
 		{"_cxa_thread_atexit_impl", reinterpret_cast<std::uintptr_t>(
-			&darling::windows_host::darling_windows_cxa_thread_atexit)},
+			&darling::windows_host::abi::darling_windows_abi_cxa_thread_atexit)},
 		{"___cxa_atexit", reinterpret_cast<std::uintptr_t>(
 			&darling::windows_host::abi::darling_windows_abi_cxa_atexit)},
 		{"_cxa_atexit", reinterpret_cast<std::uintptr_t>(

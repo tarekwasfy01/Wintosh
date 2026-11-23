@@ -91,6 +91,19 @@ extern "C" DARLING_SYSV void* darling_windows_abi_tlv_get_addr(
 	return result;
 }
 
+extern "C" DARLING_SYSV void darling_windows_abi_tlv_atexit(
+	void (*function)(void*), void* argument) noexcept
+{
+	darling::windows_host::darling_windows_tlv_atexit_guest(function, argument);
+}
+
+extern "C" DARLING_SYSV int darling_windows_abi_cxa_thread_atexit(
+	void (*function)(void*), void* argument, void* dso_handle) noexcept
+{
+	return darling::windows_host::darling_windows_cxa_thread_atexit_impl(
+		function, argument, dso_handle);
+}
+
 extern "C" std::uintptr_t darling_windows_abi_call_export_resolver(
 	std::uintptr_t resolver_address) noexcept
 {

@@ -54,8 +54,14 @@ its descriptor thunk uses an i386 assembly adapter because Darwin passes thedes
 worker created with `pthread_create` saw the initial value 40, changed its
 thread-local copy to 77, and left the main thread's value 9 unchanged;
 `pthread_join` returned the worker result. The Win32 resolver uses i386-width
-thread handles at the Darwin C boundary. TLV destructors and TLV across
-dynamically loaded images remain unverified.
+thread handles at the Darwin C boundary. Guest `_tlv_atexit` and
+`__cxa_thread_atexit_impl` now enter through Darwin-ABI wrappers; the latter
+accepts the three-argument `(destructor, object, dso_handle)` contract and
+returns registration status. Registered guest callbacks are invoked in reverse
+registration order when their owning host thread exits. This ABI fix is built
+for the x64 Clang bridge, but x64/ARM64 runtime fixtures and safe destructor
+handling across dynamic-image unload remain unverified. The thread-exit ABI
+shape follows the [Itanium C++ ABI DSO destructor API](https://itanium-cxx-abi.github.io/cxx-abi/abi.html#dso-dtor-runtime-api).
 The linker also retains `__DATA,__mod_term_func`; a combined constructor and
 terminator image printed `guest terminator` after `main` and preserved status
 42.

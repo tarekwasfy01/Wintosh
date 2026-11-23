@@ -10,6 +10,12 @@ This is a selected Mach IPC slice, not proof that arbitrary Cocoa applications
 run. Voucher rights, full XNU lifecycle behavior, and end-to-end runtime
 coverage remain open.
 
+The guest thread-destructor exports also now use explicit Darwin ABI bridges:
+`__cxa_thread_atexit_impl` accepts its DSO handle and registered guest
+callbacks are invoked with the guest calling convention at thread exit. The
+x64 Clang Release target builds; dynamic-image unload and ARM64 runtime
+behavior remain unverified.
+
 This file closes the gap between the working directory and the release
 documentation. The machine-readable inventory is
 [CURRENT-STATE-MANIFEST.csv](../CURRENT-STATE-MANIFEST.csv).

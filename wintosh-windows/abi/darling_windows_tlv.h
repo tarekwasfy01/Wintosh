@@ -34,6 +34,10 @@ extern "C" void darling_windows_tlv_atexit(void (*function)(void*),
 	void* argument) noexcept;
 extern "C" void darling_windows_cxa_thread_atexit(void (*function)(void*),
 	void* argument) noexcept;
+extern "C" int darling_windows_cxa_thread_atexit_impl(
+	void (*function)(void*), void* argument, void* dso_handle) noexcept;
+extern "C" void darling_windows_tlv_atexit_guest(void (*function)(void*),
+	void* argument) noexcept;
 
 } // namespace darling::windows_host
 

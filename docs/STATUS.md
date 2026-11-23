@@ -18,6 +18,15 @@ and full XNU port-death semantics remain unimplemented.
 
 ## Reading this status
 
+### Darwin thread-destructor ABI update, 2026-11-23
+
+The guest symbol aliases for `_tlv_atexit` and `__cxa_thread_atexit_impl`
+now resolve to Darwin-ABI wrappers. The implementation accepts the DSO handle,
+returns a registration result, and invokes guest destructors with the guest
+calling convention in reverse registration order at thread exit. The x64
+Clang Release target builds. Runtime coverage for x64/ARM64 and safe `dlclose`
+with outstanding thread destructors remain open.
+
 This file records implemented behavior and known limits; it is not a claim of
 complete macOS compatibility. “Implemented” means host-side code exists;
 validation still requires the guest fixture or application evidence stated in

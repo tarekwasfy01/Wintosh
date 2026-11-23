@@ -292,15 +292,21 @@ bool ViewInvertTransform(darling_windows_CGAffineTransform transform,
 		std::isfinite(inverse.tx) && std::isfinite(inverse.ty);
 }
 
-DarlingObjcRect ViewTransformRectBounds(
+std::array<DarlingObjcPoint, 4> ViewTransformRectCorners(
 	darling_windows_CGAffineTransform transform, DarlingObjcRect rect)
 {
-	const DarlingObjcPoint corners[] = {
+	return {{
 		ViewApplyTransform(transform, {rect.x, rect.y}),
 		ViewApplyTransform(transform, {rect.x + rect.width, rect.y}),
 		ViewApplyTransform(transform, {rect.x, rect.y + rect.height}),
 		ViewApplyTransform(transform, {rect.x + rect.width,
-			rect.y + rect.height})};
+		rect.y + rect.height})}};
+}
+
+DarlingObjcRect ViewTransformRectBounds(
+	darling_windows_CGAffineTransform transform, DarlingObjcRect rect)
+{
+	const auto corners = ViewTransformRectCorners(transform, rect);
 	double minimum_x = corners[0].x;
 	double maximum_x = corners[0].x;
 	double minimum_y = corners[0].y;
@@ -14810,50 +14816,61 @@ void PositionNativeControl(id view)
 		SendMessageW(control, CB_SETCURSEL, static_cast<WPARAM>(selected), 0);
 	}
 	EnableWindow(control, enabled ? TRUE : FALSE);
-	id clipping_view = nullptr;
+	std::vector<id> clipping_views;
 	{
 		std::lock_guard<std::mutex> lock(g_windows_mutex);
 		id ancestor = superview;
 		std::size_t depth = 0;
 		while (ancestor != nullptr && depth++ <= g_views.size()) {
-			if (IsViewKindOf(ancestor, "NSClipView")) {
-				clipping_view = ancestor;
-				break;
-			}
 			const auto found = g_views.find(ancestor);
-			ancestor = found == g_views.end() ? nullptr : found->second.superview;
+			if (found == g_views.end()) break;
+			if (IsViewKindOf(ancestor, "NSClipView"))
+				clipping_views.push_back(ancestor);
+			ancestor = found->second.superview;
 		}
 	}
-	if (clipping_view == nullptr) {
+	if (clipping_views.empty()) {
 		SetWindowRgn(control, nullptr, TRUE);
 	} else {
-		const ViewCoordinateOrigin clip_origin =
-			NSViewOriginInWindow(clipping_view);
-		const DarlingObjcRect clip_bounds = NSViewBounds(clipping_view, nullptr);
-		if (clip_origin.valid) {
-			const DarlingObjcRect clip_rect = ViewTransformRectBounds(
-				clip_origin.transform, clip_bounds);
-			const double clip_x0 = clip_rect.x;
-			const double clip_x1 = clip_rect.x + clip_rect.width;
-			const double clip_y0 = clip_rect.y;
-			const double clip_y1 = clip_rect.y + clip_rect.height;
-			const int left = ClampWindowCoordinate((std::max)(
-				static_cast<double>(x), (std::min)(clip_x0, clip_x1)),
-				0, client.right);
-			const int right = ClampWindowCoordinate((std::min)(
-				static_cast<double>(x + width), (std::max)(clip_x0, clip_x1)),
-				0, client.right);
-			const int top = ClampWindowCoordinate((std::max)(
-				static_cast<double>(y), client.bottom - (std::max)(clip_y0, clip_y1)),
-				0, client.bottom);
-			const int bottom = ClampWindowCoordinate((std::min)(
-				static_cast<double>(y + height), client.bottom -
-					(std::min)(clip_y0, clip_y1)), 0, client.bottom);
-			HRGN region = right <= left || bottom <= top ?
-				CreateRectRgn(0, 0, 0, 0) :
-				CreateRectRgn(left - x, top - y, right - x, bottom - y);
-			if (region != nullptr && SetWindowRgn(control, region, TRUE) == 0)
-				DeleteObject(region);
+		HRGN region = CreateRectRgn(0, 0, width, height);
+		if (region == nullptr) return;
+		bool region_valid = true;
+		for (id clipping_view : clipping_views) {
+			const ViewCoordinateOrigin clip_origin =
+				NSViewOriginInWindow(clipping_view);
+			if (!clip_origin.valid) {
+				region_valid = false;
+				break;
+			}
+			const auto corners = ViewTransformRectCorners(clip_origin.transform,
+				NSViewBounds(clipping_view, nullptr));
+			POINT points[4]{};
+			for (std::size_t index = 0; index < corners.size(); ++index) {
+				const auto clamp_region_coordinate = [](double value) {
+					if (!std::isfinite(value)) return LONG(0);
+					return static_cast<LONG>(std::clamp(std::round(value),
+						-30000.0, 30000.0));
+				};
+				points[index] = {
+					clamp_region_coordinate(corners[index].x - x),
+					clamp_region_coordinate(client.bottom - corners[index].y - y)};
+			}
+			HRGN clip_region = CreatePolygonRgn(points, 4, WINDING);
+			if (clip_region == nullptr) {
+				region_valid = false;
+				break;
+			}
+			const int combine_result = CombineRgn(region, region, clip_region, RGN_AND);
+			DeleteObject(clip_region);
+			if (combine_result == ERROR) {
+				region_valid = false;
+				break;
+			}
+		}
+		if (region_valid) {
+			if (SetWindowRgn(control, region, TRUE) == 0) DeleteObject(region);
+		} else {
+			DeleteObject(region);
 		}
 	}
 	ShowWindow(control, hidden ? SW_HIDE : SW_SHOWNA);

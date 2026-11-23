@@ -19,10 +19,12 @@ Point, size, and rectangle conversions, view drawing CTMs, dirty-rectangle
 mapping, native-control placement, scroll visibility, and scrollbar placement
 use the same transforms. Mouse and wheel hit-testing now inversely maps window
 locations into each candidate view's bounds, so rotated views receive input at
-their rendered position. Rotated clipping and native controls are represented
-by axis-aligned bounding rectangles on Win32, so their edge geometry is
-approximate. The x64 executable and ARM64 host library compile; no guest Mach-O
-fixture has exercised rotated view behavior or input delivery.
+their rendered position. Native Win32 controls remain unrotated, but their
+`SetWindowRgn` clipping now intersects polygon regions for all ancestor clip
+views, including rotated ones. `visibleRect` and scroll targeting still use
+axis-aligned bounds for rotated clip views. The x64 executable and ARM64 host
+library compile; no guest Mach-O fixture has exercised rotated view behavior
+or input delivery.
 
 ### AppKit NSAffineTransform subset (2026-11-23)
 

@@ -240,6 +240,30 @@ reader consumes the corresponding Darwin variadic stack slots. This proves
 the source-level mapping only; a guest fixture is still needed to verify the
 selector ABI and observed geometry.
 
+## NSView rectangle conversion dispatch
+
+For each view `v`, represent its axis-aligned local-to-window mapping as
+`Tᵥ(p) = Aᵥp + bᵥ`, where `Aᵥ = diag(sₓ, sᵧ)` composes frame-to-bounds
+scales and sign changes from flipped-coordinate transitions. The translation
+`bᵥ` composes frame origins and bounds-origin offsets. Conversion from source
+`s` into target `t` is
+
+`pₜ = Aₜ⁻¹(Aₛpₛ + bₛ - bₜ)`.
+
+A nil endpoint uses the identity window transform. For an input rectangle `R`,
+map all four corners with the point transform and form their axis-aligned
+envelope; this preserves the represented region under axis-aligned scales and
+flips. Rotated transforms are outside this model.
+
+The Objective-C selector signature has return and argument shape
+`CGRect (CGRect, NSView*)`. On x86_64 Darwin the selected `objc_msgSend_stret`
+path routes the hidden return storage, stack CGRect, and GP-register view
+argument; the Super and Super2 variants select their respective starting
+classes. The Windows ARM64 guest path reads the two arguments from Darwin
+variadic stack slots and writes the CGRect HFA result registers. The compiled
+paths do not prove guest correctness until a Mach-O fixture checks both the
+coordinates and selector dispatch.
+
 Therefore architecture support composes as
 
 `E(host, guest) = P(host, guest) AND M(host, guest) AND X(host, guest)`,

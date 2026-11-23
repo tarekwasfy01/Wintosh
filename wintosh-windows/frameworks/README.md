@@ -495,7 +495,9 @@ supports `-initWithFrame:`, `-frame`, `-setFrame:`, `-frameOrigin`, `-frameSize`
 bounds origins, and applies axis-aligned frame-to-bounds scaling for views
 attached to the same window; rectangle conversion maps all four corners and
 returns their axis-aligned bounding rectangle. A nil source or target uses
-window coordinates.
+window coordinates. The guest ABI dispatches the combined CGRect return,
+CGRect argument, and view-object signature for both rectangle selectors on
+x86_64 and Windows ARM64; no Mach-O guest fixture has verified these calls.
 For view `v`, let `S_v = (frame.width/bounds.width,
 frame.height/bounds.height)` and let `F_v` be `isFlipped`; the window coordinate
 system is treated as non-flipped. The x map is

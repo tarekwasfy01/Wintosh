@@ -750,6 +750,17 @@ keeping coordinate conversion, child resizing, scroll-view refresh, and redraw
 invalidation consistent. The guest Objective-C dispatcher handles the
 CGPoint/CGSize value encodings; no dedicated Mach-O selector fixture exists.
 
+### NSView rectangle conversion guest ABI (2026-11-23)
+
+The registered `convertRect:toView:` and `convertRect:fromView:` methods now
+have matching guest dispatch for their combined CGRect return, CGRect
+argument, and view-object signature. x86_64 `objc_msgSend_stret`, legacy
+`objc_msgSendSuper_stret`, and `objc_msgSendSuper2_stret` route the hidden
+return buffer, stack CGRect, and view register to the typed implementation.
+Windows ARM64 reads the CGRect and view from the Darwin variadic stack and
+returns the four-double rectangle through the HFA result registers. Both local
+Release builds compile and link; a guest fixture has not exercised this ABI.
+
 `NSView.autoresizingMask` and `setAutoresizingMask:` now store the six flexible
 margin/size bits and keyed view decoding restores `NSAutoresizingMask`. Changes
 to a parent bounds size distribute the delta proportionally among a child's

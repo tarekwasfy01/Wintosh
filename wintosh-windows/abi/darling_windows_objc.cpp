@@ -3449,6 +3449,10 @@ extern "C" id objc_msgSend(id receiver, SEL selector, ...)
 extern "C" void darling_objc_msgSend_stret(
 	void* return_storage, id receiver, SEL selector, ...)
 {
+#if defined(__clang__) && defined(_WIN64) && !defined(_M_ARM64) && !defined(__aarch64__)
+	std::uintptr_t guest_view_argument = 0;
+	__asm__ volatile("movq %%rcx, %0" : "=r"(guest_view_argument));
+#endif
 	if (return_storage == nullptr) return;
 	if (receiver == nullptr || selector == nullptr) return;
 	DarlingObjcOperatingSystemVersion version{};
@@ -3554,6 +3558,49 @@ extern "C" void darling_objc_msgSend_stret(
 		}
 	}
 #endif
+	constexpr const char* rect_conversion_encoding =
+		"{CGRect={CGPoint=dd}{CGSize=dd}}@:{CGRect={CGPoint=dd}{CGSize=dd}}@";
+#if defined(__clang__) && defined(_WIN64) && !defined(_M_ARM64) && !defined(__aarch64__)
+	{
+		const bool class_method = object_isClass(receiver);
+		const Class start = class_method ? reinterpret_cast<Class>(receiver) :
+			receiver->isa;
+		const ObjcMethodSnapshot method = LookupMethodSnapshot(start, selector,
+			class_method);
+		if (method.implementation != nullptr &&
+			CanonicalObjcEncoding(method.types) == rect_conversion_encoding) {
+			DarlingObjcRect rect{};
+			const auto* stack_arguments = reinterpret_cast<const std::uint8_t*>(
+				__builtin_frame_address(0)) + 16;
+			std::memcpy(&rect, stack_arguments, sizeof(rect));
+			const auto other_view = reinterpret_cast<id>(guest_view_argument);
+			const auto value = InvokeObjcImplementation<DarlingObjcRect,
+				DarlingObjcRect, id>(method.implementation, method.guest_abi,
+				receiver, selector, rect, other_view);
+			std::memcpy(return_storage, &value, sizeof(value));
+			return;
+		}
+	}
+#else
+	{
+		const char* types = class_getMethodTypeEncoding(object_getClass(receiver),
+			selector);
+		const IMP implementation = FindMethod(receiver, selector);
+		if (implementation != nullptr && types != nullptr &&
+			std::strcmp(types, rect_conversion_encoding) == 0) {
+			va_list arguments;
+			va_start(arguments, selector);
+			const auto rect = va_arg(arguments, DarlingObjcRect);
+			const auto other_view = va_arg(arguments, id);
+			va_end(arguments);
+			using RectMethod = DarlingObjcRect (*)(id, SEL, DarlingObjcRect, id);
+			const auto value = reinterpret_cast<RectMethod>(implementation)(
+				receiver, selector, rect, other_view);
+			std::memcpy(return_storage, &value, sizeof(value));
+			return;
+		}
+	}
+#endif
 	DarlingObjcRect result{};
 #if defined(__clang__) && defined(_WIN64) && !defined(_M_ARM64) && !defined(__aarch64__)
 	const bool class_method = object_isClass(receiver);
@@ -3579,7 +3626,8 @@ extern "C" void darling_objc_msgSend_stret(
 
 namespace {
 void DispatchSuperRectStret(void* return_storage, const void* super_info,
-	SEL selector, bool super2)
+	SEL selector, bool super2, const std::uint8_t* stack_arguments,
+	id guest_view_argument, va_list* guest_arguments)
 {
 	if (return_storage == nullptr || super_info == nullptr || selector == nullptr)
 		return;
@@ -3588,6 +3636,53 @@ void DispatchSuperRectStret(void* return_storage, const void* super_info,
 	Class start = super2 ? super->super_class->superclass : super->super_class;
 	if (start == nullptr) return;
 	const bool class_method = object_isClass(super->receiver);
+	constexpr const char* rect_conversion_encoding =
+		"{CGRect={CGPoint=dd}{CGSize=dd}}@:{CGRect={CGPoint=dd}{CGSize=dd}}@";
+#if defined(__clang__) && defined(_WIN64) && !defined(_M_ARM64) && !defined(__aarch64__)
+	{
+		const ObjcMethodSnapshot method = LookupMethodSnapshot(start, selector,
+			class_method);
+		if (method.implementation != nullptr &&
+			CanonicalObjcEncoding(method.types) == rect_conversion_encoding) {
+			DarlingObjcRect rect{};
+			id other_view = guest_view_argument;
+			if (stack_arguments != nullptr) {
+				std::memcpy(&rect, stack_arguments, sizeof(rect));
+			} else if (guest_arguments != nullptr) {
+				rect = va_arg(*guest_arguments, DarlingObjcRect);
+				other_view = va_arg(*guest_arguments, id);
+			} else return;
+			const auto value = InvokeObjcImplementation<DarlingObjcRect,
+				DarlingObjcRect, id>(method.implementation, method.guest_abi,
+				super->receiver, selector, rect, other_view);
+			std::memcpy(return_storage, &value, sizeof(value));
+			return;
+		}
+	}
+#else
+	{
+		const Method method = class_method ? class_getClassMethod(start, selector) :
+			class_getInstanceMethod(start, selector);
+		if (method != nullptr && method_getTypeEncoding(method) != nullptr &&
+			std::strcmp(method_getTypeEncoding(method),
+				rect_conversion_encoding) == 0) {
+			DarlingObjcRect rect{};
+			id other_view = guest_view_argument;
+			if (stack_arguments != nullptr) {
+				std::memcpy(&rect, stack_arguments, sizeof(rect));
+			} else if (guest_arguments != nullptr) {
+				rect = va_arg(*guest_arguments, DarlingObjcRect);
+				other_view = va_arg(*guest_arguments, id);
+			} else return;
+			using RectMethod = DarlingObjcRect (*)(id, SEL, DarlingObjcRect, id);
+			const auto value = reinterpret_cast<RectMethod>(
+				method_getImplementation(method))(super->receiver, selector, rect,
+				other_view);
+			std::memcpy(return_storage, &value, sizeof(value));
+			return;
+		}
+	}
+#endif
 	constexpr const char* version_encoding =
 		"{NSOperatingSystemVersion=qqq}@:";
 #if defined(__clang__) && defined(_WIN64) && !defined(_M_ARM64) && !defined(__aarch64__)
@@ -3642,13 +3737,39 @@ void DispatchSuperRectStret(void* return_storage, const void* super_info,
 extern "C" void darling_objc_msgSendSuper_stret(void* return_storage,
 	void* super_info, SEL selector, ...)
 {
-	DispatchSuperRectStret(return_storage, super_info, selector, false);
+#if defined(__clang__) && defined(_WIN64) && !defined(_M_ARM64) && !defined(__aarch64__)
+	std::uintptr_t guest_view_argument = 0;
+	__asm__ volatile("movq %%rcx, %0" : "=r"(guest_view_argument));
+	const auto* stack_arguments = reinterpret_cast<const std::uint8_t*>(
+		__builtin_frame_address(0)) + 16;
+	DispatchSuperRectStret(return_storage, super_info, selector, false,
+		stack_arguments, reinterpret_cast<id>(guest_view_argument), nullptr);
+#else
+	va_list arguments;
+	va_start(arguments, selector);
+	DispatchSuperRectStret(return_storage, super_info, selector, false,
+		nullptr, nullptr, &arguments);
+	va_end(arguments);
+#endif
 }
 
 extern "C" void darling_objc_msgSendSuper2_stret(void* return_storage,
 	void* super_info, SEL selector, ...)
 {
-	DispatchSuperRectStret(return_storage, super_info, selector, true);
+#if defined(__clang__) && defined(_WIN64) && !defined(_M_ARM64) && !defined(__aarch64__)
+	std::uintptr_t guest_view_argument = 0;
+	__asm__ volatile("movq %%rcx, %0" : "=r"(guest_view_argument));
+	const auto* stack_arguments = reinterpret_cast<const std::uint8_t*>(
+		__builtin_frame_address(0)) + 16;
+	DispatchSuperRectStret(return_storage, super_info, selector, true,
+		stack_arguments, reinterpret_cast<id>(guest_view_argument), nullptr);
+#else
+	va_list arguments;
+	va_start(arguments, selector);
+	DispatchSuperRectStret(return_storage, super_info, selector, true,
+		nullptr, nullptr, &arguments);
+	va_end(arguments);
+#endif
 }
 
 template<typename VarargsReader>
@@ -3811,6 +3932,16 @@ bool DispatchArm64NonIntegerReturn(id receiver, SEL selector, IMP implementation
 	if (encoding == "{CGRect={CGPoint=dd}{CGSize=dd}}@:") {
 		const auto value = reinterpret_cast<DarlingObjcRect (*)(id, SEL)>(
 			implementation)(receiver, selector);
+		std::memcpy(result.fp, &value, sizeof(value));
+		return true;
+	}
+	if (encoding ==
+		"{CGRect={CGPoint=dd}{CGSize=dd}}@:{CGRect={CGPoint=dd}{CGSize=dd}}@") {
+		const auto rect = arguments.template Next<DarlingObjcRect>();
+		const auto other_view = arguments.template Next<id>();
+		const auto value = reinterpret_cast<DarlingObjcRect (*)(id, SEL,
+			DarlingObjcRect, id)>(implementation)(receiver, selector, rect,
+			other_view);
 		std::memcpy(result.fp, &value, sizeof(value));
 		return true;
 	}

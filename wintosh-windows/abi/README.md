@@ -105,8 +105,11 @@ The resolver also exposes `objc_msgSend_stret`, `objc_msgSendSuper_stret`, and
 `objc_msgSendSuper2_stret` for no-argument CGRect return methods such as
 `NSView -frame` and `-bounds`. These paths copy the 32-byte result through the
 Darwin x86_64 hidden return pointer and apply the matching super search rule;
-they do not implement other aggregate layouts or stret methods with explicit
-arguments. The AppKit bridge also has explicit stret cases for the six-double
+they also dispatch the selected `NSView -convertRect:toView:` and
+`-convertRect:fromView:` signatures (CGRect return, CGRect argument, view
+object), including legacy and Super2 lookup. This remains a selected adapter;
+other aggregate layouts and stret signatures are unsupported. The AppKit
+bridge also has explicit stret cases for the six-double
 `NSAffineTransformStruct` return and `NSAffineTransform -transformRect:`; the
 latter reads its stack-passed CGRect argument from the guest stack area. The
 typed dispatcher handles `-setTransformStruct:` by copying its six-double

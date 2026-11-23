@@ -572,6 +572,16 @@ private:
 	mutable std::vector<std::uint8_t> m_relocation_original_widths;
 };
 
+// Dynamic dyld operations issued from an active ARM64 guest entry can extend
+// the interpreter's address space for the lifetime of a mapped Mach-O image.
+void RegisterActiveArm64GuestImage(const MachOImage& image,
+	const MachOImage::Mapping& mapping);
+void UnregisterActiveArm64GuestImage(const MachOImage& image,
+	const MachOImage::Mapping& mapping) noexcept;
+const void* SetActiveArm64GuestDso(const void* dso_handle) noexcept;
+void FinalizeActiveArm64GuestImage(const MachOImage& image,
+	const MachOImage::Mapping& mapping);
+
 // Explicit lifetime boundary for future on-demand dyld binding. The session
 // keeps the image, mapping, and resolved dependency table together so a
 // binder cannot accidentally apply an action to a different image.

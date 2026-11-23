@@ -7120,6 +7120,12 @@ extern "C" int darling_windows_atexit(void (*function)())
 
 extern "C" int darling_windows_atexit_guest(void (*function)())
 {
+	return darling_windows_atexit_guest_for_dso(function, nullptr);
+}
+
+extern "C" int darling_windows_atexit_guest_for_dso(void (*function)(),
+	void* dso_handle)
+{
 	if (function == nullptr) {
 		darling::windows_host::DarwinErrno::Set(22);
 		return -1;
@@ -7135,7 +7141,7 @@ extern "C" int darling_windows_atexit_guest(void (*function)())
 			// source-compatible registration fallback for synthetic fixtures.
 			function();
 #endif
-		}, nullptr, reinterpret_cast<void*>(function), nullptr, true, false});
+		}, dso_handle, reinterpret_cast<void*>(function), nullptr, true, false});
 		return 0;
 	} catch (...) {
 		return -1;
@@ -7201,10 +7207,11 @@ extern "C" void darling_windows_cxa_finalize_guest(void* dso_handle,
 		}
 	}
 	for (auto& handler : pending) {
-		if (handler.guest_callback && invoke)
-			invoke(handler.guest_function, handler.guest_argument,
-				handler.guest_has_argument, context);
-		else if (handler.function)
+		if (handler.guest_callback) {
+			if (invoke)
+				invoke(handler.guest_function, handler.guest_argument,
+					handler.guest_has_argument, context);
+		} else if (handler.function)
 			handler.function();
 	}
 }

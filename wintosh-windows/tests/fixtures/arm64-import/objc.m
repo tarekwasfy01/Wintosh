@@ -10,6 +10,11 @@ extern void free(void *allocation);
 extern int write(int descriptor, const void *bytes, unsigned long length);
 extern int atexit(void (*function)(void));
 extern int __cxa_atexit(void (*function)(void *), void *argument, void *dso);
+extern void *dlopen(const char *path, int mode);
+extern void *dlsym(void *handle, const char *symbol);
+extern int dlclose(void *handle);
+
+typedef long (*WintoshDynamicAnswer)(void);
 
 static void WintoshCxaAtexitMarker(void *bytes)
 {
@@ -24,11 +29,14 @@ static void WintoshAtexitMarker(void)
 	(void)write(1, marker, sizeof(marker) - 1);
 }
 
-__attribute__((destructor)) static void WintoshTerminatorMarker(void)
+static void WintoshTerminatorMarker(void)
 {
 	static const char marker[] = "ARM64_TERMINATOR=PASS\n";
 	(void)write(1, marker, sizeof(marker) - 1);
 }
+
+__attribute__((used, section("__DATA,__mod_term_func")))
+static void (*WintoshModuleTerminator)(void) = WintoshTerminatorMarker;
 
 typedef struct {
 	double x;
@@ -228,6 +236,17 @@ int main(int argc, char **argv, char **envp)
 	(void)argc;
 	(void)argv;
 	(void)envp;
+	if (argc < 2 || argv[1] == (char *)0)
+		return 5;
+	void *dynamic_image = dlopen(argv[1], 2);
+	if (dynamic_image == (void *)0)
+		return 6;
+	WintoshDynamicAnswer dynamic_answer =
+		(WintoshDynamicAnswer)dlsym(dynamic_image, "wintosh_dynamic_answer");
+	if (dynamic_answer == (WintoshDynamicAnswer)0 || dynamic_answer() != 42)
+		return 7;
+	if (dlclose(dynamic_image) != 0)
+		return 8;
 	Class probe = objc_getClass("WintoshProbe");
 	SEL answer = sel_registerName("answer");
 	SEL inherited_answer = sel_registerName("inheritedAnswer");

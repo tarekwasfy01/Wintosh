@@ -21,7 +21,10 @@ Its ARM64 startup fixture also checks one `__mod_init_func` constructor,
 superclass-first class `+load`, and category `+load`, each exactly once.
 On process return, it checks that guest `__cxa_atexit`, `atexit`, and
 `__mod_term_func` callbacks execute through the ARM64 guest dispatcher in that
-order and emit their markers.
+order and emit their markers. It also opens an ARM64 `.dylib` from guest code,
+checks its constructor, resolves and calls an exported function, then closes it
+and checks its DSO-scoped C++ exit callback and `__mod_term_func` before process
+shutdown.
 It also compiles a real Objective-C category into `__objc_catlist` and calls
 its class method through the guest Objective-C dispatch path. `objc_smoke`
 registers category methods/protocols/properties under an image token and checks

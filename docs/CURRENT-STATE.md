@@ -85,7 +85,12 @@ constructor, superclass-first class `+load`, and category `+load` exactly once
 and in that order. The same guest-call dispatcher now runs `__cxa_atexit`,
 `atexit`, and `__mod_term_func` callbacks on normal return, preserving reverse
 registration and terminator order. The ARM64 end-to-end fixture checks visible
-markers in that sequence. Dynamic ARM64 image loading remains unverified.
+markers in that sequence. The ARM64 fixture now also uses guest
+`dlopen`/`dlsym`/`dlclose`: a real ARM64 dylib runs its constructor, exports and
+executes a function, runs its DSO-scoped C++ exit callback and explicit
+`__mod_term_func`, then releases its guest mappings and import thunks. Dynamic
+Objective-C `+load`, larger dependency graphs, and general application bundles
+remain unverified.
 
 ## Mach broker update, 2026-11-23
 

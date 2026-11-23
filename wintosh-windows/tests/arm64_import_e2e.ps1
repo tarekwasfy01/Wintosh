@@ -19,6 +19,9 @@ $image = Join-Path $OutputDirectory 'arm64-import.macho'
 $objcSource = Join-Path $PSScriptRoot 'fixtures/arm64-import/objc.m'
 $objcObject = Join-Path $OutputDirectory 'arm64-objc-import.o'
 $objcImage = Join-Path $OutputDirectory 'arm64-objc-import.macho'
+$dynamicSource = Join-Path $PSScriptRoot 'fixtures/arm64-import/dynamic.c'
+$dynamicObject = Join-Path $OutputDirectory 'arm64-dynamic-import.o'
+$dynamicImage = Join-Path $OutputDirectory 'libarm64-dynamic-import.dylib'
 
 & $clangPath -target arm64-apple-macosx11.0 -fno-stack-protector -O0 `
 	-c -x c $source -o $object
@@ -33,6 +36,13 @@ if ($LASTEXITCODE -ne 0) { throw "ARM64 Objective-C fixture compile failed: $LAS
 & $Linker -arch arm64 -platform_version macos 11.0 14.0 -e _main `
 	-undefined dynamic_lookup -o $objcImage $objcObject
 if ($LASTEXITCODE -ne 0) { throw "ARM64 Objective-C fixture link failed: $LASTEXITCODE" }
+& $clangPath -target arm64-apple-macosx11.0 -fno-stack-protector -O0 `
+	-c -x c $dynamicSource -o $dynamicObject
+if ($LASTEXITCODE -ne 0) { throw "ARM64 dynamic image compile failed: $LASTEXITCODE" }
+& $Linker -arch arm64 -platform_version macos 11.0 14.0 -dylib `
+	-install_name '@rpath/libarm64-dynamic-import.dylib' -undefined dynamic_lookup `
+	-o $dynamicImage $dynamicObject
+if ($LASTEXITCODE -ne 0) { throw "ARM64 dynamic image link failed: $LASTEXITCODE" }
 
 $priorEager = [Environment]::GetEnvironmentVariable('WINTOSH_FORCE_EAGER_BIND', 'Process')
 try {
@@ -40,7 +50,7 @@ try {
 	$output = & $Runner --arch arm64 --startup-abi main $image 2>&1
 	$exitCode = $LASTEXITCODE
 	$text = $output -join "`n"
-	$objcOutput = & $Runner --arch arm64 --startup-abi main $objcImage 2>&1
+	$objcOutput = & $Runner --arch arm64 --startup-abi main $objcImage $dynamicImage 2>&1
 	$objcExitCode = $LASTEXITCODE
 	$objcText = $objcOutput -join "`n"
 } finally {
@@ -67,6 +77,15 @@ if ($objcText -match 'DARLING_(GUEST_EXCEPTION|RUNNER_ERROR)' -or
 if ($objcText -notmatch 'ARM64_CXA_ATEXIT=PASS' -or
 	$objcText -notmatch 'ARM64_ATEXIT=PASS' -or
 	$objcText -notmatch 'ARM64_TERMINATOR=PASS' -or
+	$objcText -notmatch 'ARM64_DYLIB_INIT=PASS' -or
+	$objcText -notmatch 'ARM64_DYLIB_CXA=PASS' -or
+	$objcText -notmatch 'ARM64_DYLIB_MOD_TERM=PASS' -or
+	$objcText.IndexOf('ARM64_DYLIB_INIT=PASS') -gt
+	$objcText.IndexOf('ARM64_DYLIB_CXA=PASS') -or
+	$objcText.IndexOf('ARM64_DYLIB_CXA=PASS') -gt
+	$objcText.IndexOf('ARM64_DYLIB_MOD_TERM=PASS') -or
+	$objcText.IndexOf('ARM64_DYLIB_MOD_TERM=PASS') -gt
+	$objcText.IndexOf('ARM64_CXA_ATEXIT=PASS') -or
 	$objcText.IndexOf('ARM64_CXA_ATEXIT=PASS') -gt
 	$objcText.IndexOf('ARM64_ATEXIT=PASS') -or
 	$objcText.IndexOf('ARM64_ATEXIT=PASS') -gt

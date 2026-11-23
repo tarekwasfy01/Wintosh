@@ -839,6 +839,15 @@ std::vector<DylibExportResolver> DylibGraph::ExportResolverOrder(
 	return order;
 }
 
+class ActiveArm64DsoScope final {
+public:
+	explicit ActiveArm64DsoScope(const void* dso_handle) noexcept :
+		m_previous(SetActiveArm64GuestDso(dso_handle)) {}
+	~ActiveArm64DsoScope() { (void)SetActiveArm64GuestDso(m_previous); }
+private:
+	const void* m_previous = nullptr;
+};
+
 class DarwinDynamicImage final {
 public:
 	struct Provider final {
@@ -1159,7 +1168,13 @@ DarwinDynamicImage* OpenDynamicImage(const std::filesystem::path& path,
 		for (const auto& provider : result->providers)
 			register_lazy_session(provider.image, provider.mapping, provider.bindings);
 		register_lazy_session(result->image, result->mapping, result->bindings);
+		if (result->image.IsArm64()) {
+			for (const auto& provider : result->providers)
+				RegisterActiveArm64GuestImage(provider.image, provider.mapping);
+			RegisterActiveArm64GuestImage(result->image, result->mapping);
+		}
 		for (auto& provider : result->providers) {
+			ActiveArm64DsoScope dso_scope(&provider.mapping);
 			auto* token = RegisterDynamicObjectiveCSections(provider.image,
 				provider.mapping);
 			if (token)
@@ -1169,6 +1184,7 @@ DarwinDynamicImage* OpenDynamicImage(const std::filesystem::path& path,
 				throw std::runtime_error(
 					"ARM64 Objective-C +load methods require the guest-call dispatcher");
 		}
+		ActiveArm64DsoScope dso_scope(&result->mapping);
 		auto* token = RegisterDynamicObjectiveCSections(result->image, result->mapping);
 		if (token)
 			result->objc_tokens.push_back(token);
@@ -1178,6 +1194,9 @@ DarwinDynamicImage* OpenDynamicImage(const std::filesystem::path& path,
 				"ARM64 Objective-C +load methods require the guest-call dispatcher");
 		return result;
 	} catch (...) {
+		for (auto& provider : result->providers)
+			UnregisterActiveArm64GuestImage(provider.image, provider.mapping);
+		UnregisterActiveArm64GuestImage(result->image, result->mapping);
 		delete result;
 		throw;
 	}
@@ -1444,15 +1463,24 @@ void CloseDynamicImage(DarwinDynamicImage* image) noexcept
 	if (image == nullptr)
 		return;
 	try {
+		FinalizeActiveArm64GuestImage(image->image, image->mapping);
 		image->image.ExecuteTerminators(image->mapping);
-		for (auto provider = image->providers.rbegin();
-			provider != image->providers.rend(); ++provider) {
-			provider->image.ExecuteTerminators(provider->mapping);
-		}
-		for (auto* token : image->objc_tokens)
-			darling_objc_unregister_image(token);
 	} catch (...) {
 	}
+	for (auto provider = image->providers.rbegin();
+		provider != image->providers.rend(); ++provider) {
+		try {
+			FinalizeActiveArm64GuestImage(provider->image, provider->mapping);
+			provider->image.ExecuteTerminators(provider->mapping);
+		}
+		catch (...) {}
+	}
+	for (auto* token : image->objc_tokens)
+		darling_objc_unregister_image(token);
+	for (auto provider = image->providers.rbegin();
+		provider != image->providers.rend(); ++provider)
+		UnregisterActiveArm64GuestImage(provider->image, provider->mapping);
+	UnregisterActiveArm64GuestImage(image->image, image->mapping);
 	delete image;
 }
 

@@ -40,8 +40,11 @@ once and verifies constructor, superclass-first class, then category order.
 Class entries repeated between `__objc_classlist` and `__objc_nlclslist` are
 deduplicated. The ARM64 end-to-end fixture registers `__cxa_atexit`, `atexit`,
 and a `__mod_term_func` terminator and checks that they run through the guest
-dispatcher in that order after normal process return. Dynamic ARM64 image
-loading still needs fixtures.
+dispatcher in that order after normal process return. The fixture also
+exercises guest `dlopen`/`dlsym`/`dlclose` for an ARM64 dylib, including its
+constructor, exported function, DSO-scoped C++ exit callback, and explicit
+`__mod_term_func` while its mapped segments and import thunks are registered
+with the active interpreter.
 
 The Objective-C message dispatcher calls `+initialize` once per class, after
 its superclass has initialized. Reentrant messages from the initializing

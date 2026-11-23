@@ -332,6 +332,8 @@ extern "C" [[noreturn]] void darling_windows__exit(int status);
 extern "C" [[noreturn]] void darling_windows_abort();
 extern "C" int darling_windows_atexit(void (*function)());
 extern "C" int darling_windows_atexit_guest(void (*function)());
+extern "C" int darling_windows_atexit_guest_for_dso(void (*function)(),
+	void* dso_handle);
 extern "C" int darling_windows_cxa_atexit(void (*function)(void*), void* argument,
 	void* dso_handle);
 extern "C" int darling_windows_cxa_atexit_guest(void (*function)(void*),

@@ -53,6 +53,16 @@ thread_local const MachOLazyBindingSession* active_lazy_binding_session = nullpt
 std::mutex active_lazy_binding_sessions_mutex;
 std::vector<const MachOLazyBindingSession*> active_lazy_binding_sessions;
 std::atomic<std::uint32_t> next_arm64_import_identifier{1};
+#if defined(WINTOSH_HAS_DYNARMIC)
+thread_local DarlingWindowsA64Backend* active_arm64_backend = nullptr;
+thread_local std::vector<MachOImage::Mapping::Arm64HostImport>*
+	active_arm64_host_imports = nullptr;
+using Arm64GuestCallbackRunner = std::function<A64ExecutionResult(A64CpuState, unsigned)>;
+thread_local Arm64GuestCallbackRunner* active_arm64_callback_runner = nullptr;
+thread_local A64CpuState* active_arm64_seed = nullptr;
+thread_local unsigned* active_arm64_depth = nullptr;
+thread_local const void* active_arm64_dso_handle = nullptr;
+#endif
 using DarlingHostMallocImport = void* (DARLING_HOST_GUEST_ABI *)(std::size_t);
 using DarlingHostFreeImport = void (DARLING_HOST_GUEST_ABI *)(void*);
 using DarlingHostReallocImport = void* (DARLING_HOST_GUEST_ABI *)(
@@ -3251,6 +3261,116 @@ void MachOImage::ExecuteInitializers(const Mapping& mapping) const
 	}
 }
 
+void RegisterActiveArm64GuestImage(const MachOImage& image,
+	const MachOImage::Mapping& mapping)
+{
+#if defined(WINTOSH_HAS_DYNARMIC)
+	if (!image.IsArm64() || active_arm64_backend == nullptr ||
+		active_arm64_host_imports == nullptr)
+		return;
+	if (image.Segments().size() != mapping.Segments().size())
+		throw std::logic_error("ARM64 dynamic image segment metadata is inconsistent");
+	std::vector<std::uintptr_t> registered_addresses;
+	const auto imports_before = active_arm64_host_imports->size();
+	try {
+		for (std::size_t index = 0; index < mapping.Segments().size(); ++index) {
+			const auto& segment = mapping.Segments()[index];
+			const auto protection = image.Segments()[index].initial_protection;
+			if (!active_arm64_backend->RegisterDynamicGuestMapping({segment.address,
+				segment.size, (protection & 1) != 0, (protection & 2) != 0,
+				(protection & 4) != 0, true, segment.address, segment.size, true}))
+				throw std::runtime_error("ARM64 dynamic image segment overlaps guest memory");
+			registered_addresses.push_back(segment.address);
+		}
+		const auto [thunk_address, thunk_bytes] = mapping.Arm64ThunkPoolRegion();
+		if (thunk_address != 0 && thunk_bytes != 0) {
+			if (!active_arm64_backend->RegisterDynamicGuestMapping({thunk_address,
+				thunk_bytes, true, false, true, true, thunk_address, thunk_bytes, true}))
+				throw std::runtime_error("ARM64 dynamic image import thunks overlap guest memory");
+			registered_addresses.push_back(thunk_address);
+		}
+		const auto& imports = mapping.Arm64HostImports();
+		active_arm64_host_imports->insert(active_arm64_host_imports->end(),
+			imports.begin(), imports.end());
+	} catch (...) {
+		for (const auto address : registered_addresses)
+			(void)active_arm64_backend->RemoveDynamicGuestMapping(address);
+		active_arm64_host_imports->resize(imports_before);
+		throw;
+	}
+#else
+	(void)image;
+	(void)mapping;
+#endif
+}
+
+const void* SetActiveArm64GuestDso(const void* dso_handle) noexcept
+{
+#if defined(WINTOSH_HAS_DYNARMIC)
+	const auto* previous = active_arm64_dso_handle;
+	active_arm64_dso_handle = dso_handle;
+	return previous;
+#else
+	(void)dso_handle;
+	return nullptr;
+#endif
+}
+
+void FinalizeActiveArm64GuestImage(const MachOImage& image,
+	const MachOImage::Mapping& mapping)
+{
+#if defined(WINTOSH_HAS_DYNARMIC)
+	if (!image.IsArm64() || active_arm64_callback_runner == nullptr ||
+		active_arm64_seed == nullptr || active_arm64_depth == nullptr) {
+		darling_windows_cxa_finalize_guest(
+			const_cast<void*>(static_cast<const void*>(&mapping)), nullptr, nullptr);
+		return;
+	}
+	const auto invoke = +[](void* function, void* argument, bool has_argument,
+		void* opaque) {
+		(void)opaque;
+		A64CpuState callback = *active_arm64_seed;
+		callback.pc = reinterpret_cast<std::uintptr_t>(function);
+		callback.x[0] = has_argument ? reinterpret_cast<std::uintptr_t>(argument) : 0;
+		callback.x[1] = 0;
+		const auto result = (*active_arm64_callback_runner)(callback,
+			*active_arm64_depth + 1);
+		*active_arm64_seed = result.state;
+	};
+	*active_arm64_depth = 0;
+	darling_windows_cxa_finalize_guest(
+		const_cast<void*>(static_cast<const void*>(&mapping)), invoke, nullptr);
+#else
+	(void)image;
+	(void)mapping;
+#endif
+}
+
+void UnregisterActiveArm64GuestImage(const MachOImage& image,
+	const MachOImage::Mapping& mapping) noexcept
+{
+#if defined(WINTOSH_HAS_DYNARMIC)
+	if (!image.IsArm64() || active_arm64_backend == nullptr ||
+		active_arm64_host_imports == nullptr)
+		return;
+	for (const auto& segment : mapping.Segments())
+		(void)active_arm64_backend->RemoveDynamicGuestMapping(segment.address);
+	const auto [thunk_address, thunk_bytes] = mapping.Arm64ThunkPoolRegion();
+	if (thunk_address != 0 && thunk_bytes != 0)
+		(void)active_arm64_backend->RemoveDynamicGuestMapping(thunk_address);
+	const auto& imports = mapping.Arm64HostImports();
+	active_arm64_host_imports->erase(std::remove_if(active_arm64_host_imports->begin(),
+		active_arm64_host_imports->end(), [&imports](const auto& candidate) {
+			return std::any_of(imports.begin(), imports.end(), [&candidate](const auto& item) {
+				return item.identifier == candidate.identifier;
+			});
+		}), active_arm64_host_imports->end());
+#else
+	(void)image;
+	(void)mapping;
+#endif
+}
+
 void MachOImage::ExecuteTerminators(const Mapping& mapping) const
 {
 	if (mapping.TerminatorsExecuted())
@@ -3466,6 +3586,20 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 		registers[30] = return_sentinel;
 
 		DarlingWindowsA64Backend backend(std::move(guest_memory));
+		auto* const previous_active_backend = active_arm64_backend;
+		auto* const previous_active_imports = active_arm64_host_imports;
+		active_arm64_backend = &backend;
+		active_arm64_host_imports = &arm64_host_imports;
+		struct RestoreActiveArm64Execution final {
+			DarlingWindowsA64Backend* backend;
+			std::vector<Mapping::Arm64HostImport>* imports;
+			~RestoreActiveArm64Execution()
+			{
+				active_arm64_backend = backend;
+				active_arm64_host_imports = imports;
+			}
+		} restore_active_arm64_execution{previous_active_backend,
+			previous_active_imports};
 		std::vector<std::uintptr_t> guest_malloc_allocations;
 		const auto register_guest_malloc = [&](void* allocation, std::size_t requested_bytes,
 			DarlingHostFreeImport free_target) {
@@ -3556,9 +3690,27 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 				throw std::runtime_error("ARM64 nested import trap references unknown thunk " +
 					std::to_string(identifier));
 			A64CpuState resumed = trap.state;
+			initializer_seed = trap.state;
+			initializer_depth = depth;
 			const auto& x = trap.state.x;
 			const auto& name = imported->symbol;
-			if (name == "_write") {
+			if (name == "_dlopen") {
+				if (x[0] != 0 && !backend.ContainsGuestCString(x[0], 1u << 20))
+					throw std::runtime_error("ARM64 nested dlopen import received an invalid path");
+				resumed.x[0] = reinterpret_cast<std::uintptr_t (*)(const char*, int)>(
+					imported->target)(reinterpret_cast<const char*>(
+						static_cast<std::uintptr_t>(x[0])), static_cast<int>(x[1]));
+			} else if (name == "_dlsym") {
+				if (!backend.ContainsGuestCString(x[1], 4096))
+					throw std::runtime_error("ARM64 nested dlsym import received an invalid symbol name");
+				resumed.x[0] = reinterpret_cast<std::uintptr_t (*)(void*, const char*)>(
+					imported->target)(reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0])),
+						reinterpret_cast<const char*>(static_cast<std::uintptr_t>(x[1])));
+			} else if (name == "_dlclose") {
+				resumed.x[0] = static_cast<std::uint64_t>(
+					reinterpret_cast<int (*)(void*)>(imported->target)(
+						reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0]))));
+			} else if (name == "_write") {
 				const auto bytes = static_cast<std::size_t>(x[2]);
 				if (bytes > (1u << 20) || !backend.ContainsGuestRange(x[1], bytes, false))
 					throw std::runtime_error("ARM64 nested write import received an invalid guest range");
@@ -3566,13 +3718,16 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 					static_cast<int>(x[0]), reinterpret_cast<const void*>(
 						static_cast<std::uintptr_t>(x[1])), bytes));
 			} else if (name == "_atexit") {
-				resumed.x[0] = static_cast<std::uint64_t>(darling_windows_atexit_guest(
-					reinterpret_cast<void (*)()>(static_cast<std::uintptr_t>(x[0]))));
+				resumed.x[0] = static_cast<std::uint64_t>(
+					darling_windows_atexit_guest_for_dso(
+						reinterpret_cast<void (*)()>(static_cast<std::uintptr_t>(x[0])),
+						active_arm64_dso_handle ? const_cast<void*>(active_arm64_dso_handle) : nullptr));
 			} else if (name == "___cxa_atexit" || name == "_cxa_atexit") {
 				resumed.x[0] = static_cast<std::uint64_t>(darling_windows_cxa_atexit_guest(
 					reinterpret_cast<void (*)(void*)>(static_cast<std::uintptr_t>(x[0])),
 					reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[1])),
-					reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[2]))));
+					active_arm64_dso_handle ? const_cast<void*>(active_arm64_dso_handle) :
+						reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[2]))));
 			} else if (name == "_objc_msgSend") {
 				const auto receiver = reinterpret_cast<id>(
 					static_cast<std::uintptr_t>(x[0]));
@@ -3720,13 +3875,33 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 				}
 				if (!result.fault.empty())
 					throw std::runtime_error("ARM64 Objective-C guest callback failed: " +
-						result.fault);
+						result.fault + " pc=" + std::to_string(result.state.pc) +
+						(result.fault_address ? " address=" +
+							std::to_string(*result.fault_address) : std::string{}));
 				if (result.svc)
 					throw std::runtime_error("ARM64 Objective-C guest callback issued unsupported SVC #" +
 						std::to_string(*result.svc));
 				throw std::runtime_error("ARM64 Objective-C guest callback stopped before return");
 			}
 		};
+		auto* const previous_callback_runner = active_arm64_callback_runner;
+		auto* const previous_seed = active_arm64_seed;
+		auto* const previous_depth = active_arm64_depth;
+		active_arm64_callback_runner = &run_guest_callback;
+		active_arm64_seed = &initializer_seed;
+		active_arm64_depth = &initializer_depth;
+		struct RestoreActiveArm64Callbacks final {
+			Arm64GuestCallbackRunner* runner;
+			A64CpuState* seed;
+			unsigned* depth;
+			~RestoreActiveArm64Callbacks()
+			{
+				active_arm64_callback_runner = runner;
+				active_arm64_seed = seed;
+				active_arm64_depth = depth;
+			}
+		} restore_active_arm64_callbacks{previous_callback_runner,
+			previous_seed, previous_depth};
 		const auto invoke_guest_exit = +[](void* function, void* argument,
 			bool has_argument, void* opaque) {
 			auto& context = *static_cast<GuestInitializerContext*>(opaque);
@@ -3788,9 +3963,28 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 						throw std::runtime_error("ARM64 import trap references unknown thunk " +
 							std::to_string(identifier));
 					cpu = result.state;
+					initializer_seed = result.state;
+					initializer_depth = 0;
 					const auto& x = result.state.x;
 					const auto& name = imported->symbol;
-					if (name == "_write") {
+					if (name == "_dlopen") {
+						if (x[0] != 0 && !backend.ContainsGuestCString(x[0], 1u << 20))
+							throw std::runtime_error("ARM64 dlopen import received an invalid path");
+						cpu.x[0] = reinterpret_cast<std::uintptr_t (*)(const char*, int)>(
+							imported->target)(reinterpret_cast<const char*>(
+								static_cast<std::uintptr_t>(x[0])), static_cast<int>(x[1]));
+					} else if (name == "_dlsym") {
+						if (!backend.ContainsGuestCString(x[1], 4096))
+							throw std::runtime_error("ARM64 dlsym import received an invalid symbol name");
+						cpu.x[0] = reinterpret_cast<std::uintptr_t (*)(void*, const char*)>(
+							imported->target)(reinterpret_cast<void*>(
+								static_cast<std::uintptr_t>(x[0])), reinterpret_cast<const char*>(
+									static_cast<std::uintptr_t>(x[1])));
+					} else if (name == "_dlclose") {
+						cpu.x[0] = static_cast<std::uint64_t>(
+							reinterpret_cast<int (*)(void*)>(imported->target)(
+								reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0]))));
+					} else if (name == "_write") {
 						const auto bytes = static_cast<std::size_t>(x[2]);
 						if (bytes > (1u << 20) || !backend.ContainsGuestRange(x[1], bytes, false))
 							throw std::runtime_error("ARM64 write import received an invalid guest range");
@@ -3798,13 +3992,16 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 							static_cast<int>(x[0]), reinterpret_cast<const void*>(
 								static_cast<std::uintptr_t>(x[1])), bytes));
 					} else if (name == "_atexit") {
-						cpu.x[0] = static_cast<std::uint64_t>(darling_windows_atexit_guest(
-							reinterpret_cast<void (*)()>(static_cast<std::uintptr_t>(x[0]))));
+						cpu.x[0] = static_cast<std::uint64_t>(
+							darling_windows_atexit_guest_for_dso(
+								reinterpret_cast<void (*)()>(static_cast<std::uintptr_t>(x[0])),
+								active_arm64_dso_handle ? const_cast<void*>(active_arm64_dso_handle) : nullptr));
 					} else if (name == "___cxa_atexit" || name == "_cxa_atexit") {
 						cpu.x[0] = static_cast<std::uint64_t>(darling_windows_cxa_atexit_guest(
 							reinterpret_cast<void (*)(void*)>(static_cast<std::uintptr_t>(x[0])),
 							reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[1])),
-							reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[2]))));
+							active_arm64_dso_handle ? const_cast<void*>(active_arm64_dso_handle) :
+								reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[2]))));
 					} else if (name == "_objc_msgSend" || name == "_objc_msgSendSuper" ||
 						name == "_objc_msgSendSuper2") {
 						if (name == "_objc_msgSend") {

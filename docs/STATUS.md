@@ -2460,3 +2460,15 @@ Two separate PIC i386 objects were linked in both orders. `main` called an
 external `helper`; the helper read a local constant through PIC addressing.
 Both images returned **84**, showing that the paired section-difference
 relocations are adjusted after input sections are concatenated.
+
+An i386 constructor guest set a zero-fill global to 42 through
+`__DATA,__mod_init_func`; Wintosh rebased and executed the initializer before
+`main`, which then returned **42**. This verifies one constructor path, not all
+Darwin CRT initialization or C++ static-object lifetime rules.
+
+A no-standard-library C++ i386 guest with a global object also linked and ran.
+The emitted `__StaticInit` code constructed the object before `main`; its
+`___dso_handle` reference resolved to a guest-local BSS cell, and its
+`___cxa_atexit` registration ran the destructor after `main`. The destructor
+printed `cxx destructor`; the process preserved status **42**. This is one
+static-object lifecycle case, not full C++ ABI or exception-runtime support.

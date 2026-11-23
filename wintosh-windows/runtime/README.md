@@ -41,6 +41,12 @@ The libc guest also ran when compiled as PIC, using the linker's paired
 scattered i386 section-difference relocation support. A separate two-object PIC
 image with an external helper call and local literal access returned 84 in both
 input orders.
+An i386 constructor guest used `__DATA,__mod_init_func` to set a zero-fill
+global before `main`; the runner rebased the function pointer, executed the
+initializer, and the guest returned 42.
+A no-standard-library C++ fixture likewise ran `__StaticInit`, registered
+`___cxa_atexit` with a guest-local `___dso_handle`, and printed from its global
+destructor after `main`, returning status 42.
 Apple's [dyld4 design notes](https://github.com/apple-oss-distributions/dyld/blob/main/doc/dyld4.md)
 describe process startup with argc, argv, envp, and Apple parameters on the
 initial stack. That current description does not establish compatibility with

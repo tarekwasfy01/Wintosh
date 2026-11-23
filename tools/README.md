@@ -38,8 +38,9 @@ corresponding upstream definitions and licenses.
 
 `python tools/link_i386_macho.py --output app.macho main.o helper.o` accepts
 little-endian i386 `MH_OBJECT` files. It combines each input's `__TEXT,__text`,
-one optional `__TEXT,__cstring` or `__const`, and optional `__DATA,__data` and
-zerofill sections, resolves external
+optional `__TEXT,__StaticInit` code, one optional `__TEXT,__cstring` or
+`__const`, and optional `__DATA,__data` and zerofill sections plus
+`__DATA,__mod_init_func`, resolves external
 definitions between those sections, and supports 32-bit
 `GENERIC_RELOC_VANILLA` PC-relative and absolute references plus paired
 scattered `GENERIC_RELOC_SECTDIFF` and `GENERIC_RELOC_LOCAL_SECTDIFF` fields
@@ -64,6 +65,13 @@ string lengths, read `WINTOSH_FIXTURE=42` through `_getenv`, and returned 42.
 The same fixture compiled as PIC returned 42 as well. These are host exports,
 not a complete libSystem. Separate PIC `main` and `helper` objects linked and
 ran in either input order, returning 84 after a local literal access.
+A constructor guest whose `__mod_init_func` set a global before `main` returned
+42, proving that the emitted section reaches Wintosh's initializer phase.
+A no-standard-library C++ guest also constructed a global object before `main`
+and ran its `___cxa_atexit` destructor afterward, printing `cxx destructor`
+while preserving status 42. `___dso_handle` is represented by a guest-local
+zero-fill cell. This is limited C++ object-lifecycle evidence, not a full C++
+runtime.
 See
 [LINKER-RESEARCH.md](../docs/porting/LINKER-RESEARCH.md) for the exact contract.
 

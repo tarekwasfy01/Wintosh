@@ -8,7 +8,8 @@ Clang erzeugt auf diesem Windows-Host i386-Mach-O-Objekte. Das vorhandene
 `ld64.lld.exe` weist `-arch i386` zurück. `tools/link_i386_macho.py` ist ein
 begrenzter i386-Linker-Prototyp: Er kombiniert `__TEXT,__text` und optionale
 `__TEXT,__cstring` oder `__const`, `__DATA,__data` sowie nullinitialisierte
-`__bss`/`__common`-Bereiche mehrerer `MH_OBJECT`-Dateien und löst begrenzte
+`__bss`/`__common`-Bereiche und `__DATA,__mod_init_func`-Pointer mehrerer
+`MH_OBJECT`-Dateien und löst begrenzte
 `__IMPORT,__pointers`-Slots über die indirekte Symboltabelle auf. Es verarbeitet
 32-Bit-`GENERIC_RELOC_VANILLA`-Relokationen und gepaarte gestreute
 `GENERIC_RELOC_SECTDIFF`/`GENERIC_RELOC_LOCAL_SECTDIFF`-Relokationen. Absolute
@@ -173,3 +174,19 @@ sich aus `A' - B'` heraus. LLVM RuntimeDyld verwendet dieselbe Zerlegung in
 Zwei getrennte PIC-Objekte mit externem `main`-zu-`helper`-Aufruf und einem
 lokalen Literalzugriff im Helper wurden in beiden Eingabereihenfolgen gelinkt;
 beide gestarteten Images gaben **84** zurück.
+
+Ein i386-C-Guest enthielt eine `__mod_init_func`-Routine, die ein BSS-Global auf
+42 setzte. Der Linker erhielt die Initializer-Sektion als eigene
+`__DATA,__mod_init_func`-Section und erzeugte die nötige Textpointer-Rebase.
+Wintosh führte den Initializer vor `main` aus; der Gast gab **42** zurück.
+Für den Gastzustand `x=[g,1]^T` lässt sich die Initialisierung als affine
+Transformation `T=[[1,42],[0,1]]` schreiben: `T[0,1]^T=[42,1]^T`. Ohne diesen
+Schritt hätte `main` den unveränderten BSS-Wert 0 gelesen.
+
+Ein C++-Objektfixture ohne Standardbibliothek erzeugte zusätzlich
+`__TEXT,__StaticInit`, `___dso_handle` und `___cxa_atexit`. Der Linker fügte
+`__StaticInit` dem ausführbaren Text hinzu und materialisierte
+`___dso_handle` als gastlokales Zero-fill-Symbol. Der Konstruktor setzte den
+Wert vor `main`; nach Status **42** lief der registrierte Destruktor und gab
+`cxx destructor` aus. Das belegt eine C++-Globalobjekt-Lebensdauer, nicht die
+allgemeine C++-ABI, Exceptions, RTTI oder Standardbibliothek.

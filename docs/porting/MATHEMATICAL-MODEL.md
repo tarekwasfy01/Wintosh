@@ -129,6 +129,8 @@ The separate i386 object-to-image experiment is bounded as follows:
 | Mach-O object-symbol resolution in supported sections | 1§ |
 | i386 same-section PC-relative relocation preservation | 1§ |
 | i386 paired scattered `SECTDIFF` / `LOCAL_SECTDIFF` relocation | 1§ |
+| i386 `__mod_init_func` pointer relocation and pre-entry call | 1§ |
+| i386 C++ `__StaticInit`, `___dso_handle`, and `___cxa_atexit` path | 1§ |
 | Cross-object i386 PC-relative external call | 1§ |
 | i386 `__DATA` global read/write with dyld slide rebase | 1§ |
 | i386 zero-initialized `__common` global read/write | 1§ |
@@ -158,6 +160,13 @@ and stored field value `V`, the linker computes `C = V - (A - B)` and writes
 `A' - B' + C` at final placement; a common slide cancels from the difference.
 Two separate PIC objects with a cross-object function call and local literal
 access also returned 84 in both input orders.
+A constructor changed BSS state from 0 to 42 before `main`; the image exposed
+`__mod_init_func` and Wintosh ran it before entry. With homogeneous state
+`x=[g,1]^T`, the observed initializer is `T=[[1,42],[0,1]]`, so
+`T[0,1]^T=[42,1]^T`.
+A C++ global object also registered its destructor through `___cxa_atexit`
+using a guest-local `___dso_handle`; after `main` returned 42, the destructor
+printed and the process retained status 42.
 A common slide `δ` preserves a same-section displacement:
 `(S + δ) - (P + 4 + δ) = S - (P + 4)`. For the measured external Clang
 relocation, the linker combines the stored addend with the resolved symbol

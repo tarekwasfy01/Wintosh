@@ -17,6 +17,7 @@
 #include <cstdio>
 #include <functional>
 #include <limits>
+#include <mutex>
 #include <set>
 #include <stdexcept>
 #include <system_error>
@@ -38,6 +39,17 @@ bool DecodeDarwinX86_64StubFrame(const std::uintptr_t* metadata_stack,
 
 namespace {
 thread_local const MachOLazyBindingSession* active_lazy_binding_session = nullptr;
+std::mutex active_lazy_binding_sessions_mutex;
+std::vector<const MachOLazyBindingSession*> active_lazy_binding_sessions;
+
+void RemoveActiveLazyBindingSession(const MachOLazyBindingSession* session) noexcept
+{
+	std::lock_guard lock(active_lazy_binding_sessions_mutex);
+	const auto found = std::find(active_lazy_binding_sessions.rbegin(),
+		active_lazy_binding_sessions.rend(), session);
+	if (found != active_lazy_binding_sessions.rend())
+		active_lazy_binding_sessions.erase(std::next(found).base());
+}
 }
 
 #if defined(_WIN64) && defined(__clang__)
@@ -1321,15 +1333,17 @@ std::vector<MachOImage::IndirectImportSlot> MachOImage::IndirectImportSlots() co
 			continue;
 		if (section.size % pointer_size != 0)
 			throw std::runtime_error("Mach-O indirect symbol section is misaligned");
+		const bool lazy = section_type == 0x7u ||
+			section.section_name == "__la_symbol_ptr";
 		for (std::uint64_t offset = 0; offset < section.size; offset += pointer_size)
 			slots.push_back({section.address + offset,
-				static_cast<std::uint32_t>(indirect_index++)});
+				static_cast<std::uint32_t>(indirect_index++), lazy});
 	}
 	return slots;
 }
 
 void MachOImage::ApplyIndirectImportBindings(const Mapping& mapping,
-	const std::vector<DyldResolvedBinding>& bindings) const
+	const std::vector<DyldResolvedBinding>& bindings, bool bind_lazy) const
 {
 	// Modern chained-fixups images carry their import locations in the chained
 	// starts table.  Some toolchains retain a legacy indirect-symbol table for
@@ -1345,6 +1359,8 @@ void MachOImage::ApplyIndirectImportBindings(const Mapping& mapping,
 	for (const auto& slot : slots) {
 		if (slot.symbol_index >= m_indirect_symbols.size())
 			throw std::out_of_range("Mach-O indirect symbol table exceeds import slots");
+		if (slot.lazy && !bind_lazy)
+			continue;
 		const auto symbol_index = m_indirect_symbols[slot.symbol_index];
 		if ((symbol_index & 0xC0000000u) != 0)
 			continue; // LOCAL and ABSOLUTE entries are not imported bindings.
@@ -2874,39 +2890,79 @@ std::optional<std::size_t> MachOLazyBindingSession::FindActionForSlot(
 
 MachOLazyBindingSession::Activation::Activation(
 	const MachOLazyBindingSession* session) noexcept
-	: previous_(active_lazy_binding_session), active_(true)
+	: previous_(active_lazy_binding_session), session_(session), active_(true)
 {
 	active_lazy_binding_session = session;
+	try {
+		std::lock_guard lock(active_lazy_binding_sessions_mutex);
+		active_lazy_binding_sessions.push_back(session);
+	} catch (...) {
+		// Activation is noexcept. If bookkeeping allocation fails, the binder
+		// fails closed instead of terminating the host process.
+	}
 }
 
 MachOLazyBindingSession::Activation::Activation(Activation&& other) noexcept
-	: previous_(other.previous_), active_(other.active_)
+	: previous_(other.previous_), session_(other.session_), active_(other.active_)
 {
 	other.active_ = false;
+	other.session_ = nullptr;
 }
 
 MachOLazyBindingSession::Activation& MachOLazyBindingSession::Activation::operator=(
 	Activation&& other) noexcept
 {
 	if (this != &other) {
-		if (active_)
+		if (active_) {
 			active_lazy_binding_session = previous_;
+			RemoveActiveLazyBindingSession(session_);
+		}
 		previous_ = other.previous_;
+		session_ = other.session_;
 		active_ = other.active_;
 		other.active_ = false;
+		other.session_ = nullptr;
 	}
 	return *this;
 }
 
 MachOLazyBindingSession::Activation::~Activation() noexcept
 {
-	if (active_)
+	if (active_) {
 		active_lazy_binding_session = previous_;
+		RemoveActiveLazyBindingSession(session_);
+	}
 }
 
 const MachOLazyBindingSession* MachOLazyBindingSession::Current() noexcept
 {
 	return active_lazy_binding_session;
+}
+
+bool MachOLazyBindingSession::OwnsImageCacheAddress(
+	std::uintptr_t image_cache) const noexcept
+{
+	if (image_cache == 0) return false;
+	for (const auto& segment : m_mapping.Segments()) {
+		if (segment.size != 0 && segment.address != 0 &&
+			image_cache >= segment.address &&
+			image_cache - segment.address < segment.size)
+			return true;
+	}
+	return false;
+}
+
+std::optional<std::uintptr_t> MachOLazyBindingSession::ResolveActiveForImage(
+	std::uintptr_t image_cache, std::uintptr_t lazy_binding_info)
+{
+	std::lock_guard lock(active_lazy_binding_sessions_mutex);
+	for (auto session = active_lazy_binding_sessions.rbegin();
+		session != active_lazy_binding_sessions.rend(); ++session) {
+		if ((*session)->OwnsImageCacheAddress(image_cache) &&
+			(*session)->FindActionForLazyInfo(lazy_binding_info).has_value())
+			return (*session)->ResolveForLazyInfo(lazy_binding_info);
+	}
+	return std::nullopt;
 }
 
 } // namespace darling::windows_host

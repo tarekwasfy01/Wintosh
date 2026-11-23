@@ -64,3 +64,12 @@ mapped `__TEXT` segment when present. The standalone host-call path
 still exposes native modules for host diagnostics. dyld add/remove callbacks,
 and synchronized notifications during concurrent image unload, are not yet
 implemented.
+
+Classic x86_64 images without chained fixups now keep lazy bind actions and
+`__la_symbol_ptr` slots unresolved during startup. The stub-helper trampoline
+passes the image-cache address and lazy-stream offset; the host selects the
+session by mapped image range and resolves the import on first call. Sessions
+remain active across initializers, guest entry and terminators, including
+calls from guest-created host threads. ARM64, 32-bit, chained-fixup images
+and dynamic loading remain eager. A real macOS Mach-O fixture has not yet
+verified the end-to-end stub-helper call and slot update.

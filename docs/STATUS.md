@@ -2109,3 +2109,14 @@ still no linked ARM64 runner or Mach-O guest execution evidence. Unsupported
 method encodings, broader
 aggregate/overflow cases, and red-zone behavior remain open. See the ARM64
 dispatch matrix in `docs/porting/MATHEMATICAL-MODEL.md` and `abi/README.md`.
+
+### Classic x86_64 lazy binding at first call (2026-11-23)
+
+For images without chained fixups, bootstrap now preserves lazy bind actions
+and lazy indirect-symbol slots instead of applying them at startup. Persistent
+per-image sessions use the stub-helper image-cache address and lazy-stream
+offset to select and resolve the import on first call. The session registry
+also supports guest calls made from another host thread. ARM64, 32-bit and
+chained-fixup images remain eager, as does dynamic loading. The x64 executable
+and ARM64 host library build successfully. No guest fixture or runtime test
+was run, so the actual Apple stub-helper-to-slot path remains unverified.

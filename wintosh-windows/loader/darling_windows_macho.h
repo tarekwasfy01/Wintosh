@@ -396,10 +396,12 @@ public:
 	struct IndirectImportSlot final {
 		std::uint64_t address = 0;
 		std::uint32_t symbol_index = 0;
+		bool lazy = false;
 	};
 	[[nodiscard]] std::vector<IndirectImportSlot> IndirectImportSlots() const;
 	void ApplyIndirectImportBindings(const Mapping& mapping,
-		const std::vector<DyldResolvedBinding>& bindings) const;
+		const std::vector<DyldResolvedBinding>& bindings,
+		bool bind_lazy = true) const;
 	[[nodiscard]] const std::vector<MachOReexport>& Reexports() const noexcept { return m_reexports; }
 	[[nodiscard]] static bool IsWeakUndefined(const MachOSymbol& symbol) noexcept;
 	[[nodiscard]] static bool IsFlatLookupUndefined(const MachOSymbol& symbol) noexcept;
@@ -547,6 +549,7 @@ public:
 		friend class MachOLazyBindingSession;
 		explicit Activation(const MachOLazyBindingSession* session) noexcept;
 		const MachOLazyBindingSession* previous_ = nullptr;
+		const MachOLazyBindingSession* session_ = nullptr;
 		bool active_ = false;
 	};
 
@@ -561,6 +564,10 @@ public:
 		std::uintptr_t lazy_binding_info) const noexcept;
 	[[nodiscard]] std::optional<std::uintptr_t> ResolveForLazyInfo(
 		std::uintptr_t lazy_binding_info) const;
+	[[nodiscard]] bool OwnsImageCacheAddress(
+		std::uintptr_t image_cache) const noexcept;
+	[[nodiscard]] static std::optional<std::uintptr_t> ResolveActiveForImage(
+		std::uintptr_t image_cache, std::uintptr_t lazy_binding_info);
 	[[nodiscard]] std::optional<std::size_t> FindActionForSlot(
 		std::uintptr_t slot_address) const noexcept;
 	[[nodiscard]] Activation Activate() const noexcept { return Activation(this); }

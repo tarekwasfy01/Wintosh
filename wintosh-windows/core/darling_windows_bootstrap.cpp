@@ -22,6 +22,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <limits>
+#include <memory>
 #include <stdexcept>
 #include <system_error>
 #include <utility>
@@ -65,6 +66,15 @@ std::uintptr_t MappedTLVSectionAddress(const MachOSection& section,
 	if (address <= 0)
 		throw std::runtime_error("Mach-O TLV section address is invalid");
 	return static_cast<std::uintptr_t>(address);
+}
+
+bool BindLazyAtLaunch(const MachOImage& image)
+{
+	// The classic x86_64 stub-helper protocol is the only path currently wired
+	// to the Windows binder trampoline. Other formats remain eagerly resolved.
+	return image.IsArm64() || image.Is32Bit() || !image.ChainedFixups().empty() ||
+		std::none_of(image.BindActions().begin(), image.BindActions().end(),
+			[](const DyldBindAction& action) { return action.lazy; });
 }
 
 std::vector<std::byte> BuildTLVTemplate(const MachOImage& image,
@@ -486,11 +496,13 @@ int DarwinBootstrap::Run(const std::filesystem::path& image_path,
 			provider.image.ApplyRelocations(provider.mapping, relocation_addresses, true);
 		if (!provider_bindings.empty()) {
 			provider.image.ApplyBindActions(provider.mapping, provider_bindings);
-			MachOLazyBindingSession(provider.image, provider.mapping,
-				provider_bindings).ApplyAll();
+			if (BindLazyAtLaunch(provider.image))
+				MachOLazyBindingSession(provider.image, provider.mapping,
+					provider_bindings).ApplyAll();
 			provider.image.ApplyChainedFixups(provider.mapping, provider_bindings);
 		}
-		provider.image.ApplyIndirectImportBindings(provider.mapping, provider_bindings);
+		provider.image.ApplyIndirectImportBindings(provider.mapping, provider_bindings,
+			BindLazyAtLaunch(provider.image));
 	}
 	auto main_bindings = bindings_for_client(image_path);
 	image.ApplyRebaseActions(mapping);
@@ -516,14 +528,15 @@ int DarwinBootstrap::Run(const std::filesystem::path& image_path,
 		image.ApplyRelocations(mapping, relocation_addresses, true);
 	if (!main_bindings.empty()) {
 		image.ApplyBindActions(mapping, main_bindings);
-		MachOLazyBindingSession(image, mapping, main_bindings).ApplyAll();
+		if (BindLazyAtLaunch(image))
+			MachOLazyBindingSession(image, mapping, main_bindings).ApplyAll();
 		image.ApplyChainedFixups(mapping, main_bindings);
 	}
-	image.ApplyIndirectImportBindings(mapping, main_bindings);
+	image.ApplyIndirectImportBindings(mapping, main_bindings, BindLazyAtLaunch(image));
 	const auto reapply_client_bindings = [](const MachOImage& target_image,
 		const MachOImage::Mapping& target_mapping,
 		const std::vector<DyldResolvedBinding>& client_bindings,
-		bool defer_unreachable_external) {
+		bool defer_unreachable_external, bool bind_lazy_at_launch) {
 		std::vector<std::uintptr_t> symbol_addresses(target_image.Symbols().size());
 		for (std::size_t index = 0; index < target_image.Symbols().size(); ++index) {
 			const auto& symbol = target_image.Symbols()[index];
@@ -548,19 +561,22 @@ int DarwinBootstrap::Run(const std::filesystem::path& image_path,
 			target_image.ApplyRelocations(target_mapping, symbol_addresses,
 				defer_unreachable_external);
 		target_image.ApplyBindActions(target_mapping, client_bindings);
-		MachOLazyBindingSession(target_image, target_mapping,
-			client_bindings).ApplyAll();
+		if (bind_lazy_at_launch)
+			MachOLazyBindingSession(target_image, target_mapping,
+				client_bindings).ApplyAll();
 		target_image.ApplyChainedFixups(target_mapping, client_bindings);
-		target_image.ApplyIndirectImportBindings(target_mapping, client_bindings);
+		target_image.ApplyIndirectImportBindings(target_mapping, client_bindings,
+			bind_lazy_at_launch);
 	};
 	auto reapply_all_images = [&]() {
 		for (auto& provider : providers) {
 			const auto client_bindings = bindings_for_client(provider.path);
 			reapply_client_bindings(provider.image, provider.mapping,
-				client_bindings, true);
+				client_bindings, true, BindLazyAtLaunch(provider.image));
 		}
 		main_bindings = bindings_for_client(image_path);
-		reapply_client_bindings(image, mapping, main_bindings, false);
+		reapply_client_bindings(image, mapping, main_bindings, false,
+			BindLazyAtLaunch(image));
 	};
 	const auto resolve_export = [&](const DylibExportResolver& resolver) {
 		const MachOImage* owner_image = nullptr;
@@ -613,24 +629,37 @@ int DarwinBootstrap::Run(const std::filesystem::path& image_path,
 	// therefore call into any already loaded image before it selects targets.
 	for (const auto& resolver : DylibGraph::ExportResolverOrder(bindings))
 		resolve_export(resolver);
-	// Finish binding every image before running any initializer. A dylib
-	// initializer may call into the main image or another dependency.
+	// Keep one lazy-binding session per image alive through initialization,
+	// entry and termination. The image-cache argument lets the binder select
+	// the owning session even when guest code calls from another host thread.
+	std::vector<std::unique_ptr<std::vector<DyldResolvedBinding>>> lazy_bindings;
+	lazy_bindings.reserve(providers.size() + 1);
+	std::vector<std::unique_ptr<MachOLazyBindingSession>> lazy_sessions;
+	lazy_sessions.reserve(providers.size() + 1);
 	for (auto& provider : providers) {
-		auto provider_bindings = bindings_for_client(provider.path);
-		MachOLazyBindingSession provider_binding_session(provider.image,
-			provider.mapping, provider_bindings);
-		auto provider_binding_activation = provider_binding_session.Activate();
+		lazy_bindings.push_back(std::make_unique<std::vector<DyldResolvedBinding>>(
+			bindings_for_client(provider.path)));
+		lazy_sessions.push_back(std::make_unique<MachOLazyBindingSession>(
+			provider.image, provider.mapping, *lazy_bindings.back()));
+	}
+	main_bindings = bindings_for_client(image_path);
+	lazy_bindings.push_back(std::make_unique<std::vector<DyldResolvedBinding>>(
+		main_bindings));
+	lazy_sessions.push_back(std::make_unique<MachOLazyBindingSession>(
+		image, mapping, *lazy_bindings.back()));
+	std::vector<MachOLazyBindingSession::Activation> lazy_activations;
+	lazy_activations.reserve(lazy_sessions.size());
+	for (const auto& session : lazy_sessions)
+		lazy_activations.push_back(session->Activate());
+	// Every image is bound before initializers run; an initializer may call
+	// into the main image or any dependency.
+	for (auto& provider : providers) {
 		RegisterObjectiveCSections(provider.image, provider.mapping);
 		provider.image.ExecuteInitializers(provider.mapping);
 	}
 	RegisterObjectiveCSections(image, mapping);
 	image.ExecuteInitializers(mapping);
-	// Keep the main image's lazy-binding context active for the complete guest
-	// entry lifetime.  The eager ApplyAll() calls above intentionally use
-	// short-lived sessions; dyld_stub_binder needs a session that still exists
-	// when guest code later enters an unresolved lazy stub.
-	MachOLazyBindingSession entry_binding_session(image, mapping, main_bindings);
-	auto entry_binding_activation = entry_binding_session.Activate();
+	// Activations above remain alive until terminators finish.
 	const auto exit_code = image.ExecuteEntry(mapping, options.arguments,
 		options.environment, options.apple_parameters, options.entry_abi);
 	// A normal return from the Darwin entry is the process-level exit path.

@@ -73,9 +73,13 @@ existing path. Objective-C message dispatch now also invokes `+initialize`
 once per class, superclass first. The class state machine lets same-thread
 recursive messages proceed while other threads wait for initialization to
 finish; `objc_smoke` verifies parent-before-child order, reentrancy, and the
-one-shot rule. This evidence covers the native-compatible host dispatcher.
-ARM64 guest callbacks still bypass that state machine and need to be routed
-through the guest-call dispatcher before this behavior can be claimed there.
+one-shot rule. The x64 Dynarmic runner installs a guest-method invoker around
+its callback loop, so guest `+initialize` runs as ARM64 code with the original
+guest register and stack state. The ARM64 import fixture now gives its base
+class and subclass initializers ordered side effects, then verifies the
+subclass observes the final order through `objc_msgSend`; the e2e run exits 42.
+ARM64 `+load` remains a separate startup-time gap because image registration
+occurs before this execution callback context exists.
 
 ## Mach broker update, 2026-11-23
 

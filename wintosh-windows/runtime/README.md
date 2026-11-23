@@ -34,13 +34,17 @@ method dispatch. After an image's C/C++ initializers, class `+load` callbacks
 run superclass first, followed by that image's category `+load` callbacks.
 The `objc_smoke` fixture checks both rules, including a subclass listed before
 its superclass. On x64 Windows, an ARM64 image containing `+load` is rejected
-until the cross-architecture guest-call trampoline supports this lifecycle;
-ARM64 images without `+load` retain the existing path. `+initialize` is not
-called once per class by the native-compatible Objective-C message dispatcher,
-after its superclass has initialized. Reentrant messages from the initializing
-thread proceed, and competing threads wait. The smoke test verifies inheritance,
-reentrancy, and one-shot behavior. ARM64 guest callbacks are not yet connected
-to this initialization state machine.
+until image startup callbacks can use the guest-call dispatcher; ARM64 images
+without `+load` retain the existing path.
+
+The Objective-C message dispatcher calls `+initialize` once per class, after
+its superclass has initialized. Reentrant messages from the initializing
+thread proceed, and competing threads wait. `objc_smoke` verifies inheritance,
+reentrancy, and one-shot behavior. For ARM64 guests on x64 Windows, the Dynarmic
+callback loop invokes guest `+initialize` implementations using guest register
+and stack state; the ARM64 end-to-end fixture checks superclass-before-subclass
+initialization. ARM64 `+load` remains a startup-time gap because image
+registration precedes the guest execution callback context.
 The Win32 target compiles the host library and runner and has launched a
 hand-built i386 `LC_MAIN` Mach-O with no imports; its compatible `main` returned
 42. This confirms the basic mapping and cdecl entry path, not general app

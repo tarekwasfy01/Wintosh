@@ -743,6 +743,11 @@ std::string CanonicalObjcEncoding(const std::string& encoding);
 
 } // namespace
 
+namespace {
+thread_local darling_objc_guest_method_invoker active_guest_method_invoker = nullptr;
+thread_local void* active_guest_method_invoker_context = nullptr;
+}
+
 void EnsureClassInitialized(Class cls)
 {
 	if (!cls || cls->is_metaclass) return;
@@ -760,9 +765,15 @@ void EnsureClassInitialized(Class cls)
 	try {
 		const SEL initialize = sel_registerName("initialize");
 		const auto method = LookupMethodSnapshot(cls, initialize, true);
-		if (method.implementation && CanonicalObjcEncoding(method.types) == "v@:")
-			InvokeObjcImplementation<void>(method.implementation, method.guest_abi,
-				reinterpret_cast<id>(cls), initialize);
+		if (method.implementation && CanonicalObjcEncoding(method.types) == "v@:") {
+			if (method.guest_abi && active_guest_method_invoker)
+				active_guest_method_invoker(method.implementation,
+					reinterpret_cast<id>(cls), initialize,
+					active_guest_method_invoker_context);
+			else
+				InvokeObjcImplementation<void>(method.implementation,
+					method.guest_abi, reinterpret_cast<id>(cls), initialize);
+		}
 	} catch (...) {
 		{
 			std::lock_guard lock(cls->initialization_mutex);
@@ -778,6 +789,22 @@ void EnsureClassInitialized(Class cls)
 		cls->initializing_thread = {};
 	}
 	cls->initialization_changed.notify_all();
+}
+
+extern "C" darling_objc_guest_method_invoker darling_objc_set_guest_method_invoker(
+	darling_objc_guest_method_invoker invoker, void* context,
+	void** previous_context)
+{
+	const auto previous = active_guest_method_invoker;
+	if (previous_context) *previous_context = active_guest_method_invoker_context;
+	active_guest_method_invoker = invoker;
+	active_guest_method_invoker_context = context;
+	return previous;
+}
+
+extern "C" void darling_objc_ensure_class_initialized(Class cls)
+{
+	EnsureClassInitialized(cls);
 }
 
 namespace {
@@ -4651,6 +4678,8 @@ extern "C" void darling_windows_objc_arm64_message_dispatch(
 	}
 	if (!lookup) return;
 	const bool class_method = object_isClass(receiver);
+	EnsureClassInitialized(class_method ? reinterpret_cast<Class>(receiver) :
+		receiver->isa);
 	const Method method = class_method ? class_getClassMethod(lookup, selector) :
 		class_getInstanceMethod(lookup, selector);
 	const IMP implementation = method ? method_getImplementation(method) : nullptr;

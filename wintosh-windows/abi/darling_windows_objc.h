@@ -83,6 +83,12 @@ darling_objc_image_token* DARLING_OBJC_GUEST_ABI darling_objc_begin_image_regist
 void DARLING_OBJC_GUEST_ABI darling_objc_end_image_registration(darling_objc_image_token* token);
 bool DARLING_OBJC_GUEST_ABI darling_objc_load_image(darling_objc_image_token* token,
 	bool arm64_guest);
+using darling_objc_guest_method_invoker = void (*)(IMP implementation,
+	id receiver, SEL selector, void* context);
+darling_objc_guest_method_invoker DARLING_OBJC_GUEST_ABI
+darling_objc_set_guest_method_invoker(darling_objc_guest_method_invoker invoker,
+	void* context, void** previous_context);
+void DARLING_OBJC_GUEST_ABI darling_objc_ensure_class_initialized(Class cls);
 void DARLING_OBJC_GUEST_ABI darling_objc_unregister_image(darling_objc_image_token* token);
 Protocol DARLING_OBJC_GUEST_ABI objc_allocateProtocol(const char* name);
 Protocol DARLING_OBJC_GUEST_ABI objc_getProtocol(const char* name);

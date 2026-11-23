@@ -3493,6 +3493,23 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 		std::function<A64ExecutionResult(A64CpuState, unsigned)> run_guest_callback;
 		std::function<A64CpuState(const A64ExecutionResult&, unsigned)>
 			dispatch_guest_import;
+		A64CpuState initializer_seed = cpu;
+		unsigned initializer_depth = 0;
+		struct GuestInitializerContext final {
+			A64CpuState* seed;
+			unsigned* depth;
+			std::function<A64ExecutionResult(A64CpuState, unsigned)>* run;
+		} initializer_context{&initializer_seed, &initializer_depth,
+			&run_guest_callback};
+		const auto invoke_guest_initializer = +[](IMP implementation, id receiver,
+			SEL selector, void* opaque) {
+			auto& context = *static_cast<GuestInitializerContext*>(opaque);
+			A64CpuState callback = *context.seed;
+			callback.pc = reinterpret_cast<std::uintptr_t>(implementation);
+			callback.x[0] = reinterpret_cast<std::uintptr_t>(receiver);
+			callback.x[1] = reinterpret_cast<std::uintptr_t>(selector);
+			(void)(*context.run)(callback, *context.depth + 1);
+		};
 		dispatch_guest_import = [&](const A64ExecutionResult& trap,
 			unsigned depth) -> A64CpuState {
 			if (!trap.svc || *trap.svc != 0x82)
@@ -3514,6 +3531,12 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 					static_cast<std::uintptr_t>(x[0]));
 				const auto selector = reinterpret_cast<SEL>(
 					static_cast<std::uintptr_t>(x[1]));
+				if (receiver) {
+					initializer_seed = trap.state;
+					initializer_depth = depth;
+					darling_objc_ensure_class_initialized(object_isClass(receiver) ?
+						reinterpret_cast<Class>(receiver) : object_getClass(receiver));
+				}
 				const auto cls = receiver && object_isClass(receiver) ?
 					reinterpret_cast<Class>(receiver) : nullptr;
 				const auto method = cls ? class_getClassMethod(cls, selector) :
@@ -3657,6 +3680,20 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 				throw std::runtime_error("ARM64 Objective-C guest callback stopped before return");
 			}
 		};
+		void* previous_invoker_context = nullptr;
+		const auto previous_invoker = darling_objc_set_guest_method_invoker(
+			invoke_guest_initializer, &initializer_context,
+			&previous_invoker_context);
+		struct RestoreGuestInitializerInvoker final {
+			darling_objc_guest_method_invoker invoker;
+			void* context;
+			~RestoreGuestInitializerInvoker()
+			{
+				(void)darling_objc_set_guest_method_invoker(invoker, context,
+					nullptr);
+			}
+		} restore_initializer_invoker{previous_invoker,
+			previous_invoker_context};
 		for (;;) {
 			const auto result = backend.Run(cpu);
 			if (result.state.pc == return_sentinel ||
@@ -3684,6 +3721,13 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 								static_cast<std::uintptr_t>(x[0]));
 							const auto selector = reinterpret_cast<SEL>(
 								static_cast<std::uintptr_t>(x[1]));
+							if (receiver) {
+								initializer_seed = result.state;
+								initializer_depth = 0;
+								darling_objc_ensure_class_initialized(
+									object_isClass(receiver) ? reinterpret_cast<Class>(receiver) :
+									object_getClass(receiver));
+							}
 							const auto cls = receiver && object_isClass(receiver) ?
 								reinterpret_cast<Class>(receiver) : nullptr;
 							const auto method = cls ? class_getClassMethod(cls, selector) :

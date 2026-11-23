@@ -50,6 +50,9 @@ The dynamic ARM64 fixture resolves a three-image dylib graph through a bare
 `@loader_path` runpath inherited from the root image; the leaf and middle
 images declare no local runpath. It checks dependency-first startup and reverse
 shutdown. This is one small graph, not broad bundle coverage.
+Repeated `dlopen` of the same client returns the existing image handle; its
+initializers run once and its mappings and Objective-C registrations remain
+until the last matching `dlclose`.
 
 The Objective-C message dispatcher calls `+initialize` once per class, after
 its superclass has initialized. Reentrant messages from the initializing

@@ -247,9 +247,17 @@ int main(int argc, char **argv, char **envp)
 			(void)write(2, error, strlen(error));
 		return 6;
 	}
+	void *dynamic_image_second_reference = dlopen(argv[1], 2);
+	if (dynamic_image_second_reference != dynamic_image)
+		return 10;
 	WintoshDynamicAnswer dynamic_answer =
 		(WintoshDynamicAnswer)dlsym(dynamic_image, "wintosh_dynamic_answer");
-	if (dynamic_answer == (WintoshDynamicAnswer)0 || dynamic_answer() != 42)
+	WintoshDynamicAnswer dynamic_answer_second_reference =
+		(WintoshDynamicAnswer)dlsym(dynamic_image_second_reference,
+			"wintosh_dynamic_answer");
+	if (dynamic_answer == (WintoshDynamicAnswer)0 || dynamic_answer() != 42 ||
+		dynamic_answer_second_reference != dynamic_answer ||
+		dynamic_answer_second_reference() != 42)
 		return 7;
 	Class dynamic_probe = objc_getClass("WintoshDynamicLoadProbe");
 	SEL dynamic_answer_selector = sel_registerName("dynamicAnswer");
@@ -260,8 +268,13 @@ int main(int argc, char **argv, char **envp)
 		dynamic_send((id)dynamic_probe, dynamic_answer_selector) != 84 ||
 		dynamic_send((id)dynamic_probe, dynamic_category_selector) != 126)
 		return 9;
-	if (dlclose(dynamic_image) != 0)
+	if (dlclose(dynamic_image) != 0 ||
+		dynamic_answer_second_reference() != 42 ||
+		dynamic_send((id)dynamic_probe, dynamic_answer_selector) != 84)
 		return 8;
+	if (dlclose(dynamic_image_second_reference) != 0 ||
+		objc_getClass("WintoshDynamicLoadProbe") != (Class)0)
+		return 11;
 	Class probe = objc_getClass("WintoshProbe");
 	SEL answer = sel_registerName("answer");
 	SEL inherited_answer = sel_registerName("inheritedAnswer");

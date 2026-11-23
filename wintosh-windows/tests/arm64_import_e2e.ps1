@@ -143,4 +143,22 @@ if ($objcText -notmatch 'ARM64_CXA_ATEXIT=PASS' -or
 	$objcText.IndexOf('ARM64_TERMINATOR=PASS')) {
 	throw "ARM64 atexit/terminator callbacks did not run: $objcText"
 }
+$onceMarkers = @(
+	'ARM64_DYLIB_INIT=PASS',
+	'ARM64_DEPENDENCY_INIT=PASS',
+	'ARM64_NESTED_DEPENDENCY_INIT=PASS',
+	'ARM64_DYLIB_OBJC_LOAD=PASS',
+	'ARM64_DYLIB_CATEGORY_LOAD=PASS',
+	'ARM64_DYLIB_CXA=PASS',
+	'ARM64_DYLIB_MOD_TERM=PASS',
+	'ARM64_DEPENDENCY_CXA=PASS',
+	'ARM64_DEPENDENCY_MOD_TERM=PASS',
+	'ARM64_NESTED_DEPENDENCY_CXA=PASS',
+	'ARM64_NESTED_DEPENDENCY_MOD_TERM=PASS'
+)
+foreach ($marker in $onceMarkers) {
+	if ([regex]::Matches($objcText, [regex]::Escape($marker)).Count -ne 1) {
+		throw "ARM64 repeated dlopen changed marker count for ${marker}: $objcText"
+	}
+}
 Write-Output 'ARM64_HOST_IMPORT_E2E=PASS IMPORT=_strlen EXIT=42 OBJC=objc_msgSend_scalar_pointer_stack_hfa_indirect_nested_heap_svc'

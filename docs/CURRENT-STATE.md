@@ -96,6 +96,10 @@ also links to a second ARM64 dylib through `@rpath`, with `@loader_path` in
 runpath, exercising inherited root runpaths. The fixture checks leaf-to-root
 initialization and reverse termination. This covers one three-image dynamic
 graph only; larger graphs and general application bundles remain unverified.
+Opening that same client dylib twice returns one image handle and keeps its
+initializers and Objective-C registrations alive until the second matching
+`dlclose`; the fixture also verifies that the dynamic class disappears after
+the final close.
 
 ## Mach broker update, 2026-11-23
 

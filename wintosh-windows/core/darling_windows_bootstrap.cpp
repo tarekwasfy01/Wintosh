@@ -316,8 +316,9 @@ int DarwinBootstrap::Run(const std::filesystem::path& image_path,
 	darling_windows_set_environ_vector(launch_environment.data());
 	// Open through MachOImage first so fat binaries are sliced to the best
 	// supported architecture before the bootstrap validates the header.
-	const auto image = MachOImage::Open(image_path.wstring());
+	const auto image = MachOImage::Open(image_path.wstring(), options.preferred_cpu_type);
 	const auto& header = image.Header();
+	SetDynamicImagePreferredCpuType(header.cpu_type);
 	if ((header.magic == MH_MAGIC && header.cpu_type != CPU_TYPE_X86) ||
 		(header.magic == MH_MAGIC_64 && header.cpu_type != CPU_TYPE_X86_64 &&
 			header.cpu_type != CPU_TYPE_ARM64)) {
@@ -327,9 +328,9 @@ int DarwinBootstrap::Run(const std::filesystem::path& image_path,
 	// native entry code executes. Weak dependencies retain their optional
 	// semantics in DylibGraph::Load.
 	const auto dependency_graph = DylibGraph::Load(
-		image_path, options.rpaths, options.prefix);
+		image_path, options.rpaths, options.prefix, header.cpu_type);
 	const auto bindings = DylibGraph::BindImports(
-		image_path, options.rpaths, options.prefix);
+		image_path, options.rpaths, options.prefix, header.cpu_type);
 	const auto mapping = image.MapSegments();
 	const auto preferred_provider_address = mapping.Segments().empty() ? 0 :
 		mapping.Segments().front().address;
@@ -343,7 +344,7 @@ int DarwinBootstrap::Run(const std::filesystem::path& image_path,
 		const auto normalized = node.path.lexically_normal();
 		if (normalized == image_path.lexically_normal())
 			continue;
-		MachOImage provider_image = MachOImage::Open(normalized.wstring());
+		MachOImage provider_image = MachOImage::Open(normalized.wstring(), header.cpu_type);
 		providers.push_back({normalized, std::move(provider_image), {}});
 		providers.back().mapping = providers.back().image.MapSegments(
 			preferred_provider_address);
@@ -389,7 +390,7 @@ int DarwinBootstrap::Run(const std::filesystem::path& image_path,
 				return candidate.path == normalized;
 			});
 		if (provider == providers.end()) {
-			MachOImage provider_image = MachOImage::Open(normalized.wstring());
+			MachOImage provider_image = MachOImage::Open(normalized.wstring(), header.cpu_type);
 			providers.push_back({normalized, std::move(provider_image), {}});
 			providers.back().mapping = providers.back().image.MapSegments(
 				preferred_provider_address);
@@ -419,7 +420,7 @@ int DarwinBootstrap::Run(const std::filesystem::path& image_path,
 		return client_bindings;
 	};
 	const auto initialization_order = DylibGraph::InitializationOrder(
-		image_path, options.rpaths, options.prefix);
+		image_path, options.rpaths, options.prefix, header.cpu_type);
 	const auto provider_rank = [&initialization_order](
 		const std::filesystem::path& path) {
 		const auto found = std::find(initialization_order.begin(),
@@ -662,7 +663,7 @@ int DarwinBootstrap::Run(const std::filesystem::path& image_path,
 	};
 	// All images are now mapped, rebased and initially bound. Resolver code can
 	// therefore call into any already loaded image before it selects targets.
-	for (const auto& resolver : DylibGraph::ExportResolverOrder(bindings))
+	for (const auto& resolver : DylibGraph::ExportResolverOrder(bindings, header.cpu_type))
 		resolve_export(resolver);
 	// Keep one lazy-binding session per image alive through initialization,
 	// entry and termination. The image-cache argument lets the binder select
@@ -712,8 +713,14 @@ int DarwinBootstrap::Run(const std::filesystem::path& image_path,
 		}
 	}
 	// Activations above remain alive until terminators finish.
+	std::vector<std::pair<const MachOImage*, const MachOImage::Mapping*>>
+		additional_guest_images;
+	additional_guest_images.reserve(providers.size());
+	for (const auto& provider : providers)
+		additional_guest_images.emplace_back(&provider.image, &provider.mapping);
 	const auto exit_code = image.ExecuteEntry(mapping, options.arguments,
-		options.environment, options.apple_parameters, options.entry_abi);
+		options.environment, options.apple_parameters, options.entry_abi,
+		additional_guest_images);
 	// A normal return from the Darwin entry is the process-level exit path.
 	// Run the existing atexit/__cxa_atexit registry before image terminators;
 	// guest _exit remains an immediate ExitProcess and never reaches here.

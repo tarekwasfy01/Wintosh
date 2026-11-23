@@ -14,6 +14,7 @@
 #include <array>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace darling::windows_host {
@@ -366,7 +367,8 @@ class MachOImage final {
 public:
 	class Mapping;
 
-	static MachOImage Open(const std::wstring& path);
+	static MachOImage Open(const std::wstring& path,
+		std::int32_t preferred_cpu_type = 0);
 	MachOImage(const MachOImage&) = delete;
 	MachOImage& operator=(const MachOImage&) = delete;
 	MachOImage(MachOImage&& other) noexcept;
@@ -464,7 +466,8 @@ public:
 		const std::vector<std::string>& arguments,
 		const std::vector<std::string>& environment = {},
 		const std::vector<std::string>& apple_parameters = {},
-		DarwinEntryAbi entry_abi = DarwinEntryAbi::CompatibleMain) const;
+		DarwinEntryAbi entry_abi = DarwinEntryAbi::CompatibleMain,
+		const std::vector<std::pair<const MachOImage*, const Mapping*>>& additional_images = {}) const;
 
 private:
 	MachOImage(HANDLE file, HANDLE mapping, const std::uint8_t* view,

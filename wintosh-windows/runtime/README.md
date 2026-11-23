@@ -5,9 +5,14 @@ adapter.
 
 The runner accepts a Mach-O image or an application `.app` bundle and invokes the mapped entry point after the
 current parser, dyld graph, relocations, bindings, initializers, and Windows
-page protections have been applied. On an x86_64 Windows build this execution
-path is limited to x86_64 Mach-O images whose entry ABI and imported symbols
-are compatible with the Wintosh bridge.
+page protections have been applied. Native x86_64 Mach-O images can enter when
+their ABI and imports are compatible with the Wintosh bridge. A Clang x64 build
+configured with Dynarmic can also select ARM64 Mach-O slices using
+`--arch arm64`; the selected
+CPU type is propagated through the complete dylib graph, and mapped ARM64
+provider segments join the guest executable address space. This enables
+guest-to-guest ARM64 calls across loaded images, but does not supply the still
+missing ARM64-to-Windows import ABI bridge.
 The Win32 target compiles the host library and runner and has launched a
 hand-built i386 `LC_MAIN` Mach-O with no imports; its compatible `main` returned
 42. This confirms the basic mapping and cdecl entry path, not general app
@@ -115,6 +120,7 @@ wintosh-run.exe --inspect path\to\program
 wintosh-run.exe --diagnose-host
 wintosh-run.exe --init-prefix path\to\darwin-prefix
 wintosh-run.exe --startup-abi darwin path\to\darwin-start
+wintosh-run.exe --arch arm64 path\to\universal-app arg1
 wintosh-run.exe path\to\program arg1 arg2
 ```
 
@@ -122,8 +128,11 @@ wintosh-run.exe path\to\program arg1 arg2
 without entering the image. Execution of i386 Mach-O is rejected on x86_64
 Windows because no CPU translation layer is included. A Win32 build now has a
 native i386 entry path, but its guest execution has not yet been verified with
-a real 32-bit Mach-O runtime fixture. ARM64 execution on x86_64 Windows also
-requires a CPU translation layer.
+a real 32-bit Mach-O runtime fixture. ARM64 execution on x86_64 Windows
+requires a build configured with Dynarmic; `--arch arm64` then selects that
+slice consistently for the executable and all dylib providers. The local
+Release target builds with this backend, but no end-to-end ARM64 app fixture
+has yet verified guest-to-guest calls, host imports, or framework startup.
 `--diagnose-host` is independent of an input image and reports the current
 Windows architecture, pointer width, supported native Mach-O target, prefix
 source, preferred universal-binary slice, and the absence of cross-architecture

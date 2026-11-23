@@ -23,7 +23,8 @@ public:
 		const std::string& dependency,
 		const std::vector<std::filesystem::path>& rpaths,
 		const std::filesystem::path& prefix,
-		const std::filesystem::path& executable_path = {});
+		const std::filesystem::path& executable_path = {},
+		std::int32_t preferred_cpu_type = 0);
 };
 
 struct DylibGraphNode final {
@@ -54,25 +55,31 @@ public:
 	static std::vector<DylibGraphNode> Load(
 		const std::filesystem::path& image_path,
 		const std::vector<std::filesystem::path>& rpaths,
-		const std::filesystem::path& prefix);
+		const std::filesystem::path& prefix,
+		std::int32_t preferred_cpu_type = 0);
 
 	static std::vector<std::filesystem::path> InitializationOrder(
 		const std::filesystem::path& image_path,
 		const std::vector<std::filesystem::path>& rpaths,
-		const std::filesystem::path& prefix);
+		const std::filesystem::path& prefix,
+		std::int32_t preferred_cpu_type = 0);
 
 	static std::vector<DylibBinding> BindImports(
 		const std::filesystem::path& image_path,
 		const std::vector<std::filesystem::path>& rpaths,
-		const std::filesystem::path& prefix);
+		const std::filesystem::path& prefix,
+		std::int32_t preferred_cpu_type = 0);
 
 	static std::vector<DylibExportResolver> ExportResolverOrder(
-		const std::vector<DylibBinding>& bindings);
+		const std::vector<DylibBinding>& bindings,
+		std::int32_t preferred_cpu_type = 0);
 };
 
 class DarwinDynamicImage;
 
-DarwinDynamicImage* OpenDynamicImage(const std::filesystem::path& path);
+void SetDynamicImagePreferredCpuType(std::int32_t cpu_type) noexcept;
+DarwinDynamicImage* OpenDynamicImage(const std::filesystem::path& path,
+	std::int32_t preferred_cpu_type = 0);
 std::uintptr_t DynamicImageSymbol(const DarwinDynamicImage& image,
 	const char* name);
 std::uint32_t DynamicImageDefinedSymbolCount(const DarwinDynamicImage& image) noexcept;

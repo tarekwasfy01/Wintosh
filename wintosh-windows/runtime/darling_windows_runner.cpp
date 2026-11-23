@@ -152,6 +152,7 @@ void Usage()
 		<< L"  --rpath <directory>    Add a dynamic-library search path\n"
 		<< L"  --env KEY=VALUE        Add an environment entry\n"
 		<< L"  --startup-abi <mode>   Use main, synthetic-main, or darwin ABI (default: main)\n"
+		<< L"  --arch <arch>          Select x86_64, arm64, or x86 Mach-O slices\n"
 		<< L"  --apple-param VALUE    Add a Darwin Apple startup parameter\n"
 		<< L"                         WINTOSH_PREFIX may provide a default runtime root\n"
 		<< L"  --                    End options before the Mach-O path\n";
@@ -401,7 +402,8 @@ int wmain(int argc, wchar_t** argv)
 			}
 			if (!end_options && (argument == L"--prefix" ||
 				argument == L"--rpath" || argument == L"--env" ||
-				argument == L"--startup-abi" || argument == L"--apple-param")) {
+				argument == L"--startup-abi" || argument == L"--apple-param" ||
+				argument == L"--arch")) {
 				if (++index >= argc)
 					throw std::runtime_error("missing value for CLI option");
 				const auto value = Utf8(argv[index]);
@@ -413,6 +415,16 @@ int wmain(int argc, wchar_t** argv)
 					SetEnvironment(options.environment, value);
 				else if (argument == L"--apple-param")
 					options.apple_parameters.push_back(value);
+				else if (argument == L"--arch") {
+					if (value == "x86_64")
+						options.preferred_cpu_type = darling::windows_host::CPU_TYPE_X86_64;
+					else if (value == "arm64")
+						options.preferred_cpu_type = darling::windows_host::CPU_TYPE_ARM64;
+					else if (value == "x86")
+						options.preferred_cpu_type = darling::windows_host::CPU_TYPE_X86;
+					else
+						throw std::runtime_error("--arch expects x86_64, arm64, or x86");
+				}
 				else if (value == "main")
 					options.entry_abi = darling::windows_host::DarwinEntryAbi::CompatibleMain;
 				else if (value == "synthetic-main")
@@ -463,7 +475,8 @@ int wmain(int argc, wchar_t** argv)
 		throw std::system_error(static_cast<int>(GetLastError()),
 			std::system_category(), "SetEnvironmentVariableW(WINTOSH_GUEST_PREFIX)");
 	if (inspect) {
-			const auto inspected = darling::windows_host::MachOImage::Open(image.wstring());
+			const auto inspected = darling::windows_host::MachOImage::Open(
+				image.wstring(), options.preferred_cpu_type);
 			const auto& header = inspected.Header();
 			std::wcout << L"path=" << image.wstring() << L"\n"
 				<< L"architecture=" << (inspected.Is32Bit() ? L"x86" :
@@ -491,14 +504,14 @@ int wmain(int argc, wchar_t** argv)
 				std::wcout << L"dependency=" << std::wstring(dependency.begin(), dependency.end()) << L"\n";
 			if (!inspected.Dependencies().empty()) {
 				const auto graph = darling::windows_host::DylibGraph::Load(
-					image, options.rpaths, options.prefix);
+					image, options.rpaths, options.prefix, header.cpu_type);
 				for (const auto& node : graph) {
 					std::wcout << L"image=" << node.path.wstring() << L"\n";
 					for (const auto& dependency : node.dependencies)
 						std::wcout << L"resolved=" << dependency.wstring() << L"\n";
 				}
 				const auto order = darling::windows_host::DylibGraph::InitializationOrder(
-					image, options.rpaths, options.prefix);
+					image, options.rpaths, options.prefix, header.cpu_type);
 				for (const auto& path : order)
 					std::wcout << L"init=" << path.wstring() << L"\n";
 			}

@@ -27,6 +27,9 @@ struct DarwinLaunchOptions final {
 	// entry calls consume argc/argv/envp directly.
 	std::vector<std::string> apple_parameters;
 	DarwinEntryAbi entry_abi = DarwinEntryAbi::CompatibleMain;
+	// Zero keeps host-preferred slice selection; explicit values select a
+	// guest architecture in fat binaries and for every dependency image.
+	std::int32_t preferred_cpu_type = 0;
 };
 
 class DarwinBootstrap final {

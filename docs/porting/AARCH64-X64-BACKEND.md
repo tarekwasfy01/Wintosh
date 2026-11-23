@@ -186,8 +186,13 @@ Implementierung.
 Exklusive ARM64-Stores stoppen fail-closed, weil ein gemeinsamer
 Exclusive-Monitor fehlt. ARM64-Initialisierer und -Terminierer mit Code
 werden ebenfalls abgelehnt. Der Speicherraum umfasst das Hauptexecutable,
-Startpuffer und zur Laufzeit registrierte `mmap`-Bereiche; dyld-Abhängigkeiten
-sind noch nicht Teil dieses Gastspeichermodells. `mmap` reicht die sechs
+alle beim Bootstrap gemappten ARM64-dylib-Segmente, Startpuffer und zur
+Laufzeit registrierte `mmap`-Bereiche. Fat-Binaries können über `--arch arm64`
+auch auf x64-Windows explizit den ARM64-Slice wählen; der CPU-Typ wird für
+Graphauflösung, Bindings, Initialisierer und Provider-Mappings weitergereicht.
+Dadurch können ARM64-Images untereinander aufgelöste Gastfunktionen aufrufen;
+es entsteht noch keine Brücke von ARM64-Gast-ABI zu x64-Hostfunktionen.
+`mmap` reicht die sechs
 Darwin-Argumente an den vorhandenen Windows-Adapter weiter und registriert
 erfolgreiche Bereiche samt Gastrechten. `mprotect` akzeptiert nur vollständig
 abgedeckte, explizit schützbare Bereiche (Executable-Segmente und registrierte
@@ -215,7 +220,7 @@ festgelegt werden.
 | A64-Backend in Wintosh | optionaler Adapter kompiliert und gelinkt; keine Laufzeit-Fixture |
 | A64-Trap-Zustand | x0–x30, v0–v31, SP, PC, PSTATE, FPCR und FPSR rückführbar und fortsetzbar |
 | Darwin-UNIX-SVC | `exit`, `wait4` (mit lokaler Status-/Rusage-Kopie), `read`, `write`, `readv`, `writev`, `pread`, `pwrite`, `open`, `close`, `link`, `unlink`, `chdir`, `chmod`, `fchmod`, `symlink`, `readlink`, `umask`, Prozess-/Gruppen-ID-Aufrufe, `dup`, `dup2`, `pipe`, `socket`, `socketpair`, `connect`, `bind`, `listen`, `accept`, `recvfrom`, `sendto`, `getpeername`, `getsockname`, `shutdown`, `gettimeofday`, `getrusage`, `getpriority`, `setpriority`, `access`, `rename`, `mkdir`, `rmdir`, `fsync`, `fdatasync`, `stat`, `lstat`, `fstat`, `lseek`, `truncate`, `ftruncate`, `mmap`, `munmap` (nur ganzes Mapping), `mprotect`, `msync`, `madvise`, `sysctl` (implementierte zweistufige `KERN`-/`HW`-MIBs), `kill`, `sigaction`, `sigprocmask`; andere UNIX-Nummern liefern `ENOSYS`; kein Mach-Trap-Dispatcher |
-| x64-Host-Gast-Speicherprüfung | Segmentrechte und Bereichsgrenzen im Callback umgesetzt; keine Laufzeit-Fixture |
+| x64-Host-Gast-Speicherprüfung | Segmentrechte und Bereichsgrenzen im Callback umgesetzt; Hauptexecutable, Bootstrap-dylibs, Startpuffer und dynamische Mappings werden registriert; keine Laufzeit-Fixture |
 | A64-Import-Trampoline und ABI-Dispatcher | fehlt |
 | ARM64 Mach-O end-to-end auf x64 Windows | fehlt |
 

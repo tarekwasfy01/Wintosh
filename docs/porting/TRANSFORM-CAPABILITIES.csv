@@ -2,7 +2,7 @@ capability,native,native_test,darwin_linux,wsl1,windows,scope
 macho_fixture,implemented,wintosh_macho_smoke,unknown,unknown,unknown,Repository-owned Mach-O parsing and mapping fixture only
 real_x86_64_lazy_import_fallback,implemented,wintosh_real_import_eager_e2e,unknown,unknown,implemented,"Clang/ld64.lld output with __stub_helper and two __la_symbol_ptr imports executes under WINTOSH_FORCE_EAGER_BIND=1; default first-call binder fails before the second import"
 app_bundle_entry_resolution,implemented,,unknown,unknown,unknown,Resolve .app Contents/Info.plist CFBundleExecutable with shared CoreFoundation XML/binary plist decoder and constrain lookup to Contents/MacOS; bundle execution is not implied
-universal_binary_host_slice,implemented,,unknown,unknown,unknown,Fat Mach-O chooses native host slice first (ARM64 on ARM64 Windows, x86_64 on x64 Windows); cross-architecture execution remains separate
+universal_binary_host_slice,implemented,,unknown,unknown,partial,"Host-default fat-slice selection remains; --arch x86_64|arm64|x86 explicitly selects and propagates one CPU type across the dylib graph. ARM64 guest execution on x64 requires the optional Dynarmic backend; the latest backend links but has no end-to-end ARM64 runtime fixture."
 dyld_fixture,implemented,wintosh_dyld_smoke,unknown,unknown,unknown,Repository-owned synthetic dyld fixture only
 nested_runpath_inheritance,implemented,,unknown,unknown,unknown,Dylib graph propagates ordered inherited LC_RPATH across dependency edges; build-only evidence so far and shared-image context remains first-load-only
 thread_adapter,implemented,wintosh_thread_smoke,unknown,unknown,unknown,Host thread adapter only

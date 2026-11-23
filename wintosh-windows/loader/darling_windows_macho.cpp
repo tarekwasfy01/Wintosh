@@ -591,7 +591,8 @@ std::uint64_t ReadBigEndian64(const std::uint8_t* bytes)
 
 } // namespace
 
-MachOImage MachOImage::Open(const std::wstring& path)
+MachOImage MachOImage::Open(const std::wstring& path,
+	std::int32_t preferred_cpu_type)
 {
 	const HANDLE file = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ,
 		nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
@@ -676,7 +677,21 @@ MachOImage MachOImage::Open(const std::wstring& path)
 				arm64_bytes = candidate_bytes;
 			}
 #if defined(_M_ARM64) || defined(__aarch64__)
-			if (found_arm64) {
+			if (preferred_cpu_type == CPU_TYPE_ARM64) {
+				Require(found_arm64, "Fat Mach-O has no requested ARM64 slice");
+				image_offset = arm64_offset;
+				image_bytes = arm64_bytes;
+			} else if (preferred_cpu_type == CPU_TYPE_X86_64) {
+				Require(found_x86_64, "Fat Mach-O has no requested x86_64 slice");
+				image_offset = x86_64_offset;
+				image_bytes = x86_64_bytes;
+			} else if (preferred_cpu_type == CPU_TYPE_X86) {
+				Require(found_x86, "Fat Mach-O has no requested x86 slice");
+				image_offset = x86_offset;
+				image_bytes = x86_bytes;
+			} else if (preferred_cpu_type != 0) {
+				throw std::runtime_error("requested Mach-O CPU type is unsupported");
+			} else if (found_arm64) {
 				image_offset = arm64_offset;
 				image_bytes = arm64_bytes;
 			} else if (found_x86_64) {
@@ -688,7 +703,21 @@ MachOImage MachOImage::Open(const std::wstring& path)
 				image_bytes = x86_bytes;
 			}
 #else
-			if (found_x86_64) {
+			if (preferred_cpu_type == CPU_TYPE_ARM64) {
+				Require(found_arm64, "Fat Mach-O has no requested ARM64 slice");
+				image_offset = arm64_offset;
+				image_bytes = arm64_bytes;
+			} else if (preferred_cpu_type == CPU_TYPE_X86_64) {
+				Require(found_x86_64, "Fat Mach-O has no requested x86_64 slice");
+				image_offset = x86_64_offset;
+				image_bytes = x86_64_bytes;
+			} else if (preferred_cpu_type == CPU_TYPE_X86) {
+				Require(found_x86, "Fat Mach-O has no requested x86 slice");
+				image_offset = x86_offset;
+				image_bytes = x86_bytes;
+			} else if (preferred_cpu_type != 0) {
+				throw std::runtime_error("requested Mach-O CPU type is unsupported");
+			} else if (found_x86_64) {
 				image_offset = x86_64_offset;
 				image_bytes = x86_64_bytes;
 			} else if (found_arm64) {
@@ -724,6 +753,8 @@ MachOImage MachOImage::Open(const std::wstring& path)
 		Require(header->cpu_type == CPU_TYPE_X86_64 || header->cpu_type == CPU_TYPE_X86 ||
 			header->cpu_type == CPU_TYPE_ARM64,
 			"unsupported Mach-O CPU type; expected x86, x86_64, or ARM64");
+		Require(preferred_cpu_type == 0 || header->cpu_type == preferred_cpu_type,
+			"Mach-O does not contain the requested CPU type");
 		Require(header->file_type == MH_EXECUTE || header->file_type == MH_DYLIB ||
 			header->file_type == MH_BUNDLE,
 			"Mach-O is neither an executable, dylib, nor bundle");
@@ -3231,7 +3262,8 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 	const std::vector<std::string>& arguments,
 	const std::vector<std::string>& environment,
 	const std::vector<std::string>& apple_parameters,
-	DarwinEntryAbi entry_abi) const
+	DarwinEntryAbi entry_abi,
+	const std::vector<std::pair<const MachOImage*, const Mapping*>>& additional_images) const
 {
 #if defined(WINTOSH_HAS_DYNARMIC)
 	if (!IsArm64())
@@ -3293,8 +3325,16 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 	if (IsArm64()) {
 		if (mapping.Segments().size() != m_segments.size())
 			throw std::logic_error("ARM64 Mach-O segment metadata does not match its mapping");
+		std::size_t additional_segment_count = 0;
+		for (const auto& [image, image_mapping] : additional_images) {
+			if (image == nullptr || image_mapping == nullptr || !image->IsArm64() ||
+				image->Segments().size() != image_mapping->Segments().size()) {
+				throw std::logic_error("ARM64 dependency mapping metadata is inconsistent");
+			}
+			additional_segment_count += image_mapping->Segments().size();
+		}
 		std::vector<A64GuestMemoryRegion> guest_memory;
-		guest_memory.reserve(mapping.Segments().size() + arguments.size() +
+		guest_memory.reserve(mapping.Segments().size() + additional_segment_count + arguments.size() +
 			environment.size() + apple_parameters.size() + 5);
 		for (std::size_t segment_index = 0;
 			segment_index < mapping.Segments().size(); ++segment_index) {
@@ -3303,6 +3343,16 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 			guest_memory.push_back({mapped.address, mapped.size,
 				(protection & 1) != 0, (protection & 2) != 0,
 				(protection & 4) != 0, false, 0, 0, true});
+		}
+		for (const auto& [image, image_mapping] : additional_images) {
+			for (std::size_t segment_index = 0;
+				segment_index < image_mapping->Segments().size(); ++segment_index) {
+				const auto& mapped = image_mapping->Segments()[segment_index];
+				const auto protection = image->Segments()[segment_index].initial_protection;
+				guest_memory.push_back({mapped.address, mapped.size,
+					(protection & 1) != 0, (protection & 2) != 0,
+					(protection & 4) != 0, false, 0, 0, true});
+			}
 		}
 		const auto add_host_buffer = [&guest_memory](const void* address,
 			std::size_t bytes) {

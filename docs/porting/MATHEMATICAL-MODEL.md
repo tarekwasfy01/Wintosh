@@ -110,7 +110,8 @@ the stage is not demonstrated on that host:
 | i386 guest execution verified at runtime | 0 | 0 | 1† |
 | i386 Darwin-start + host `_exit` bind verified | 0 | 0 | 1‡ |
 | arm64 parse, map, relocation subset | 1 | 1 | 0 |
-| arm64 execution | 0 | ? | 0 |
+| arm64 A64 backend compiled and linked | 1¶ | ? | 0 |
+| arm64 guest execution verified end-to-end | ? | ? | 0 |
 
 On Windows Win32, the i386 `i386_THREAD_STATE` flavor maps its 16 32-bit
 general and segment registers to the host `CONTEXT` for `thread_get_state` and
@@ -124,6 +125,27 @@ applications, dynamic imports, chained fixups, Darwin-start, or frameworks.
 `1‡` records a separate hand-built i386 image that entered through the Darwin
 initial stack, resolved one `_exit` bind, and exited with code 42. It does not
 cover compiler CRT startup or app dependencies.
+`1¶` records the optional Dynarmic A64 backend compiling and linking into the
+x64 Release runner. It does not prove guest instruction execution. `?` on the
+end-to-end ARM64 row means the runner and A64 backend exist, but no ARM64
+Mach-O fixture has run through entry, imports, and termination.
+
+For a Mach-O dependency graph `G=(V,E)`, architecture selection now has one
+graph-wide invariant. If `c` is the root CPU type, every loaded image must use
+that same slice:
+
+```text
+∀v ∈ V: cpu_type(v) = c
+V is loadable only if every required image contains slice c
+GuestMemory = ⋃v∈V ⋃s∈segments(v) mapped(s)
+```
+
+The runner's `--arch arm64` sets `c` explicitly for a fat root image. The
+selected type flows through dylib resolution, bindings, initialization order,
+dynamic loading, and the A64 segment table. This makes guest-to-guest calls
+across mapped ARM64 images addressable by the CPU backend. It does not convert
+a guest ARM64 call into a Windows x64 host ABI call; that import bridge remains
+a separate required transition.
 
 The separate i386 object-to-image experiment is bounded as follows:
 

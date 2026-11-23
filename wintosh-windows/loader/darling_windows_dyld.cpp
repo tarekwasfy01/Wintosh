@@ -14,6 +14,7 @@
 #include "darling_windows_tlv.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cstdlib>
 #include <cstring>
 #include <functional>
@@ -28,6 +29,8 @@
 namespace darling::windows_host {
 
 namespace {
+
+std::atomic<std::int32_t> dynamic_image_preferred_cpu_type{0};
 
 bool BindLazyAtLaunch(const MachOImage& image)
 {
@@ -297,7 +300,8 @@ std::filesystem::path DylibResolver::Resolve(
 	const std::string& dependency,
 	const std::vector<std::filesystem::path>& rpaths,
 	const std::filesystem::path& prefix,
-	const std::filesystem::path& executable_path)
+	const std::filesystem::path& executable_path,
+	std::int32_t preferred_cpu_type)
 {
 	const std::filesystem::path image_directory = image_path.parent_path();
 	const std::filesystem::path executable_directory = executable_path.empty() ?
@@ -311,7 +315,7 @@ std::filesystem::path DylibResolver::Resolve(
 	// embedded in the image.  Do not skip the image runpaths merely because a
 	// caller supplied one or more search roots.
 	if (dependency.rfind(rpath_token, 0) == 0) {
-		const auto image = MachOImage::Open(image_path.wstring());
+		const auto image = MachOImage::Open(image_path.wstring(), preferred_cpu_type);
 		for (const auto& rpath : image.RPaths()) {
 			// Keep @loader_path/@executable_path tokens intact; lexical
 			// normalization would treat the token as an ordinary directory and
@@ -384,8 +388,11 @@ std::filesystem::path DylibResolver::Resolve(
 std::vector<DylibGraphNode> DylibGraph::Load(
 	const std::filesystem::path& image_path,
 	const std::vector<std::filesystem::path>& rpaths,
-	const std::filesystem::path& prefix)
+	const std::filesystem::path& prefix,
+	std::int32_t preferred_cpu_type)
 {
+	if (preferred_cpu_type == 0)
+		preferred_cpu_type = MachOImage::Open(image_path.wstring()).Header().cpu_type;
 	std::vector<DylibGraphNode> graph;
 	struct PendingImage final {
 		std::filesystem::path path;
@@ -402,7 +409,7 @@ std::vector<DylibGraphNode> DylibGraph::Load(
 			continue;
 		}
 
-		const auto image = MachOImage::Open(normalized.wstring());
+		const auto image = MachOImage::Open(normalized.wstring(), preferred_cpu_type);
 		auto image_rpaths = std::move(work.inherited_rpaths);
 		for (const auto& rpath : image.RPaths()) {
 			const std::filesystem::path candidate(rpath);
@@ -418,7 +425,7 @@ std::vector<DylibGraphNode> DylibGraph::Load(
 			try {
 				const auto resolved = DylibResolver::Resolve(
 					normalized, dependency, image_rpaths, prefix,
-					image_path.lexically_normal());
+					image_path.lexically_normal(), preferred_cpu_type);
 				ordinal_dependency = resolved.lexically_normal();
 				node.dependencies.push_back(resolved);
 				if (visited.find(resolved.lexically_normal()) == visited.end()) {
@@ -447,9 +454,10 @@ std::vector<DylibGraphNode> DylibGraph::Load(
 std::vector<std::filesystem::path> DylibGraph::InitializationOrder(
 	const std::filesystem::path& image_path,
 	const std::vector<std::filesystem::path>& rpaths,
-	const std::filesystem::path& prefix)
+	const std::filesystem::path& prefix,
+	std::int32_t preferred_cpu_type)
 {
-	const auto graph = Load(image_path, rpaths, prefix);
+	const auto graph = Load(image_path, rpaths, prefix, preferred_cpu_type);
 	std::vector<std::filesystem::path> order;
 	std::set<std::filesystem::path> visiting;
 	std::set<std::filesystem::path> visited;
@@ -481,10 +489,13 @@ std::vector<std::filesystem::path> DylibGraph::InitializationOrder(
 std::vector<DylibBinding> DylibGraph::BindImports(
 	const std::filesystem::path& image_path,
 	const std::vector<std::filesystem::path>& rpaths,
-	const std::filesystem::path& prefix)
+	const std::filesystem::path& prefix,
+	std::int32_t preferred_cpu_type)
 {
-	const auto graph = Load(image_path, rpaths, prefix);
-	const auto main_image = MachOImage::Open(image_path.wstring());
+	if (preferred_cpu_type == 0)
+		preferred_cpu_type = MachOImage::Open(image_path.wstring()).Header().cpu_type;
+	const auto graph = Load(image_path, rpaths, prefix, preferred_cpu_type);
+	const auto main_image = MachOImage::Open(image_path.wstring(), preferred_cpu_type);
 	const bool force_flat_namespace =
 		(main_image.Header().flags & MH_FORCE_FLAT) != 0;
 	struct Definition final {
@@ -500,7 +511,7 @@ std::vector<DylibBinding> DylibGraph::BindImports(
 			const auto key = owner.lexically_normal().string() + "\n" + name;
 			if (!visiting.insert(key).second)
 				return false;
-			const auto image = MachOImage::Open(owner.wstring());
+			const auto image = MachOImage::Open(owner.wstring(), preferred_cpu_type);
 			for (const auto& symbol : image.Symbols()) {
 				if (!symbol.name.empty() && symbol.name == name &&
 					(symbol.type & 0x0e) != 0) {
@@ -569,7 +580,7 @@ std::vector<DylibBinding> DylibGraph::BindImports(
 
 	std::vector<DylibBinding> bindings;
 	for (const auto& node : graph) {
-		const auto image = MachOImage::Open(node.path.wstring());
+		const auto image = MachOImage::Open(node.path.wstring(), preferred_cpu_type);
 		const bool two_level = image.UsesTwoLevelNamespace() &&
 			!force_flat_namespace;
 		struct ImportRequest final {
@@ -718,20 +729,28 @@ std::vector<DylibBinding> DylibGraph::BindImports(
 }
 
 std::vector<DylibExportResolver> DylibGraph::ExportResolverOrder(
-	const std::vector<DylibBinding>& bindings)
+	const std::vector<DylibBinding>& bindings,
+	std::int32_t preferred_cpu_type)
 {
+	if (preferred_cpu_type == 0 && !bindings.empty()) {
+		const auto& path = bindings.front().client_image.empty() ?
+			bindings.front().provider : bindings.front().client_image;
+		if (!path.empty())
+			preferred_cpu_type = MachOImage::Open(path.wstring()).Header().cpu_type;
+	}
 	struct CachedImage final {
 		std::filesystem::path path;
 		MachOImage image;
 	};
 	std::vector<CachedImage> images;
-	const auto image_for = [&images](const std::filesystem::path& input_path)
+	const auto image_for = [&images, preferred_cpu_type](
+		const std::filesystem::path& input_path)
 		-> const MachOImage& {
 		const auto path = input_path.lexically_normal();
 		auto found = std::find_if(images.begin(), images.end(),
 			[&path](const CachedImage& candidate) { return candidate.path == path; });
 		if (found == images.end()) {
-			images.push_back({path, MachOImage::Open(path.wstring())});
+			images.push_back({path, MachOImage::Open(path.wstring(), preferred_cpu_type)});
 			found = std::prev(images.end());
 		}
 		return found->image;
@@ -829,14 +848,24 @@ public:
 	}
 };
 
-DarwinDynamicImage* OpenDynamicImage(const std::filesystem::path& path)
+void SetDynamicImagePreferredCpuType(std::int32_t cpu_type) noexcept
 {
-	auto* result = new DarwinDynamicImage{path, MachOImage::Open(path.wstring()),
+	dynamic_image_preferred_cpu_type.store(cpu_type, std::memory_order_release);
+}
+
+DarwinDynamicImage* OpenDynamicImage(const std::filesystem::path& path,
+	std::int32_t preferred_cpu_type)
+{
+	if (preferred_cpu_type == 0)
+		preferred_cpu_type = dynamic_image_preferred_cpu_type.load(std::memory_order_acquire);
+	auto* result = new DarwinDynamicImage{path,
+		MachOImage::Open(path.wstring(), preferred_cpu_type),
 		{}, {}, {}, {}, {}};
 	try {
 		result->mapping = result->image.MapSegments();
-		const auto graph_nodes = DylibGraph::Load(path, {}, {});
-		const auto graph_bindings = DylibGraph::BindImports(path, {}, {});
+		const auto guest_cpu_type = result->image.Header().cpu_type;
+		const auto graph_nodes = DylibGraph::Load(path, {}, {}, guest_cpu_type);
+		const auto graph_bindings = DylibGraph::BindImports(path, {}, {}, guest_cpu_type);
 		std::vector<std::uintptr_t> resolved_addresses;
 		resolved_addresses.reserve(graph_bindings.size());
 		const auto main_path = path.lexically_normal();
@@ -852,7 +881,7 @@ DarwinDynamicImage* OpenDynamicImage(const std::filesystem::path& path)
 				});
 			if (found == result->providers.end()) {
 				result->providers.push_back({normalized,
-					MachOImage::Open(normalized.wstring()), {}, {}, {}});
+				MachOImage::Open(normalized.wstring(), guest_cpu_type), {}, {}, {}});
 				result->providers.back().mapping = result->providers.back().image.MapSegments(
 					preferred_provider_address);
 				found = std::prev(result->providers.end());
@@ -912,7 +941,8 @@ DarwinDynamicImage* OpenDynamicImage(const std::filesystem::path& path)
 					record.address = address;
 			}
 		};
-		const auto initialization_order = DylibGraph::InitializationOrder(path, {}, {});
+		const auto initialization_order = DylibGraph::InitializationOrder(
+			path, {}, {}, guest_cpu_type);
 		const auto provider_rank = [&initialization_order](
 			const std::filesystem::path& provider_path) {
 			const auto found = std::find(initialization_order.begin(),
@@ -1088,7 +1118,8 @@ DarwinDynamicImage* OpenDynamicImage(const std::filesystem::path& path)
 		};
 		// Resolver code now sees every image in the dependency graph after its
 		// initial rebase and bind pass has completed.
-		for (const auto& resolver : DylibGraph::ExportResolverOrder(graph_bindings))
+		for (const auto& resolver : DylibGraph::ExportResolverOrder(
+			graph_bindings, guest_cpu_type))
 			resolve_export(resolver);
 		// Keep these image contexts registered until dlclose tears down the
 		// mapping. Unlike a bootstrap activation, registration is thread-neutral
@@ -1247,7 +1278,12 @@ int DynamicImageExecuteEntry(const DarwinDynamicImage& image,
 	const std::vector<std::string>& environment,
 	DarwinEntryAbi entry_abi)
 {
-	return image.image.ExecuteEntry(image.mapping, arguments, environment, {}, entry_abi);
+	std::vector<std::pair<const MachOImage*, const MachOImage::Mapping*>> providers;
+	providers.reserve(image.providers.size());
+	for (const auto& provider : image.providers)
+		providers.emplace_back(&provider.image, &provider.mapping);
+	return image.image.ExecuteEntry(image.mapping, arguments, environment, {},
+		entry_abi, providers);
 }
 
 const std::filesystem::path& DynamicImagePath(const DarwinDynamicImage& image) noexcept

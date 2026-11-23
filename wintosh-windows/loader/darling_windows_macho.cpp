@@ -2324,9 +2324,16 @@ void MachOImage::ApplyChainedFixups(const Mapping& mapping,
 		} else {
 			if (fixup.pointer_format == 6 || fixup.pointer_format == 7 ||
 				fixup.pointer_format == 9 || fixup.pointer_format == 12) {
-				if (mapping.Segments().empty())
-					throw std::runtime_error("Mach-O chained offset fixup has no mapped image");
-				value = mapping.Segments().front().address + fixup.target;
+				const auto text_segment = std::find_if(mapping.Segments().begin(),
+					mapping.Segments().end(), [](const auto& segment) {
+						return segment.name == "__TEXT";
+					});
+				if (text_segment == mapping.Segments().end())
+					throw std::runtime_error("Mach-O chained offset fixup has no __TEXT base");
+				if (fixup.target > std::numeric_limits<std::uintptr_t>::max() -
+					text_segment->address)
+					throw std::overflow_error("Mach-O chained offset target overflows");
+				value = text_segment->address + static_cast<std::uintptr_t>(fixup.target);
 			} else {
 				value = static_cast<std::uintptr_t>(
 					static_cast<std::intptr_t>(fixup.target) + mapping.Slide());
@@ -2535,6 +2542,11 @@ MachOImage::Mapping MachOImage::MapSegments(std::uintptr_t near_address) const
 		for (const auto& segment : m_segments) {
 			const auto address = static_cast<std::uintptr_t>(
 				static_cast<std::intptr_t>(segment.vm_address) + slide);
+			if (segment.file_size == 0 && segment.initial_protection == 0) {
+				mapped.push_back({segment.name, address,
+					static_cast<std::size_t>(AlignUp(segment.vm_size))});
+				continue;
+			}
 			const auto commit_bytes = static_cast<std::size_t>(AlignUp(segment.vm_size));
 			if (VirtualAlloc(reinterpret_cast<void*>(address), commit_bytes,
 				MEM_COMMIT, PAGE_READWRITE) == nullptr) {

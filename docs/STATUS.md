@@ -2249,3 +2249,13 @@ interpret diversity/key metadata as an addend; authenticated rebase targets
 are decoded from their 32-bit runtime-offset field. Authenticated pointer
 application itself still requires a PAC backend. Both Windows targets compile;
 no encoded ARM64e fixup fixture has exercised these fields.
+
+### Chained offset rebases use the image text base (2026-11-23)
+
+`DYLD_CHAINED_PTR_64_OFFSET` and ARM64e offset formats now add their encoded VM
+offset to the runtime `__TEXT` address, rather than whichever segment happened
+to be first in the mapped list. This handles ordinary executables whose first
+segment is `__PAGEZERO`. Mapping also leaves empty no-access segments reserved
+but uncommitted, avoiding an unnecessary commit of the large `__PAGEZERO`
+range. Both Windows targets compile; no real signed Mach-O app fixture has
+verified the mapping path.

@@ -236,14 +236,17 @@ multi-variable offsets, destructor callbacks, and ARM64 TLVP remain open.
 
 Local `__thread_vars[i]` to `__thread_ptrs[i]` mapping is now available to the
 main-image type-9 relocation path. Cross-image provider slots remain
-fail-closed. The bootstrap defers unreachable cross-image x86-64 PCREL data
-relocations rather than truncating them; a data-near placement strategy is
-still needed for those forms.
+fail-closed. The bootstrap still defers x86-64 PCREL data relocations when the
+provider cannot be placed in the shared near window described below.
 
-The loader now maps the main image first and attempts bounded near-address
-reservations for provider dylibs. Reachable cross-image PCREL relocations can
-therefore be applied normally; the deferred path remains for allocations that
-Windows places outside the signed 32-bit range.
+The loader maps the main image first and now anchors provider placement at its
+actual `__TEXT` address rather than the first segment (which may be
+`__PAGEZERO`). Each provider reservation, including its branch-thunk pool, is
+kept within ±`0x3f000000` of that anchor. Thus any two provider addresses differ
+by at most `0x7e000000`, below the signed PC-relative limit `0x7fffffff`, so
+cross-provider x86-64 data and code relocations fit their displacement fields
+when Windows can reserve the bounded window. The defer path remains if that
+window is unavailable or a main-image reference lies outside it.
 
 Provider dylibs and bundles without `LC_MAIN` are now valid mapped images. The
 bootstrap applies their rebases, relocations, bind opcodes, chained fixups, and

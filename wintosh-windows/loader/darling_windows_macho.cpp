@@ -2638,16 +2638,29 @@ MachOImage::Mapping MachOImage::MapSegments(std::uintptr_t near_address) const
 	if (near_address != 0) {
 		constexpr std::uintptr_t AllocationGranularity = 0x10000;
 		constexpr std::uintptr_t SearchStep = 0x1000000;
-		constexpr std::uintptr_t SearchLimit = 0x7f000000;
+		// Keep every dependency reservation, including its thunk pool, inside
+		// one shared window narrower than the signed x86-64 PC-relative range.
+		constexpr std::uintptr_t SearchLimit = 0x3f000000;
+		constexpr std::uintptr_t WindowBytes = SearchLimit * 2;
 		const auto aligned_reference = near_address & ~(AllocationGranularity - 1);
-		for (std::uintptr_t distance = 0; distance <= SearchLimit && reservation == nullptr;
+		const auto lower_bound = aligned_reference > SearchLimit ?
+			aligned_reference - SearchLimit : AllocationGranularity;
+		const auto upper_center = aligned_reference <=
+			std::numeric_limits<std::uintptr_t>::max() - SearchLimit ?
+			aligned_reference + SearchLimit :
+			std::numeric_limits<std::uintptr_t>::max();
+		const auto upper_bound = reservation_bytes <= WindowBytes &&
+			upper_center >= reservation_bytes ?
+			upper_center - reservation_bytes : 0;
+		for (std::uintptr_t distance = 0;
+			distance <= SearchLimit && reservation == nullptr && upper_bound >= lower_bound;
 			distance += SearchStep) {
 			const std::uintptr_t candidates[] = {
 				aligned_reference + distance,
 				distance <= aligned_reference ? aligned_reference - distance : 0};
 			for (const auto candidate : candidates) {
-				if (candidate == 0 || candidate > std::numeric_limits<std::uintptr_t>::max() -
-					reservation_bytes)
+				if (candidate < lower_bound || candidate > upper_bound ||
+					candidate > std::numeric_limits<std::uintptr_t>::max() - reservation_bytes)
 					continue;
 				reservation = VirtualAlloc(reinterpret_cast<void*>(candidate),
 					reservation_bytes, MEM_RESERVE, PAGE_NOACCESS);

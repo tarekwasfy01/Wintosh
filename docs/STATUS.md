@@ -2300,3 +2300,16 @@ This addresses cross-image function branches while leaving data-address forms
 on their existing checked/deferred path, since code trampolines cannot preserve
 data-reference semantics. The Windows x64 build succeeds; no far-branch Mach-O
 fixture has verified the generated thunk at runtime.
+
+### Shared near window for dynamic x86_64 images (2026-11-23)
+
+Provider placement now uses the main image's `__TEXT` address, avoiding the
+multi-gigabyte `__PAGEZERO` anchor in common executables. Each provider's full
+reservation is constrained to ±`0x3f000000` from that anchor. Therefore the
+maximum address delta between any two provider reservations is `0x7e000000`,
+less than the signed PC-relative maximum `0x7fffffff`; their cross-image data
+and branch references fit the 32-bit displacement when Windows finds space in
+the window. If the window is unavailable, fallback mapping remains possible
+and out-of-range non-branch relocations still fail or defer according to the
+existing path. The Windows x64 build succeeds; no multi-dylib distance fixture
+has verified runtime placement yet.

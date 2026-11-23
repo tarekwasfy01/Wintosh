@@ -831,8 +831,9 @@ DarwinDynamicImage* OpenDynamicImage(const std::filesystem::path& path)
 		std::vector<std::uintptr_t> resolved_addresses;
 		resolved_addresses.reserve(graph_bindings.size());
 		const auto main_path = path.lexically_normal();
-		const auto preferred_provider_address = result->mapping.Segments().empty() ? 0 :
-			result->mapping.Segments().front().address;
+		const auto preferred_provider_header = MappedMachOHeader(result->mapping);
+		const auto preferred_provider_address = reinterpret_cast<std::uintptr_t>(
+			preferred_provider_header);
 		auto get_provider = [&](const std::filesystem::path& provider_path)
 			-> DarwinDynamicImage::Provider& {
 			const auto normalized = provider_path.lexically_normal();

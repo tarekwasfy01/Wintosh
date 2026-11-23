@@ -18,6 +18,10 @@ arguments, a stack-passed seventh integer argument, HFA returns, and a
 24-byte indirect structure return. The Objective-C cases cover only tested ABI
 shapes; they do not imply broad
 Objective-C, framework, or macOS application compatibility.
+The guest class registrar links subclass metadata to a previously registered
+guest superclass or an existing runtime class; the ARM64 fixture verifies an
+inherited class method. A subclass appearing before its unregistered guest
+superclass in the class list remains unsupported.
 The Win32 target compiles the host library and runner and has launched a
 hand-built i386 `LC_MAIN` Mach-O with no imports; its compatible `main` returned
 42. This confirms the basic mapping and cdecl entry path, not general app

@@ -12,3 +12,6 @@ a 24-byte indirect structure return through `objc_msgSend`. A guest method also
 performs nested `sel_registerName`, `objc_msgSend`, `_strlen`, `_malloc`, and
 `_realloc`/`_free` imports, verifying guest heap write/read/resize/free. It is
 not a general Objective-C or macOS application test.
+
+The ARM64 Objective-C fixture also verifies class inheritance by invoking a
+class method implemented on its guest superclass.

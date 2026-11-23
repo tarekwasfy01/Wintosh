@@ -32,6 +32,12 @@ updated or removed on resize/free. Nested Darwin syscalls, Mach traps, broader
 import catalog coverage, full framework coverage, and a reproducible Dynarmic
 dependency pin remain open.
 
+The Objective-C class-list registrar now reads each guest `class_t` superclass
+pointer and links it to a previously registered guest class or an existing
+runtime class. The ARM64 fixture verifies inherited class-method lookup from
+`WintoshBase` through `WintoshProbe`. Guest class-list ordering where a
+subclass precedes an unregistered superclass is not yet handled.
+
 ## Mach broker update, 2026-11-23
 
 The Windows Release targets `wintosh.exe` and `wintosh_broker.exe` build with

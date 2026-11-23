@@ -423,6 +423,12 @@ std::unordered_map<std::string, Class>& Classes()
 	return classes;
 }
 
+std::unordered_map<std::uintptr_t, Class>& MachOClasses()
+{
+	static std::unordered_map<std::uintptr_t, Class> classes;
+	return classes;
+}
+
 std::vector<std::unique_ptr<objc_selector>>& SelectorStorage()
 {
 	static std::vector<std::unique_ptr<objc_selector>> storage;
@@ -1966,9 +1972,36 @@ extern "C" std::size_t darling_objc_register_macho_classlist(
 		const std::string class_name(name, name_length);
 		Class cls = objc_getClass(class_name.c_str());
 		const bool is_new_class = cls == nullptr;
-		if (is_new_class)
-			cls = objc_allocateClassPair(nullptr, class_name.c_str(), 0);
+		if (is_new_class) {
+			std::uintptr_t superclass_address = 0;
+			std::memcpy(&superclass_address,
+				reinterpret_cast<const std::uint8_t*>(class_address) +
+					sizeof(std::uintptr_t), sizeof(superclass_address));
+			Class superclass = nullptr;
+			if (superclass_address != 0) {
+				const auto guest_superclass = MachOClasses().find(superclass_address);
+				if (guest_superclass != MachOClasses().end())
+					superclass = guest_superclass->second;
+				else {
+					std::uintptr_t superclass_data = 0;
+					std::memcpy(&superclass_data,
+						reinterpret_cast<const std::uint8_t*>(superclass_address) +
+							sizeof(std::uintptr_t) * 4, sizeof(superclass_data));
+					superclass_data &= ClassDataPointerMask;
+					const char* superclass_name = nullptr;
+					if (superclass_data != 0)
+						std::memcpy(&superclass_name,
+							reinterpret_cast<const std::uint8_t*>(superclass_data) +
+								ClassDataNameOffset, sizeof(superclass_name));
+					if (superclass_name != nullptr &&
+						strnlen_s(superclass_name, 1024) < 1024)
+						superclass = objc_getClass(superclass_name);
+				}
+			}
+			cls = objc_allocateClassPair(superclass, class_name.c_str(), 0);
+		}
 		if (cls) {
+			MachOClasses()[class_address] = cls;
 			if (is_new_class) {
 				objc_registerClassPair(cls);
 				if (active_image_token)

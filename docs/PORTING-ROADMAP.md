@@ -12,8 +12,11 @@ the named runtime gate and the semantic boundary must both be recorded.
    plus the isolated license-clear startup trampoline and the explicit ARM64
    fail-closed gate. Classic x86_64 lazy binds now resolve through the
    stub-helper on first call, but still need a real Mach-O runtime fixture.
-   Remaining: native ARM64 execution, full dyld protocol parity, arbitrary
-   Apple frameworks. The controlled x86_64 binder trampoline is verified
+   Remaining: an AArch64 CPU backend for x64 Windows (Dynarmic is the first
+   candidate to evaluate; source pinning, dependency-license review and local
+   build evaluation are pending), full dyld protocol parity, and arbitrary
+   Apple frameworks. WSL1 does not supply the missing Darwin-to-Linux syscall
+   edge. The controlled x86_64 binder trampoline is verified
    separately; end-to-end lazy-stub behavior is not yet verified.
 2. **Foundation/CoreFoundation** — grow the existing C ABI in cohesive value,
    collection, plist, run-loop, and notification families. Gate each family in

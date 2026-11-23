@@ -9,7 +9,7 @@ and remaining-gap documentation all agree.
 | 1 | Darwin startup and `libSystem` initialization | partial | Guest entry observes initialized `argc`/`argv`/`envp`, TLS, `errno`, `atexit`, and ordered startup/shutdown callbacks |
 | 2 | Frameworks and `.app` bundles | partial | Minimal bundle loads its executable and real framework-shaped dependencies through the prefix resolver |
 | 3 | dyld semantics | partial | Weak bindings, re-exports, initializer ordering, Objective-C registration, and dependent-image end-to-end execution |
-| 4 | ARM64 Mach-O execution | partial | Native ARM64 Windows execution fixture, or an explicit architecture-specific backend boundary with a separate build target |
+| 4 | ARM64 Mach-O execution | partial | Native ARM64 Windows execution or an AArch64 CPU backend on x64 Windows, plus an end-to-end Mach-O fixture that exercises Darwin ABI/syscall callbacks; backend-only build evidence is insufficient |
 | 5 | Objective-C and calling conventions | partial | ABI-distinguishing tests for variadic, floating-point, aggregate, block, and exception calls |
 | 6 | Foundation/CoreGraphics/AppKit families | partial | Documented API-family coverage plus executable integration tests for each supported family |
 | 7 | Mach IPC/thread/exception semantics | partial | Cross-thread, port, timeout, exception, and cancellation tests with Darwin-visible result layouts |

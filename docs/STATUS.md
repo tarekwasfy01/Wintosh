@@ -24,8 +24,11 @@ The guest symbol aliases for `_tlv_atexit` and `__cxa_thread_atexit_impl`
 now resolve to Darwin-ABI wrappers. The implementation accepts the DSO handle,
 returns a registration result, and invokes guest destructors with the guest
 calling convention in reverse registration order at thread exit. The x64
-Clang Release target builds. Runtime coverage for x64/ARM64 and safe `dlclose`
-with outstanding thread destructors remain open.
+Clang Release target builds. An image containing a registered guest thread
+destructor is conservatively pinned until process exit, preventing `dlclose`
+from unmapping callback code. Both x64 Clang and MSVC Release targets build.
+Releasing that pin after the final owning thread exits, plus x64/ARM64 runtime
+coverage, remain open.
 
 This file records implemented behavior and known limits; it is not a claim of
 complete macOS compatibility. “Implemented” means host-side code exists;

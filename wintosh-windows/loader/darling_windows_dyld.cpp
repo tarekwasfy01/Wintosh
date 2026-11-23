@@ -1301,6 +1301,20 @@ bool DynamicImageContains(const DarwinDynamicImage& image, const void* address) 
 	return false;
 }
 
+bool DynamicImageContainsMappedAddress(const DarwinDynamicImage& image,
+	const void* address) noexcept
+{
+	if (DynamicImageContains(image, address)) return true;
+	const auto value = reinterpret_cast<std::uintptr_t>(address);
+	for (const auto& provider : image.providers) {
+		for (const auto& segment : provider.mapping.Segments()) {
+			if (value >= segment.address && value - segment.address < segment.size)
+				return true;
+		}
+	}
+	return false;
+}
+
 void* DynamicImageBase(const DarwinDynamicImage& image) noexcept
 {
 	const auto& segments = image.mapping.Segments();

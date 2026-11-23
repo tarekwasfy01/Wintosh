@@ -217,10 +217,10 @@ extern "C" int darling_windows_cxa_thread_atexit_impl(
 	return RegisterDestructor(function, argument, dso_handle, true);
 }
 
-extern "C" void darling_windows_tlv_atexit_guest(void (*function)(void*),
+extern "C" int darling_windows_tlv_atexit_guest(void (*function)(void*),
 	void* argument) noexcept
 {
-	(void)RegisterDestructor(function, argument, nullptr, true);
+	return RegisterDestructor(function, argument, nullptr, true);
 }
 
 } // namespace darling::windows_host

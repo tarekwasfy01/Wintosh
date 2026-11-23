@@ -557,6 +557,8 @@ extern "C" const char* darling_windows_NSNameOfModule(void* module);
 extern "C" const char* darling_windows_NSLibraryNameForModule(void* module);
 extern "C" void* darling_windows_dlsym(void* handle, const char* symbol);
 extern "C" int darling_windows_dlclose(void* handle);
+extern "C" void darling_windows_pin_dynamic_image_for_guest_callback(
+	const void* address) noexcept;
 extern "C" const char* darling_windows_dlerror();
 extern "C" int darling_windows_dladdr(const void* address, darling_dl_info* info);
 extern "C" DARLING_HOST_GUEST_ABI std::uint32_t darling_windows_dyld_image_count();

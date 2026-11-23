@@ -102,6 +102,8 @@ const void* DynamicImageProviderHeader(
 std::intptr_t DynamicImageProviderSlide(
 	const DarwinDynamicImage& image, std::uint32_t index) noexcept;
 bool DynamicImageContains(const DarwinDynamicImage& image, const void* address) noexcept;
+bool DynamicImageContainsMappedAddress(const DarwinDynamicImage& image,
+	const void* address) noexcept;
 void* DynamicImageBase(const DarwinDynamicImage& image) noexcept;
 bool DynamicImageNearestSymbol(const DarwinDynamicImage& image, const void* address,
 	std::string& name, std::uintptr_t& symbol_address) noexcept;

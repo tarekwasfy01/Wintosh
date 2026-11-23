@@ -746,6 +746,7 @@ std::unordered_map<void*, darling::windows_host::DarwinDynamicImage*> dynamic_im
 std::unordered_map<void*, std::size_t> dynamic_image_references;
 std::unordered_map<std::wstring, void*> dynamic_image_paths;
 std::unordered_set<void*> dynamic_image_nodelete;
+std::unordered_set<const void*> pending_dynamic_image_callback_pins;
 constexpr int kDarwinRtldNoLoad = 0x10;
 constexpr int kDarwinRtldNoDelete = 0x80;
 struct DarwinDyldImageEntry final {
@@ -7797,6 +7798,26 @@ extern "C" std::int64_t darling_windows_times(darling_tms* result)
 	return static_cast<std::int64_t>(GetTickCount64() / 10ull);
 }
 
+extern "C" void darling_windows_pin_dynamic_image_for_guest_callback(
+	const void* address) noexcept
+{
+	if (address == nullptr) return;
+	try {
+		std::lock_guard lock(dynamic_image_mutex);
+		for (const auto& [handle, image] : dynamic_images) {
+			if (darling::windows_host::DynamicImageContainsMappedAddress(*image, address)) {
+				dynamic_image_nodelete.insert(handle);
+				return;
+			}
+		}
+		// Initializers run before OpenDynamicImage is published in dynamic_images.
+		// Defer the pin until that same mapped image is registered below.
+		if (!dynamic_image_loads.empty())
+			pending_dynamic_image_callback_pins.insert(address);
+	} catch (...) {
+	}
+}
+
 extern "C" void* darling_windows_dlopen(const char* path, int mode)
 {
 	if (path == nullptr) {
@@ -7854,11 +7875,24 @@ extern "C" void* darling_windows_dlopen(const char* path, int mode)
 		void* duplicate_handle = nullptr;
 		{
 			std::lock_guard lock(dynamic_image_mutex);
+			const auto apply_pending_callback_pins = [&](
+				const darling::windows_host::DarwinDynamicImage& candidate, void* target_handle) {
+				for (auto pin = pending_dynamic_image_callback_pins.begin();
+					pin != pending_dynamic_image_callback_pins.end();) {
+					if (darling::windows_host::DynamicImageContainsMappedAddress(candidate, *pin)) {
+						dynamic_image_nodelete.insert(target_handle);
+						pin = pending_dynamic_image_callback_pins.erase(pin);
+					} else {
+						++pin;
+					}
+				}
+			};
 			const auto found = dynamic_image_paths.find(key);
 			if (found != dynamic_image_paths.end()) {
 				++dynamic_image_references[found->second];
 				if ((mode & kDarwinRtldNoDelete) != 0)
 					dynamic_image_nodelete.insert(found->second);
+				apply_pending_callback_pins(*image, found->second);
 				duplicate_image = image;
 				duplicate_handle = found->second;
 			} else {
@@ -7867,6 +7901,7 @@ extern "C" void* darling_windows_dlopen(const char* path, int mode)
 				dynamic_image_paths.emplace(key, image);
 				if ((mode & kDarwinRtldNoDelete) != 0)
 					dynamic_image_nodelete.insert(image);
+				apply_pending_callback_pins(*image, image);
 			}
 			const auto loading = dynamic_image_loads.find(key);
 			if (loading != dynamic_image_loads.end() &&

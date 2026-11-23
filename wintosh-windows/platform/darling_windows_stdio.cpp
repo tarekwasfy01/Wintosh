@@ -79,15 +79,57 @@ struct DarwinWindowsReparseDataBuffer final {
 
 darling::windows_host::DarwinSyscalls global_syscalls;
 
+struct DarwinFileMappingOwner final {
+	HANDLE mapping = nullptr;
+	void* reservation_base = nullptr;
+	std::size_t reservation_bytes = 0;
+	DWORD view_protection = PAGE_READONLY;
+	bool placeholder_backed = false;
+	bool private_mapping = false;
+	std::size_t active_views = 1;
+};
+
 struct DarwinFileMapping final {
 	void* base = nullptr;
-	HANDLE mapping = nullptr;
 	std::size_t bytes = 0;
 	std::size_t guest_offset = 0;
+	std::uint64_t file_offset = 0;
+	std::shared_ptr<DarwinFileMappingOwner> owner;
 };
 
 std::mutex darwin_file_mapping_mutex;
 std::unordered_map<void*, DarwinFileMapping> darwin_file_mappings;
+
+struct WindowsPlaceholderApis final {
+	using VirtualAlloc2Proc = PVOID(WINAPI*)(HANDLE, PVOID, SIZE_T, ULONG, ULONG,
+		void*, ULONG);
+	using MapViewOfFile3Proc = PVOID(WINAPI*)(HANDLE, HANDLE, PVOID, ULONG64,
+		SIZE_T, ULONG, ULONG, void*, ULONG);
+	using UnmapViewOfFile2Proc = BOOL(WINAPI*)(HANDLE, PVOID, ULONG);
+	VirtualAlloc2Proc virtual_alloc2 = nullptr;
+	MapViewOfFile3Proc map_view_of_file3 = nullptr;
+	UnmapViewOfFile2Proc unmap_view_of_file2 = nullptr;
+};
+
+const WindowsPlaceholderApis& PlaceholderApis()
+{
+	static const WindowsPlaceholderApis apis = [] {
+		WindowsPlaceholderApis result{};
+		HMODULE module = GetModuleHandleW(L"kernelbase.dll");
+		if (module == nullptr)
+			module = GetModuleHandleW(L"kernel32.dll");
+		if (module == nullptr)
+			return result;
+		result.virtual_alloc2 = reinterpret_cast<WindowsPlaceholderApis::VirtualAlloc2Proc>(
+			GetProcAddress(module, "VirtualAlloc2"));
+		result.map_view_of_file3 = reinterpret_cast<WindowsPlaceholderApis::MapViewOfFile3Proc>(
+			GetProcAddress(module, "MapViewOfFile3"));
+		result.unmap_view_of_file2 = reinterpret_cast<WindowsPlaceholderApis::UnmapViewOfFile2Proc>(
+			GetProcAddress(module, "UnmapViewOfFile2"));
+		return result;
+	}();
+	return apis;
+}
 
 bool ReleaseOwnedFileMapping(void* user_address)
 {
@@ -97,11 +139,22 @@ bool ReleaseOwnedFileMapping(void* user_address)
 		return false;
 	}
 	const auto mapping = found->second;
-	if (!UnmapViewOfFile(mapping.base)) {
+	const auto owner = mapping.owner;
+	if (owner == nullptr || owner->active_views != 1) {
+		darling::windows_host::DarwinErrno::Set(22);
+		return false;
+	}
+	const auto& apis = PlaceholderApis();
+	const bool unmapped = owner->placeholder_backed && apis.unmap_view_of_file2 != nullptr ?
+		apis.unmap_view_of_file2(GetCurrentProcess(), mapping.base, 0) != FALSE :
+		UnmapViewOfFile(mapping.base) != FALSE;
+	if (!unmapped) {
 		darling::windows_host::DarwinErrno::SetFromWin32(GetLastError());
 		return false;
 	}
-	CloseHandle(mapping.mapping);
+	CloseHandle(owner->mapping);
+	owner->mapping = nullptr;
+	owner->active_views = 0;
 	darwin_file_mappings.erase(found);
 	return true;
 }
@@ -4788,27 +4841,40 @@ extern "C" void* darling_windows_mmap(void* address, std::size_t length,
 		return reinterpret_cast<void*>(-1);
 	}
 	const auto view_bytes = static_cast<std::size_t>(rounded_view_bytes);
-	if (aligned_offset > (std::numeric_limits<std::uint64_t>::max)() - rounded_view_bytes) {
+	if (length > (std::numeric_limits<std::size_t>::max)() -
+		static_cast<std::size_t>(page_size - 1)) {
 		darling::windows_host::DarwinErrno::Set(75);
 		return reinterpret_cast<void*>(-1);
 	}
-	const auto mapping_size = (std::max)(mapping_end,
-		aligned_offset + rounded_view_bytes);
+	const auto placeholder_view_bytes = static_cast<std::size_t>(
+		((length + static_cast<std::size_t>(page_size) - 1) /
+			static_cast<std::size_t>(page_size)) * static_cast<std::size_t>(page_size));
+	if (aligned_offset > (std::numeric_limits<std::uint64_t>::max)() - rounded_view_bytes ||
+		unsigned_offset > (std::numeric_limits<std::uint64_t>::max)() - placeholder_view_bytes) {
+		darling::windows_host::DarwinErrno::Set(75);
+		return reinterpret_cast<void*>(-1);
+	}
+	const auto mapping_size = (std::max)((std::max)(mapping_end,
+		aligned_offset + rounded_view_bytes), unsigned_offset + placeholder_view_bytes);
 	const bool write = (protection & 2) != 0;
 	const bool execute = (protection & 4) != 0;
 	const bool private_mapping = (flags & map_private) != 0;
 	DWORD page_protection = PAGE_READONLY;
+	DWORD view_protection = PAGE_READONLY;
 	if (execute) {
 		page_protection = private_mapping ?
 			(write ? PAGE_EXECUTE_WRITECOPY : PAGE_EXECUTE_READ) :
 			(write ? PAGE_EXECUTE_READWRITE : PAGE_EXECUTE_READ);
+		view_protection = page_protection;
 	} else if (private_mapping && write) {
 		// Windows implements the per-view copy through FILE_MAP_COPY; the
 		// mapping object itself must remain read/write for this view to be
 		// readable on all supported Windows configurations.
 		page_protection = PAGE_READWRITE;
+		view_protection = PAGE_WRITECOPY;
 	} else if (write) {
 		page_protection = PAGE_READWRITE;
+		view_protection = PAGE_READWRITE;
 	}
 	DWORD desired_access = private_mapping ? FILE_MAP_COPY : FILE_MAP_READ;
 	if (execute) desired_access |= FILE_MAP_EXECUTE;
@@ -4839,10 +4905,41 @@ extern "C" void* darling_windows_mmap(void* address, std::size_t length,
 	}
 	const auto view_offset_high = static_cast<DWORD>(aligned_offset >> 32);
 	const auto view_offset_low = static_cast<DWORD>(aligned_offset & 0xffffffffu);
-	void* base = (flags & map_fixed) != 0 ?
-		MapViewOfFileEx(mapping, desired_access, view_offset_high, view_offset_low,
-			view_bytes, requested_base) :
-		MapViewOfFile(mapping, desired_access, view_offset_high, view_offset_low, view_bytes);
+	const auto& placeholder_apis = PlaceholderApis();
+	void* base = nullptr;
+	std::size_t actual_view_bytes = view_bytes;
+	std::size_t guest_offset = delta;
+	std::uint64_t mapped_file_offset = aligned_offset;
+	bool placeholder_backed = false;
+	if ((flags & map_fixed) == 0 && placeholder_apis.virtual_alloc2 != nullptr &&
+		placeholder_apis.map_view_of_file3 != nullptr &&
+		placeholder_apis.unmap_view_of_file2 != nullptr) {
+		constexpr ULONG mem_reserve = 0x00002000;
+		constexpr ULONG mem_reserve_placeholder = 0x00040000;
+		constexpr ULONG mem_replace_placeholder = 0x00004000;
+		void* placeholder = placeholder_apis.virtual_alloc2(GetCurrentProcess(), nullptr,
+			placeholder_view_bytes, mem_reserve | mem_reserve_placeholder,
+			PAGE_NOACCESS, nullptr, 0);
+		if (placeholder != nullptr) {
+			base = placeholder_apis.map_view_of_file3(mapping, GetCurrentProcess(),
+				placeholder, unsigned_offset, placeholder_view_bytes,
+				mem_replace_placeholder, view_protection, nullptr, 0);
+			if (base == nullptr)
+				(void)VirtualFree(placeholder, 0, MEM_RELEASE);
+			else {
+				actual_view_bytes = placeholder_view_bytes;
+				guest_offset = 0;
+				mapped_file_offset = unsigned_offset;
+				placeholder_backed = true;
+			}
+		}
+	}
+	if (base == nullptr) {
+		base = (flags & map_fixed) != 0 ?
+			MapViewOfFileEx(mapping, desired_access, view_offset_high, view_offset_low,
+				view_bytes, requested_base) :
+			MapViewOfFile(mapping, desired_access, view_offset_high, view_offset_low, view_bytes);
+	}
 	if (base == nullptr) {
 		if ((flags & map_fixed) != 0) {
 			(void)ReleaseOwnedFileMapping(address);
@@ -4857,10 +4954,37 @@ extern "C" void* darling_windows_mmap(void* address, std::size_t length,
 		darling::windows_host::DarwinErrno::SetFromWin32(error);
 		return reinterpret_cast<void*>(-1);
 	}
-	void* result = static_cast<std::uint8_t*>(base) + delta;
-	{
+	void* result = static_cast<std::uint8_t*>(base) + guest_offset;
+	std::shared_ptr<DarwinFileMappingOwner> owner;
+	try {
+		owner = std::make_shared<DarwinFileMappingOwner>();
+	} catch (...) {
+		if (placeholder_backed)
+			(void)placeholder_apis.unmap_view_of_file2(GetCurrentProcess(), base, 0);
+		else
+			(void)UnmapViewOfFile(base);
+		CloseHandle(mapping);
+		darling::windows_host::DarwinErrno::Set(12);
+		return reinterpret_cast<void*>(-1);
+	}
+	owner->mapping = mapping;
+	owner->reservation_base = placeholder_backed ? base : nullptr;
+	owner->reservation_bytes = placeholder_backed ? actual_view_bytes : 0;
+	owner->view_protection = view_protection;
+	owner->placeholder_backed = placeholder_backed;
+	owner->private_mapping = private_mapping;
+	try {
 		std::lock_guard lock(darwin_file_mapping_mutex);
-		darwin_file_mappings.emplace(result, DarwinFileMapping{base, mapping, view_bytes, delta});
+		darwin_file_mappings.emplace(result, DarwinFileMapping{base, actual_view_bytes,
+			guest_offset, mapped_file_offset, owner});
+	} catch (...) {
+		if (placeholder_backed)
+			(void)placeholder_apis.unmap_view_of_file2(GetCurrentProcess(), base, 0);
+		else
+			(void)UnmapViewOfFile(base);
+		CloseHandle(mapping);
+		darling::windows_host::DarwinErrno::Set(12);
+		return reinterpret_cast<void*>(-1);
 	}
 	return result;
 }
@@ -4877,7 +5001,6 @@ extern "C" int darling_windows_munmap(void* address, std::size_t length)
 		const auto found = darwin_file_mappings.find(address);
 		if (found != darwin_file_mappings.end()) {
 			mapping = found->second;
-			darwin_file_mappings.erase(found);
 		}
 	}
 	if (mapping.base != nullptr) {
@@ -4887,18 +5010,32 @@ extern "C" int darling_windows_munmap(void* address, std::size_t length)
 			mapping.guest_offset + length >
 			(std::numeric_limits<std::size_t>::max)() - (page_size - 1) ||
 			((mapping.guest_offset + length + page_size - 1) / page_size) * page_size != mapping.bytes) {
-			std::lock_guard lock(darwin_file_mapping_mutex);
-			darwin_file_mappings.emplace(address, mapping);
 			darling::windows_host::DarwinErrno::Set(22);
 			return -1;
 		}
 		(void)FlushViewOfFile(mapping.base, mapping.bytes);
-		if (!UnmapViewOfFile(mapping.base)) {
-			darling::windows_host::DarwinErrno::SetFromWin32(GetLastError());
-			CloseHandle(mapping.mapping);
+		const auto owner = mapping.owner;
+		if (owner == nullptr || owner->active_views != 1) {
+			darling::windows_host::DarwinErrno::Set(22);
 			return -1;
 		}
-		CloseHandle(mapping.mapping);
+		const auto& apis = PlaceholderApis();
+		const bool unmapped = owner->placeholder_backed && apis.unmap_view_of_file2 != nullptr ?
+			apis.unmap_view_of_file2(GetCurrentProcess(), mapping.base, 0) != FALSE :
+			UnmapViewOfFile(mapping.base) != FALSE;
+		if (!unmapped) {
+			darling::windows_host::DarwinErrno::SetFromWin32(GetLastError());
+			return -1;
+		}
+		{
+			std::lock_guard lock(darwin_file_mapping_mutex);
+			const auto found = darwin_file_mappings.find(address);
+			if (found != darwin_file_mappings.end() && found->second.base == mapping.base)
+				darwin_file_mappings.erase(found);
+		}
+		CloseHandle(owner->mapping);
+		owner->mapping = nullptr;
+		owner->active_views = 0;
 		return 0;
 	}
 	return darling_windows_munmap_anonymous(address, length);

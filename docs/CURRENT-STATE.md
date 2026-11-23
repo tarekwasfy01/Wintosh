@@ -39,6 +39,14 @@ imported `_munmap` bridge both operate on that shared interval state. The fixtur
 exercises guest `open`/`write`/`mmap(MAP_SHARED)`/`munmap`/`lseek`/`read`/`close`
 with a persisted byte change, then modifies a `MAP_PRIVATE` view and verifies
 that the file remains unchanged after unmapping.
+Non-fixed file-backed views now use Windows placeholder replacement when
+`VirtualAlloc2`, `MapViewOfFile3`, and `UnmapViewOfFile2` are available. That
+allows Darwin page-aligned file offsets even when they are not aligned to
+Windows' 64 KiB allocation granularity; the view is tracked with its mapping
+owner and can be released as a complete view. Older Windows versions fall back
+to the allocation-granularity-aligned `MapViewOfFile` path. Partial
+file-backed `munmap`, file-view `MAP_FIXED`, and error-path parity are still
+open; this is a memory primitive, not a claim that arbitrary macOS apps run.
 Raw `SYS_mmap` 197 and imported `_mmap` can replace page-aligned subranges fully
 covered by one guest-owned anonymous reservation, including pages previously
 set to `PROT_NONE`; raw `SYS_mmap` also recommits a previously unmapped hole,

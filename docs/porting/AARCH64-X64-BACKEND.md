@@ -65,6 +65,7 @@ Referenzen:
 - [Dynarmic A64 JIT register and run API](https://github.com/yuzu-mirror/dynarmic/blob/master/src/dynarmic/interface/A64/a64.h)
 - [Dynarmic build and dependency contract](https://github.com/yuzu-mirror/dynarmic/blob/master/CMakeLists.txt)
 - [Dynarmic 0BSD license and limitations](https://github.com/yuzu-mirror/dynarmic/blob/master/README.md)
+- [Apple XNU syscall number and argument table](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/syscalls.master)
 
 ### Erforderliche Übergangs-Matrix
 
@@ -72,7 +73,7 @@ Referenzen:
 |---|---|---|
 | 0. Abhängigkeit | festen Upstream-Commit wählen; `0BSD`-Kern und Lizenzen aller tatsächlich gebauten Abhängigkeiten inventarisieren; x64-Windows-Build reproduzieren | keine implizite, bewegliche Branch-Abhängigkeit; reproduzierbarer Build |
 | 1. CPU-Adapter | `A64::Jit` hinter Wintosh-Backend kapseln; `Mapping` als kontrollierten Gastadressraum anbinden; Lese-/Schreibzugriffe mit Segmentgrenzen und Darwin-Schutzrechten prüfen | künstliches A64-Programm läuft bis zu einer definierten Haltbedingung und liefert Registerzustand zurück |
-| 2. Trap-Pfad | SVC, Gast-Exit und undefinierte Instruktion in explizite Wintosh-Trap-Ereignisse übersetzen | PC, x0-x7, SP und Fehler-/Exitstatus sind deterministisch und im Dispatcher beobachtbar |
+| 2. Trap-Pfad | SVC, Gast-Exit und undefinierte Instruktion in explizite Wintosh-Trap-Ereignisse übersetzen | CPU-Zustand samt PC, x0-x30, SIMD/PSTATE und Fehlerstatus ist rückführbar; der UNIX-SVC-Dispatcher unterstützt exit/read/write/readv/writev/pread/pwrite/open/close/link/unlink/chdir/chmod/symlink/readlink/umask/getpid/getppid/getuid/geteuid/getgid/getegid/getpgrp/dup/dup2/pipe/socket/socketpair/connect/bind/listen/accept/recvfrom/sendto/getpeername/getsockname/shutdown/gettimeofday/access/rename/mkdir/rmdir/fsync/fdatasync/stat/lstat/fstat/lseek/truncate/ftruncate/mmap/munmap/mprotect/msync/madvise/sysctl |
 | 3. Import-Brücke | ARM64-Import-Stubs in Gastcode erzeugen; symbolgebundene Stub-ID trappt; Signatur-Metadaten marshallen Gastregister zum Host-ABI | skalare und Pointer-Importe laufen mit begrenzter, dokumentierter Signaturmenge |
 | 4. Darwin-Eintritt | `MachOImage::ExecuteEntry` auf Backend-Auswahl erweitern; `DarwinStart`-Stack, argc/argv/envp/apple, TLS und Initializer an den A64-Kontext binden | ARM64-Mach-O ohne Frameworks startet, ruft Darwin-Imports auf und beendet sich korrekt |
 | 5. Frameworks | bestehende Foundation/CoreFoundation/AppKit-Symbole über dieselbe Import-Brücke erreichbar machen; ARM64-Objective-C-Argumente und Rückgaben pro Typ abdecken | echte ARM64-Gast-App-Fixtures belegen jeden genutzten Frameworkpfad |
@@ -111,12 +112,110 @@ werden.
 
 ## Status
 
+### Windows-Buildprobe und erste Wintosh-Anbindung (2026-11-23)
+
+Der lokale, nur zur Evaluation angelegte Upstream-Checkout steht auf
+`yuzu-mirror/dynarmic` Commit `9d4582339990d4eae53f1dc7160686920fc2075c`.
+vcpkg installierte Boost 1.92 samt `boost-icl` und `boost-variant` (48 Pakete
+einschließlich der schon vorhandenen Module). Dynarmics x64-Windows-A64-
+Frontend baute anschließend mit MSVC 19.51 und Ninja zu `dynarmic.lib`.
+Dynarmics CMake-Dateien im ignorierten Probeklon mussten `/Zi` auf `/Z7`
+umstellen, weil der installierte PDB-Manager `C1902` lieferte. Diese lokale
+Toolchain-Anpassung ist kein Patch am Wintosh-Repository.
+
+Für den lokalen Wintosh-Build sind `WINTOSH_DYNARMIC_SOURCE_DIR` und
+`WINTOSH_DYNARMIC_BUILD_DIR` optionale CMake-Pfade. Mit beiden gesetzt wurde
+der A64-Adapter in `wintosh_windows_host.lib` kompiliert und das Release-
+Programm `wintosh.exe` gegen Dynarmic, fmt, mcl, Zydis und Zycore gelinkt.
+Ein erster Debug-Link wurde erwartungsgemäß wegen `_ITERATOR_DEBUG_LEVEL=2`
+gegenüber `0` in Dynarmics Release-Bibliothek abgelehnt; der Release-Build
+behebt diese ABI-Konfigurationsabweichung.
+
+Die erste Wintosh-Anbindung führt AArch64-`ExecuteEntry` über den A64-JIT.
+Dynarmic-Speicher-Callbacks prüfen jede Instruktions- und Datenadresse gegen
+die registrierten Segmente und deren Darwin-Rechte. Argument-, Umgebungs- und
+Startup-Puffer werden für den Gastzugriff registriert. Ein kompatibler
+`main`-Return wird über einen privaten Nicht-Ausführbar-Sentinel erkannt.
+Dieser Build belegt Kompilierung und Link, aber noch keine ausgeführte
+ARM64-Fixture und keinen funktionierenden macOS-App-Start.
+
+Der Adapterzustand ist als `A64CpuState` mit `x0..x30`, `v0..v31`, `SP`,
+`PC`, `PSTATE`, `FPCR` und `FPSR` modelliert. Jeder Lauf gibt diesen Zustand
+zusammen mit dem Trapgrund zurück; ein Folgelauf kann ihn wieder übernehmen.
+Dynarmic setzt die Gast-PC vor dem SVC-Callback auf die nächste Instruktion.
+Der Loader startet den Gast danach mit dem geänderten Rückgaberegister und
+PSTATE fort. Ein erneuter Lauf erzeugt derzeit einen neuen JIT-Kontext;
+dynamische Zustände wie der ARM-Exclusive-Monitor werden dabei nicht erhalten
+und bleiben deshalb fail-closed.
+
+Der Loader dispatcht bei `svc #0x80` die Darwin-UNIX-Aufrufe `exit`, `read`,
+`write`, `readv`, `writev`, `pread`, `pwrite`, `open`, `close`, `link`,
+`unlink`, `chdir`, `chmod`, `symlink`,
+`readlink`, `umask`, `getpid`, `getppid`, `getuid`, `geteuid`, `getgid`,
+`getegid`, `getpgrp`, `dup`, `dup2`, `pipe`, `access`, `rename`, `mkdir`,
+`rmdir`, `fsync`, `fdatasync`, `stat`, `lstat`, `fstat`, `lseek`, `truncate`
+und `ftruncate` an vorhandene Wintosh-Adapter. BSD-Socketaufrufe `socket`,
+`socketpair`, `connect`, `bind`, `listen`, `accept`, `recvfrom`, `sendto`,
+`getpeername`, `getsockname` und `shutdown` werden an WinSock-Adapter
+weitergereicht. Adressdaten laufen über begrenzte lokale Hostpuffer. Die
+Längen- und Ausgabepointer werden geprüft und die Ergebnisse erst danach in
+den Gastadressraum kopiert. Der BSD-Syscall `gettimeofday` schreibt timeval
+und optional den Mach-Absolutzeitwert; die veraltete Zeitzonen-Ausgabe wird
+ignoriert. `clock_gettime` und `nanosleep` sind keine direkten XNU-Syscalls
+in der geprüften Tabelle und bleiben Framework-/LibSystem-Importe.
+`readv` und `writev` kopieren
+das iovec-Array nach einer Bereichsprüfung in Hostspeicher und validieren jeden
+einzelnen Gastpuffer in Leserichtung bzw. Schreibrichtung. `pread` und `pwrite`
+prüfen zusätzlich den 64-Bit-Dateioffset und begrenzen einzelne Transfers auf
+die von den Windows-I/O-Adaptern unterstützte DWORD-Größe.
+Mehrfach-Rückgaben wie bei
+`getpid`, `getuid`, `getgid` und `pipe` werden in `x0` und `x1` abgebildet.
+Für `read` und `write` wird der Gastpuffer vor dem Hostaufruf auf Lesbarkeit
+bzw. Schreibbarkeit und Bereichsüberlauf geprüft. Pfadargumente für `open`,
+`link`, `unlink`, `chdir`, `chmod`, `symlink`, `readlink`, `access`, `rename`,
+`mkdir`, `rmdir`, `stat` und `lstat` müssen innerhalb eines lesbaren
+Gastbereichs bis zum NUL-Byte reichen. Ausgabeparameter von `readlink`,
+`stat`, `lstat` und `fstat` werden vor dem Aufruf gegen Gast-Schreibrechte
+und die erwartete Strukturgröße geprüft. Rückgabewert und PSTATE-Carry folgen der Darwin-
+Syscall-Konvention; unbekannte UNIX-Nummern liefern `ENOSYS`. Nicht-UNIX-
+Dispatchklassen und andere SVC-Immediatewerte werden explizit abgelehnt. Die
+Nummern stammen aus Apples XNU `syscalls.master`. Das ist ein erster schmaler
+Kernel-Aufrufpfad, keine allgemeine Darwin-Syscall- oder Mach-Trap-
+Implementierung.
+
+Exklusive ARM64-Stores stoppen fail-closed, weil ein gemeinsamer
+Exclusive-Monitor fehlt. ARM64-Initialisierer und -Terminierer mit Code
+werden ebenfalls abgelehnt. Der Speicherraum umfasst das Hauptexecutable,
+Startpuffer und zur Laufzeit registrierte `mmap`-Bereiche; dyld-Abhängigkeiten
+sind noch nicht Teil dieses Gastspeichermodells. `mmap` reicht die sechs
+Darwin-Argumente an den vorhandenen Windows-Adapter weiter und registriert
+erfolgreiche Bereiche samt Gastrechten. `mprotect` akzeptiert nur vollständig
+abgedeckte, explizit schützbare Bereiche (Executable-Segmente und registrierte
+Mappings) und aktualisiert Host- sowie Gastschutzrechte. `munmap` gibt nur eine
+vollständige, exakt registrierte Mapping-Länge frei; Teilbereiche, feste
+Ersetzungen bestehender Gast-Mappings und nicht registrierte Bereiche schlagen
+geschlossen fehl. Dadurch bleibt die Backend-Tabelle mit dem tatsächlich
+besessenen Hostspeicher synchron. `sysctl` ist auf die im vorhandenen Adapter
+implementierten zweistufigen `KERN`- und `HW`-MIBs beschränkt. MIB und
+Eingabewerte werden vorab kopiert beziehungsweise geprüft; Ausgaben laufen
+über einen begrenzten Hostpuffer und werden danach in den Gast geschrieben.
+Weitere Unix-Syscalls, Mach-Traps, Host-Imports und Cocoa bleiben offen.
+
+Der Upstream-Commit ist noch nicht in der Projektkonfiguration festgeschrieben;
+die optionalen Pfade setzen einen separat gebauten Checkout voraus. Vor einer
+standardmäßigen Integration müssen Upstream-Pin, Reproduzierbarkeit und
+Lizenzen der tatsächlich gebauten Abhängigkeiten in den Projektmetadaten
+festgelegt werden.
+
 | Fähigkeit | Stand |
 |---|---|
 | ARM64 parse/map/Relokations-Subset | implementiert, bestehende Grenzen gelten |
-| Dynarmic-Abhängigkeit gepinnt und lokal gebaut | fehlt |
-| A64-Backend in Wintosh | fehlt |
-| x64-Host-Gast-Speicherprüfung | fehlt |
+| Dynarmic-Commit lokal untersucht | `9d458233`; Windows-x64-A64 statisch gebaut |
+| Dynarmic-Abhängigkeit reproduzierbar gebaut | lokal mit Probe-CMake-Dateianpassung; noch nicht im Projekt fixiert |
+| A64-Backend in Wintosh | optionaler Adapter kompiliert und gelinkt; keine Laufzeit-Fixture |
+| A64-Trap-Zustand | x0–x30, v0–v31, SP, PC, PSTATE, FPCR und FPSR rückführbar und fortsetzbar |
+| Darwin-UNIX-SVC | `exit`, `read`, `write`, `readv`, `writev`, `pread`, `pwrite`, `open`, `close`, `link`, `unlink`, `chdir`, `chmod`, `symlink`, `readlink`, `umask`, Prozess-/Gruppen-ID-Aufrufe, `dup`, `dup2`, `pipe`, `socket`, `socketpair`, `connect`, `bind`, `listen`, `accept`, `recvfrom`, `sendto`, `getpeername`, `getsockname`, `shutdown`, `gettimeofday`, `access`, `rename`, `mkdir`, `rmdir`, `fsync`, `fdatasync`, `stat`, `lstat`, `fstat`, `lseek`, `truncate`, `ftruncate`, `mmap`, `munmap` (nur ganzes Mapping), `mprotect`, `msync`, `madvise`, `sysctl` (implementierte zweistufige `KERN`-/`HW`-MIBs); andere UNIX-Nummern liefern `ENOSYS`; kein Mach-Trap-Dispatcher |
+| x64-Host-Gast-Speicherprüfung | Segmentrechte und Bereichsgrenzen im Callback umgesetzt; keine Laufzeit-Fixture |
 | A64-Import-Trampoline und ABI-Dispatcher | fehlt |
 | ARM64 Mach-O end-to-end auf x64 Windows | fehlt |
 

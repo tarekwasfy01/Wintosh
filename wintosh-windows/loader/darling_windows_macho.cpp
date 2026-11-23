@@ -8,11 +8,16 @@
 
 #include "darling_windows_macho.h"
 #include "darling_windows_stdio.h"
+#include "../platform/darling_windows_errno.h"
 #include "darling_windows_abi_bridge.h"
 #include "darling_windows_tlv.h"
+#if defined(WINTOSH_HAS_DYNARMIC)
+#include "darling_windows_a64_backend.h"
+#endif
 
 #include <algorithm>
 #include <array>
+#include <cerrno>
 #include <cstring>
 #include <cstdio>
 #include <functional>
@@ -2508,7 +2513,8 @@ bool MachOImage::IsOptimizedTLVLEA(const Mapping& mapping,
 void MachOImage::ApplyBindActions(const Mapping& mapping,
 	const std::vector<DyldResolvedBinding>& bindings) const
 {
-	RequireNativeExecution(*this);
+	if (!IsArm64())
+		RequireNativeExecution(*this);
 	for (const auto& action : m_bind_actions) {
 		if (action.lazy) {
 			continue;
@@ -2771,7 +2777,8 @@ void MachOImage::ApplyChainedFixups(const Mapping& mapping,
 
 void MachOImage::ApplyRebaseActions(const Mapping& mapping) const
 {
-	RequireNativeExecution(*this);
+	if (!IsArm64())
+		RequireNativeExecution(*this);
 	for (const auto& action : m_rebase_actions) {
 		if ((action.type != 1 && action.type != 2) ||
 			action.segment_index >= m_segments.size()) {
@@ -3147,6 +3154,18 @@ void MachOImage::ExecuteEntryNoArgs(const Mapping& mapping) const
 
 void MachOImage::ExecuteInitializers(const Mapping& mapping) const
 {
+#if defined(WINTOSH_HAS_DYNARMIC)
+	if (IsArm64()) {
+		const auto has_initializer = std::any_of(m_sections.begin(), m_sections.end(),
+			[](const auto& section) {
+				return section.section_name == "__mod_init_func" && section.size != 0;
+			});
+		if (has_initializer)
+			throw std::runtime_error(
+				"ARM64 Mach-O initializers require the guest-call/import dispatcher");
+		return;
+	}
+#endif
 	RequireNativeExecution(*this);
 	for (const auto& section : m_sections) {
 		if (section.section_name != "__mod_init_func")
@@ -3172,6 +3191,18 @@ void MachOImage::ExecuteInitializers(const Mapping& mapping) const
 
 void MachOImage::ExecuteTerminators(const Mapping& mapping) const
 {
+#if defined(WINTOSH_HAS_DYNARMIC)
+	if (IsArm64()) {
+		const auto has_terminator = std::any_of(m_sections.begin(), m_sections.end(),
+			[](const auto& section) {
+				return section.section_name == "__mod_term_func" && section.size != 0;
+			});
+		if (has_terminator)
+			throw std::runtime_error(
+				"ARM64 Mach-O terminators require the guest-call/import dispatcher");
+		return;
+	}
+#endif
 	RequireNativeExecution(*this);
 	for (const auto& section : m_sections) {
 		if (section.section_name != "__mod_term_func")
@@ -3201,7 +3232,12 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 	const std::vector<std::string>& apple_parameters,
 	DarwinEntryAbi entry_abi) const
 {
+#if defined(WINTOSH_HAS_DYNARMIC)
+	if (!IsArm64())
+		RequireNativeExecution(*this);
+#else
 	RequireNativeExecution(*this);
+#endif
 	if (mapping.EntryAddress() == 0) {
 		throw std::runtime_error("Mach-O mapping has no executable entry address");
 	}
@@ -3252,6 +3288,994 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 	if (apple.empty() || apple.back() != nullptr) {
 		throw std::logic_error("Darwin Apple parameter vector must be null terminated");
 	}
+#if defined(WINTOSH_HAS_DYNARMIC)
+	if (IsArm64()) {
+		if (mapping.Segments().size() != m_segments.size())
+			throw std::logic_error("ARM64 Mach-O segment metadata does not match its mapping");
+		std::vector<A64GuestMemoryRegion> guest_memory;
+		guest_memory.reserve(mapping.Segments().size() + arguments.size() +
+			environment.size() + apple_parameters.size() + 5);
+		for (std::size_t segment_index = 0;
+			segment_index < mapping.Segments().size(); ++segment_index) {
+			const auto& mapped = mapping.Segments()[segment_index];
+			const auto protection = m_segments[segment_index].initial_protection;
+			guest_memory.push_back({mapped.address, mapped.size,
+				(protection & 1) != 0, (protection & 2) != 0,
+				(protection & 4) != 0, false, 0, 0, true});
+		}
+		const auto add_host_buffer = [&guest_memory](const void* address,
+			std::size_t bytes) {
+			if (address != nullptr && bytes != 0) {
+				guest_memory.push_back({reinterpret_cast<std::uintptr_t>(address),
+					bytes, true, false, false});
+			}
+		};
+		add_host_buffer(argv.data(), argv.size() * sizeof(argv.front()));
+		add_host_buffer(envp.data(), envp.size() * sizeof(envp.front()));
+		add_host_buffer(apple.data(), apple.size() * sizeof(apple.front()));
+		for (const auto& value : argument_storage)
+			add_host_buffer(value.data(), value.size());
+		for (const auto& value : environment_storage)
+			add_host_buffer(value.data(), value.size());
+		for (const auto& value : apple_storage)
+			add_host_buffer(value.data(), value.size());
+
+		constexpr std::size_t startup_stack_guard_words = 512;
+		constexpr std::size_t startup_stack_capacity = 2048;
+		alignas(16) std::array<std::uintptr_t, startup_stack_capacity> startup_stack{};
+		std::uintptr_t stack_pointer = reinterpret_cast<std::uintptr_t>(
+			startup_stack.data() + startup_stack.size());
+		if (entry_abi == DarwinEntryAbi::DarwinStart) {
+			const auto startup_words = startup_stack_guard_words + 1 + argv.size() +
+				envp.size() + apple.size();
+			if (startup_words > startup_stack.size())
+				throw std::runtime_error("Darwin startup stack exceeds backend fixture capacity");
+			std::size_t stack_index = startup_stack_guard_words;
+			startup_stack[stack_index++] = static_cast<std::uintptr_t>(arguments.size());
+			for (const auto value : argv)
+				startup_stack[stack_index++] = reinterpret_cast<std::uintptr_t>(value);
+			for (const auto value : envp)
+				startup_stack[stack_index++] = reinterpret_cast<std::uintptr_t>(value);
+			for (const auto value : apple)
+				startup_stack[stack_index++] = reinterpret_cast<std::uintptr_t>(value);
+			stack_pointer = reinterpret_cast<std::uintptr_t>(
+				startup_stack.data() + startup_stack_guard_words);
+		}
+		add_host_buffer(startup_stack.data(), sizeof(startup_stack));
+
+		std::array<std::uint64_t, 31> registers{};
+		if (entry_abi == DarwinEntryAbi::CompatibleMain) {
+			registers[0] = arguments.size();
+			registers[1] = reinterpret_cast<std::uintptr_t>(argv.data());
+			registers[2] = reinterpret_cast<std::uintptr_t>(envp.data());
+		}
+		constexpr std::uint64_t return_sentinel = 0xfffffffffffff000ull;
+		registers[30] = return_sentinel;
+
+		DarlingWindowsA64Backend backend(std::move(guest_memory));
+		A64CpuState cpu{};
+		cpu.x = registers;
+		cpu.sp = stack_pointer;
+		cpu.pc = mapping.EntryAddress();
+		for (;;) {
+			const auto result = backend.Run(cpu);
+			if (result.state.pc == return_sentinel && result.exception ==
+				Dynarmic::A64::Exception::NoExecuteFault) {
+				return static_cast<int>(result.state.x[0]);
+			}
+			if (result.svc) {
+				if (*result.svc != 0x80) {
+					throw std::runtime_error("ARM64 Mach-O reached unsupported SVC #" +
+						std::to_string(*result.svc));
+				}
+
+				// Darwin encodes UNIX calls as class 2 in x16's high byte. Accept
+				// unclassified low syscall numbers as well for hand-written guests.
+				const auto syscall_word = result.state.x[16];
+				const auto syscall_class = static_cast<std::uint8_t>(syscall_word >> 24);
+				if (syscall_class != 0 && syscall_class != 2) {
+					throw std::runtime_error("ARM64 Mach-O issued an unsupported non-UNIX "
+						"SVC dispatch class " + std::to_string(syscall_class));
+				}
+				const auto syscall_number = static_cast<std::uint32_t>(
+					syscall_word & 0x00ffffffu);
+				const auto& arguments = result.state.x;
+				if (syscall_number == 1) { // SYS_exit
+					return static_cast<int>(arguments[0]);
+				}
+
+				std::int64_t syscall_result = -1;
+				std::uint64_t syscall_result_x1 = result.state.x[1];
+				int error_number = 0;
+				DarwinErrno::Clear();
+				switch (syscall_number) {
+				case 9: // SYS_link
+					if (!backend.ContainsGuestCString(arguments[0], 4096) ||
+						!backend.ContainsGuestCString(arguments[1], 4096)) {
+						error_number = EFAULT;
+						break;
+					}
+					syscall_result = darling_windows_link(
+						reinterpret_cast<const char*>(static_cast<std::uintptr_t>(arguments[0])),
+						reinterpret_cast<const char*>(static_cast<std::uintptr_t>(arguments[1])));
+					break;
+				case 73: { // SYS_munmap (whole owned mappings only)
+					if (arguments[0] > std::numeric_limits<std::uintptr_t>::max() ||
+						arguments[1] > std::numeric_limits<std::size_t>::max() ||
+						arguments[1] == 0) {
+						error_number = EINVAL;
+						break;
+					}
+					const auto mapping_size = backend.DynamicGuestMappingSize(arguments[0]);
+					if (!mapping_size || *mapping_size != arguments[1]) {
+						error_number = EINVAL;
+						break;
+					}
+					syscall_result = darling_windows_munmap(
+						reinterpret_cast<void*>(static_cast<std::uintptr_t>(arguments[0])),
+						static_cast<std::size_t>(arguments[1]));
+					if (syscall_result == 0)
+						(void)backend.RemoveDynamicGuestMapping(arguments[0]);
+					break;
+				}
+				case 74: { // SYS_mprotect
+					const auto page_size = static_cast<std::size_t>(darling_windows_getpagesize());
+					if (arguments[0] > std::numeric_limits<std::uintptr_t>::max() ||
+						arguments[1] == 0 || arguments[1] > std::numeric_limits<std::size_t>::max() ||
+						arguments[2] > 7 || page_size == 0 ||
+						arguments[0] % page_size != 0 ||
+						arguments[1] > std::numeric_limits<std::size_t>::max() - (page_size - 1)) {
+						error_number = EINVAL;
+						break;
+					}
+					const auto length = static_cast<std::size_t>(arguments[1]);
+					const auto rounded_length = ((length + page_size - 1) / page_size) * page_size;
+					if (!backend.CanProtectGuestRange(arguments[0], rounded_length)) {
+						error_number = EINVAL;
+						break;
+					}
+					syscall_result = darling_windows_mprotect(
+						reinterpret_cast<void*>(static_cast<std::uintptr_t>(arguments[0])),
+						length, static_cast<int>(arguments[2]));
+					if (syscall_result == 0 && !backend.ProtectGuestRange(arguments[0],
+						rounded_length, (arguments[2] & 1) != 0,
+						(arguments[2] & 2) != 0, (arguments[2] & 4) != 0)) {
+						error_number = EFAULT;
+						syscall_result = -1;
+					}
+					break;
+				}
+				case 65: // SYS_msync
+				case 75: { // SYS_madvise
+					if (arguments[0] > std::numeric_limits<std::uintptr_t>::max() ||
+						arguments[1] == 0 || arguments[1] > std::numeric_limits<std::size_t>::max() ||
+						arguments[2] > std::numeric_limits<int>::max()) {
+						error_number = EINVAL;
+						break;
+					}
+					const auto length = static_cast<std::size_t>(arguments[1]);
+					if (!backend.ContainsGuestRange(arguments[0], length, false)) {
+						error_number = EFAULT;
+						break;
+					}
+					syscall_result = syscall_number == 65 ? darling_windows_msync(
+						reinterpret_cast<void*>(static_cast<std::uintptr_t>(arguments[0])),
+						length, static_cast<int>(arguments[2])) : darling_windows_madvise(
+						reinterpret_cast<void*>(static_cast<std::uintptr_t>(arguments[0])),
+						length, static_cast<int>(arguments[2]));
+					break;
+				}
+				case 197: { // SYS_mmap
+					const auto page_size = static_cast<std::size_t>(darling_windows_getpagesize());
+					if (arguments[0] > std::numeric_limits<std::uintptr_t>::max() ||
+						arguments[1] == 0 || arguments[1] > std::numeric_limits<std::size_t>::max() ||
+						arguments[2] > 7 || arguments[3] > std::numeric_limits<int>::max() ||
+						page_size == 0 || arguments[1] >
+						std::numeric_limits<std::size_t>::max() - (page_size - 1)) {
+						error_number = EINVAL;
+						break;
+					}
+					const auto length = static_cast<std::size_t>(arguments[1]);
+					const auto rounded_length = ((length + page_size - 1) / page_size) * page_size;
+					void* requested = reinterpret_cast<void*>(static_cast<std::uintptr_t>(arguments[0]));
+					constexpr std::uint64_t map_fixed = 0x0010;
+					if ((arguments[3] & map_fixed) != 0 &&
+						backend.HasDynamicGuestMapping(arguments[0])) {
+						error_number = EINVAL;
+						break;
+					}
+					const auto descriptor = static_cast<int>(static_cast<std::int32_t>(arguments[4]));
+					const auto offset = static_cast<std::int64_t>(arguments[5]);
+					void* mapped = darling_windows_mmap(requested, length,
+						static_cast<int>(arguments[2]), static_cast<int>(arguments[3]),
+						descriptor, offset);
+					if (mapped == reinterpret_cast<void*>(-1))
+						break;
+					const auto mapped_address = reinterpret_cast<std::uintptr_t>(mapped);
+					A64GuestMemoryRegion region{mapped_address, rounded_length,
+						(arguments[2] & 1) != 0, (arguments[2] & 2) != 0,
+						(arguments[2] & 4) != 0, true, mapped_address, length, true};
+					if (!backend.RegisterDynamicGuestMapping(region)) {
+						(void)darling_windows_munmap(mapped, length);
+						error_number = EINVAL;
+						break;
+					}
+					syscall_result = static_cast<std::int64_t>(mapped_address);
+					break;
+				}
+				case 202: { // SYS_sysctl
+					if (arguments[1] != 2 || !backend.ContainsGuestRange(
+						arguments[0], 2 * sizeof(int), false) || arguments[3] == 0 ||
+						!backend.ContainsGuestRange(arguments[3], sizeof(std::size_t), true)) {
+						error_number = EFAULT;
+						break;
+					}
+					if (arguments[5] > std::numeric_limits<std::size_t>::max() ||
+						(arguments[4] != 0 && arguments[5] != 0 &&
+						 !backend.ContainsGuestRange(arguments[4],
+							static_cast<std::size_t>(arguments[5]), false))) {
+						error_number = EFAULT;
+						break;
+					}
+					int mib[2]{};
+					std::memcpy(mib, reinterpret_cast<const void*>(
+						static_cast<std::uintptr_t>(arguments[0])), sizeof(mib));
+					std::size_t old_length = 0;
+					std::memcpy(&old_length, reinterpret_cast<const void*>(
+						static_cast<std::uintptr_t>(arguments[3])), sizeof(old_length));
+					constexpr std::size_t maximum_sysctl_output = 1024 * 1024;
+					if (arguments[2] != 0 && (old_length > maximum_sysctl_output ||
+						(old_length != 0 && !backend.ContainsGuestRange(
+							arguments[2], old_length, true)))) {
+						error_number = old_length > maximum_sysctl_output ? EINVAL : EFAULT;
+						break;
+					}
+					std::vector<std::byte> old_value(arguments[2] == 0 ? 0 :
+						(std::max)(old_length, std::size_t{1}));
+					syscall_result = darling_windows_sysctl(mib, 2,
+						arguments[2] == 0 ? nullptr : old_value.data(), &old_length,
+						reinterpret_cast<const void*>(static_cast<std::uintptr_t>(arguments[4])),
+						static_cast<std::size_t>(arguments[5]));
+					std::memcpy(reinterpret_cast<void*>(static_cast<std::uintptr_t>(arguments[3])),
+						&old_length, sizeof(old_length));
+					if (syscall_result == 0 && arguments[2] != 0)
+						std::memcpy(reinterpret_cast<void*>(static_cast<std::uintptr_t>(arguments[2])),
+							old_value.data(), old_length);
+					break;
+				}
+				case 5: // SYS_open
+					if (!backend.ContainsGuestCString(arguments[0], 4096)) {
+						error_number = EFAULT;
+						break;
+					}
+					if (arguments[1] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max()) ||
+						arguments[2] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max())) {
+						error_number = EINVAL;
+						break;
+					}
+					syscall_result = darling_windows_open(
+						reinterpret_cast<const char*>(static_cast<std::uintptr_t>(arguments[0])),
+						static_cast<int>(arguments[1]), static_cast<int>(arguments[2]));
+					break;
+				case 3: // SYS_read
+				case 4: { // SYS_write
+					if (arguments[0] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max())) {
+						error_number = EBADF;
+						break;
+					}
+					if (arguments[2] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max())) {
+						error_number = EINVAL;
+						break;
+					}
+					const auto bytes = static_cast<std::size_t>(arguments[2]);
+					if (bytes != 0 && !backend.ContainsGuestRange(arguments[1], bytes,
+						syscall_number == 3)) {
+						error_number = EFAULT;
+						break;
+					}
+					if (bytes == 0) {
+						syscall_result = 0;
+						break;
+					}
+					const auto descriptor = static_cast<int>(arguments[0]);
+					const auto value = syscall_number == 3 ?
+						darling_windows_read(descriptor,
+							reinterpret_cast<void*>(static_cast<std::uintptr_t>(arguments[1])), bytes) :
+						darling_windows_write(descriptor,
+							reinterpret_cast<const void*>(static_cast<std::uintptr_t>(arguments[1])), bytes);
+					syscall_result = value;
+					break;
+				}
+				case 6: // SYS_close
+					if (arguments[0] > static_cast<std::uint64_t>(
+						std::numeric_limits<int>::max())) {
+						error_number = EBADF;
+						break;
+					}
+					syscall_result = darling_windows_close(
+						static_cast<int>(arguments[0]));
+					break;
+				case 10: // SYS_unlink
+					if (!backend.ContainsGuestCString(arguments[0], 4096)) {
+						error_number = EFAULT;
+						break;
+					}
+					syscall_result = darling_windows_unlink(
+						reinterpret_cast<const char*>(static_cast<std::uintptr_t>(arguments[0])));
+					break;
+				case 12: // SYS_chdir
+					if (!backend.ContainsGuestCString(arguments[0], 4096)) {
+						error_number = EFAULT;
+						break;
+					}
+					syscall_result = darling_windows_chdir(
+						reinterpret_cast<const char*>(static_cast<std::uintptr_t>(arguments[0])));
+					break;
+				case 15: // SYS_chmod
+					if (!backend.ContainsGuestCString(arguments[0], 4096)) {
+						error_number = EFAULT;
+						break;
+					}
+					if (arguments[1] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max())) {
+						error_number = EINVAL;
+						break;
+					}
+					syscall_result = darling_windows_chmod(
+						reinterpret_cast<const char*>(static_cast<std::uintptr_t>(arguments[0])),
+						static_cast<int>(arguments[1]));
+					break;
+				case 20: // SYS_getpid
+					syscall_result = darling_windows_getpid();
+					syscall_result_x1 = static_cast<std::uint64_t>(
+						darling_windows_getppid());
+					break;
+				case 24: // SYS_getuid
+					syscall_result = darling_windows_getuid();
+					syscall_result_x1 = static_cast<std::uint64_t>(
+						darling_windows_geteuid());
+					break;
+				case 25: // SYS_geteuid
+					syscall_result = darling_windows_geteuid();
+					break;
+				case 29: { // SYS_recvfrom
+					if (arguments[0] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max())) {
+						error_number = EBADF;
+						break;
+					}
+					if (arguments[2] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max()) ||
+						arguments[3] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max())) {
+						error_number = EINVAL;
+						break;
+					}
+					const auto bytes = static_cast<std::size_t>(arguments[2]);
+					if (bytes != 0 && !backend.ContainsGuestRange(arguments[1], bytes, true)) {
+						error_number = EFAULT;
+						break;
+					}
+					if ((arguments[4] == 0) != (arguments[5] == 0)) {
+						error_number = EFAULT;
+						break;
+					}
+					std::array<unsigned char, 512> address_buffer{};
+					int address_length = 0;
+					int guest_address_capacity = 0;
+					int* guest_address_length = nullptr;
+					void* guest_address = nullptr;
+					if (arguments[4] != 0) {
+						if (!backend.ContainsGuestRange(arguments[5], sizeof(int), false) ||
+							!backend.ContainsGuestRange(arguments[5], sizeof(int), true)) {
+							error_number = EFAULT;
+							break;
+						}
+						std::memcpy(&address_length, reinterpret_cast<const void*>(
+							static_cast<std::uintptr_t>(arguments[5])), sizeof(address_length));
+						if (address_length < 0) {
+							error_number = EINVAL;
+							break;
+						}
+						guest_address_capacity = address_length;
+						if (address_length > static_cast<int>(address_buffer.size()))
+							address_length = static_cast<int>(address_buffer.size());
+						if (address_length > 0 && !backend.ContainsGuestRange(arguments[4],
+							static_cast<std::size_t>(address_length), true)) {
+							error_number = EFAULT;
+							break;
+						}
+						guest_address = reinterpret_cast<void*>(address_buffer.data());
+						guest_address_length = &address_length;
+					}
+					const auto value = darling_windows_recvfrom(
+						static_cast<int>(arguments[0]),
+						reinterpret_cast<void*>(static_cast<std::uintptr_t>(arguments[1])),
+						bytes, static_cast<int>(arguments[3]), guest_address,
+						guest_address_length);
+					if (value >= 0 && arguments[4] != 0) {
+						const auto copy_bytes = address_length > 0 ?
+							(std::min)(static_cast<std::size_t>(address_length),
+								(std::min)(static_cast<std::size_t>(guest_address_capacity),
+									address_buffer.size())) : 0;
+						if (copy_bytes != 0)
+							std::memcpy(reinterpret_cast<void*>(static_cast<std::uintptr_t>(
+								arguments[4])), address_buffer.data(), copy_bytes);
+						std::memcpy(reinterpret_cast<void*>(static_cast<std::uintptr_t>(
+							arguments[5])), &address_length, sizeof(address_length));
+					}
+					syscall_result = value;
+					break;
+				}
+				case 30: { // SYS_accept
+					if (arguments[0] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max())) {
+						error_number = EBADF;
+						break;
+					}
+					if ((arguments[1] == 0) != (arguments[2] == 0)) {
+						error_number = EFAULT;
+						break;
+					}
+					if (arguments[1] == 0) {
+						syscall_result = darling_windows_accept(
+							static_cast<int>(arguments[0]), nullptr, nullptr);
+						break;
+					}
+					if (!backend.ContainsGuestRange(arguments[2], sizeof(std::uint32_t), false) ||
+						!backend.ContainsGuestRange(arguments[2], sizeof(std::uint32_t), true)) {
+						error_number = EFAULT;
+						break;
+					}
+					std::uint32_t guest_capacity = 0;
+					std::memcpy(&guest_capacity, reinterpret_cast<const void*>(
+						static_cast<std::uintptr_t>(arguments[2])), sizeof(guest_capacity));
+					std::array<unsigned char, 512> address_buffer{};
+					const auto capacity = (std::min)(static_cast<std::size_t>(guest_capacity),
+						address_buffer.size());
+					if (capacity != 0 && !backend.ContainsGuestRange(
+						arguments[1], capacity, true)) {
+						error_number = EFAULT;
+						break;
+					}
+					int address_length = static_cast<int>(capacity);
+					syscall_result = darling_windows_accept(static_cast<int>(arguments[0]),
+						address_buffer.data(), &address_length);
+					if (syscall_result >= 0 && address_length >= 0) {
+						const auto copy_bytes = (std::min)(static_cast<std::size_t>(address_length),
+							capacity);
+						if (copy_bytes != 0)
+							std::memcpy(reinterpret_cast<void*>(static_cast<std::uintptr_t>(
+								arguments[1])), address_buffer.data(), copy_bytes);
+						const auto result_length = static_cast<std::uint32_t>(address_length);
+						std::memcpy(reinterpret_cast<void*>(static_cast<std::uintptr_t>(
+							arguments[2])), &result_length, sizeof(result_length));
+					}
+					break;
+				}
+				case 31: // SYS_getpeername
+				case 32: { // SYS_getsockname
+					if (arguments[0] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max())) {
+						error_number = EBADF;
+						break;
+					}
+					if (arguments[1] == 0 || arguments[2] == 0 ||
+						!backend.ContainsGuestRange(arguments[2], sizeof(std::uint32_t), false) ||
+						!backend.ContainsGuestRange(arguments[2], sizeof(std::uint32_t), true)) {
+						error_number = EFAULT;
+						break;
+					}
+					std::uint32_t guest_capacity = 0;
+					std::memcpy(&guest_capacity, reinterpret_cast<const void*>(
+						static_cast<std::uintptr_t>(arguments[2])), sizeof(guest_capacity));
+					std::array<unsigned char, 512> address_buffer{};
+					const auto capacity = (std::min)(static_cast<std::size_t>(guest_capacity),
+						address_buffer.size());
+					if (capacity != 0 && !backend.ContainsGuestRange(
+						arguments[1], capacity, true)) {
+						error_number = EFAULT;
+						break;
+					}
+					int address_length = static_cast<int>(capacity);
+					syscall_result = syscall_number == 31 ?
+						darling_windows_getpeername(static_cast<int>(arguments[0]),
+							address_buffer.data(), &address_length) :
+						darling_windows_getsockname(static_cast<int>(arguments[0]),
+							address_buffer.data(), &address_length);
+					if (syscall_result == 0 && address_length >= 0) {
+						const auto copy_bytes = (std::min)(static_cast<std::size_t>(address_length),
+							capacity);
+						if (copy_bytes != 0)
+							std::memcpy(reinterpret_cast<void*>(static_cast<std::uintptr_t>(
+								arguments[1])), address_buffer.data(), copy_bytes);
+						const auto result_length = static_cast<std::uint32_t>(address_length);
+						std::memcpy(reinterpret_cast<void*>(static_cast<std::uintptr_t>(
+							arguments[2])), &result_length, sizeof(result_length));
+					}
+					break;
+				}
+				case 39: // SYS_getppid
+					syscall_result = darling_windows_getppid();
+					break;
+				case 41: // SYS_dup
+					if (arguments[0] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max())) {
+						error_number = EBADF;
+						break;
+					}
+					syscall_result = darling_windows_dup(static_cast<int>(arguments[0]));
+					break;
+				case 42: { // SYS_pipe returns both descriptors in registers
+					int descriptors[2]{};
+					if (darling_windows_pipe(descriptors) == 0) {
+						syscall_result = descriptors[0];
+						syscall_result_x1 = static_cast<std::uint64_t>(descriptors[1]);
+					}
+					break;
+				}
+				case 43: // SYS_getegid
+					syscall_result = darling_windows_getegid();
+					break;
+				case 47: // SYS_getgid
+					syscall_result = darling_windows_getgid();
+					syscall_result_x1 = static_cast<std::uint64_t>(
+						darling_windows_getegid());
+					break;
+				case 81: // SYS_getpgrp
+					syscall_result = darling_windows_getpgrp();
+					break;
+				case 57: // SYS_symlink
+					if (!backend.ContainsGuestCString(arguments[0], 4096) ||
+						!backend.ContainsGuestCString(arguments[1], 4096)) {
+						error_number = EFAULT;
+						break;
+					}
+					syscall_result = darling_windows_symlink(
+						reinterpret_cast<const char*>(static_cast<std::uintptr_t>(arguments[0])),
+						reinterpret_cast<const char*>(static_cast<std::uintptr_t>(arguments[1])));
+					break;
+				case 58: // SYS_readlink
+					if (!backend.ContainsGuestCString(arguments[0], 4096)) {
+						error_number = EFAULT;
+						break;
+					}
+					if (arguments[2] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max())) {
+						error_number = EINVAL;
+						break;
+					}
+					if (arguments[2] != 0 && !backend.ContainsGuestRange(
+						arguments[1], static_cast<std::size_t>(arguments[2]), true)) {
+						error_number = EFAULT;
+						break;
+					}
+					syscall_result = darling_windows_readlink(
+						reinterpret_cast<const char*>(static_cast<std::uintptr_t>(arguments[0])),
+						reinterpret_cast<char*>(static_cast<std::uintptr_t>(arguments[1])),
+						static_cast<std::size_t>(arguments[2]));
+					break;
+				case 120: // SYS_readv
+				case 121: { // SYS_writev
+					constexpr std::uint64_t maximum_iov_count = 1024;
+					if (arguments[0] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max())) {
+						error_number = EBADF;
+						break;
+					}
+					if (arguments[2] > maximum_iov_count) {
+						error_number = EINVAL;
+						break;
+					}
+					const auto count = static_cast<std::size_t>(arguments[2]);
+					if (count == 0) {
+						syscall_result = 0;
+						break;
+					}
+					const auto vector_bytes = count * sizeof(darling_iovec);
+				if (!backend.ContainsGuestRange(arguments[1], vector_bytes, false)) {
+					error_number = EFAULT;
+					break;
+				}
+					std::vector<darling_iovec> vectors(count);
+					std::memcpy(vectors.data(), reinterpret_cast<const void*>(
+						static_cast<std::uintptr_t>(arguments[1])), vector_bytes);
+					bool invalid_vector = false;
+					for (const auto& vector : vectors) {
+						if (vector.iov_len > static_cast<std::size_t>(
+								std::numeric_limits<int>::max())) {
+							error_number = EINVAL;
+							invalid_vector = true;
+							break;
+						}
+						if (vector.iov_len != 0 && !backend.ContainsGuestRange(
+								reinterpret_cast<std::uintptr_t>(vector.iov_base),
+								vector.iov_len, syscall_number == 120)) {
+							error_number = EFAULT;
+							invalid_vector = true;
+							break;
+						}
+					}
+					if (invalid_vector) {
+						break;
+					}
+					syscall_result = syscall_number == 120 ?
+						darling_windows_readv(static_cast<int>(arguments[0]),
+							vectors.data(), static_cast<int>(count)) :
+						darling_windows_writev(static_cast<int>(arguments[0]),
+							vectors.data(), static_cast<int>(count));
+					break;
+				}
+				case 153: // SYS_pread
+				case 154: { // SYS_pwrite
+					if (arguments[0] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max())) {
+						error_number = EBADF;
+						break;
+					}
+					if (arguments[2] > std::numeric_limits<std::uint32_t>::max() ||
+						static_cast<std::int64_t>(arguments[3]) < 0) {
+						error_number = EINVAL;
+						break;
+					}
+					const auto bytes = static_cast<std::size_t>(arguments[2]);
+					if (bytes != 0 && !backend.ContainsGuestRange(arguments[1], bytes,
+						syscall_number == 153)) {
+						error_number = EFAULT;
+						break;
+					}
+					syscall_result = syscall_number == 153 ?
+						darling_windows_pread(static_cast<int>(arguments[0]),
+							reinterpret_cast<void*>(static_cast<std::uintptr_t>(arguments[1])),
+							bytes, static_cast<std::int64_t>(arguments[3])) :
+						darling_windows_pwrite(static_cast<int>(arguments[0]),
+							reinterpret_cast<const void*>(static_cast<std::uintptr_t>(arguments[1])),
+							bytes, static_cast<std::int64_t>(arguments[3]));
+					break;
+				}
+				case 60: // SYS_umask
+					if (arguments[0] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max())) {
+						error_number = EINVAL;
+						break;
+					}
+					syscall_result = darling_windows_umask(
+						static_cast<int>(arguments[0]));
+					break;
+				case 90: // SYS_dup2
+					if (arguments[0] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max()) ||
+						arguments[1] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max())) {
+						error_number = EBADF;
+						break;
+					}
+					syscall_result = darling_windows_dup2(
+						static_cast<int>(arguments[0]),
+						static_cast<int>(arguments[1]));
+					break;
+				case 97: // SYS_socket
+				case 135: { // SYS_socketpair
+					if (arguments[0] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max()) ||
+						arguments[1] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max()) ||
+						arguments[2] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max())) {
+						error_number = EINVAL;
+						break;
+					}
+					if (syscall_number == 97) {
+						syscall_result = darling_windows_socket(
+							static_cast<int>(arguments[0]),
+							static_cast<int>(arguments[1]),
+							static_cast<int>(arguments[2]));
+						break;
+					}
+					if (!backend.ContainsGuestRange(arguments[3],
+						sizeof(int) * 2, true)) {
+						error_number = EFAULT;
+						break;
+					}
+					int descriptors[2]{};
+					syscall_result = darling_windows_socketpair(
+						static_cast<int>(arguments[0]),
+						static_cast<int>(arguments[1]),
+						static_cast<int>(arguments[2]),
+						descriptors);
+					if (syscall_result == 0)
+						std::memcpy(reinterpret_cast<void*>(static_cast<std::uintptr_t>(
+							arguments[3])), descriptors, sizeof(descriptors));
+					break;
+				}
+				case 98: // SYS_connect
+				case 104: { // SYS_bind
+					if (arguments[0] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max())) {
+						error_number = EBADF;
+						break;
+					}
+					if (arguments[2] > 65536) {
+						error_number = EINVAL;
+						break;
+					}
+					const auto address_length = static_cast<std::size_t>(arguments[2]);
+					if (address_length != 0 && !backend.ContainsGuestRange(
+						arguments[1], address_length, false)) {
+						error_number = EFAULT;
+						break;
+					}
+					std::vector<unsigned char> address_storage(address_length);
+					if (address_length != 0)
+						std::memcpy(address_storage.data(), reinterpret_cast<const void*>(
+							static_cast<std::uintptr_t>(arguments[1])), address_length);
+					const auto* address = address_length == 0 ? nullptr :
+						static_cast<const void*>(address_storage.data());
+					syscall_result = syscall_number == 98 ?
+						darling_windows_connect(static_cast<int>(arguments[0]), address,
+							static_cast<int>(address_length)) :
+						darling_windows_bind(static_cast<int>(arguments[0]), address,
+							static_cast<int>(address_length));
+					break;
+				}
+				case 106: // SYS_listen
+					if (arguments[0] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max()) ||
+						arguments[1] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max())) {
+						error_number = EINVAL;
+						break;
+					}
+					syscall_result = darling_windows_listen(
+						static_cast<int>(arguments[0]),
+						static_cast<int>(arguments[1]));
+					break;
+				case 133: { // SYS_sendto
+					if (arguments[0] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max())) {
+						error_number = EBADF;
+						break;
+					}
+					if (arguments[2] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max()) ||
+						arguments[3] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max()) || arguments[5] > 65536) {
+						error_number = EINVAL;
+						break;
+					}
+					const auto bytes = static_cast<std::size_t>(arguments[2]);
+					const auto address_length = static_cast<std::size_t>(arguments[5]);
+					if ((bytes != 0 && !backend.ContainsGuestRange(arguments[1], bytes, false)) ||
+						(address_length != 0 && !backend.ContainsGuestRange(
+							arguments[4], address_length, false))) {
+						error_number = EFAULT;
+						break;
+					}
+					std::vector<unsigned char> address_storage(address_length);
+					if (address_length != 0)
+						std::memcpy(address_storage.data(), reinterpret_cast<const void*>(
+							static_cast<std::uintptr_t>(arguments[4])), address_length);
+					syscall_result = darling_windows_sendto(
+						static_cast<int>(arguments[0]),
+						reinterpret_cast<const void*>(static_cast<std::uintptr_t>(arguments[1])),
+						bytes, static_cast<int>(arguments[3]),
+						address_length == 0 ? nullptr :
+							static_cast<const void*>(address_storage.data()),
+						static_cast<int>(address_length));
+					break;
+				}
+				case 134: // SYS_shutdown
+					if (arguments[0] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max()) ||
+						arguments[1] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max())) {
+						error_number = EINVAL;
+						break;
+					}
+					syscall_result = darling_windows_shutdown(
+						static_cast<int>(arguments[0]),
+						static_cast<int>(arguments[1]));
+					break;
+				case 95: // SYS_fsync
+					if (arguments[0] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max())) {
+						error_number = EBADF;
+						break;
+					}
+					syscall_result = darling_windows_fsync(
+						static_cast<int>(arguments[0]));
+					break;
+				case 116: { // SYS_gettimeofday(tp, tzp, mach_absolute_time)
+					if ((arguments[0] != 0 && !backend.ContainsGuestRange(
+							arguments[0], sizeof(darling_timeval), true)) ||
+						(arguments[2] != 0 && !backend.ContainsGuestRange(
+							arguments[2], sizeof(std::uint64_t), true))) {
+						error_number = EFAULT;
+						break;
+					}
+					if (arguments[0] != 0) {
+						darling_timeval value{};
+						syscall_result = darling_windows_gettimeofday(&value, nullptr);
+						if (syscall_result != 0)
+							break;
+						std::memcpy(reinterpret_cast<void*>(static_cast<std::uintptr_t>(
+							arguments[0])), &value, sizeof(value));
+					} else {
+						syscall_result = 0;
+					}
+					if (arguments[2] != 0) {
+						const auto absolute_time = darling_windows_mach_absolute_time();
+						std::memcpy(reinterpret_cast<void*>(static_cast<std::uintptr_t>(
+							arguments[2])), &absolute_time, sizeof(absolute_time));
+					}
+					break;
+				}
+				case 128: // SYS_rename
+					if (!backend.ContainsGuestCString(arguments[0], 4096) ||
+						!backend.ContainsGuestCString(arguments[1], 4096)) {
+						error_number = EFAULT;
+						break;
+					}
+					syscall_result = darling_windows_rename(
+						reinterpret_cast<const char*>(static_cast<std::uintptr_t>(arguments[0])),
+						reinterpret_cast<const char*>(static_cast<std::uintptr_t>(arguments[1])));
+					break;
+				case 136: // SYS_mkdir
+					if (!backend.ContainsGuestCString(arguments[0], 4096)) {
+						error_number = EFAULT;
+						break;
+					}
+					if (arguments[1] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max())) {
+						error_number = EINVAL;
+						break;
+					}
+					syscall_result = darling_windows_mkdir(
+						reinterpret_cast<const char*>(static_cast<std::uintptr_t>(arguments[0])),
+						static_cast<int>(arguments[1]));
+					break;
+				case 137: // SYS_rmdir
+					if (!backend.ContainsGuestCString(arguments[0], 4096)) {
+						error_number = EFAULT;
+						break;
+					}
+					syscall_result = darling_windows_rmdir(
+						reinterpret_cast<const char*>(static_cast<std::uintptr_t>(arguments[0])));
+					break;
+				case 187: // SYS_fdatasync
+					if (arguments[0] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max())) {
+						error_number = EBADF;
+						break;
+					}
+					syscall_result = darling_windows_fdatasync(
+						static_cast<int>(arguments[0]));
+					break;
+				case 188: // SYS_stat
+				case 190: { // SYS_lstat
+					if (!backend.ContainsGuestCString(arguments[0], 4096)) {
+						error_number = EFAULT;
+						break;
+					}
+					if (!backend.ContainsGuestRange(arguments[1],
+						sizeof(darling_darwin_stat), true)) {
+						error_number = EFAULT;
+						break;
+					}
+					const auto* path = reinterpret_cast<const char*>(
+						static_cast<std::uintptr_t>(arguments[0]));
+					darling_darwin_stat metadata{};
+					syscall_result = syscall_number == 188 ?
+						darling_windows_stat(path, &metadata) :
+						darling_windows_lstat(path, &metadata);
+					if (syscall_result == 0)
+						std::memcpy(reinterpret_cast<void*>(static_cast<std::uintptr_t>(
+							arguments[1])), &metadata, sizeof(metadata));
+					break;
+				}
+				case 189: { // SYS_fstat
+					if (arguments[0] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max())) {
+						error_number = EBADF;
+						break;
+					}
+					if (!backend.ContainsGuestRange(arguments[1],
+						sizeof(darling_darwin_stat), true)) {
+						error_number = EFAULT;
+						break;
+					}
+					darling_darwin_stat metadata{};
+					syscall_result = darling_windows_fstat(
+						static_cast<int>(arguments[0]), &metadata);
+					if (syscall_result == 0)
+						std::memcpy(reinterpret_cast<void*>(static_cast<std::uintptr_t>(
+							arguments[1])), &metadata, sizeof(metadata));
+					break;
+				}
+				case 33: // SYS_access
+					if (!backend.ContainsGuestCString(arguments[0], 4096)) {
+						error_number = EFAULT;
+						break;
+					}
+					if (arguments[1] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max())) {
+						error_number = EINVAL;
+						break;
+					}
+					syscall_result = darling_windows_access(
+						reinterpret_cast<const char*>(static_cast<std::uintptr_t>(arguments[0])),
+						static_cast<int>(arguments[1]));
+					break;
+				case 199: // SYS_lseek
+					if (arguments[0] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max()) ||
+						arguments[2] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max())) {
+						error_number = EINVAL;
+						break;
+					}
+					syscall_result = darling_windows_lseek(
+						static_cast<int>(arguments[0]),
+						static_cast<std::int64_t>(arguments[1]),
+						static_cast<int>(arguments[2]));
+					break;
+				case 201: // SYS_ftruncate
+					if (arguments[0] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max())) {
+						error_number = EBADF;
+						break;
+					}
+					syscall_result = darling_windows_ftruncate(
+						static_cast<int>(arguments[0]),
+						static_cast<std::int64_t>(arguments[1]));
+					break;
+				case 200: // SYS_truncate
+					if (!backend.ContainsGuestCString(arguments[0], 4096)) {
+						error_number = EFAULT;
+						break;
+					}
+					syscall_result = darling_windows_truncate(
+						reinterpret_cast<const char*>(static_cast<std::uintptr_t>(arguments[0])),
+						static_cast<std::int64_t>(arguments[1]));
+					break;
+				default:
+					error_number = ENOSYS;
+					break;
+				}
+				if (syscall_result < 0 && error_number == 0)
+					error_number = DarwinErrno::Get();
+				if (error_number != 0) {
+					if (error_number <= 0)
+						error_number = EIO;
+					DarwinErrno::Set(error_number);
+					cpu = result.state;
+					cpu.x[0] = static_cast<std::uint64_t>(error_number);
+					cpu.pstate |= (1u << 29); // Darwin syscall error carry flag
+				} else {
+					cpu = result.state;
+					cpu.x[0] = static_cast<std::uint64_t>(syscall_result);
+					cpu.x[1] = syscall_result_x1;
+					cpu.pstate &= ~(1u << 29);
+				}
+				continue;
+			}
+			if (!result.fault.empty()) {
+				throw std::runtime_error(result.fault + " at guest address " +
+					std::to_string(result.fault_address.value_or(result.state.pc)));
+			}
+			if (result.exception) {
+				throw std::runtime_error("ARM64 Mach-O raised Dynarmic exception " +
+					std::to_string(static_cast<unsigned>(*result.exception)) +
+					" at guest address " + std::to_string(result.state.pc));
+			}
+			throw std::runtime_error("ARM64 Mach-O stopped without a guest return or Darwin trap");
+		}
+	}
+#endif
 	if (entry_abi == DarwinEntryAbi::DarwinStart) {
 	#if (defined(_WIN64) && defined(__clang__)) || defined(_M_IX86)
 		// Darwin's crt1 entry receives argc at the initial stack pointer, followed by argv, envp and

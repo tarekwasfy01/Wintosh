@@ -2,6 +2,11 @@ cmake_minimum_required(VERSION 3.20)
 
 project(wintosh-windows LANGUAGES CXX)
 
+set(WINTOSH_DYNARMIC_SOURCE_DIR "" CACHE PATH
+    "Dynarmic source checkout used for the optional x64-host AArch64 backend")
+set(WINTOSH_DYNARMIC_BUILD_DIR "" CACHE PATH
+    "Dynarmic CMake build directory containing its Windows static libraries")
+
 set(WINTOSH_X64_TARGET FALSE)
 set(WINTOSH_ARM64_TARGET FALSE)
 set(WINTOSH_I386_TARGET FALSE)
@@ -135,6 +140,52 @@ target_include_directories(wintosh_windows_host PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/process
 )
 target_compile_features(wintosh_windows_host PUBLIC cxx_std_20)
+
+if (WINTOSH_DYNARMIC_SOURCE_DIR OR WINTOSH_DYNARMIC_BUILD_DIR)
+    if (NOT WINTOSH_X64_TARGET)
+        message(FATAL_ERROR
+            "The optional Dynarmic A64 guest backend currently targets x64 Windows hosts")
+    endif()
+    if (NOT WINTOSH_DYNARMIC_SOURCE_DIR OR NOT WINTOSH_DYNARMIC_BUILD_DIR)
+        message(FATAL_ERROR
+            "Set both WINTOSH_DYNARMIC_SOURCE_DIR and WINTOSH_DYNARMIC_BUILD_DIR")
+    endif()
+    if (NOT EXISTS "${WINTOSH_DYNARMIC_SOURCE_DIR}/src/dynarmic/interface/A64/a64.h")
+        message(FATAL_ERROR "WINTOSH_DYNARMIC_SOURCE_DIR is not a Dynarmic checkout")
+    endif()
+
+    foreach(library IN ITEMS dynarmic fmt mcl Zydis Zycore)
+        string(TOUPPER "${library}" library_upper)
+        if (library STREQUAL "Zydis")
+            set(library_directory "${WINTOSH_DYNARMIC_BUILD_DIR}/externals/zydis")
+        elseif (library STREQUAL "Zycore")
+            set(library_directory "${WINTOSH_DYNARMIC_BUILD_DIR}/externals/zydis/zycore")
+        elseif (library STREQUAL "mcl")
+            set(library_directory "${WINTOSH_DYNARMIC_BUILD_DIR}/externals/mcl/src")
+        elseif (library STREQUAL "fmt")
+            set(library_directory "${WINTOSH_DYNARMIC_BUILD_DIR}/externals/fmt")
+        else()
+            set(library_directory "${WINTOSH_DYNARMIC_BUILD_DIR}/src/dynarmic")
+        endif()
+        find_library(WINTOSH_DYNARMIC_${library_upper}_LIBRARY
+            NAMES "${library}"
+            PATHS "${library_directory}"
+            NO_DEFAULT_PATH)
+        if (NOT WINTOSH_DYNARMIC_${library_upper}_LIBRARY)
+            message(FATAL_ERROR
+                "Missing ${library} library in ${library_directory}; build Dynarmic first")
+        endif()
+        list(APPEND WINTOSH_DYNARMIC_LIBRARIES
+            "${WINTOSH_DYNARMIC_${library_upper}_LIBRARY}")
+    endforeach()
+
+    target_sources(wintosh_windows_host PRIVATE runtime/darling_windows_a64_backend.cpp)
+    target_include_directories(wintosh_windows_host PRIVATE
+        "${WINTOSH_DYNARMIC_SOURCE_DIR}/src")
+    target_compile_definitions(wintosh_windows_host PUBLIC WINTOSH_HAS_DYNARMIC=1)
+    target_link_libraries(wintosh_windows_host PRIVATE ${WINTOSH_DYNARMIC_LIBRARIES})
+endif()
+
 if (WINTOSH_ARM64_TARGET AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     target_compile_definitions(wintosh_windows_host PRIVATE
         DARLING_ARM64_GUEST_BRIDGE=1)

@@ -2288,3 +2288,15 @@ is now `S + A` for absolute forms and `S + A - (P + bias)` for PC-relative
 forms; GOT forms substitute the slot address for `S`. The Windows x64 loader
 build succeeds. There is no dedicated Mach-O fixture for implicit addends or
 GOT relocation execution yet.
+
+### x86_64 cross-image branch thunks (2026-11-23)
+
+Each mapped image now reserves a 64 KiB near-image thunk pool. When an external
+`X86_64_RELOC_BRANCH` target is outside the signed 32-bit displacement range,
+the loader emits a 14-byte `jmp [RIP+0]` trampoline containing the absolute
+64-bit target and patches the call to the nearby trampoline. Identical targets
+reuse one thunk; pages become executable-read only after the bytes are written.
+This addresses cross-image function branches while leaving data-address forms
+on their existing checked/deferred path, since code trampolines cannot preserve
+data-reference semantics. The Windows x64 build succeeds; no far-branch Mach-O
+fixture has verified the generated thunk at runtime.

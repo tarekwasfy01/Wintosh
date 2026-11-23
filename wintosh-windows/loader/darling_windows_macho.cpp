@@ -2110,8 +2110,13 @@ void MachOImage::ApplyRelocations(const Mapping& mapping,
 				ApplyRelative32(mapping, static_cast<std::uint32_t>(relocation.address),
 					AddSignedAddress(symbol_addresses[relocation.symbol_index], addend));
 			} catch (const std::overflow_error&) {
-				if (!defer_unreachable_external)
+				if (relocation.type == 2) {
+					ApplyBranchThunk(mapping,
+						static_cast<std::uint32_t>(relocation.address),
+						AddSignedAddress(symbol_addresses[relocation.symbol_index], addend));
+				} else if (!defer_unreachable_external) {
 					throw;
+				}
 			}
 		} else if (relocation.pc_relative && relocation.length == 2 &&
 			(relocation.type == 3 || relocation.type == 4)) {
@@ -2521,6 +2526,53 @@ void MachOImage::ApplyRelative32(const Mapping& mapping,
 	throw std::out_of_range("Mach-O PC-relative relocation is outside a segment");
 }
 
+void MachOImage::ApplyBranchThunk(const Mapping& mapping,
+	std::uint64_t vm_address, std::uintptr_t target) const
+{
+	constexpr std::size_t ThunkBytes = 16;
+	constexpr std::size_t ThunkCapacity = 0x10000 / ThunkBytes;
+	const auto existing = std::find_if(mapping.m_branch_thunks.begin(),
+		mapping.m_branch_thunks.end(), [target](const auto& thunk) {
+			return thunk.first == target;
+		});
+	if (existing != mapping.m_branch_thunks.end()) {
+		ApplyRelative32(mapping, vm_address, existing->second);
+		return;
+	}
+	if (mapping.m_reservation == nullptr || mapping.m_thunk_pool_used >= ThunkCapacity)
+		throw std::runtime_error("Mach-O x86-64 branch thunk pool is exhausted");
+	const auto pool_base = reinterpret_cast<std::uintptr_t>(mapping.m_reservation) +
+		mapping.m_thunk_pool_offset;
+	const auto thunk_address = pool_base + mapping.m_thunk_pool_used * ThunkBytes;
+	const auto page_address = thunk_address & ~std::uintptr_t(0xfff);
+	const auto page_offset = thunk_address - page_address;
+	const bool first_on_page = (page_offset == 0);
+	if (first_on_page && VirtualAlloc(reinterpret_cast<void*>(page_address), 0x1000,
+		MEM_COMMIT, PAGE_READWRITE) == nullptr) {
+		ThrowLastError("VirtualAlloc(Mach-O branch thunk)");
+	}
+	DWORD old_protection = PAGE_NOACCESS;
+	if (!VirtualProtect(reinterpret_cast<void*>(page_address), 0x1000,
+		PAGE_READWRITE, &old_protection)) {
+		ThrowLastError("VirtualProtect(Mach-O branch thunk write)");
+	}
+	std::array<std::uint8_t, 14> code{};
+	code[0] = 0xff;
+	code[1] = 0x25; // jmp qword ptr [rip + 0]
+	std::memcpy(code.data() + 6, &target, sizeof(target));
+	std::memcpy(reinterpret_cast<void*>(thunk_address), code.data(), code.size());
+	DWORD restored_protection = PAGE_NOACCESS;
+	if (!VirtualProtect(reinterpret_cast<void*>(page_address), 0x1000,
+		PAGE_EXECUTE_READ, &restored_protection)) {
+		ThrowLastError("VirtualProtect(Mach-O branch thunk execute)");
+	}
+	FlushInstructionCache(GetCurrentProcess(), reinterpret_cast<void*>(thunk_address),
+		code.size());
+	mapping.m_branch_thunks.emplace_back(target, thunk_address);
+	++mapping.m_thunk_pool_used;
+	ApplyRelative32(mapping, vm_address, thunk_address);
+}
+
 void MachOImage::ApplyRelative32WithAddend(const Mapping& mapping,
 	std::uint64_t vm_address, std::uintptr_t target, std::int32_t addend) const
 {
@@ -2577,7 +2629,11 @@ MachOImage::Mapping MachOImage::MapSegments(std::uintptr_t near_address) const
 	}
 	Require(max_vm > min_vm && max_vm - min_vm <= std::numeric_limits<std::size_t>::max(),
 		"Mach-O VM range is invalid");
-	const auto reservation_bytes = static_cast<std::size_t>(max_vm - min_vm);
+	const auto image_reservation_bytes = static_cast<std::size_t>(max_vm - min_vm);
+	constexpr std::size_t BranchThunkPoolBytes = 0x10000;
+	Require(image_reservation_bytes <= std::numeric_limits<std::size_t>::max() -
+		BranchThunkPoolBytes, "Mach-O reservation including branch thunks overflows");
+	const auto reservation_bytes = image_reservation_bytes + BranchThunkPoolBytes;
 	void* reservation = nullptr;
 	if (near_address != 0) {
 		constexpr std::uintptr_t AllocationGranularity = 0x10000;
@@ -2650,7 +2706,8 @@ MachOImage::Mapping MachOImage::MapSegments(std::uintptr_t near_address) const
 		}
 		Require(entry_address != 0 || m_header->file_type != MH_EXECUTE,
 			"Mach-O executable entry point is not inside a file-backed segment");
-		return Mapping(reservation, std::move(mapped), entry_address, slide, reservation_bytes);
+		return Mapping(reservation, std::move(mapped), entry_address, slide,
+			reservation_bytes, image_reservation_bytes);
 	} catch (...) {
 		VirtualFree(reservation, 0, MEM_RELEASE);
 		throw;
@@ -2976,9 +3033,11 @@ void MachOImage::Reset() noexcept
 }
 
 MachOImage::Mapping::Mapping(void* reservation, std::vector<MappedMachOSegment> segments,
-	std::uintptr_t entry_address, std::intptr_t slide, std::size_t reservation_bytes) noexcept :
+	std::uintptr_t entry_address, std::intptr_t slide, std::size_t reservation_bytes,
+	std::size_t thunk_pool_offset) noexcept :
 	m_reservation(reservation), m_segments(std::move(segments)), m_entry_address(entry_address),
-	m_slide(slide), m_reservation_bytes(reservation_bytes)
+	m_slide(slide), m_reservation_bytes(reservation_bytes),
+	m_thunk_pool_offset(thunk_pool_offset)
 {
 }
 
@@ -2986,12 +3045,17 @@ MachOImage::Mapping::Mapping(Mapping&& other) noexcept :
 	m_reservation(other.m_reservation), m_segments(std::move(other.m_segments)),
 	m_entry_address(other.m_entry_address), m_slide(other.m_slide),
 	m_reservation_bytes(other.m_reservation_bytes),
+	m_thunk_pool_offset(other.m_thunk_pool_offset),
+	m_thunk_pool_used(other.m_thunk_pool_used),
+	m_branch_thunks(std::move(other.m_branch_thunks)),
 	m_relocation_original_values(std::move(other.m_relocation_original_values)),
 	m_relocation_original_sites(std::move(other.m_relocation_original_sites)),
 	m_relocation_original_widths(std::move(other.m_relocation_original_widths))
 {
 	other.m_reservation = nullptr;
 	other.m_reservation_bytes = 0;
+	other.m_thunk_pool_offset = 0;
+	other.m_thunk_pool_used = 0;
 }
 
 MachOImage::Mapping& MachOImage::Mapping::operator=(Mapping&& other) noexcept
@@ -3003,11 +3067,16 @@ MachOImage::Mapping& MachOImage::Mapping::operator=(Mapping&& other) noexcept
 		m_entry_address = other.m_entry_address;
 		m_slide = other.m_slide;
 		m_reservation_bytes = other.m_reservation_bytes;
+		m_thunk_pool_offset = other.m_thunk_pool_offset;
+		m_thunk_pool_used = other.m_thunk_pool_used;
+		m_branch_thunks = std::move(other.m_branch_thunks);
 		m_relocation_original_values = std::move(other.m_relocation_original_values);
 		m_relocation_original_sites = std::move(other.m_relocation_original_sites);
 		m_relocation_original_widths = std::move(other.m_relocation_original_widths);
 		other.m_reservation = nullptr;
 		other.m_reservation_bytes = 0;
+		other.m_thunk_pool_offset = 0;
+		other.m_thunk_pool_used = 0;
 	}
 	return *this;
 }
@@ -3024,6 +3093,9 @@ void MachOImage::Mapping::Reset() noexcept
 		m_reservation = nullptr;
 	}
 	m_reservation_bytes = 0;
+	m_thunk_pool_offset = 0;
+	m_thunk_pool_used = 0;
+	m_branch_thunks.clear();
 	m_relocation_original_values.clear();
 	m_relocation_original_sites.clear();
 	m_relocation_original_widths.clear();

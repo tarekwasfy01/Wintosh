@@ -423,6 +423,8 @@ public:
 		std::uintptr_t target) const;
 	void ApplyRelative32(const Mapping& mapping, std::uint64_t vm_address,
 		std::uintptr_t target) const;
+	void ApplyBranchThunk(const Mapping& mapping, std::uint64_t vm_address,
+		std::uintptr_t target) const;
 	void ApplyRelative32WithAddend(const Mapping& mapping, std::uint64_t vm_address,
 		std::uintptr_t target, std::int32_t addend) const;
 	[[nodiscard]] std::uintptr_t TLVPointerAddress(const Mapping& mapping,
@@ -518,7 +520,8 @@ public:
 private:
 	friend class MachOImage;
 	Mapping(void* reservation, std::vector<MappedMachOSegment> segments,
-		std::uintptr_t entry_address, std::intptr_t slide, std::size_t reservation_bytes) noexcept;
+		std::uintptr_t entry_address, std::intptr_t slide, std::size_t reservation_bytes,
+		std::size_t thunk_pool_offset) noexcept;
 	void Reset() noexcept;
 
 	void* m_reservation = nullptr;
@@ -526,6 +529,9 @@ private:
 	std::uintptr_t m_entry_address = 0;
 	std::intptr_t m_slide = 0;
 	std::size_t m_reservation_bytes = 0;
+	std::size_t m_thunk_pool_offset = 0;
+	mutable std::size_t m_thunk_pool_used = 0;
+	mutable std::vector<std::pair<std::uintptr_t, std::uintptr_t>> m_branch_thunks;
 	// Preserve the linked contents of relocation sites so resolver rebinding
 	// can safely replay relocation calculations after the first fixup pass.
 	mutable std::vector<std::uint64_t> m_relocation_original_values;

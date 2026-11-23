@@ -236,9 +236,9 @@ multi-variable offsets, destructor callbacks, and ARM64 TLVP remain open.
 
 Local `__thread_vars[i]` to `__thread_ptrs[i]` mapping is now available to the
 main-image type-9 relocation path. Cross-image provider slots remain
-fail-closed. The bootstrap also defers unreachable cross-image x86-64 PCREL
-relocations rather than truncating them; a near-image allocator or thunk
-implementation is still needed for complete execution.
+fail-closed. The bootstrap defers unreachable cross-image x86-64 PCREL data
+relocations rather than truncating them; a data-near placement strategy is
+still needed for those forms.
 
 The loader now maps the main image first and attempts bounded near-address
 reservations for provider dylibs. Reachable cross-image PCREL relocations can

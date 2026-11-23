@@ -37,15 +37,15 @@ corresponding upstream definitions and licenses.
 ## Bounded i386 Mach-O linker
 
 `python tools/link_i386_macho.py --output app.macho main.o helper.o` accepts
-little-endian i386 `MH_OBJECT` files. It combines each input's single
-`__TEXT,__text` section, resolves external symbols defined in those sections,
-and links 32-bit PC-relative `GENERIC_RELOC_VANILLA` fields. Local relocations
-to their own section remain translation invariant; external references are
-patched from the resolved symbol and input-section placement. Other relocation
-types, data sections, dylibs, CRT, and frameworks are outside this prototype.
-It emits a single-segment `MH_EXECUTE` and discards non-text metadata such as
-unwind sections. Its verified scope and limits are recorded in
-[LINKER-RESEARCH.md](../docs/porting/LINKER-RESEARCH.md).
+little-endian i386 `MH_OBJECT` files. It combines each input's `__TEXT,__text`
+and optional `__DATA,__data` sections, resolves external definitions between
+those sections, and supports 32-bit `GENERIC_RELOC_VANILLA` PC-relative and
+absolute references. Absolute pointers receive dyld type-2 rebases for the
+image slide. Other relocation forms, BSS, imports, dylibs, CRT, and frameworks
+remain outside this prototype. It emits a segmented `MH_EXECUTE` and drops
+unsupported metadata such as unwind sections. A two-object call fixture and a
+single-object mutable-global fixture both ran in Wintosh and returned 42. See
+[LINKER-RESEARCH.md](../docs/porting/LINKER-RESEARCH.md) for the exact contract.
 
 The scripts and this documentation are original Wintosh tooling. Upstream
 Darling, WSL, and other referenced projects retain their original licenses;

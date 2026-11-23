@@ -5,16 +5,16 @@ Stand: 2026-11-23
 ## Ausgangslage
 
 Clang erzeugt auf diesem Windows-Host i386-Mach-O-Objekte. Das vorhandene
-`ld64.lld.exe` weist `-arch i386` zurück. `tools/link_i386_macho.py` ist nun
-ein begrenzter i386-Linker-Prototyp: Er kombiniert die `__TEXT,__text`-
-Sections mehrerer `MH_OBJECT`-Dateien, löst externe Definitionen aus diesen
-Sections auf und unterstützt 32-Bit-PC-relative
-`GENERIC_RELOC_VANILLA`-Relokationen. Das Ergebnis ist ein minimales
-`MH_EXECUTE` ohne CRT, Imports, Datenbereiche oder Frameworks.
+`ld64.lld.exe` weist `-arch i386` zurück. `tools/link_i386_macho.py` ist ein
+begrenzter i386-Linker-Prototyp: Er kombiniert `__TEXT,__text` und optionale
+`__DATA,__data`-Sections mehrerer `MH_OBJECT`-Dateien, löst externe Text- und
+Daten-Symbole aus diesen Sections auf und verarbeitet 32-Bit-
+`GENERIC_RELOC_VANILLA`-Relokationen. Absolute interne Adressen erhalten
+`DYLD_INFO_ONLY`-Rebases für den Laufzeit-Slide.
 
 \[
-\text{Mach-O objects} \xrightarrow{\text{resolve + PC-relative relocate}}
-\text{single-segment i386 MH_EXECUTE}
+\text{Mach-O objects} \xrightarrow{\text{resolve + relocate + rebase}}
+\text{segmented i386 MH_EXECUTE}
 \]
 
 ## Kandidatenmatrix
@@ -28,7 +28,7 @@ implementiert, `?` = offen. Ein positiver Wert ist kein Vollständigkeitsbeleg.
 | Apple `ld64` / `ld-classic` | 1 (Apple-Handbuch dokumentiert i386) | 0 (Upstream Darwin-Host) | 1 (voller Linker) | ? | Semantik-Referenz |
 | `tpoechtrager/cctools-port` | 1 (i386 als Ziel) | 0 (README listet Linux/BSD/macOS/iOS Hosts) | 1 (portiert `ld64`) | ? | Portierungsreferenz |
 | `LongDirtyAnimAlf/ld64-msys` | ? (geerbter ld64-Code) | 1 (README nennt MSYS2/Windows) | ? | ? | Alternative für MSYS2-Prototyp |
-| Wintosh `link_i386_macho.py` | 1 | 1 | begrenzt (Textsections + PC-relative Vanilla) | 0 | verifiziert für kleine statische C-Gäste |
+| Wintosh `link_i386_macho.py` | 1 | 1 | begrenzt (Text/Daten + 32-bit Vanilla) | 0 | verifiziert für kleine statische C-Gäste |
 
 Quellen:
 
@@ -44,59 +44,69 @@ werden. Es wurde kein fremder Linker-Code in Wintosh kopiert.
 ## Unterstützter Link-Vertrag
 
 Jedes Objekt muss little-endian i386 `MH_OBJECT` mit genau einer
-`__TEXT,__text`-Section und `LC_SYMTAB` sein. Die Section wird in Eingabereihenfolge
-mit ihrer Alignment-Anforderung angeordnet. Externe `N_SECT`-Definitionen
-müssen in dieser Text-Section liegen; alle externen `N_UNDF`-Symbole müssen von
-einem der Eingabeobjekte definiert werden. Doppelte Definitionen werden
-abgewiesen.
-
-Die Relokationsmatrix des Prototyps ist:
+`__TEXT,__text`-Section, höchstens einer `__DATA,__data`-Section und
+`LC_SYMTAB` sein. Die Sections werden in Eingabereihenfolge mit ihrer
+Alignment-Anforderung platziert. Externe `N_SECT`-Definitionen müssen in
+einer dieser Sections liegen; alle externen `N_UNDF`-Symbole müssen durch ein
+Eingabeobjekt definiert sein. Doppelte Definitionen werden abgewiesen.
 
 | i386 Relokation | Behandlung |
 |---|---|
-| local, non-scattered, PC-relative, length 2, Vanilla, Ziel eigene Text-Section | unverändert übernommen; gemeinsamer Slide kürzt sich heraus |
-| external, non-scattered, PC-relative, length 2, Vanilla, Zieldefinition in einer Eingabe-Text-Section | aufgelöst und gepatcht |
-| andere Relokationstypen oder Ziele außerhalb der Text-Sections | explizit abgewiesen |
+| local, non-scattered, PC-relative, length 2, Vanilla, Ziel in Text/Daten | Placement- und VM-Adress-Deltas werden angewandt |
+| external, non-scattered, PC-relative, length 2, Vanilla, Zieldefinition in Text/Daten | aufgelöst und gepatcht |
+| local/external, non-scattered, absolute, length 2, Vanilla, Zieldefinition in Text/Daten | Linkzeit-Adresse geschrieben; dyld type-2 absolute32 rebase ausgegeben |
+| andere Relokationstypen oder Ziele außerhalb der verknüpften Sections | explizit abgewiesen |
 
-Für Clangs undefiniertes externes Call-Ziel enthält das gespeicherte Feld den
-lageabhängigen Anteil \(A=-P-4\). Bei Eingabe-Section-Placement \(B_i\) und
-aufgelöstem Symbol-Offset \(S_j\) wird
+Für Clangs undefiniertes externes PC-relative Call-Ziel enthält das Feld den
+lageabhängigen Anteil \(A=-P-4\). Mit Source-Placement \(B_i\), Target-
+Placement \(B_j\), Target-Symbol-Offset \(S_j\) und den bevorzugten
+Section-VM-Adressen \(V_s,V_t\) wird
 
 \[
-D = A + S_j - B_i = S_j - (B_i + P + 4)
+D = A + (V_t+B_j+S_j) - (V_s+B_i)
 \]
 
-geschrieben. `D` muss in einen vorzeichenbehafteten 32-Bit-Wert passen. Bei
-local same-section PC-relative references bleibt der ursprüngliche Abstand
-gültig, da \((S+\delta)-(P+4+\delta)=S-(P+4)\).
+geschrieben. `D` muss in einen vorzeichenbehafteten 32-Bit-Wert passen. Eine
+absolute Referenz enthält zunächst die Linkzeit-Adresse \(V_t+B_j+S_j\); der
+Rebase-Stream addiert anschließend den Image-Slide. Lokale PC-relative
+Verweise erhalten die Placement-Deltas von Quelle und Ziel. Wenn beide
+Sections identisch sind, kürzt sich ein gemeinsamer Slide heraus:
 
-Der Output ist auf ein 4096-Byte-Image mit Code ab Datei-Offset `0x200`
-begrenzt. Nicht-Text-Sections einschließlich Unwind-Metadaten werden
-weggelassen. Das Image erhält `LC_SEGMENT` und `LC_MAIN`; es enthält keine
-Symtab, `LC_LOAD_DYLIB`, `LC_DYLD_INFO`, CRT oder Systembibliotheken.
+`D_local = D_input + (V_target,out - V_target,in) - (V_source,out - V_source,in)`.
+
+Der Output hat ein 4096-Byte-`__TEXT`-Segment mit Code ab Datei-Offset `0x200`
+und bei vorhandenen Daten ein 4096-Byte-`__DATA`-Segment ab Datei-Offset
+`0x1000`. Andere Sections einschließlich Unwind-Metadaten werden weggelassen.
+Das Image erhält `LC_SEGMENT` und `LC_MAIN`; `LC_DYLD_INFO_ONLY` kommt hinzu,
+wenn absolute Rebases nötig sind. Eine Output-Symboltabelle, `LC_LOAD_DYLIB`,
+CRT und Systembibliotheken werden nicht erzeugt.
 
 ## Laufzeitnachweis
 
 Zwei Clang-Objekte wurden separat übersetzt: `main.o` definiert `_main` und
 referenziert undefiniert `_helper`; `helper.o` definiert `_helper` und gibt 42
 zurück. `llvm-objdump` zeigte in `main.o` die externe 32-Bit-PC-relative
-`GENERIC_RELOC_VANILLA`-Relokation an `__text+0x17`.
+`GENERIC_RELOC_VANILLA`-Relokation an `__text+0x17`. Mit `main.o helper.o`
+schrieb der Linker den Call-Displacement `+0x15`; bei umgekehrter Eingabereihenfolge
+schrieb er `-0x2b`. Beide i386-`MH_EXECUTE`-Ausgaben liefen im Win32-Wintosh-
+Runner mit Exitcode 42.
 
-Mit `main.o helper.o` schrieb der Linker den Call-Displacement `+0x15`; bei
-umgekehrter Eingabereihenfolge schrieb er `-0x2b`. Beide Ausgaben wurden als
-i386 `MH_EXECUTE` erkannt und liefen im Win32-Wintosh-Runner mit Exitcode 42.
-Die zweite Anordnung prüft, dass das Ziel vor dem Aufrufer liegen darf.
+Eine weitere Clang-Datei definierte `shared_value=40`, addierte 2, schrieb den
+Wert zurück und las ihn erneut. Drei absolute `GENERIC_RELOC_VANILLA`-Felder in
+`__text` wurden gegen `__DATA,__data` aufgelöst und als dyld type-2 32-Bit-
+Rebases ausgegeben. `llvm-objdump` bestätigte die Text- und Datensections sowie
+`LC_DYLD_INFO_ONLY`; Wintosh gab **42** zurück. Das belegt Lesen und Schreiben
+des globalen Datenbereichs mit Laufzeit-Slide.
 
-Das beweist begrenztes objektübergreifendes Linken und Ausführen, keine
-beliebigen macOS-Programme. Noch offen sind weitere i386-Relokationen,
-`__data`/`__const`, echte Darwin-CRT-Initialisierung, externe Host-Imports,
-dyld, libc und Framework-Abhängigkeiten.
+Das beweist begrenztes i386-Linken und Ausführen, keine beliebigen macOS-
+Programme. Noch offen sind BSS, Clangs Cross-File-Datenreferenz über
+`__IMPORT,__pointers`/`SECTDIFF`, weitere Relokationen, Darwin-CRT,
+Systembibliotheken, Host-Imports und Frameworks.
 
 ## Nächster Ausbau
 
-Der nächste Link-Schritt ist Daten-Section-Platzierung mit lokalen und
-externen absoluten i386-Relokationen; danach kommen stubs und importierte
-Darwin-Symbole. Der Windows-Host besitzt weder `C:\msys64` noch `C:\cygwin64`,
-und die Shell kann GitHub nicht auflösen. `ld64-msys` ist deshalb keine aktuell
-baubare lokale Alternative. Es bleibt möglich, den Prototyp anhand der
-gemessenen Mach-O-Relokationen gezielt auszubauen.
+Als Nächstes kommen BSS sowie Datenreferenzen zwischen Objektdateien. Danach
+folgen importierte Darwin-Symbole und ausgewählte CRT/libc-Pfade. Der Windows-
+Host besitzt weder `C:\msys64` noch `C:\cygwin64`; `ld64-msys` ist hier derzeit
+keine baubare lokale Alternative. Die Datei-für-Datei-Lizenzprüfung bleibt
+Pflicht, bevor Quellcode daraus übernommen wird.

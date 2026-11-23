@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Link a bounded set of i386 Mach-O text objects into a minimal MH_EXECUTE.
 
-This bring-up linker handles only one __TEXT,__text section per input object,
-32-bit PC-relative GENERIC_RELOC_VANILLA relocations, and symbols defined in
-those text sections. It does not link a Darwin CRT, dylibs, data, unwind tables,
-or other Mach-O relocation kinds.
+This bring-up linker handles one __TEXT,__text section and an optional
+__DATA,__data section per input object. It supports 32-bit
+GENERIC_RELOC_VANILLA relocations to symbols in those sections, including
+dyld-rebased absolute addresses. It does not link a Darwin CRT, dylibs, unwind
+tables, or other Mach-O relocation kinds.
 """
 
 from __future__ import annotations
@@ -22,8 +23,10 @@ MH_EXECUTE = 2
 CPU_TYPE_I386 = 7
 LC_SEGMENT = 0x1
 LC_SYMTAB = 0x2
+LC_DYLD_INFO_ONLY = 0x80000022
 LC_MAIN = 0x80000028
 LC_LINKER_OPTION = 0x2D
+MH_DYLDLINK = 0x4
 N_STAB = 0xE0
 N_TYPE = 0x0E
 N_UNDF = 0x00
@@ -32,6 +35,11 @@ N_EXT = 0x01
 GENERIC_RELOC_VANILLA = 0
 PAGE_SIZE = 0x1000
 TEXT_FILE_OFFSET = 0x200
+DATA_FILE_OFFSET = PAGE_SIZE
+TEXT_VM_BASE = 0x1200
+DATA_VM_BASE = 0x2000
+S_ATTR_PURE_INSTRUCTIONS = 0x80000000
+S_ATTR_SOME_INSTRUCTIONS = 0x00000400
 
 
 class FormatError(ValueError):
@@ -40,19 +48,29 @@ class FormatError(ValueError):
 
 @dataclass(frozen=True)
 class Relocation:
+    source_kind: str
     offset: int
     external_symbol: str | None
+    target_kind: str | None
+    pc_relative: bool
+
+
+@dataclass(frozen=True)
+class ObjectSection:
+    kind: str
+    contents: bytes
+    vm_address: int
+    ordinal: int
+    alignment: int
 
 
 @dataclass(frozen=True)
 class MachObject:
     path: Path
-    text: bytes
-    text_addr: int
-    text_ordinal: int
-    text_alignment: int
+    text: ObjectSection
+    data: ObjectSection | None
     cpu_subtype: int
-    definitions: dict[str, int]
+    definitions: dict[str, tuple[str, int]]
     undefined_symbols: tuple[str, ...]
     relocations: tuple[Relocation, ...]
 
@@ -84,7 +102,7 @@ def parse_object(path: Path, data: bytes) -> MachObject:
     commands_end = 28 + sizeofcmds
     require_range(data, 28, sizeofcmds, f"{path}: load-command table")
     cursor = 28
-    text_section: tuple[int, int, int, int, int, int, int] | None = None
+    input_sections: dict[int, tuple[str, int, int, int, int, int, int]] = {}
     symtab: tuple[int, int, int, int] | None = None
     section_ordinal = 0
 
@@ -110,14 +128,21 @@ def parse_object(path: Path, data: bytes) -> MachObject:
                 sectname, segname = c_name(section[0]), c_name(section[1])
                 addr, size, offset, align_exp, reloff, nreloc, _flags, _r1, _r2 = section[2:]
                 section_ordinal += 1
+                kind = None
                 if (sectname, segname) == ("__text", "__TEXT"):
-                    if text_section is not None:
-                        raise FormatError(f"{path}: multiple __TEXT,__text sections")
+                    kind = "text"
+                elif (sectname, segname) == ("__data", "__DATA"):
+                    kind = "data"
+                if kind is not None:
+                    if any(existing[0] == kind for existing in input_sections.values()):
+                        raise FormatError(f"{path}: multiple __{kind} sections")
                     if align_exp > 12:
-                        raise FormatError(f"{path}: __text alignment is too large")
-                    require_range(data, offset, size, f"{path}: __text contents")
-                    require_range(data, reloff, nreloc * 8, f"{path}: __text relocations")
-                    text_section = (offset, size, addr, align_exp, reloff, nreloc, section_ordinal)
+                        raise FormatError(f"{path}: __{kind} alignment is too large")
+                    require_range(data, offset, size, f"{path}: __{kind} contents")
+                    require_range(data, reloff, nreloc * 8, f"{path}: __{kind} relocations")
+                    input_sections[section_ordinal] = (
+                        kind, offset, size, addr, align_exp, reloff, nreloc
+                    )
 
         elif cmd == LC_SYMTAB:
             if cmdsize != 24:
@@ -134,7 +159,9 @@ def parse_object(path: Path, data: bytes) -> MachObject:
 
     if cursor != commands_end:
         raise FormatError(f"{path}: load-command sizes do not match sizeofcmds")
-    if text_section is None:
+    text_record = next((record for record in input_sections.values() if record[0] == "text"), None)
+    data_record = next((record for record in input_sections.values() if record[0] == "data"), None)
+    if text_record is None:
         raise FormatError(f"{path}: missing __TEXT,__text")
     if symtab is None:
         raise FormatError(f"{path}: missing LC_SYMTAB")
@@ -142,10 +169,8 @@ def parse_object(path: Path, data: bytes) -> MachObject:
     symoff, nsyms, stroff, strsize = symtab
     require_range(data, symoff, nsyms * 12, f"{path}: symbol table")
     strings = require_range(data, stroff, strsize, f"{path}: string table")
-    text_offset, text_size, text_addr, align_exp, reloff, nreloc, text_ordinal = text_section
-
     symbols: list[tuple[str, int, int, int]] = []
-    definitions: dict[str, int] = {}
+    definitions: dict[str, tuple[str, int]] = {}
     undefined: list[str] = []
     for index in range(nsyms):
         strx, n_type, n_sect, _desc, value = struct.unpack_from(
@@ -167,52 +192,64 @@ def parse_object(path: Path, data: bytes) -> MachObject:
             if name:
                 undefined.append(name)
         elif (n_type & N_EXT) and symbol_type == N_SECT:
-            if n_sect != text_ordinal:
-                raise FormatError(f"{path}: external definition {name} is outside __text")
-            symbol_offset = value - text_addr
-            if symbol_offset < 0 or symbol_offset > text_size:
-                raise FormatError(f"{path}: external definition {name} lies outside __text")
+            section_record = input_sections.get(n_sect)
+            if section_record is None:
+                raise FormatError(f"{path}: external definition {name} is outside __text/__data")
+            kind, _offset, size, section_addr, _align, _reloff, _nreloc = section_record
+            symbol_offset = value - section_addr
+            if symbol_offset < 0 or symbol_offset > size:
+                raise FormatError(f"{path}: external definition {name} lies outside __{kind}")
             if name in definitions:
                 raise FormatError(f"{path}: duplicate external definition {name}")
-            definitions[name] = symbol_offset
+            definitions[name] = (kind, symbol_offset)
 
     relocations: list[Relocation] = []
-    relocation_sites: set[int] = set()
-    for reloc_index in range(nreloc):
-        address, info = struct.unpack_from("<iI", data, reloff + reloc_index * 8)
-        scattered = (address & 0x80000000) != 0
-        symbolnum = info & 0x00FFFFFF
-        pcrel = (info >> 24) & 1
-        length = (info >> 25) & 3
-        external = (info >> 27) & 1
-        reloc_type = (info >> 28) & 0xF
-        if (scattered or address < 0 or address + 4 > text_size or
-                not pcrel or length != 2 or reloc_type != GENERIC_RELOC_VANILLA):
-            raise FormatError(f"{path}: unsupported __text relocation at {address:#x}")
-        if any(site < address + 4 and address < site + 4 for site in relocation_sites):
-            raise FormatError(f"{path}: overlapping __text relocation fields")
-        relocation_sites.add(address)
+    for source_ordinal, source_record in input_sections.items():
+        source_kind, _source_offset, source_size, _source_addr, _source_align, reloff, nreloc = source_record
+        relocation_sites: set[int] = set()
+        for reloc_index in range(nreloc):
+            address, info = struct.unpack_from("<iI", data, reloff + reloc_index * 8)
+            scattered = (address & 0x80000000) != 0
+            symbolnum = info & 0x00FFFFFF
+            pcrel = (info >> 24) & 1
+            length = (info >> 25) & 3
+            external = (info >> 27) & 1
+            reloc_type = (info >> 28) & 0xF
+            if (scattered or address < 0 or address + 4 > source_size or
+                    length != 2 or reloc_type != GENERIC_RELOC_VANILLA):
+                raise FormatError(f"{path}: unsupported __{source_kind} relocation at {address:#x}")
+            if any(site < address + 4 and address < site + 4 for site in relocation_sites):
+                raise FormatError(f"{path}: overlapping __{source_kind} relocation fields")
+            relocation_sites.add(address)
 
-        if external:
-            if symbolnum >= len(symbols):
-                raise FormatError(f"{path}: external relocation symbol index is invalid")
-            symbol_name, symbol_type, _symbol_section, _symbol_value = symbols[symbolnum]
-            if not symbol_name or not (symbol_type & N_EXT):
-                raise FormatError(f"{path}: external relocation does not name an external symbol")
-            relocations.append(Relocation(address, symbol_name))
-        else:
-            if symbolnum != text_ordinal:
-                raise FormatError(f"{path}: local relocation targets a discarded section")
-            # The relocation is already section-relative. Uniformly moving the
-            # complete section preserves its encoded PC-relative displacement.
-            relocations.append(Relocation(address, None))
+            if external:
+                if symbolnum >= len(symbols):
+                    raise FormatError(f"{path}: external relocation symbol index is invalid")
+                symbol_name, symbol_type, _symbol_section, _symbol_value = symbols[symbolnum]
+                if not symbol_name or not (symbol_type & N_EXT):
+                    raise FormatError(f"{path}: external relocation does not name an external symbol")
+                relocations.append(Relocation(source_kind, address, symbol_name, None, bool(pcrel)))
+            else:
+                target_record = input_sections.get(symbolnum)
+                if target_record is None:
+                    raise FormatError(f"{path}: local relocation targets an unsupported section")
+                target_kind = target_record[0]
+                if not pcrel and (target_record[2] == 0):
+                    raise FormatError(f"{path}: absolute relocation targets an empty section")
+                relocations.append(Relocation(source_kind, address, None, target_kind, bool(pcrel)))
+
+    def make_section(record: tuple[str, int, int, int, int, int, int]) -> ObjectSection:
+        kind, offset, size, addr, align_exp, _reloff, _nreloc = record
+        ordinal = next(number for number, value in input_sections.items() if value is record)
+        return ObjectSection(kind, data[offset : offset + size], addr, ordinal, 1 << align_exp)
+
+    text_section = make_section(text_record)
+    data_section = make_section(data_record) if data_record is not None else None
 
     return MachObject(
         path=path,
-        text=data[text_offset : text_offset + text_size],
-        text_addr=text_addr,
-        text_ordinal=text_ordinal,
-        text_alignment=1 << align_exp,
+        text=text_section,
+        data=data_section,
         cpu_subtype=cpu_subtype,
         definitions=definitions,
         undefined_symbols=tuple(undefined),
@@ -224,84 +261,247 @@ def align_up(value: int, alignment: int) -> int:
     return (value + alignment - 1) & -alignment
 
 
-def link_objects(objects: list[MachObject], entry_name: str) -> tuple[bytes, int, int]:
+def link_objects(
+    objects: list[MachObject], entry_name: str
+) -> tuple[bytes, bytes, int, int, int, int, list[tuple[int, int]]]:
     if not objects:
         raise FormatError("at least one input object is required")
     cpu_subtype = objects[0].cpu_subtype
     if any(obj.cpu_subtype != cpu_subtype for obj in objects):
         raise FormatError("input objects have different i386 CPU subtypes")
 
-    offsets: list[int] = []
-    combined_size = 0
+    text_offsets: list[int] = []
+    data_offsets: list[int] = []
+    text_size = 0
+    data_size = 0
+    text_align_exp = 0
+    data_align_exp = 0
     for obj in objects:
-        combined_size = align_up(combined_size, obj.text_alignment)
-        offsets.append(combined_size)
-        combined_size += len(obj.text)
-    if combined_size == 0 or combined_size > PAGE_SIZE - TEXT_FILE_OFFSET:
+        text_size = align_up(text_size, obj.text.alignment)
+        text_offsets.append(text_size)
+        text_size += len(obj.text.contents)
+        text_align_exp = max(text_align_exp, obj.text.alignment.bit_length() - 1)
+        if obj.data is None:
+            data_offsets.append(0)
+        else:
+            data_size = align_up(data_size, obj.data.alignment)
+            data_offsets.append(data_size)
+            data_size += len(obj.data.contents)
+            data_align_exp = max(data_align_exp, obj.data.alignment.bit_length() - 1)
+    if text_size == 0 or text_size > PAGE_SIZE - TEXT_FILE_OFFSET:
         raise FormatError("combined __text exceeds the one-page prototype image limit")
+    if data_size > PAGE_SIZE:
+        raise FormatError("combined __data exceeds the one-page prototype image limit")
+    if text_align_exp > 9:
+        raise FormatError("combined __text alignment exceeds the fixed 0x200 file offset")
 
-    definitions: dict[str, tuple[int, int]] = {}
+    definitions: dict[str, tuple[int, str, int]] = {}
     undefined: set[str] = set()
     for index, obj in enumerate(objects):
         undefined.update(obj.undefined_symbols)
-        for name, value in obj.definitions.items():
+        for name, (kind, value) in obj.definitions.items():
             if name in definitions:
                 raise FormatError(f"duplicate external definition {name}")
-            definitions[name] = (index, value)
+            definitions[name] = (index, kind, value)
     missing = sorted(undefined - definitions.keys())
     if missing:
         raise FormatError("unresolved external symbols: " + ", ".join(missing))
     if entry_name not in definitions:
         raise FormatError(f"entry symbol {entry_name} was not found in input objects")
 
-    text = bytearray(combined_size)
+    text = bytearray(text_size)
+    data = bytearray(data_size)
+    preferred_vm = {"text": TEXT_VM_BASE, "data": DATA_VM_BASE}
+    section_placements = {"text": text_offsets, "data": data_offsets}
+    section_sizes = {"text": text_size, "data": data_size}
+    output_sections = {"text": text, "data": data}
+    rebase_sites: set[tuple[int, int]] = set()
+
     for index, obj in enumerate(objects):
-        base = offsets[index]
-        text[base : base + len(obj.text)] = obj.text
+        text_base = text_offsets[index]
+        text[text_base : text_base + len(obj.text.contents)] = obj.text.contents
+        if obj.data is not None:
+            data_base = data_offsets[index]
+            data[data_base : data_base + len(obj.data.contents)] = obj.data.contents
+
         for relocation in obj.relocations:
-            if relocation.external_symbol is None:
-                continue
-            target = definitions.get(relocation.external_symbol)
-            if target is None:
-                raise FormatError(f"unresolved relocation symbol {relocation.external_symbol}")
-            target_index, target_value = target
-            target_offset = offsets[target_index] + target_value
-            site = base + relocation.offset
-            addend = struct.unpack_from("<i", text, site)[0]
-            # Mach-O i386 external PC-relative fields from Clang contain the
-            # location-based addend (-P-4). Add the target offset and remove
-            # the source section's placement to obtain S-(P+4) after layout.
-            linked_value = addend + target_offset - base
-            if not -(1 << 31) <= linked_value < (1 << 31):
-                raise FormatError(f"PC-relative relocation to {relocation.external_symbol} overflows i386")
-            struct.pack_into("<i", text, site, linked_value)
+            source_base = section_placements[relocation.source_kind][index]
+            source_section = obj.text if relocation.source_kind == "text" else obj.data
+            if source_section is None:
+                raise FormatError("relocation source section is missing")
+            source_output_vm = preferred_vm[relocation.source_kind] + source_base
+            source_site = source_base + relocation.offset
+            source_bytes = output_sections[relocation.source_kind]
 
-    entry_index, entry_value = definitions[entry_name]
-    return bytes(text), offsets[entry_index] + entry_value, cpu_subtype
+            if relocation.external_symbol is not None:
+                target = definitions.get(relocation.external_symbol)
+                if target is None:
+                    raise FormatError(f"unresolved relocation symbol {relocation.external_symbol}")
+                target_index, target_kind, target_value = target
+                target_base = section_placements[target_kind][target_index]
+                target_vm = preferred_vm[target_kind] + target_base + target_value
+                if target_value >= section_sizes[target_kind]:
+                    raise FormatError(f"relocation target {relocation.external_symbol} is outside its section")
+                if relocation.pc_relative:
+                    addend = struct.unpack_from("<i", source_bytes, source_site)[0]
+                    linked_value = addend + target_vm - source_output_vm
+                    if not -(1 << 31) <= linked_value < (1 << 31):
+                        raise FormatError(
+                            f"PC-relative relocation to {relocation.external_symbol} overflows i386"
+                        )
+                    struct.pack_into("<i", source_bytes, source_site, linked_value)
+                else:
+                    addend = struct.unpack_from("<i", source_bytes, source_site)[0]
+                    linked_value = target_vm + addend
+                    if not 0 <= linked_value <= 0xFFFFFFFF:
+                        raise FormatError(
+                            f"absolute relocation to {relocation.external_symbol} overflows i386"
+                        )
+                    struct.pack_into("<I", source_bytes, source_site, linked_value)
+                    segment_index = 0 if relocation.source_kind == "text" else 1
+                    segment_offset = (
+                        (TEXT_FILE_OFFSET if relocation.source_kind == "text" else 0) +
+                        source_site
+                    )
+                    rebase_sites.add((segment_index, segment_offset))
+            else:
+                target_kind = relocation.target_kind
+                if target_kind is None:
+                    raise FormatError("local relocation has no target section")
+                target_section = obj.text if target_kind == "text" else obj.data
+                if target_section is None:
+                    raise FormatError("local relocation targets a missing section")
+                target_base = section_placements[target_kind][index]
+                target_output_vm = preferred_vm[target_kind] + target_base
+                if relocation.pc_relative:
+                    addend = struct.unpack_from("<i", source_bytes, source_site)[0]
+                    target_delta = target_output_vm - target_section.vm_address
+                    source_delta = source_output_vm - source_section.vm_address
+                    linked_value = addend + target_delta - source_delta
+                    if not -(1 << 31) <= linked_value < (1 << 31):
+                        raise FormatError("local PC-relative relocation overflows i386")
+                    struct.pack_into("<i", source_bytes, source_site, linked_value)
+                else:
+                    old_value = struct.unpack_from("<I", source_bytes, source_site)[0]
+                    addend = old_value - target_section.vm_address
+                    if addend >= (1 << 31):
+                        addend -= 1 << 32
+                    linked_value = target_output_vm + addend
+                    if not 0 <= linked_value <= 0xFFFFFFFF:
+                        raise FormatError("local absolute relocation overflows i386")
+                    struct.pack_into("<I", source_bytes, source_site, linked_value)
+                    segment_index = 0 if relocation.source_kind == "text" else 1
+                    segment_offset = (
+                        (TEXT_FILE_OFFSET if relocation.source_kind == "text" else 0) +
+                        source_site
+                    )
+                    rebase_sites.add((segment_index, segment_offset))
+
+    entry_index, entry_kind, entry_value = definitions[entry_name]
+    if entry_kind != "text":
+        raise FormatError(f"entry symbol {entry_name} is not in __text")
+    return (
+        bytes(text), bytes(data), text_offsets[entry_index] + entry_value,
+        cpu_subtype, text_align_exp, data_align_exp, sorted(rebase_sites),
+    )
 
 
-def make_executable(text: bytes, entry_offset: int, cpu_subtype: int) -> bytes:
+def encode_uleb(value: int) -> bytes:
+    result = bytearray()
+    while True:
+        byte = value & 0x7F
+        value >>= 7
+        result.append(byte | (0x80 if value else 0))
+        if value == 0:
+            return bytes(result)
+
+
+def make_segment_command(
+    name: bytes, vm_address: int, file_offset: int, file_size: int,
+    max_protection: int, initial_protection: int,
+    section_name: bytes, section_segment: bytes, section_vm_address: int,
+    section_size: int, section_file_offset: int, section_alignment: int,
+    section_flags: int = 0,
+) -> bytes:
+    command_size = 56 + 68
+    command = struct.pack(
+        "<II16sIIIIiiII", LC_SEGMENT, command_size, name, vm_address,
+        PAGE_SIZE, file_offset, file_size, max_protection,
+        initial_protection, 1, 0,
+    )
+    section = struct.pack(
+        "<16s16sIIIIIIIII", section_name, section_segment, section_vm_address,
+        section_size, section_file_offset, section_alignment, 0, 0,
+        section_flags, 0, 0,
+    )
+    return command + section
+
+
+def make_executable(
+    text: bytes, data: bytes, entry_offset: int, cpu_subtype: int,
+    text_align_exp: int, data_align_exp: int,
+    rebase_sites: list[tuple[int, int]],
+) -> bytes:
     if not text:
         raise FormatError("combined __text is empty")
     if entry_offset < 0 or entry_offset >= len(text):
         raise FormatError("entry symbol lies outside combined __text")
     if len(text) > PAGE_SIZE - TEXT_FILE_OFFSET:
         raise FormatError("combined __text exceeds the one-page prototype image limit")
+    if len(data) > PAGE_SIZE:
+        raise FormatError("combined __data exceeds the one-page prototype image limit")
 
-    header = struct.pack(
-        "<IiiIIII", MH_MAGIC, CPU_TYPE_I386, cpu_subtype, MH_EXECUTE, 2, 80, 0
-    )
-    segment = struct.pack(
-        "<II16sIIIIiiII",
-        LC_SEGMENT, 56, b"__TEXT", 0x1000, PAGE_SIZE, 0, PAGE_SIZE,
-        7, 5, 0, 0,
-    )
+    commands = [make_segment_command(
+        b"__TEXT", 0x1000, 0, PAGE_SIZE, 7, 5,
+        b"__text", b"__TEXT", TEXT_VM_BASE, len(text), TEXT_FILE_OFFSET,
+        text_align_exp, S_ATTR_PURE_INSTRUCTIONS | S_ATTR_SOME_INSTRUCTIONS,
+    )]
+    if data:
+        commands.append(make_segment_command(
+            b"__DATA", DATA_VM_BASE, DATA_FILE_OFFSET, PAGE_SIZE, 7, 3,
+            b"__data", b"__DATA", DATA_VM_BASE, len(data), DATA_FILE_OFFSET,
+            data_align_exp,
+        ))
+
+    rebase_stream = bytearray()
+    if rebase_sites:
+        for segment_index, segment_offset in rebase_sites:
+            rebase_stream.extend((0x12, 0x20 | segment_index))
+            rebase_stream.extend(encode_uleb(segment_offset))
+            rebase_stream.append(0x51)
+        rebase_stream.append(0)
+        rebase_offset = (DATA_FILE_OFFSET + PAGE_SIZE) if data else PAGE_SIZE
+        dyld_info = struct.pack(
+            "<12I", LC_DYLD_INFO_ONLY, 48, rebase_offset, len(rebase_stream),
+            0, 0, 0, 0, 0, 0, 0, 0,
+        )
+        commands.append(dyld_info)
+
     main = struct.pack("<IIQQ", LC_MAIN, 24, TEXT_FILE_OFFSET + entry_offset, 0)
-    image = bytearray(PAGE_SIZE)
+    commands.append(main)
+    sizeofcmds = sum(map(len, commands))
+    flags = MH_DYLDLINK if rebase_sites else 0
+    header = struct.pack(
+        "<IiiIIII", MH_MAGIC, CPU_TYPE_I386, cpu_subtype, MH_EXECUTE,
+        len(commands), sizeofcmds, flags,
+    )
+
+    image_size = (DATA_FILE_OFFSET + PAGE_SIZE) if data else PAGE_SIZE
+    if rebase_sites:
+        image_size = max(image_size, rebase_offset + len(rebase_stream))
+    image = bytearray(image_size)
     image[:28] = header
-    image[28:84] = segment
-    image[84:108] = main
+    cursor = 28
+    for command in commands:
+        image[cursor : cursor + len(command)] = command
+        cursor += len(command)
+    if cursor > TEXT_FILE_OFFSET:
+        raise FormatError("Mach-O load commands overlap the __text file offset")
     image[TEXT_FILE_OFFSET : TEXT_FILE_OFFSET + len(text)] = text
+    if data:
+        image[DATA_FILE_OFFSET : DATA_FILE_OFFSET + len(data)] = data
+    if rebase_sites:
+        image[rebase_offset : rebase_offset + len(rebase_stream)] = rebase_stream
     return bytes(image)
 
 
@@ -314,8 +514,12 @@ def main() -> int:
 
     try:
         objects = [parse_object(path, path.read_bytes()) for path in args.inputs]
-        text, entry_offset, cpu_subtype = link_objects(objects, args.entry)
-        image = make_executable(text, entry_offset, cpu_subtype)
+        (text, data, entry_offset, cpu_subtype, text_align_exp,
+         data_align_exp, rebase_sites) = link_objects(objects, args.entry)
+        image = make_executable(
+            text, data, entry_offset, cpu_subtype, text_align_exp,
+            data_align_exp, rebase_sites,
+        )
         args.output.write_bytes(image)
     except (OSError, FormatError, struct.error, UnicodeError) as error:
         print(f"i386 Mach-O prototype linker: {error}", file=sys.stderr)

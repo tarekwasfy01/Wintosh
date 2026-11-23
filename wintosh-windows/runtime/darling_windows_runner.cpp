@@ -262,6 +262,11 @@ LONG WINAPI GuestExceptionBoundary(PEXCEPTION_POINTERS pointers)
 	char message[192]{};
 	const auto code = pointers != nullptr && pointers->ExceptionRecord != nullptr ?
 		pointers->ExceptionRecord->ExceptionCode : 0u;
+	// MSVC reports first-chance C++ throws as 0xE06D7363. Let the C++ runtime
+	// unwind them to their host catch blocks; only unhandled machine exceptions
+	// should be converted into a guest-fault report here.
+	if (code == 0xE06D7363u)
+		return EXCEPTION_CONTINUE_SEARCH;
 #if defined(_M_ARM64)
 	const auto pc = pointers != nullptr && pointers->ContextRecord != nullptr ?
 		static_cast<unsigned long long>(pointers->ContextRecord->Pc) : 0ull;
@@ -290,6 +295,18 @@ LONG WINAPI GuestExceptionBoundary(PEXCEPTION_POINTERS pointers)
 }
 }
 
+int RunDarwinBootstrapReportingHostErrors(
+	const std::filesystem::path& image,
+	const darling::windows_host::DarwinLaunchOptions& options)
+{
+	try {
+		return darling::windows_host::DarwinBootstrap::Run(image, options);
+	} catch (const std::exception& error) {
+		std::cerr << "DARLING_RUNNER_ERROR=" << error.what() << "\n";
+		return 1;
+	}
+}
+
 int RunGuestWithWindowsExceptionBoundary(
 	const std::filesystem::path& image,
 	const darling::windows_host::DarwinLaunchOptions& options)
@@ -302,7 +319,7 @@ int RunGuestWithWindowsExceptionBoundary(
 	handler = AddVectoredExceptionHandler(1, GuestExceptionBoundary);
 	InterlockedExchange(&guest_exception_boundary_active, 1);
 	__try {
-		const int result = darling::windows_host::DarwinBootstrap::Run(image, options);
+		const int result = RunDarwinBootstrapReportingHostErrors(image, options);
 		if (boundary_enabled) InterlockedExchange(&guest_exception_boundary_active, 0);
 		if (handler != nullptr) RemoveVectoredExceptionHandler(handler);
 		return result;

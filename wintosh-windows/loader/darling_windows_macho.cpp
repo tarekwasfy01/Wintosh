@@ -2742,16 +2742,16 @@ void MachOImage::ApplyRebaseActions(const Mapping& mapping) const
 			std::uint32_t old_value = 0;
 			std::memcpy(&old_value, reinterpret_cast<const void*>(host_address),
 				sizeof(old_value));
-			const auto slide = mapping.Slide();
-			if (slide < -static_cast<std::intptr_t>(old_value) ||
-				slide > static_cast<std::intptr_t>(
-					std::numeric_limits<std::uint32_t>::max() - old_value)) {
-				throw std::overflow_error("Mach-O 32-bit absolute rebase is out of range");
+			const auto rebased_value = static_cast<std::int64_t>(old_value) +
+				static_cast<std::int64_t>(mapping.Slide());
+			if (rebased_value < 0 || rebased_value >
+				static_cast<std::int64_t>(std::numeric_limits<std::uint32_t>::max())) {
+				throw std::overflow_error("Mach-O 32-bit absolute rebase is out of range (value=" +
+					std::to_string(old_value) + ", slide=" +
+					std::to_string(mapping.Slide()) + ")");
 			}
-			const auto rebased_value = static_cast<std::uint32_t>(
-				static_cast<std::intptr_t>(old_value) + slide);
 			ApplyAbsolute32(mapping, vm_address,
-				static_cast<std::uintptr_t>(rebased_value));
+				static_cast<std::uintptr_t>(static_cast<std::uint32_t>(rebased_value)));
 		} else {
 			std::uintptr_t old_value = 0;
 			std::memcpy(&old_value, reinterpret_cast<const void*>(host_address),

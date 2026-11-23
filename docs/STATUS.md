@@ -2390,3 +2390,19 @@ external. With `main.o helper.o`, the call displacement became `+0x15`; with
 `MH_EXECUTE` and returned 42 in the Win32 runner. This verifies one external
 symbol and one cross-object call form, not CRT, data, dylib imports, or
 frameworks.
+
+### i386 data sections and absolute rebases (2026-11-23)
+
+The bounded linker now lays out one `__TEXT,__text` and optional
+`__DATA,__data` section per input object, resolves text/data symbols across
+the supplied files, and supports non-scattered 32-bit Vanilla PC-relative and
+absolute relocations. Absolute pointers are emitted with dyld type-2 rebases.
+The Mach-O loader's 32-bit rebase range check now uses signed 64-bit arithmetic;
+the previous host-width cast rejected valid positive slides on this Win32
+build.
+
+A Clang i386 fixture initialized `shared_value` to 40, incremented it, read it
+back, and returned 42. `llvm-objdump` confirmed the text and data sections plus
+`LC_DYLD_INFO_ONLY`; Wintosh ran the image and returned 42 with the image slide
+applied. This covers one object's global read/write path, not cross-object data
+references, BSS, imports, CRT, or frameworks.

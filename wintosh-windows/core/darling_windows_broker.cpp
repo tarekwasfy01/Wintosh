@@ -706,6 +706,8 @@ int wmain(int argc, wchar_t** argv)
 						darling::windows_host::MachIpcOperation::Send,
 						envelope.request_id, envelope.port_token, 0, {},
 						response_out_of_line_token, response_out_of_line_size};
+					response.session_token = owner == port_session_owners.end() ?
+						envelope.session_token : owner->second;
 					server.Write(AsString(darling::windows_host::EncodeMachIpcEnvelope(response)));
 					continue;
 				}

@@ -52,6 +52,9 @@ constexpr std::uint32_t mach_header_remote_mask = 0x0000001fu;
 constexpr std::uint32_t mach_header_local_mask = 0x00001f00u;
 constexpr std::uint32_t mach_header_voucher_mask = 0x001f0000u;
 
+bool TransferHeaderRightFromTransit(darling_mach_port_name_t name, std::uint32_t right);
+bool TransferReceiveRightFromTransit(darling_mach_port_name_t name);
+
 std::uint32_t MachRightForHeaderDisposition(std::uint32_t disposition)
 {
 	switch (disposition) {
@@ -195,6 +198,63 @@ std::mutex ports_wait_mutex;
 std::condition_variable ports_condition;
 std::unordered_map<darling_mach_port_name_t, std::shared_ptr<PortQueue>> ports;
 std::unordered_map<darling_mach_port_name_t, std::unordered_set<darling_mach_port_name_t>> port_sets;
+
+std::uint32_t MachRightForReceivedBrokerDisposition(std::uint32_t disposition)
+{
+	switch (disposition) {
+	case darling_mach_move_receive: return darling_mach_port_type_receive;
+	case darling_mach_move_send:
+	case darling_mach_copy_send:
+	case darling_mach_make_send: return darling_mach_port_type_send;
+	case darling_mach_move_send_once:
+	case darling_mach_make_send_once: return darling_mach_port_type_send_once;
+	default: return 0;
+	}
+}
+
+darling_mach_port_name_t BindReceivedBrokerPortRight(std::uint64_t broker_token,
+	std::uint64_t session_token, std::uint32_t disposition)
+{
+	if (broker_token == 0 || session_token == 0)
+		throw std::invalid_argument("invalid received Mach IPC capability");
+	const auto right = MachRightForReceivedBrokerDisposition(disposition);
+	if (right == 0) throw std::invalid_argument("invalid received Mach IPC right disposition");
+	if (const auto existing = mach_ipc_capabilities.LookupLocal(broker_token, session_token)) {
+		if (disposition == darling_mach_move_receive &&
+			TransferReceiveRightFromTransit(*existing)) return *existing;
+		if (disposition == darling_mach_move_send ||
+			disposition == darling_mach_move_send_once) {
+			if (TransferHeaderRightFromTransit(*existing, right)) return *existing;
+		}
+		if (darling_windows_mach_port_mod_refs(darling_windows_mach_task_self(),
+			*existing, right, 1) != 0)
+			throw std::runtime_error("could not add received Mach IPC right");
+		return *existing;
+	}
+	auto port = std::make_shared<PortQueue>();
+	port->receive_refs = right == darling_mach_port_type_receive ? 1u : 0u;
+	port->send_refs = right == darling_mach_port_type_send ? 1u : 0u;
+	port->send_once_refs = right == darling_mach_port_type_send_once ? 1u : 0u;
+	port->refs = port->total_refs();
+	darling_mach_port_name_t local_name = 0;
+	{
+		std::lock_guard lock(ports_mutex);
+		for (;;) {
+			local_name = next_port.fetch_add(1, std::memory_order_relaxed);
+			if (local_name != 0 && !ports.contains(local_name)) break;
+		}
+		ports.emplace(local_name, port);
+	}
+	try {
+		mach_ipc_capabilities.Bind(local_name, {broker_token, session_token});
+	} catch (...) {
+		std::lock_guard lock(ports_mutex);
+		ports.erase(local_name);
+		throw;
+	}
+	return local_name;
+}
+
 struct ExceptionPort final { darling_exception_mask_t mask; darling_mach_port_name_t port; darling_exception_behavior_t behavior; darling_exception_flavor_t flavor; };
 struct PortNotification final { darling_mach_msg_id_t msgid; darling_mach_port_name_t notify; };
 std::mutex exception_ports_mutex;
@@ -3060,22 +3120,87 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 					}
 				}
 				if (!broker_descriptors_available) return 4;
+				struct BrokerTransitRight final {
+					darling_mach_port_name_t name;
+					std::uint32_t right;
+					bool receive;
+					bool carried;
+				};
+				std::vector<BrokerTransitRight> broker_transit_rights;
+				if ((message->msgh_bits & darling_mach_msg_complex) != 0) {
+					const auto* body = reinterpret_cast<const darling_mach_msg_body*>(
+						reinterpret_cast<const std::uint8_t*>(message) + sizeof(darling_mach_msg_header));
+					const auto* descriptor_bytes = reinterpret_cast<const std::uint8_t*>(body + 1);
+					const auto descriptor_bytes_count = send_size - sizeof(darling_mach_msg_header) - sizeof(*body);
+					const auto first_type = descriptor_bytes_count >=
+						offsetof(darling_mach_msg_ool_descriptor, type) + sizeof(std::uint32_t) ?
+						descriptor_bytes[offsetof(darling_mach_msg_ool_descriptor, type)] : 0;
+					if (!(body->msgh_descriptor_count == 1 &&
+						first_type == darling_mach_msg_descriptor_ool))
+						broker_transit_rights.reserve(body->msgh_descriptor_count + 1);
+				}
 				const auto remote_right = remote_disposition == darling_mach_make_send ?
 					darling_mach_port_type_send : remote_disposition == darling_mach_make_send_once ?
 					darling_mach_port_type_send_once : MachRightForHeaderDisposition(remote_disposition);
-				const int local_remote_delta =
-					(remote_disposition == darling_mach_move_send ||
-						remote_disposition == darling_mach_move_send_once) ? -1 :
-					(remote_disposition == darling_mach_make_send ? 1 : 0);
+				const int local_remote_delta = remote_disposition == darling_mach_make_send ? 1 : 0;
 				if (local_remote_delta != 0 && darling_windows_mach_port_mod_refs(
 					darling_windows_mach_task_self(), message->msgh_remote_port,
 					remote_right, local_remote_delta) != 0)
 					return 3;
+			const auto rollback_broker_rights = [&] {
+				for (auto it = broker_transit_rights.rbegin();
+					it != broker_transit_rights.rend(); ++it) {
+					if (it->receive) (void)TransferReceiveRightFromTransit(it->name);
+					else (void)TransferHeaderRightFromTransit(it->name, it->right);
+				}
+				broker_transit_rights.clear();
+				if (local_remote_delta != 0)
+					(void)darling_windows_mach_port_mod_refs(
+						darling_windows_mach_task_self(), message->msgh_remote_port,
+						remote_right, -local_remote_delta);
+			};
+			const auto move_to_broker_transit = [&](darling_mach_port_name_t name,
+				std::uint32_t disposition, bool carried) {
+				const auto right = disposition == darling_mach_move_receive ?
+					darling_mach_port_type_receive : disposition == darling_mach_move_send_once ?
+					darling_mach_port_type_send_once : darling_mach_port_type_send;
+				const bool receive = disposition == darling_mach_move_receive;
+				const bool moved = receive ? TransferReceiveRightToTransit(name) :
+					TransferHeaderRightToTransit(name, right);
+				if (moved) broker_transit_rights.push_back({name, right, receive, carried});
+				return moved;
+			};
+			if ((remote_disposition == darling_mach_move_send ||
+				remote_disposition == darling_mach_move_send_once) &&
+				!move_to_broker_transit(message->msgh_remote_port, remote_disposition, false)) {
+				rollback_broker_rights();
+				return 3;
+			}
+			if ((message->msgh_bits & darling_mach_msg_complex) != 0) {
+				const auto* body = reinterpret_cast<const darling_mach_msg_body*>(
+					reinterpret_cast<const std::uint8_t*>(message) + sizeof(darling_mach_msg_header));
+				const auto* descriptor_bytes = reinterpret_cast<const std::uint8_t*>(body + 1);
+				const auto descriptor_bytes_count = send_size - sizeof(darling_mach_msg_header) - sizeof(*body);
+				const auto first_type = descriptor_bytes_count >=
+					offsetof(darling_mach_msg_ool_descriptor, type) + sizeof(std::uint32_t) ?
+					descriptor_bytes[offsetof(darling_mach_msg_ool_descriptor, type)] : 0;
+				if (!(body->msgh_descriptor_count == 1 &&
+					first_type == darling_mach_msg_descriptor_ool)) {
+					const auto* descriptors = reinterpret_cast<const darling_mach_msg_port_descriptor*>(body + 1);
+					for (std::uint32_t index = 0; index < body->msgh_descriptor_count; ++index) {
+						const auto disposition = descriptors[index].disposition;
+						if ((disposition == darling_mach_move_receive ||
+							disposition == darling_mach_move_send ||
+							disposition == darling_mach_move_send_once) &&
+							!move_to_broker_transit(descriptors[index].name, disposition, true)) {
+							rollback_broker_rights();
+							return 3;
+						}
+					}
+				}
+			}
 				const auto rollback_local_remote_right = [&] {
-					if (local_remote_delta != 0)
-						(void)darling_windows_mach_port_mod_refs(
-							darling_windows_mach_task_self(), message->msgh_remote_port,
-							remote_right, -local_remote_delta);
+					rollback_broker_rights();
 				};
 				try {
 					darling::windows_host::MachIpcEnvelope request;
@@ -3121,6 +3246,19 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 						response.port_token != request.port_token) {
 						rollback_local_remote_right();
 						return 4;
+					}
+					for (std::size_t index = broker_transit_rights.size(); index > 0; --index) {
+						auto& right = broker_transit_rights[index - 1];
+						if (response.session_token == capability->session_token && right.carried)
+							continue;
+						const bool restored = right.receive ?
+							TransferReceiveRightFromTransit(right.name) :
+							TransferHeaderRightFromTransit(right.name, right.right);
+						if (!restored || darling_windows_mach_port_mod_refs(
+								darling_windows_mach_task_self(), right.name, right.right, -1) != 0)
+								return 4;
+						broker_transit_rights.erase(broker_transit_rights.begin() +
+							static_cast<std::ptrdiff_t>(index - 1));
 					}
 					broker_routed_send = true;
 				} catch (...) {
@@ -3374,12 +3512,12 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 							body->msgh_descriptor_count != response.port_descriptor_tokens.size()) return 4;
 						auto* descriptors = reinterpret_cast<darling_mach_msg_port_descriptor*>(body + 1);
 						for (std::size_t index = 0; index < response.port_descriptor_tokens.size(); ++index) {
-							const auto local = mach_ipc_capabilities.LookupLocal(
-								response.port_descriptor_tokens[index], capability->session_token);
-							if (!local) return 4;
-							descriptors[index].name = *local;
-								if (index < response.port_descriptor_dispositions.size())
-									descriptors[index].disposition = response.port_descriptor_dispositions[index];
+							if (index >= response.port_descriptor_dispositions.size()) return 4;
+							const auto disposition = response.port_descriptor_dispositions[index];
+							descriptors[index].name = BindReceivedBrokerPortRight(
+								response.port_descriptor_tokens[index], capability->session_token,
+								disposition);
+							descriptors[index].disposition = disposition;
 						}
 					}
 					mach_last_receive_sequence = mach_broker_receive_sequence.fetch_add(1, std::memory_order_relaxed);

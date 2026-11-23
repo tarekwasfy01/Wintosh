@@ -484,22 +484,45 @@ int wmain(int argc, wchar_t** argv)
 					};
 					for (const auto disposition : envelope.port_descriptor_dispositions) {
 						if (disposition != 16 && disposition != 17 && disposition != 18 &&
-							disposition != 19 && disposition != 20 && disposition != 21 &&
-							disposition != 22)
+							disposition != 19 && disposition != 20 && disposition != 21)
 							throw std::invalid_argument("unsupported Mach IPC port disposition");
 					}
-					for (std::size_t index = 0; index < envelope.port_descriptor_tokens.size(); ++index) {
-						auto rights = port_rights.find(envelope.port_descriptor_tokens[index]);
-						if (rights == port_rights.end()) throw std::invalid_argument("missing Mach IPC port rights");
-						switch (envelope.port_descriptor_dispositions[index]) {
-						case 16: if (rights->second.receive == 0) throw std::invalid_argument("no receive right"); --rights->second.receive; break;
-						case 17: if (rights->second.send == 0) throw std::invalid_argument("no send right"); --rights->second.send; break;
-						case 18: if (rights->second.send_once == 0) throw std::invalid_argument("no send-once right"); --rights->second.send_once; break;
-		case 19: if (rights->second.send == 0) throw std::invalid_argument("no send right"); ++rights->second.send; break;
-						case 20: if (rights->second.receive == 0) throw std::invalid_argument("no receive right"); ++rights->second.send; break;
-						case 21: if (rights->second.receive == 0) throw std::invalid_argument("no receive right"); ++rights->second.send_once; break;
-						case 22: if (rights->second.receive == 0) throw std::invalid_argument("no receive right"); ++rights->second.receive; break;
+					try {
+						for (std::size_t index = 0; index < envelope.port_descriptor_tokens.size(); ++index) {
+							auto rights = port_rights.find(envelope.port_descriptor_tokens[index]);
+							if (rights == port_rights.end())
+								throw std::invalid_argument("missing Mach IPC port rights");
+							switch (envelope.port_descriptor_dispositions[index]) {
+							case 16:
+								if (rights->second.receive == 0) throw std::invalid_argument("no receive right");
+								--rights->second.receive;
+								break;
+							case 17:
+								if (rights->second.send == 0) throw std::invalid_argument("no send right");
+								--rights->second.send;
+								break;
+							case 18:
+								if (rights->second.send_once == 0) throw std::invalid_argument("no send-once right");
+								--rights->second.send_once;
+								break;
+							case 19:
+								if (rights->second.send == 0) throw std::invalid_argument("no send right");
+								++rights->second.send;
+								break;
+							case 20:
+								if (rights->second.receive == 0) throw std::invalid_argument("no receive right");
+								++rights->second.send;
+								break;
+							case 21:
+								if (rights->second.receive == 0) throw std::invalid_argument("no receive right");
+								++rights->second.send_once;
+								break;
+							default: throw std::invalid_argument("unsupported Mach IPC port disposition");
+							}
 						}
+					} catch (...) {
+						restore_rights();
+						throw;
 					}
 					auto queued = envelope;
 					try {

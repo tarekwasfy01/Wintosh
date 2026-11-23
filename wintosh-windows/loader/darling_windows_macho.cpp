@@ -1494,7 +1494,7 @@ MachOImage MachOImage::Open(const std::wstring& path)
 				const auto* payload_candidate = reinterpret_cast<const ChainedStartsSegment*>(
 					payload + segment_offset);
 				auto supported_pointer_format = [](std::uint16_t format) {
-					return format == 1 || format == 2 || format == 6 || format == 7 ||
+					return format == 1 || format == 2 || format == 3 || format == 6 || format == 7 ||
 						format == 9 || format == 10 || format == 12;
 				};
 				const auto* segment_starts = starts_relative &&
@@ -1504,10 +1504,13 @@ MachOImage MachOImage::Open(const std::wstring& path)
 					static_cast<std::uint64_t>(header->starts_offset) + segment_offset :
 					static_cast<std::uint64_t>(segment_offset);
 				const auto pointer_format = segment_starts->pointer_format;
-				Require(pointer_format == 1 || pointer_format == 2 || pointer_format == 6 ||
+				Require(pointer_format == 1 || pointer_format == 2 || pointer_format == 3 ||
+					pointer_format == 6 ||
 					pointer_format == 7 || pointer_format == 9 || pointer_format == 10 ||
 					pointer_format == 12,
-					"unsupported Mach-O chained pointer format; expected a supported ARM64e/64 userland format");
+					"unsupported Mach-O chained userland pointer format");
+				Require((pointer_format == 3) == is_32_bit,
+					"Mach-O chained pointer width does not match the image architecture");
 				const auto starts_bytes = segment_starts->size;
 				Require(starts_bytes >= sizeof(ChainedStartsSegment) +
 					static_cast<std::uint64_t>(segment_starts->page_count) * sizeof(std::uint16_t) &&
@@ -1532,8 +1535,10 @@ MachOImage MachOImage::Open(const std::wstring& path)
 				const auto* chain_starts = page_starts + segment_starts->page_count;
 				const bool arm64e_format = pointer_format == 1 || pointer_format == 7 ||
 					pointer_format == 9 || pointer_format == 10 || pointer_format == 12;
-				const std::uint64_t chain_stride = arm64e_format &&
-					pointer_format != 7 && pointer_format != 10 ? 8u : 4u;
+				const std::uint64_t chain_stride = pointer_format == 3 ||
+					(arm64e_format && (pointer_format == 7 || pointer_format == 10)) ? 4u : 8u;
+				const auto pointer_size = pointer_format == 3 ? sizeof(std::uint32_t) :
+					sizeof(std::uint64_t);
 				const auto walk_chain = [&](std::uint16_t start, std::uint16_t page) {
 					Require(start < segment_starts->page_size,
 						"Mach-O chained-fixup start exceeds its page");
@@ -1544,7 +1549,7 @@ MachOImage MachOImage::Open(const std::wstring& path)
 					for (std::uint64_t chain = 0; chain < max_nodes; ++chain) {
 						const auto page_offset = vm - page_vm;
 						Require(page_offset <= segment_starts->page_size &&
-							segment_starts->page_size - page_offset >= sizeof(std::uint64_t),
+							segment_starts->page_size - page_offset >= pointer_size,
 							"Mach-O chained-fixup pointer crosses its page");
 						const auto* segment = &segments[segment_index];
 						Require(vm >= segment->vm_address &&
@@ -1552,19 +1557,34 @@ MachOImage MachOImage::Open(const std::wstring& path)
 							"Mach-O chained-fixup location is not file-backed");
 						const auto file_offset = segment->file_offset +
 							(vm - segment->vm_address);
-						Require(RangeFits(file_bytes, file_offset, sizeof(std::uint64_t)),
+						Require(RangeFits(file_bytes, file_offset, pointer_size),
 							"Mach-O chained-fixup pointer is outside the file");
 						std::uint64_t raw = 0;
-						std::memcpy(&raw, view + file_offset, sizeof(raw));
+						std::memcpy(&raw, view + file_offset, pointer_size);
 						const bool authenticated = arm64e_format && (raw >> 63) != 0;
-						const bool bind = arm64e_format ?
+						const bool bind = pointer_format == 3 ? ((raw >> 31) & 1) != 0 :
+							arm64e_format ?
 							((raw >> 62) & 1) != 0 : (raw >> 63) != 0;
-						const auto next = static_cast<std::uint16_t>(arm64e_format ?
+						const auto next = static_cast<std::uint16_t>(pointer_format == 3 ?
+							((raw >> 26) & 0x1f) : arm64e_format ?
 							((raw >> 51) & 0x7ff) : ((raw >> 51) & 0xfff));
 						std::uint32_t bind_ordinal = 0;
 						std::int64_t addend = 0;
 						std::uint64_t target = 0;
-						if (arm64e_format) {
+						bool non_pointer = false;
+						if (pointer_format == 3) {
+							bind_ordinal = static_cast<std::uint32_t>(raw & 0xfffff);
+							addend = static_cast<std::int64_t>((raw >> 20) & 0x3f);
+							target = raw & 0x3ffffff;
+							if (!bind && target > segment_starts->max_valid_pointer) {
+								const auto bias = (std::uint64_t(0x4000000) +
+									segment_starts->max_valid_pointer) / 2;
+								Require(target >= bias,
+									"Mach-O chained 32-bit non-pointer bias underflows");
+								target -= bias;
+								non_pointer = true;
+							}
+						} else if (arm64e_format) {
 							bind_ordinal = static_cast<std::uint32_t>(raw &
 								(pointer_format == 12 ? 0xffffff : 0xffff));
 							if (authenticated) {
@@ -1589,7 +1609,7 @@ MachOImage MachOImage::Open(const std::wstring& path)
 						}
 						chained_fixups.push_back({segment_index, vm, bind,
 							bind_ordinal, addend, target, next, pointer_format,
-							authenticated});
+							authenticated, non_pointer});
 						if (next == 0) return;
 						const auto advance = static_cast<std::uint64_t>(next) * chain_stride;
 						Require(advance <= segment_starts->page_size - page_offset,
@@ -2634,11 +2654,16 @@ void MachOImage::ApplyChainedFixups(const Mapping& mapping,
 			throw std::runtime_error("Mach-O chained fixup segment index is invalid");
 		}
 		std::uintptr_t value = 0;
-		if (fixup.bind) {
+		if (fixup.non_pointer) {
+			value = static_cast<std::uintptr_t>(fixup.target);
+		} else if (fixup.bind) {
 			if (fixup.bind_ordinal >= bind_addresses.size()) {
 				throw std::runtime_error("Mach-O chained bind ordinal is out of range");
 			}
 			value = AddSignedAddress(bind_addresses[fixup.bind_ordinal], fixup.addend);
+		} else if (fixup.pointer_format == 3) {
+			value = AddSignedAddress(static_cast<std::uintptr_t>(fixup.target),
+				mapping.Slide());
 		} else {
 			if (fixup.pointer_format == 6 || fixup.pointer_format == 7 ||
 				fixup.pointer_format == 9 || fixup.pointer_format == 12) {
@@ -2664,7 +2689,10 @@ void MachOImage::ApplyChainedFixups(const Mapping& mapping,
 					mapping.Slide());
 			}
 		}
-		ApplyAbsolute64(mapping, fixup.vm_address, value);
+		if (fixup.pointer_format == 3)
+			ApplyAbsolute32(mapping, fixup.vm_address, value);
+		else
+			ApplyAbsolute64(mapping, fixup.vm_address, value);
 	}
 }
 

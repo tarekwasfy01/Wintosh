@@ -2322,3 +2322,13 @@ DEFLATE block/Huffman structure, back-reference bounds, and Adler-32 trailer;
 the expanded pool is capped at 256 MiB. Format 0 remains zero-copy, and unknown
 symbol formats fail explicitly. The Windows x64 build succeeds; compressed
 Mach-O import fixtures have not exercised the decoder yet.
+
+### 32-bit userland chained fixups (2026-11-23)
+
+The loader now parses `DYLD_CHAINED_PTR_32` for 32-bit Mach-O images using its
+4-byte pointer width, 5-bit next field, 20-bit import ordinal, and 6-bit inline
+addend. Rebase targets receive the image slide; tagged non-pointer values are
+restored by subtracting dyld's `(64 MiB + max_valid_pointer) / 2` bias. The
+fixup writer uses the 32-bit absolute path and rejects width/image mismatches.
+The Windows x64 build compiles this parser path, but there is no 32-bit chained
+Mach-O runtime fixture yet.

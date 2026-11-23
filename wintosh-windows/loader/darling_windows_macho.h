@@ -344,6 +344,7 @@ struct DyldChainedFixup final {
 	std::uint16_t next = 0;
 	std::uint16_t pointer_format = 2;
 	bool authenticated = false;
+	bool non_pointer = false;
 };
 
 struct DyldChainedImport final {

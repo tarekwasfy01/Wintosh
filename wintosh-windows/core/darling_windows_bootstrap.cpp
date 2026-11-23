@@ -24,6 +24,7 @@
 #include <limits>
 #include <memory>
 #include <stdexcept>
+#include <string_view>
 #include <system_error>
 #include <utility>
 #include <vector>
@@ -351,12 +352,20 @@ int DarwinBootstrap::Run(const std::filesystem::path& image_path,
 	}
 	std::vector<DyldResolvedBinding> resolved;
 	for (const auto& binding : bindings) {
+		auto make_guest_host_address = [&mapping, &header](
+			std::string_view symbol, std::uintptr_t address) {
+			return header.cpu_type == CPU_TYPE_ARM64 ?
+				mapping.CreateArm64HostImportThunk(std::string(symbol), address) : address;
+		};
 		const auto host_binding = std::find_if(options.host_bindings.begin(),
 			options.host_bindings.end(), [&binding](const auto& candidate) {
 				return candidate.symbol == binding.name;
 			});
 		if (host_binding != options.host_bindings.end()) {
-			resolved.push_back(*host_binding);
+			auto guest_binding = *host_binding;
+			guest_binding.address = make_guest_host_address(binding.name,
+				guest_binding.address);
+			resolved.push_back(std::move(guest_binding));
 			continue;
 		}
 		if (binding.provider.empty()) {
@@ -365,7 +374,8 @@ int DarwinBootstrap::Run(const std::filesystem::path& image_path,
 			// host export.
 			const auto host_address = darling_windows_host_symbol(binding.name.c_str());
 			if (host_address != 0) {
-				resolved.push_back({binding.name, host_address,
+				resolved.push_back({binding.name, make_guest_host_address(binding.name,
+					host_address),
 					binding.dylib_ordinal, binding.has_dylib_ordinal});
 				continue;
 			}
@@ -409,9 +419,15 @@ int DarwinBootstrap::Run(const std::filesystem::path& image_path,
 	// Bindings are collected for the full dependency graph. Keep the client
 	// image's subset for each relocation/bind pass: dylib ordinal 1 can name a
 	// different provider in two different images.
-	const auto bindings_for_client = [&bindings, &resolved, &options](
+	const auto bindings_for_client = [&bindings, &resolved, &options, &mapping, &header](
 		const std::filesystem::path& client_path) {
 		std::vector<DyldResolvedBinding> client_bindings = options.host_bindings;
+		if (header.cpu_type == CPU_TYPE_ARM64) {
+			for (auto& binding : client_bindings)
+				if (binding.address != 0)
+					binding.address = mapping.CreateArm64HostImportThunk(
+						binding.symbol, binding.address);
+		}
 		const auto normalized_client = client_path.lexically_normal();
 		for (std::size_t index = 0; index < bindings.size(); ++index) {
 			if (bindings[index].client_image.lexically_normal() == normalized_client)

@@ -895,6 +895,9 @@ DarwinDynamicImage* OpenDynamicImage(const std::filesystem::path& path,
 		}
 		for (const auto& binding : graph_bindings) {
 			auto append_client_binding = [&](std::uintptr_t address) {
+				if (binding.provider.empty() && address != 0 && result->image.IsArm64())
+					address = result->mapping.CreateArm64HostImportThunk(
+						binding.name, address);
 				resolved_addresses.push_back(address);
 				DyldResolvedBinding resolved{binding.name, address,
 				binding.dylib_ordinal, binding.has_dylib_ordinal};

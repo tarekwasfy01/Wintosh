@@ -1,22 +1,23 @@
 # AArch64 Mach-O auf x64 Windows: Backend-Integrationsvertrag
 
-Stand: 2026-11-23. Dieses Dokument beschreibt den nächsten echten
-Ausführungspfad für ARM64-Gäste auf x64-Windows. Es behauptet keine bereits
-integrierte Emulation.
+Stand: 2026-11-23. Dieses Dokument beschreibt den ARM64-Gastpfad auf
+x64-Windows und kennzeichnet getrennt, was implementiert und was zur Laufzeit
+noch nicht belegt ist.
 
 ## Architekturgrenze im aktuellen Quellstand
 
 Der Loader kann ARM64-Mach-O parsen, mappen und einen Teil der ARM64-
-Relokationen anwenden. `MachOImage::ExecuteEntry` lehnt ARM64-Gäste auf x64
-Windows jedoch explizit ab. Auf nativem Windows ARM64 nimmt der Code nur
-passende ARM64-Gäste an. Die beiden Pfade sind getrennt:
+Relokationen anwenden. Auf x64-Windows führt Dynarmic den Gastcode in einem
+registrierten Speicherraum aus; Darwin-SVCs und ein begrenzter Host-Importpfad
+werden dispatcht. Auf nativem Windows ARM64 läuft ARM64-Code auf der CPU.
+Beide Pfade sind noch nicht end-to-end mit einer realen macOS-Anwendung belegt:
 
 | Übergang | x64 Windows | ARM64 Windows |
 |---|---:|---:|
 | ARM64-Mach-O lesen und CPU-Slice auswählen | vorhanden | vorhanden |
 | Segmente mappen und unterstützte Relokationen anwenden | vorhanden | vorhanden |
-| ARM64-Instruktionen ausführen | fehlt | native CPU, noch nicht end-to-end belegt |
-| Darwin-Imports aus ARM64-Gastcode aufrufen | fehlt | teilweise vorhandene ABI-Brücke |
+| ARM64-Instruktionen ausführen | Dynarmic-Backend implementiert, Laufzeit-Fixture fehlt | native CPU, noch nicht end-to-end belegt |
+| Darwin-Imports aus ARM64-Gastcode aufrufen | begrenzter SVC-Importpfad implementiert, Laufzeit-Fixture fehlt | teilweise vorhandene ABI-Brücke |
 | Darwin-Systemdienste und GUI aus dem ARM64-Gast bedienen | fehlt | bestehende Windows-Implementierungen, ARM64-Gastbelege fehlen |
 
 Ein CPU-Backend allein schließt somit nicht den Ausführungspfad.
@@ -98,15 +99,17 @@ Für einen importierten A64-Aufruf gilt zunächst die eingeschränkte
 Skalarabbildung:
 
 ```text
-guest x0..x7 → signature decoder → host ABI arguments
-host scalar/pointer result → guest x0
-guest PC after SVC → resume
+Gast-BL/BLR → Gast-Trampolin (movz/movk x16, SVC #0x82)
+→ Import-ID + Symboladapter → typisierter Windows-Host-Aufruf
+→ ARM64-Rückgaberegister und Fortsetzung nach SVC
 ```
 
 Aggregate, FP/SIMD-Argumente, variadische Funktionen, Block-Closures,
-Objective-C-Messenger und Stackoverflow-Argumente benötigen eigene
-Signaturklassen; sie dürfen nicht stillschweigend als `uint64_t`-Aufruf
-behandelt werden. Mach-Traps und Darwin-Syscalls sind getrennte
+Nicht katalogisierte Host-Imports brechen mit dem Symbolnamen ab. Der
+Objective-C-Messenger nutzt den vorhandenen Encoding-gesteuerten Dispatcher;
+Struktur- und FP-Rückgaben hängen von dessen unterstützten Encodings ab.
+Sonstige Aggregate, Block-Closures und native Callback-Übergänge sind weiter
+offen. Mach-Traps und Darwin-Syscalls sind getrennte
 Service-Namespaces und dürfen nicht durch bloße Nummernidentität vermischt
 werden.
 
@@ -190,8 +193,9 @@ alle beim Bootstrap gemappten ARM64-dylib-Segmente, Startpuffer und zur
 Laufzeit registrierte `mmap`-Bereiche. Fat-Binaries können über `--arch arm64`
 auch auf x64-Windows explizit den ARM64-Slice wählen; der CPU-Typ wird für
 Graphauflösung, Bindings, Initialisierer und Provider-Mappings weitergereicht.
-Dadurch können ARM64-Images untereinander aufgelöste Gastfunktionen aufrufen;
-es entsteht noch keine Brücke von ARM64-Gast-ABI zu x64-Hostfunktionen.
+Dadurch können ARM64-Images untereinander aufgelöste Gastfunktionen aufrufen.
+Host-Imports werden über pro Mapping erzeugte Trampoline in einen begrenzten
+Symboladapter geleitet; nicht unterstützte Symbole schlagen kontrolliert fehl.
 `mmap` reicht die sechs
 Darwin-Argumente an den vorhandenen Windows-Adapter weiter und registriert
 erfolgreiche Bereiche samt Gastrechten. `mprotect` akzeptiert nur vollständig

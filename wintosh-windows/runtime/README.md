@@ -131,12 +131,15 @@ native i386 entry path, but its guest execution has not yet been verified with
 a real 32-bit Mach-O runtime fixture. ARM64 execution on x86_64 Windows
 requires a build configured with Dynarmic; `--arch arm64` then selects that
 slice consistently for the executable and all dylib providers. The local
-Release target builds with this backend, but no end-to-end ARM64 app fixture
-has yet verified guest-to-guest calls, host imports, or framework startup.
+Release target builds with this backend. ARM64 host imports enter through a
+guest SVC trampoline; `objc_msgSend` uses the type-encoding dispatcher, and a
+small C runtime catalog has scalar/pointer adapters. Unsupported imports fail
+closed. No end-to-end ARM64 app fixture has yet verified guest-to-guest calls,
+host imports, or framework startup.
 `--diagnose-host` is independent of an input image and reports the current
 Windows architecture, pointer width, supported native Mach-O target, prefix
-source, preferred universal-binary slice, and the absence of cross-architecture
-CPU translation. This diagnostic reports host-level capability; app-specific
+source, preferred universal-binary slice, and configured cross-architecture
+CPU translation capability. This diagnostic reports host-level capability; app-specific
 ABI and framework coverage remain separate.
 `--init-prefix` creates the minimal directory layout used by the native
 Darwin adapter.  It deliberately does not download or invent Apple system

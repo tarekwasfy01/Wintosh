@@ -1,5 +1,25 @@
 # Complete current workspace state
 
+## ARM64 guest imports on x64 Windows, 2026-11-23
+
+The optional Dynarmic backend now has an ARM64 host-import trampoline path.
+ARM64 imports are rebound to per-image guest stubs that load a 32-bit import
+identifier and issue `SVC #0x82`; the execution loop resolves that ID to a
+symbol adapter and resumes the guest with its result registers updated.
+`objc_msgSend`, `objc_msgSendSuper`, and `objc_msgSendSuper2` use the existing
+Objective-C type-encoding dispatcher with the Darwin variadic stack. Selected
+scalar and pointer imports (`malloc`, `free`, retain/release, `strlen`, and
+memory routines) have adapters. Other host imports fail closed with their
+symbol name.
+
+The local Release build of `wintosh.exe` and its host library succeeded. No
+tests were run and no ARM64 guest runtime fixture has yet exercised the trap,
+host-call ABI, or Cocoa startup. Therefore this is source/build evidence for a
+bounded bridge, not evidence that arbitrary macOS applications run on Windows.
+The Darwin/XNU syscall surface, Mach traps, callbacks, dynamic imports during
+execution, full framework coverage, and reproducible Dynarmic dependency pin
+remain open.
+
 ## Mach broker update, 2026-11-23
 
 The Windows Release targets `wintosh.exe` and `wintosh_broker.exe` build with

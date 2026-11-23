@@ -518,6 +518,12 @@ private:
 
 class MachOImage::Mapping final {
 public:
+	struct Arm64HostImport final {
+		std::uint32_t identifier = 0;
+		std::string symbol;
+		std::uintptr_t target = 0;
+		std::uintptr_t thunk = 0;
+	};
 	Mapping() noexcept = default;
 	Mapping(const Mapping&) = delete;
 	Mapping& operator=(const Mapping&) = delete;
@@ -528,6 +534,16 @@ public:
 	[[nodiscard]] const std::vector<MappedMachOSegment>& Segments() const noexcept { return m_segments; }
 	[[nodiscard]] std::uintptr_t EntryAddress() const noexcept { return m_entry_address; }
 	[[nodiscard]] std::intptr_t Slide() const noexcept { return m_slide; }
+	[[nodiscard]] std::uintptr_t CreateArm64HostImportThunk(
+		const std::string& symbol, std::uintptr_t target) const;
+	[[nodiscard]] const std::vector<Arm64HostImport>& Arm64HostImports() const noexcept {
+		return m_arm64_host_imports;
+	}
+	[[nodiscard]] std::pair<std::uintptr_t, std::size_t> Arm64ThunkPoolRegion() const noexcept {
+		const auto bytes = ((m_thunk_pool_used * 16 + 0xfff) / 0x1000) * 0x1000;
+		return {m_reservation == nullptr ? 0 :
+			reinterpret_cast<std::uintptr_t>(m_reservation) + m_thunk_pool_offset, bytes};
+	}
 
 private:
 	friend class MachOImage;
@@ -544,6 +560,7 @@ private:
 	std::size_t m_thunk_pool_offset = 0;
 	mutable std::size_t m_thunk_pool_used = 0;
 	mutable std::vector<std::pair<std::uintptr_t, std::uintptr_t>> m_branch_thunks;
+	mutable std::vector<Arm64HostImport> m_arm64_host_imports;
 	// Preserve the linked contents of relocation sites so resolver rebinding
 	// can safely replay relocation calculations after the first fixup pass.
 	mutable std::vector<std::uint64_t> m_relocation_original_values;

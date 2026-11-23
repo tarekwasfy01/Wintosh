@@ -11,6 +11,7 @@
 #include "../platform/darling_windows_errno.h"
 #include "../platform/darling_windows_signals.h"
 #include "darling_windows_abi_bridge.h"
+#include "../abi/darling_windows_objc.h"
 #include "darling_windows_tlv.h"
 #if defined(WINTOSH_HAS_DYNARMIC)
 #include "darling_windows_a64_backend.h"
@@ -18,6 +19,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cerrno>
 #include <cstring>
 #include <cstdio>
@@ -30,6 +32,9 @@
 #include <utility>
 
 namespace darling::windows_host {
+
+extern "C" void darling_windows_objc_arm64_message_dispatch(
+	const void*, SEL, const void*, void*, unsigned, void*);
 
 bool DecodeDarwinX86_64StubFrame(const std::uintptr_t* metadata_stack,
 	DarwinX86_64StubFrame* frame) noexcept
@@ -47,6 +52,7 @@ namespace {
 thread_local const MachOLazyBindingSession* active_lazy_binding_session = nullptr;
 std::mutex active_lazy_binding_sessions_mutex;
 std::vector<const MachOLazyBindingSession*> active_lazy_binding_sessions;
+std::atomic<std::uint32_t> next_arm64_import_identifier{1};
 
 void RemoveActiveLazyBindingSession(const MachOLazyBindingSession* session) noexcept
 {
@@ -3334,6 +3340,7 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 			additional_segment_count += image_mapping->Segments().size();
 		}
 		std::vector<A64GuestMemoryRegion> guest_memory;
+		std::vector<MachOImage::Mapping::Arm64HostImport> arm64_host_imports;
 		guest_memory.reserve(mapping.Segments().size() + additional_segment_count + arguments.size() +
 			environment.size() + apple_parameters.size() + 5);
 		for (std::size_t segment_index = 0;
@@ -3344,6 +3351,15 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 				(protection & 1) != 0, (protection & 2) != 0,
 				(protection & 4) != 0, false, 0, 0, true});
 		}
+		const auto register_thunk_pool = [&guest_memory, &arm64_host_imports](
+			const Mapping& candidate) {
+			const auto [address, bytes] = candidate.Arm64ThunkPoolRegion();
+			if (address != 0 && bytes != 0)
+				guest_memory.push_back({address, bytes, true, false, true});
+			const auto& imports = candidate.Arm64HostImports();
+			arm64_host_imports.insert(arm64_host_imports.end(), imports.begin(), imports.end());
+		};
+		register_thunk_pool(mapping);
 		for (const auto& [image, image_mapping] : additional_images) {
 			for (std::size_t segment_index = 0;
 				segment_index < image_mapping->Segments().size(); ++segment_index) {
@@ -3353,12 +3369,13 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 					(protection & 1) != 0, (protection & 2) != 0,
 					(protection & 4) != 0, false, 0, 0, true});
 			}
+			register_thunk_pool(*image_mapping);
 		}
 		const auto add_host_buffer = [&guest_memory](const void* address,
 			std::size_t bytes) {
 			if (address != nullptr && bytes != 0) {
 				guest_memory.push_back({reinterpret_cast<std::uintptr_t>(address),
-					bytes, true, false, false});
+				bytes, true, true, false});
 			}
 		};
 		add_host_buffer(argv.data(), argv.size() * sizeof(argv.front()));
@@ -3415,6 +3432,91 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 				return static_cast<int>(result.state.x[0]);
 			}
 			if (result.svc) {
+				if (*result.svc == 0x82) {
+					const auto identifier = static_cast<std::uint32_t>(result.state.x[16]);
+					const auto imported = std::find_if(arm64_host_imports.begin(),
+						arm64_host_imports.end(), [identifier](const auto& item) {
+							return item.identifier == identifier;
+						});
+					if (imported == arm64_host_imports.end())
+						throw std::runtime_error("ARM64 import trap references unknown thunk " +
+							std::to_string(identifier));
+					cpu = result.state;
+					const auto& x = result.state.x;
+					const auto& name = imported->symbol;
+					if (name == "_objc_msgSend" || name == "_objc_msgSendSuper" ||
+						name == "_objc_msgSendSuper2") {
+						struct alignas(16) ObjcReturn final {
+							std::uint64_t gp[2]{};
+							double fp[4]{};
+						} returned{};
+						const unsigned kind = name == "_objc_msgSend" ? 0u :
+							name == "_objc_msgSendSuper" ? 1u : 2u;
+						darling_windows_objc_arm64_message_dispatch(
+							reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[0])),
+							reinterpret_cast<SEL>(static_cast<std::uintptr_t>(x[1])),
+							reinterpret_cast<const void*>(static_cast<std::uintptr_t>(result.state.sp)),
+							&returned, kind,
+							reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[8])));
+						cpu.x[0] = returned.gp[0];
+						cpu.x[1] = returned.gp[1];
+						for (std::size_t i = 0; i < 4; ++i)
+							std::memcpy(&cpu.v[i], &returned.fp[i], sizeof(double));
+					} else if (name == "_malloc") {
+						cpu.x[0] = reinterpret_cast<std::uintptr_t>(
+							reinterpret_cast<void* (*)(std::size_t)>(imported->target)(
+								static_cast<std::size_t>(x[0])));
+					} else if (name == "_free" || name == "_objc_release" ||
+						name == "_CFRelease") {
+						reinterpret_cast<void (*)(void*)>(imported->target)(
+							reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0])));
+						cpu.x[0] = 0;
+					} else if (name == "_objc_retain" ||
+						name == "_objc_autoreleaseReturnValue" ||
+						name == "_objc_retainAutoreleaseReturnValue") {
+						cpu.x[0] = reinterpret_cast<std::uintptr_t>(
+							reinterpret_cast<void* (*)(void*)>(imported->target)(
+								reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0]))));
+					} else if (name == "_strlen") {
+						if (!backend.ContainsGuestCString(x[0], 1u << 20))
+							throw std::runtime_error("ARM64 strlen import received an invalid guest string");
+						cpu.x[0] = reinterpret_cast<std::size_t (*)(const char*)>(
+							imported->target)(reinterpret_cast<const char*>(
+								static_cast<std::uintptr_t>(x[0])));
+					} else if (name == "_memcpy" || name == "_memmove" ||
+						name == "_memcmp" || name == "_memset") {
+						const auto count = static_cast<std::size_t>(x[2]);
+						if (count > (1u << 30) ||
+							!backend.ContainsGuestRange(x[0], count,
+								name != "_memcmp") ||
+							(name != "_memset" && !backend.ContainsGuestRange(
+								x[1], count, false)))
+							throw std::runtime_error("ARM64 memory import received an invalid guest range");
+						if (name == "_memcpy")
+							cpu.x[0] = reinterpret_cast<std::uintptr_t (*)(void*, const void*,
+								std::size_t)>(imported->target)(reinterpret_cast<void*>(
+								static_cast<std::uintptr_t>(x[0])), reinterpret_cast<const void*>(
+								static_cast<std::uintptr_t>(x[1])), count);
+						else if (name == "_memmove")
+							cpu.x[0] = reinterpret_cast<std::uintptr_t (*)(void*, const void*,
+								std::size_t)>(imported->target)(reinterpret_cast<void*>(
+								static_cast<std::uintptr_t>(x[0])), reinterpret_cast<const void*>(
+								static_cast<std::uintptr_t>(x[1])), count);
+						else if (name == "_memcmp")
+							cpu.x[0] = static_cast<std::uint64_t>(static_cast<std::int64_t>(
+								reinterpret_cast<int (*)(const void*, const void*, std::size_t)>(
+									imported->target)(reinterpret_cast<const void*>(
+										static_cast<std::uintptr_t>(x[0])), reinterpret_cast<const void*>(
+										static_cast<std::uintptr_t>(x[1])), count)));
+						else
+							cpu.x[0] = reinterpret_cast<std::uintptr_t (*)(void*, int,
+								std::size_t)>(imported->target)(reinterpret_cast<void*>(
+								static_cast<std::uintptr_t>(x[0])), static_cast<int>(x[1]), count);
+					} else {
+						throw std::runtime_error("ARM64 host import has no ABI adapter: " + name);
+					}
+					continue;
+				}
 				if (*result.svc != 0x80) {
 					throw std::runtime_error("ARM64 Mach-O reached unsupported SVC #" +
 						std::to_string(*result.svc));
@@ -4684,6 +4786,7 @@ MachOImage::Mapping::Mapping(Mapping&& other) noexcept :
 	m_thunk_pool_offset(other.m_thunk_pool_offset),
 	m_thunk_pool_used(other.m_thunk_pool_used),
 	m_branch_thunks(std::move(other.m_branch_thunks)),
+	m_arm64_host_imports(std::move(other.m_arm64_host_imports)),
 	m_relocation_original_values(std::move(other.m_relocation_original_values)),
 	m_relocation_original_sites(std::move(other.m_relocation_original_sites)),
 	m_relocation_original_widths(std::move(other.m_relocation_original_widths))
@@ -4692,6 +4795,7 @@ MachOImage::Mapping::Mapping(Mapping&& other) noexcept :
 	other.m_reservation_bytes = 0;
 	other.m_thunk_pool_offset = 0;
 	other.m_thunk_pool_used = 0;
+	other.m_arm64_host_imports.clear();
 }
 
 MachOImage::Mapping& MachOImage::Mapping::operator=(Mapping&& other) noexcept
@@ -4706,6 +4810,7 @@ MachOImage::Mapping& MachOImage::Mapping::operator=(Mapping&& other) noexcept
 		m_thunk_pool_offset = other.m_thunk_pool_offset;
 		m_thunk_pool_used = other.m_thunk_pool_used;
 		m_branch_thunks = std::move(other.m_branch_thunks);
+		m_arm64_host_imports = std::move(other.m_arm64_host_imports);
 		m_relocation_original_values = std::move(other.m_relocation_original_values);
 		m_relocation_original_sites = std::move(other.m_relocation_original_sites);
 		m_relocation_original_widths = std::move(other.m_relocation_original_widths);
@@ -4713,6 +4818,7 @@ MachOImage::Mapping& MachOImage::Mapping::operator=(Mapping&& other) noexcept
 		other.m_reservation_bytes = 0;
 		other.m_thunk_pool_offset = 0;
 		other.m_thunk_pool_used = 0;
+		other.m_arm64_host_imports.clear();
 	}
 	return *this;
 }
@@ -4732,9 +4838,57 @@ void MachOImage::Mapping::Reset() noexcept
 	m_thunk_pool_offset = 0;
 	m_thunk_pool_used = 0;
 	m_branch_thunks.clear();
+	m_arm64_host_imports.clear();
 	m_relocation_original_values.clear();
 	m_relocation_original_sites.clear();
 	m_relocation_original_widths.clear();
+}
+
+std::uintptr_t MachOImage::Mapping::CreateArm64HostImportThunk(
+	const std::string& symbol, std::uintptr_t target) const
+{
+	if (target == 0 || m_reservation == nullptr)
+		throw std::invalid_argument("ARM64 host import thunk requires a target and mapping");
+	const auto existing = std::find_if(m_arm64_host_imports.begin(),
+		m_arm64_host_imports.end(), [&symbol, target](const auto& item) {
+			return item.symbol == symbol && item.target == target;
+		});
+	if (existing != m_arm64_host_imports.end())
+		return existing->thunk;
+	constexpr std::size_t thunk_bytes = 16;
+	constexpr std::size_t thunk_capacity = 0x10000 / thunk_bytes;
+	if (m_thunk_pool_used >= thunk_capacity)
+		throw std::runtime_error("Mach-O ARM64 import thunk pool is exhausted");
+	const auto address = reinterpret_cast<std::uintptr_t>(m_reservation) +
+		m_thunk_pool_offset + m_thunk_pool_used * thunk_bytes;
+	const auto page = address & ~std::uintptr_t(0xfff);
+	const auto page_offset = address - page;
+	if (page_offset == 0 && VirtualAlloc(reinterpret_cast<void*>(page), 0x1000,
+		MEM_COMMIT, PAGE_READWRITE) == nullptr)
+		ThrowLastError("VirtualAlloc(Mach-O ARM64 import thunk)");
+	DWORD old_protection = PAGE_NOACCESS;
+	if (!VirtualProtect(reinterpret_cast<void*>(page), 0x1000,
+		PAGE_READWRITE, &old_protection))
+		ThrowLastError("VirtualProtect(Mach-O ARM64 import thunk write)");
+	const auto identifier = next_arm64_import_identifier.fetch_add(1,
+		std::memory_order_relaxed);
+	if (identifier == 0)
+		throw std::overflow_error("ARM64 host import identifier space exhausted");
+	const std::array<std::uint32_t, 4> code{
+		0xd2800010u | ((identifier & 0xffffu) << 5),
+		0xf2a00010u | (((identifier >> 16) & 0xffffu) << 5),
+		0xd4000001u | (0x82u << 5),
+		0xd65f03c0u
+	};
+	std::memcpy(reinterpret_cast<void*>(address), code.data(), sizeof(code));
+	DWORD restored_protection = PAGE_NOACCESS;
+	if (!VirtualProtect(reinterpret_cast<void*>(page), 0x1000,
+		PAGE_EXECUTE_READ, &restored_protection))
+		ThrowLastError("VirtualProtect(Mach-O ARM64 import thunk execute)");
+	FlushInstructionCache(GetCurrentProcess(), reinterpret_cast<void*>(address), sizeof(code));
+	m_arm64_host_imports.push_back({identifier, symbol, target, address});
+	++m_thunk_pool_used;
+	return address;
 }
 
 void MachOLazyBindingSession::ApplyOne(std::size_t action_index) const

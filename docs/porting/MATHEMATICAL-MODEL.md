@@ -232,13 +232,13 @@ boundary therefore needs its own ARM64 ABI work and guest fixture
 
 Apple ARM64 places variadic arguments in stack slots and defines `va_list` as a
 byte pointer; Windows ARM64 variadic calls use the Windows register/home-area
-convention. A compiler probe confirmed the differing layouts. The ARM64 Mach-O
-symbol resolver now routes guest `objc_msgSend` imports to a small assembly
-entry that passes the guest stack pointer to a signature-aware C++ reader. The
-reader consumes only the slots required by the registered method encoding,
-then uses the existing typed dispatcher. Native Windows callers still resolve
-to the original Windows-varargs wrapper. This keeps the two call conventions
-separate and avoids reading past the guest's supplied arguments.
+convention. A compiler probe confirmed the differing layouts. Native Windows
+ARM64 routes guest `objc_msgSend` imports to a small assembly entry that passes
+the guest stack pointer to a signature-aware C++ reader. The x64-hosted ARM64
+interpreter now uses an ARM64 SVC import trampoline to invoke that same typed
+reader with guest state. The interpreter path also adapts selected scalar C
+imports. Other host symbols fail closed until an adapter is registered. Neither
+route establishes complete Cocoa ABI compatibility.
 
 Apple also uses a 128-byte red zone while Windows reserves only 16 bytes for
 its red-zone use. The direct native-entry path does not adapt that contract.

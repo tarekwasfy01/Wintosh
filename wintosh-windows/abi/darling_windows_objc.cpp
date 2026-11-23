@@ -3901,7 +3901,6 @@ id DarlingObjcMsgSendSuperDispatch(id receiver, Class superclass, SEL selector,
 	return result;
 }
 
-#if defined(DARLING_ARM64_GUEST_BRIDGE)
 namespace {
 struct alignas(16) DarlingArm64ObjcReturnRegisters final {
 	std::uint64_t gp[2]{};
@@ -4109,8 +4108,6 @@ extern "C" void darling_windows_objc_arm64_message_dispatch(
 			DarlingObjcMsgSendDispatch(receiver, selector, reader));
 	}
 }
-#endif
-
 extern "C" id objc_msgSendSuper(id receiver, Class superclass, SEL selector, ...)
 {
 	va_list arguments;

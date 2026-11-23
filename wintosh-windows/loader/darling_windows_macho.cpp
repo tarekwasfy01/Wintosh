@@ -1309,12 +1309,20 @@ MachOImage MachOImage::Open(const std::wstring& path)
 						if (arm64e_format) {
 							bind_ordinal = static_cast<std::uint32_t>(raw &
 								(pointer_format == 12 ? 0xffffff : 0xffff));
-							const auto encoded_addend = (raw >> 32) & 0x7ffff;
-							addend = (encoded_addend & 0x40000) != 0 ?
-								static_cast<std::int64_t>(encoded_addend | 0xfff80000) :
-								static_cast<std::int64_t>(encoded_addend);
-							target = (raw & ((1ull << 43) - 1)) |
-								(((raw >> 43) & 0xff) << 56);
+							if (authenticated) {
+								// In authenticated layouts, bits 32..50 contain PAC
+								// diversity/key metadata, not a bind addend.
+								addend = 0;
+								if (!bind) target = raw & 0xffffffffu;
+							} else if (bind) {
+								const auto encoded_addend = (raw >> 32) & 0x7ffff;
+								addend = static_cast<std::int64_t>(encoded_addend);
+								if ((encoded_addend & 0x40000) != 0)
+									addend -= 0x80000;
+							} else {
+								target = (raw & ((1ull << 43) - 1)) |
+									(((raw >> 43) & 0xff) << 56);
+							}
 						} else {
 							bind_ordinal = static_cast<std::uint32_t>(raw & 0xffffff);
 							addend = static_cast<std::int64_t>((raw >> 24) & 0xff);

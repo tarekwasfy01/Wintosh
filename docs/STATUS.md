@@ -2240,3 +2240,12 @@ uses the pointer-format stride; supported page sizes are 4 KiB and 16 KiB.
 This also avoids 32-bit overflow while calculating the segment-start location.
 Both Windows targets compile; no multi-start Mach-O fixture has exercised the
 new path.
+
+### ARM64e chained-fixup field decoding (2026-11-23)
+
+Unauthenticated ARM64e bind addends now sign-extend their 19-bit field by
+subtracting `2^19` when the sign bit is set. Authenticated layouts no longer
+interpret diversity/key metadata as an addend; authenticated rebase targets
+are decoded from their 32-bit runtime-offset field. Authenticated pointer
+application itself still requires a PAC backend. Both Windows targets compile;
+no encoded ARM64e fixup fixture has exercised these fields.

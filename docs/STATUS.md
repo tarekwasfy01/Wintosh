@@ -2373,8 +2373,10 @@ retargeted to the thunk, so BL's link register still records the guest return
 address. Thunks deduplicate by absolute target and use the mapped image's
 reserved 64 KiB thunk pool. Unaligned targets and thunks outside the source
 instruction's ±128 MiB range fail explicitly. The local Windows x64 Clang
-runner build succeeds, but this compiles rather than executes the ARM64 path;
-no Windows ARM64 build or far-branch ARM64 Mach-O fixture has exercised it.
+runner build succeeds, and the touched translation unit also compiles to a
+COFF-ARM64 object with the Visual Studio Clang target. The local x64 host cannot
+execute that object; a full ARM64 host-library/runner build and a far-branch
+ARM64 Mach-O fixture have not exercised the thunk.
 
 ### Shared near window for dynamic x86_64 images (2026-11-23)
 

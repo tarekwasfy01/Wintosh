@@ -21,6 +21,8 @@ std::int64_t observed_void_int64 = 0;
 int observed_void_int = 0;
 int objc_load_order = 0;
 int objc_superclass_load_order = 0;
+int objc_initialize_order = 0;
+int objc_initialize_reentrant_ok = 0;
 
 void ImageClassLoad(id, SEL)
 {
@@ -40,6 +42,19 @@ void ReverseParentLoad(id, SEL)
 void ReverseChildLoad(id, SEL)
 {
 	objc_superclass_load_order = objc_superclass_load_order == 1 ? 2 : -1;
+}
+
+void InitializeParent(id, SEL)
+{
+	objc_initialize_order = objc_initialize_order == 0 ? 1 : -1;
+}
+
+void InitializeChild(id receiver, SEL)
+{
+	objc_initialize_order = objc_initialize_order == 1 ? 2 : -1;
+	const auto cls = reinterpret_cast<Class>(receiver);
+	objc_initialize_reentrant_ok = darling_objc_msgSend_class0(cls,
+		sel_registerName("initializeProbe")) == receiver ? 1 : -1;
 }
 
 id ReturnSelf(id receiver, SEL)
@@ -735,6 +750,27 @@ int main()
 		darling_objc_msgSend_class0(child, inherited_factory_selector) !=
 		reinterpret_cast<id>(child))
 		return 17;
+	Class initialize_parent = objc_allocateClassPair(nullptr,
+		"DarlingInitializeParent", 0);
+	Class initialize_child = objc_allocateClassPair(initialize_parent,
+		"DarlingInitializeChild", 0);
+	const auto initialize_probe = sel_registerName("initializeProbe");
+	if (!initialize_parent || !initialize_child ||
+		!class_addClassMethod(initialize_parent, sel_registerName("initialize"),
+			reinterpret_cast<IMP>(&InitializeParent), "v@:") ||
+		!class_addClassMethod(initialize_child, sel_registerName("initialize"),
+			reinterpret_cast<IMP>(&InitializeChild), "v@:") ||
+		!class_addClassMethod(initialize_child, initialize_probe,
+			reinterpret_cast<IMP>(&ClassIdentity), "@@:"))
+		return 23;
+	objc_registerClassPair(initialize_parent);
+	objc_registerClassPair(initialize_child);
+	if (darling_objc_msgSend_class0(initialize_child, initialize_probe) !=
+		reinterpret_cast<id>(initialize_child) || objc_initialize_order != 2 ||
+		objc_initialize_reentrant_ok != 1 ||
+		darling_objc_msgSend_class0(initialize_child, initialize_probe) !=
+		reinterpret_cast<id>(initialize_child) || objc_initialize_order != 2)
+		return 23;
 	const auto rect_argument = darling_objc_msgSend_rect1(object,
 		rect_argument_selector, DarlingObjcRect{4.0, 5.0, 6.0, 7.0});
 	if (rect_argument.x != 5.0 || rect_argument.y != 6.0 ||

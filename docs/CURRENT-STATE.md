@@ -69,7 +69,13 @@ category ordering. The order follows Apple's documented load contract
 ([`NSObject +load`](https://developer.apple.com/documentation/objectivec/nsobject-swift.class/load%28%29)).
 Cross-architecture ARM64 `+load` on x64 Windows is rejected until a guest-call
 trampoline is available; ARM64 images without `+load` continue through the
-existing path. `+initialize` remains a separate unimplemented runtime feature.
+existing path. Objective-C message dispatch now also invokes `+initialize`
+once per class, superclass first. The class state machine lets same-thread
+recursive messages proceed while other threads wait for initialization to
+finish; `objc_smoke` verifies parent-before-child order, reentrancy, and the
+one-shot rule. This evidence covers the native-compatible host dispatcher.
+ARM64 guest callbacks still bypass that state machine and need to be routed
+through the guest-call dispatcher before this behavior can be claimed there.
 
 ## Mach broker update, 2026-11-23
 

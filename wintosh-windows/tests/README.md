@@ -32,3 +32,5 @@ the superclass and checks that the runtime still links the inheritance chain.
 It also runs class `+load` callbacks superclass-first despite reversed class
 list order, then confirms that category `+load` follows all class callbacks.
 The lifecycle is one-shot per image token.
+The same fixture verifies `+initialize` superclass order, same-thread reentrancy,
+and one-time invocation through class-method dispatch.

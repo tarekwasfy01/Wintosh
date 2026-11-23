@@ -14,6 +14,7 @@
 #include <atomic>
 #include <cstdlib>
 #include <cstring>
+#include <condition_variable>
 #include <functional>
 #include <iterator>
 #include <memory>
@@ -22,6 +23,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -67,6 +69,10 @@ struct objc_class final {
 	std::unordered_map<std::string, std::unique_ptr<objc_property>> properties;
 	std::unordered_set<Protocol> protocols;
 	bool registered{};
+	std::mutex initialization_mutex;
+	std::condition_variable initialization_changed;
+	unsigned initialization_state{};
+	std::thread::id initializing_thread{};
 };
 
 struct objc_protocol final {
@@ -555,6 +561,8 @@ bool AssociationRetains(objc_AssociationPolicy policy) noexcept
 		policy == OBJC_ASSOCIATION_COPY;
 }
 
+void EnsureClassInitialized(Class cls);
+
 id Dispatch(id receiver, Class start, SEL selector)
 {
 	if (!receiver || !selector)
@@ -575,6 +583,7 @@ IMP FindMethod(id receiver, SEL selector)
 {
 	if (!receiver || !selector)
 		return nullptr;
+	if (receiver->isa) EnsureClassInitialized(receiver->isa);
 	std::lock_guard lock(RuntimeMutex());
 	for (Class current = receiver->isa; current; current = current->superclass) {
 		const auto method = current->methods.find(selector);
@@ -727,6 +736,51 @@ Return InvokeObjcImplementation(IMP implementation, bool guest_abi, id receiver,
 	return reinterpret_cast<Function>(implementation)(receiver, selector,
 		arguments...);
 }
+
+ObjcMethodSnapshot LookupMethodSnapshot(Class start, SEL selector,
+	bool class_method);
+std::string CanonicalObjcEncoding(const std::string& encoding);
+
+} // namespace
+
+void EnsureClassInitialized(Class cls)
+{
+	if (!cls || cls->is_metaclass) return;
+	if (cls->superclass) EnsureClassInitialized(cls->superclass);
+	const auto current_thread = std::this_thread::get_id();
+	{
+		std::unique_lock lock(cls->initialization_mutex);
+		while (cls->initialization_state == 1 &&
+			cls->initializing_thread != current_thread)
+			cls->initialization_changed.wait(lock);
+		if (cls->initialization_state != 0) return;
+		cls->initialization_state = 1;
+		cls->initializing_thread = current_thread;
+	}
+	try {
+		const SEL initialize = sel_registerName("initialize");
+		const auto method = LookupMethodSnapshot(cls, initialize, true);
+		if (method.implementation && CanonicalObjcEncoding(method.types) == "v@:")
+			InvokeObjcImplementation<void>(method.implementation, method.guest_abi,
+				reinterpret_cast<id>(cls), initialize);
+	} catch (...) {
+		{
+			std::lock_guard lock(cls->initialization_mutex);
+			cls->initialization_state = 2;
+			cls->initializing_thread = {};
+		}
+		cls->initialization_changed.notify_all();
+		throw;
+	}
+	{
+		std::lock_guard lock(cls->initialization_mutex);
+		cls->initialization_state = 2;
+		cls->initializing_thread = {};
+	}
+	cls->initialization_changed.notify_all();
+}
+
+namespace {
 
 ObjcMethodSnapshot LookupMethodSnapshot(Class start, SEL selector,
 	bool class_method)
@@ -3684,6 +3738,10 @@ id DarlingObjcMsgSendDispatch(id receiver, SEL selector,
 {
 	if (!receiver || !selector)
 		return nullptr;
+	if (object_isClass(receiver))
+		EnsureClassInitialized(reinterpret_cast<Class>(receiver));
+	else if (receiver->isa)
+		EnsureClassInitialized(receiver->isa);
 	// Class objects are represented by the runtime's Class storage, not by an
 	// objc_object header. Resolve their class-method encoding before reading
 	// receiver->isa, then dispatch the no-argument forms used by +alloc and
@@ -4961,6 +5019,7 @@ extern "C" id darling_objc_msgSend_class0(Class cls, SEL selector)
 {
 	if (!cls || !selector)
 		return nullptr;
+	EnsureClassInitialized(cls);
 	IMP implementation = nullptr;
 	Class method_receiver = cls->is_metaclass && cls->owner_class ?
 		cls->owner_class : cls;

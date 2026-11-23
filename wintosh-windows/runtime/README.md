@@ -36,7 +36,11 @@ The `objc_smoke` fixture checks both rules, including a subclass listed before
 its superclass. On x64 Windows, an ARM64 image containing `+load` is rejected
 until the cross-architecture guest-call trampoline supports this lifecycle;
 ARM64 images without `+load` retain the existing path. `+initialize` is not
-implemented yet.
+called once per class by the native-compatible Objective-C message dispatcher,
+after its superclass has initialized. Reentrant messages from the initializing
+thread proceed, and competing threads wait. The smoke test verifies inheritance,
+reentrancy, and one-shot behavior. ARM64 guest callbacks are not yet connected
+to this initialization state machine.
 The Win32 target compiles the host library and runner and has launched a
 hand-built i386 `LC_MAIN` Mach-O with no imports; its compatible `main` returned
 42. This confirms the basic mapping and cdecl entry path, not general app

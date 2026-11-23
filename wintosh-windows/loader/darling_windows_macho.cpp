@@ -964,11 +964,25 @@ MachOImage MachOImage::Open(const std::wstring& path)
 			std::uint32_t segment_index = 0;
 			std::uint64_t segment_offset = 0;
 			std::uint8_t type = 1;
+			const std::uint64_t pointer_size = is_32_bit ? 4u : 8u;
 			const auto emit_rebases = [&](std::uint64_t count) {
-				Require(count <= 4096, "Mach-O dyld rebase count is unreasonable");
+				Require(count <= 0x100000,
+					"Mach-O dyld rebase count is unreasonable");
+				if (count == 0) return;
+				Require(segment_index < segments.size(),
+					"Mach-O dyld rebase segment index is invalid");
+				const auto& segment = segments[segment_index];
+				const std::uint64_t width = type == 2 || type == 3 ? 4u : pointer_size;
+				Require(segment_offset <= segment.vm_size &&
+					segment.vm_size - segment_offset >= width,
+					"Mach-O dyld rebase starts outside its segment");
+				const auto available = 1 +
+					(segment.vm_size - segment_offset - width) / pointer_size;
+				Require(count <= available,
+					"Mach-O dyld rebase sequence exceeds its segment");
 				for (std::uint64_t index = 0; index < count; ++index) {
 					rebase_actions.push_back({segment_index, segment_offset, type});
-					segment_offset = CheckedAddOffset(segment_offset, 8);
+					segment_offset = CheckedAddOffset(segment_offset, pointer_size);
 				}
 			};
 			while (cursor < size) {
@@ -993,7 +1007,7 @@ MachOImage MachOImage::Open(const std::wstring& path)
 					break;
 				case 0x40:
 					segment_offset = CheckedAddOffset(segment_offset,
-						static_cast<std::uint64_t>(immediate) * 8);
+						static_cast<std::uint64_t>(immediate) * pointer_size);
 					break;
 				case 0x50:
 					emit_rebases(immediate);
@@ -1004,7 +1018,7 @@ MachOImage MachOImage::Open(const std::wstring& path)
 				case 0x80:
 					emit_rebases(1);
 					segment_offset = CheckedAddOffset(segment_offset,
-						static_cast<std::uint64_t>(immediate) * 8);
+						static_cast<std::uint64_t>(immediate) * pointer_size);
 					break;
 				case 0x70:
 					emit_rebases(1);
@@ -1016,7 +1030,7 @@ MachOImage MachOImage::Open(const std::wstring& path)
 					const auto skip = ReadULEB(bytes, size, cursor);
 					emit_rebases(count);
 					segment_offset = CheckedAddOffset(segment_offset,
-						CheckedMultiplyOffset(skip, count));
+					CheckedMultiplyOffset(skip, count));
 					break;
 				}
 				default:

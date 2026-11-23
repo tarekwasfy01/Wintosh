@@ -2212,3 +2212,13 @@ protection afterward. `REBASE_TYPE_TEXT_PCREL32` remains rejected because the
 classic dyld implementation does not define an apply operation for it. The x64
 executable and ARM64 host library compile; no Mach-O fixture exercised this
 fixup path.
+
+### Bitness-aware classic rebase streams (2026-11-23)
+
+Classic rebase opcode strides and scaled-address operations now use the
+Mach-O image's pointer width. Rebase runs are checked against their segment's
+available slots before action allocation, and the per-run limit is raised from
+4096 to 1,048,576 entries (matching the bind-stream repeat ceiling). This
+removes the previous low ceiling for large images while retaining segment and
+resource bounds. Both Windows targets compile; no large or malformed Mach-O
+fixture exercised the parser.

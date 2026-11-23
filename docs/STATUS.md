@@ -2222,3 +2222,11 @@ available slots before action allocation, and the per-run limit is raised from
 removes the previous low ceiling for large images while retaining segment and
 resource bounds. Both Windows targets compile; no large or malformed Mach-O
 fixture exercised the parser.
+
+### Larger ARM64 threaded-bind ordinal tables (2026-11-23)
+
+The classic threaded-bind ordinal-table limit is raised from 4096 to
+1,048,576 entries, matching the guarded bind/rebase repeat ceiling. This avoids
+rejecting large images solely because they have many threaded imports while
+retaining a bounded allocation. Both Windows targets compile; no guest image
+with a large threaded-bind table has been run.

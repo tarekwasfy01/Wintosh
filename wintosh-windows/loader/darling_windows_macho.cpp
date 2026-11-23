@@ -918,7 +918,7 @@ MachOImage MachOImage::Open(const std::wstring& path)
 				case 0xd0:
 					if (immediate == 0) {
 						threaded_table_size = ReadULEB(bytes, size, cursor);
-						Require(threaded_table_size <= 4096,
+						Require(threaded_table_size <= 0x100000,
 							"Mach-O threaded bind table is unreasonable");
 						threaded_bind_targets.clear();
 						collecting_threaded_targets = true;

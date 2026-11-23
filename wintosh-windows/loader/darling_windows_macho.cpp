@@ -53,6 +53,13 @@ thread_local const MachOLazyBindingSession* active_lazy_binding_session = nullpt
 std::mutex active_lazy_binding_sessions_mutex;
 std::vector<const MachOLazyBindingSession*> active_lazy_binding_sessions;
 std::atomic<std::uint32_t> next_arm64_import_identifier{1};
+using DarlingHostMallocImport = void* (DARLING_HOST_GUEST_ABI *)(std::size_t);
+using DarlingHostFreeImport = void (DARLING_HOST_GUEST_ABI *)(void*);
+using DarlingHostMemcpyImport = void* (DARLING_HOST_GUEST_ABI *)(
+	void*, const void*, std::size_t);
+using DarlingObjcUnaryImport = void* (DARLING_HOST_GUEST_ABI *)(void*);
+using DarlingObjcNameImport = std::uintptr_t (DARLING_HOST_GUEST_ABI *)(
+	const char*);
 
 void RemoveActiveLazyBindingSession(const MachOLazyBindingSession* session) noexcept
 {
@@ -1305,22 +1312,17 @@ MachOImage MachOImage::Open(const std::wstring& path,
 				case 0x60:
 					emit_rebases(ReadULEB(bytes, size, cursor));
 					break;
-				case 0x80:
-					emit_rebases(1);
-					segment_offset = CheckedAddOffset(segment_offset,
-						static_cast<std::uint64_t>(immediate) * pointer_size);
-					break;
 				case 0x70:
 					emit_rebases(1);
 					segment_offset = CheckedAddOffset(segment_offset,
 						ReadULEB(bytes, size, cursor));
 					break;
-				case 0x90: {
+				case 0x80: {
 					const auto count = ReadULEB(bytes, size, cursor);
 					const auto skip = ReadULEB(bytes, size, cursor);
 					emit_rebases(count);
 					segment_offset = CheckedAddOffset(segment_offset,
-					CheckedMultiplyOffset(skip, count));
+						CheckedMultiplyOffset(skip, count));
 					break;
 				}
 				default:
@@ -2836,6 +2838,8 @@ void MachOImage::ApplyRebaseActions(const Mapping& mapping) const
 			std::uint32_t old_value = 0;
 			std::memcpy(&old_value, reinterpret_cast<const void*>(host_address),
 				sizeof(old_value));
+			if (old_value == 0)
+				continue;
 			const auto rebased_value = static_cast<std::int64_t>(old_value) +
 				static_cast<std::int64_t>(mapping.Slide());
 			if (rebased_value < 0 || rebased_value >
@@ -2850,6 +2854,8 @@ void MachOImage::ApplyRebaseActions(const Mapping& mapping) const
 			std::uintptr_t old_value = 0;
 			std::memcpy(&old_value, reinterpret_cast<const void*>(host_address),
 				sizeof(old_value));
+			if (old_value == 0)
+				continue;
 			const auto rebased_value = static_cast<std::uintptr_t>(
 				static_cast<std::intptr_t>(old_value) + mapping.Slide());
 			ApplyAbsolute64(mapping, vm_address, rebased_value);
@@ -3447,6 +3453,62 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 					const auto& name = imported->symbol;
 					if (name == "_objc_msgSend" || name == "_objc_msgSendSuper" ||
 						name == "_objc_msgSendSuper2") {
+						if (name == "_objc_msgSend") {
+							const auto receiver = reinterpret_cast<id>(
+								static_cast<std::uintptr_t>(x[0]));
+							const auto selector = reinterpret_cast<SEL>(
+								static_cast<std::uintptr_t>(x[1]));
+							const auto cls = receiver && object_isClass(receiver) ?
+								reinterpret_cast<Class>(receiver) : nullptr;
+							const auto method = cls ? class_getClassMethod(cls, selector) :
+								receiver ? class_getInstanceMethod(object_getClass(receiver), selector) : nullptr;
+						const auto implementation = method ?
+							method_getImplementation(method) : nullptr;
+						const auto implementation_address =
+							reinterpret_cast<std::uintptr_t>(implementation);
+						if (backend.ContainsExecutableGuestAddress(implementation_address)) {
+							std::string encoding = method_getTypeEncoding(method) ?
+								method_getTypeEncoding(method) : "";
+						encoding.erase(std::remove_if(encoding.begin(), encoding.end(),
+							[](unsigned char character) {
+								return character >= '0' && character <= '9';
+							}), encoding.end());
+							if (encoding != "q@:" && encoding != "Q@:" &&
+								encoding != "i@:" && encoding != "I@:" &&
+								encoding != "B@:" && encoding != "c@:" &&
+								encoding != "C@:" && encoding != "v@:" &&
+								encoding != "d@:" && encoding != "f@:") {
+								throw std::runtime_error(
+									"ARM64 guest Objective-C callback signature is unsupported: " +
+									encoding);
+							}
+							A64CpuState nested = result.state;
+							nested.pc = implementation_address;
+							nested.x[30] = return_sentinel;
+							A64ExecutionResult nested_result{};
+							for (;;) {
+								nested_result = backend.Run(nested);
+								if (nested_result.state.pc == return_sentinel ||
+									(nested_result.fault_address == return_sentinel &&
+										nested_result.fault ==
+										"AArch64 instruction fetch is outside executable guest memory"))
+									break;
+								if (!nested_result.fault.empty())
+									throw std::runtime_error("ARM64 Objective-C guest callback failed: " +
+										nested_result.fault);
+								if (nested_result.svc)
+									throw std::runtime_error("ARM64 Objective-C guest callback issued an "
+										"unsupported nested SVC #" +
+										std::to_string(*nested_result.svc));
+								throw std::runtime_error("ARM64 Objective-C guest callback stopped before return");
+							}
+							cpu = result.state;
+							cpu.x[0] = nested_result.state.x[0];
+							cpu.x[1] = nested_result.state.x[1];
+							cpu.v[0] = nested_result.state.v[0];
+							continue;
+						}
+						}
 						struct alignas(16) ObjcReturn final {
 							std::uint64_t gp[2]{};
 							double fp[4]{};
@@ -3465,23 +3527,35 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 							std::memcpy(&cpu.v[i], &returned.fp[i], sizeof(double));
 					} else if (name == "_malloc") {
 						cpu.x[0] = reinterpret_cast<std::uintptr_t>(
-							reinterpret_cast<void* (*)(std::size_t)>(imported->target)(
+							reinterpret_cast<DarlingHostMallocImport>(imported->target)(
 								static_cast<std::size_t>(x[0])));
 					} else if (name == "_free" || name == "_objc_release" ||
 						name == "_CFRelease") {
-						reinterpret_cast<void (*)(void*)>(imported->target)(
+						reinterpret_cast<DarlingHostFreeImport>(imported->target)(
 							reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0])));
 						cpu.x[0] = 0;
 					} else if (name == "_objc_retain" ||
 						name == "_objc_autoreleaseReturnValue" ||
 						name == "_objc_retainAutoreleaseReturnValue") {
 						cpu.x[0] = reinterpret_cast<std::uintptr_t>(
-							reinterpret_cast<void* (*)(void*)>(imported->target)(
+							reinterpret_cast<DarlingObjcUnaryImport>(imported->target)(
 								reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0]))));
 					} else if (name == "_strlen") {
 						if (!backend.ContainsGuestCString(x[0], 1u << 20))
 							throw std::runtime_error("ARM64 strlen import received an invalid guest string");
 						cpu.x[0] = reinterpret_cast<std::size_t (*)(const char*)>(
+							imported->target)(reinterpret_cast<const char*>(
+								static_cast<std::uintptr_t>(x[0])));
+					} else if (name == "_sel_registerName") {
+						if (!backend.ContainsGuestCString(x[0], 4096))
+							throw std::runtime_error("ARM64 selector import received an invalid string");
+						cpu.x[0] = reinterpret_cast<DarlingObjcNameImport>(
+							imported->target)(reinterpret_cast<const char*>(
+								static_cast<std::uintptr_t>(x[0])));
+					} else if (name == "_objc_getClass") {
+						if (!backend.ContainsGuestCString(x[0], 4096))
+							throw std::runtime_error("ARM64 class lookup import received an invalid string");
+						cpu.x[0] = reinterpret_cast<DarlingObjcNameImport>(
 							imported->target)(reinterpret_cast<const char*>(
 								static_cast<std::uintptr_t>(x[0])));
 					} else if (name == "_memcpy" || name == "_memmove" ||
@@ -3494,10 +3568,11 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 								x[1], count, false)))
 							throw std::runtime_error("ARM64 memory import received an invalid guest range");
 						if (name == "_memcpy")
-							cpu.x[0] = reinterpret_cast<std::uintptr_t (*)(void*, const void*,
-								std::size_t)>(imported->target)(reinterpret_cast<void*>(
-								static_cast<std::uintptr_t>(x[0])), reinterpret_cast<const void*>(
-								static_cast<std::uintptr_t>(x[1])), count);
+							cpu.x[0] = reinterpret_cast<std::uintptr_t>(
+								reinterpret_cast<DarlingHostMemcpyImport>(imported->target)(
+									reinterpret_cast<void*>(
+									static_cast<std::uintptr_t>(x[0])), reinterpret_cast<const void*>(
+									static_cast<std::uintptr_t>(x[1])), count));
 						else if (name == "_memmove")
 							cpu.x[0] = reinterpret_cast<std::uintptr_t (*)(void*, const void*,
 								std::size_t)>(imported->target)(reinterpret_cast<void*>(

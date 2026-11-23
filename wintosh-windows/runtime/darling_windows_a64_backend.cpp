@@ -335,6 +335,15 @@ bool DarlingWindowsA64Backend::ContainsGuestCString(std::uint64_t address,
 	return false;
 }
 
+bool DarlingWindowsA64Backend::ContainsExecutableGuestAddress(
+	std::uint64_t address) const noexcept
+{
+	return std::any_of(m_memory.begin(), m_memory.end(), [address](const auto& region) {
+		return region.executable && address >= region.address &&
+			address - region.address < region.bytes;
+	});
+}
+
 bool DarlingWindowsA64Backend::RegisterDynamicGuestMapping(
 	A64GuestMemoryRegion region)
 {

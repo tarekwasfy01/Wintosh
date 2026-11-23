@@ -11,8 +11,11 @@ configured with Dynarmic can also select ARM64 Mach-O slices using
 `--arch arm64`; the selected
 CPU type is propagated through the complete dylib graph, and mapped ARM64
 provider segments join the guest executable address space. This enables
-guest-to-guest ARM64 calls across loaded images, but does not supply the still
-missing ARM64-to-Windows import ABI bridge.
+guest-to-guest ARM64 calls across loaded images. The optional ARM64 SVC bridge
+has local end-to-end fixtures for `_strlen` and one zero-argument integer
+Objective-C class method called through `objc_msgSend`. The Objective-C case
+covers only a narrow scalar callback signature; it does not imply broad
+Objective-C, framework, or macOS application compatibility.
 The Win32 target compiles the host library and runner and has launched a
 hand-built i386 `LC_MAIN` Mach-O with no imports; its compatible `main` returned
 42. This confirms the basic mapping and cdecl entry path, not general app
@@ -132,11 +135,13 @@ a real 32-bit Mach-O runtime fixture. ARM64 execution on x86_64 Windows
 requires a build configured with Dynarmic; `--arch arm64` then selects that
 slice consistently for the executable and all dylib providers. The local
 Release target builds with this backend. ARM64 host imports enter through a
-guest SVC trampoline; `objc_msgSend` uses the type-encoding dispatcher, and a
-small C runtime catalog has scalar/pointer adapters. Unsupported imports fail
-closed. The local ARM64 guest fixture verifies `_strlen` through the SVC import
-bridge and returns exit status 42. Guest-to-guest calls, Objective-C imports,
-and framework startup still have no ARM64 runtime fixture.
+guest SVC trampoline; `_strlen` returns 42 in a local fixture. A second fixture
+registers a compact relative Objective-C method list and selector reference,
+calls `objc_msgSend`, executes the guest method callback, and returns 42.
+Supported callback signatures remain restricted to no-explicit-argument scalar
+and void encodings; nested SVCs, general variadic dispatch, aggregate ABI,
+framework startup, and arbitrary application behavior remain unsupported or
+unverified. Other host imports fail closed.
 `--diagnose-host` is independent of an input image and reports the current
 Windows architecture, pointer width, supported native Mach-O target, prefix
 source, preferred universal-binary slice, and configured cross-architecture

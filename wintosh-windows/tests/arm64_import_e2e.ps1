@@ -16,6 +16,9 @@ if (-not (Test-Path -LiteralPath $clangPath)) { throw "clang.exe not found: $cla
 $source = Join-Path $PSScriptRoot 'fixtures/arm64-import/main.c'
 $object = Join-Path $OutputDirectory 'arm64-import.o'
 $image = Join-Path $OutputDirectory 'arm64-import.macho'
+$objcSource = Join-Path $PSScriptRoot 'fixtures/arm64-import/objc.m'
+$objcObject = Join-Path $OutputDirectory 'arm64-objc-import.o'
+$objcImage = Join-Path $OutputDirectory 'arm64-objc-import.macho'
 
 & $clangPath -target arm64-apple-macosx11.0 -fno-stack-protector -O0 `
 	-c -x c $source -o $object
@@ -23,6 +26,13 @@ if ($LASTEXITCODE -ne 0) { throw "ARM64 Mach-O import compile failed: $LASTEXITC
 & $Linker -arch arm64 -platform_version macos 11.0 14.0 -e _main `
 	-undefined dynamic_lookup -o $image $object
 if ($LASTEXITCODE -ne 0) { throw "ARM64 Mach-O import link failed: $LASTEXITCODE" }
+& $clangPath -target arm64-apple-macosx11.0 '-fobjc-runtime=macosx-11.0' `
+	-fno-objc-arc -fno-stack-protector -O2 -c -x objective-c $objcSource `
+	-o $objcObject
+if ($LASTEXITCODE -ne 0) { throw "ARM64 Objective-C fixture compile failed: $LASTEXITCODE" }
+& $Linker -arch arm64 -platform_version macos 11.0 14.0 -e _main `
+	-undefined dynamic_lookup -o $objcImage $objcObject
+if ($LASTEXITCODE -ne 0) { throw "ARM64 Objective-C fixture link failed: $LASTEXITCODE" }
 
 $priorEager = [Environment]::GetEnvironmentVariable('WINTOSH_FORCE_EAGER_BIND', 'Process')
 try {
@@ -30,6 +40,9 @@ try {
 	$output = & $Runner --arch arm64 --startup-abi main $image 2>&1
 	$exitCode = $LASTEXITCODE
 	$text = $output -join "`n"
+	$objcOutput = & $Runner --arch arm64 --startup-abi main $objcImage 2>&1
+	$objcExitCode = $LASTEXITCODE
+	$objcText = $objcOutput -join "`n"
 } finally {
 	if ($null -eq $priorEager) {
 		Remove-Item Env:WINTOSH_FORCE_EAGER_BIND -ErrorAction SilentlyContinue
@@ -44,4 +57,11 @@ if ($text -match 'DARLING_(GUEST_EXCEPTION|RUNNER_ERROR)' -or
 	$text -match 'no ABI adapter|unsupported SVC|unknown thunk') {
 	throw "ARM64 import fixture reported an execution failure: $text"
 }
-Write-Output 'ARM64_HOST_IMPORT_E2E=PASS IMPORT=_strlen EXIT=42'
+if ($objcExitCode -ne 42) {
+	throw "ARM64 Objective-C guest callback expected exit 42, got $objcExitCode; output=$objcText"
+}
+if ($objcText -match 'DARLING_(GUEST_EXCEPTION|RUNNER_ERROR)' -or
+	$objcText -match 'no ABI adapter|unsupported SVC|unknown thunk') {
+	throw "ARM64 Objective-C fixture reported an execution failure: $objcText"
+}
+Write-Output 'ARM64_HOST_IMPORT_E2E=PASS IMPORT=_strlen EXIT=42 OBJC=objc_msgSend_guest_method'

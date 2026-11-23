@@ -67,6 +67,8 @@ public:
 		std::size_t bytes, bool guest_writes) const noexcept;
 	[[nodiscard]] bool ContainsGuestCString(std::uint64_t address,
 		std::size_t maximum_bytes) const noexcept;
+	[[nodiscard]] bool ContainsExecutableGuestAddress(
+		std::uint64_t address) const noexcept;
 	[[nodiscard]] bool RegisterDynamicGuestMapping(
 		A64GuestMemoryRegion region);
 	[[nodiscard]] bool HasDynamicGuestMapping(std::uint64_t address) const noexcept;

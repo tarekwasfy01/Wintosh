@@ -193,7 +193,7 @@ darling_objc_image_token* RegisterDynamicObjectiveCSections(const MachOImage& im
 		else if (section.section_name == "__objc_selrefs")
 			darling_objc_register_macho_selrefs(
 				reinterpret_cast<const void*>(address),
-				static_cast<std::size_t>(section.size));
+				static_cast<std::size_t>(section.size), mapping.Slide());
 		else if (section.section_name == "__cfstring")
 			darling_objc_register_macho_constant_strings(
 				reinterpret_cast<const void*>(address),
@@ -201,7 +201,7 @@ darling_objc_image_token* RegisterDynamicObjectiveCSections(const MachOImage& im
 		else
 			darling_objc_register_macho_classlist(
 				reinterpret_cast<const void*>(address),
-				static_cast<std::size_t>(section.size));
+				static_cast<std::size_t>(section.size), mapping.Slide());
 	}
 	darling_objc_end_image_registration(token);
 	return token;

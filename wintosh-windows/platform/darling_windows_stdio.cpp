@@ -4992,6 +4992,11 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 	if (name == nullptr) {
 		return 0;
 	}
+	if (std::strcmp(name, "__objc_empty_cache") == 0 ||
+		std::strcmp(name, "_objc_empty_cache") == 0) {
+		alignas(16) static std::uintptr_t empty_cache[4]{};
+		return reinterpret_cast<std::uintptr_t>(empty_cache);
+	}
 	if (std::strcmp(name, "__dispatch_source_type_timer") == 0 ||
 		std::strcmp(name, "_dispatch_source_type_timer") == 0 ||
 		std::strcmp(name, "dispatch_source_type_timer") == 0)

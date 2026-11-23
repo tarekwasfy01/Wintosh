@@ -195,11 +195,11 @@ void RegisterObjectiveCSections(const MachOImage& image,
 		else if (section.section_name == "__objc_selrefs")
 			darling_objc_register_macho_selrefs(
 				reinterpret_cast<const void*>(address),
-				static_cast<std::size_t>(section.size));
+				static_cast<std::size_t>(section.size), mapping.Slide());
 		else
 			darling_objc_register_macho_classlist(
 				reinterpret_cast<const void*>(address),
-				static_cast<std::size_t>(section.size));
+				static_cast<std::size_t>(section.size), mapping.Slide());
 	}
 }
 

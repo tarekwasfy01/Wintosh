@@ -1638,7 +1638,7 @@ extern "C" std::uintptr_t darling_windows_objc_msgSendSuper2_sysv_dispatch(
 #endif
 
 void RegisterMethodList(Class cls, std::uintptr_t method_list_address,
-	bool class_method = false)
+	bool class_method = false, std::intptr_t image_slide = 0)
 {
 	if (!cls || !method_list_address)
 		return;
@@ -1649,7 +1649,11 @@ void RegisterMethodList(Class cls, std::uintptr_t method_list_address,
 	std::memcpy(&method_count,
 		reinterpret_cast<const std::uint8_t*>(method_list_address) + 4,
 		sizeof(method_count));
-	if (entry_size < sizeof(std::uintptr_t) * 3 || method_count > 65536)
+	const bool relative_list = (entry_size & 0x80000000u) != 0;
+	entry_size &= 0x0000ffffu;
+	const std::uint32_t minimum_entry_size = relative_list ? 12u :
+		static_cast<std::uint32_t>(sizeof(std::uintptr_t) * 3);
+	if (entry_size < minimum_entry_size || method_count > 65536)
 		return;
 	for (std::uint32_t method_index = 0; method_index < method_count;
 		++method_index) {
@@ -1658,14 +1662,43 @@ void RegisterMethodList(Class cls, std::uintptr_t method_list_address,
 		std::uintptr_t name_address = 0;
 		std::uintptr_t type_address = 0;
 		std::uintptr_t implementation = 0;
-		std::memcpy(&name_address, reinterpret_cast<const void*>(method_address),
-			sizeof(name_address));
-		std::memcpy(&type_address,
-			reinterpret_cast<const std::uint8_t*>(method_address) +
-				sizeof(std::uintptr_t), sizeof(type_address));
-		std::memcpy(&implementation,
-			reinterpret_cast<const std::uint8_t*>(method_address) +
-				sizeof(std::uintptr_t) * 2, sizeof(implementation));
+		if (relative_list) {
+			std::int32_t name_offset = 0;
+			std::int32_t type_offset = 0;
+			std::int32_t implementation_offset = 0;
+			std::memcpy(&name_offset, reinterpret_cast<const void*>(method_address), 4);
+			std::memcpy(&type_offset, reinterpret_cast<const void*>(method_address + 4), 4);
+			std::memcpy(&implementation_offset,
+				reinterpret_cast<const void*>(method_address + 8), 4);
+			name_address = static_cast<std::uintptr_t>(
+				static_cast<std::intptr_t>(method_address) + name_offset);
+			type_address = static_cast<std::uintptr_t>(
+				static_cast<std::intptr_t>(method_address + 4) + type_offset);
+			implementation = static_cast<std::uintptr_t>(
+				static_cast<std::intptr_t>(method_address + 8) + implementation_offset);
+			// Modern clang emits selector-reference-relative names unless the
+			// direct-selector flag is set on the method-list header.
+			std::uint32_t list_flags = 0;
+			std::memcpy(&list_flags, reinterpret_cast<const void*>(method_list_address), 4);
+			if ((list_flags & 0x40000000u) == 0) {
+				std::uintptr_t selector_name = 0;
+				std::memcpy(&selector_name, reinterpret_cast<const void*>(name_address),
+					sizeof(selector_name));
+				if (selector_name < name_address)
+					selector_name = static_cast<std::uintptr_t>(
+						static_cast<std::intptr_t>(selector_name) + image_slide);
+				name_address = selector_name;
+			}
+		} else {
+			std::memcpy(&name_address, reinterpret_cast<const void*>(method_address),
+				sizeof(name_address));
+			std::memcpy(&type_address,
+				reinterpret_cast<const std::uint8_t*>(method_address) +
+					sizeof(std::uintptr_t), sizeof(type_address));
+			std::memcpy(&implementation,
+				reinterpret_cast<const std::uint8_t*>(method_address) +
+					sizeof(std::uintptr_t) * 2, sizeof(implementation));
+		}
 		const auto* name = reinterpret_cast<const char*>(name_address);
 		const auto* types = reinterpret_cast<const char*>(type_address);
 		if (!name || !types || !implementation || strnlen_s(name, 1024) == 1024 ||
@@ -1890,7 +1923,7 @@ extern "C" int objc_getClassList(Class* buffer, int buffer_count)
 }
 
 extern "C" std::size_t darling_objc_register_macho_classlist(
-	const void* classlist, std::size_t bytes)
+	const void* classlist, std::size_t bytes, std::intptr_t image_slide)
 {
 	if (!classlist || bytes < sizeof(std::uintptr_t))
 		return 0;
@@ -1936,7 +1969,7 @@ extern "C" std::size_t darling_objc_register_macho_classlist(
 					reinterpret_cast<const std::uint8_t*>(data_address) +
 					ClassDataMethodsOffset,
 				sizeof(method_list_address));
-			RegisterMethodList(cls, method_list_address);
+			RegisterMethodList(cls, method_list_address, false, image_slide);
 		std::uintptr_t protocol_list_address = 0;
 		std::memcpy(&protocol_list_address,
 					reinterpret_cast<const std::uint8_t*>(data_address) +
@@ -1971,7 +2004,7 @@ extern "C" std::size_t darling_objc_register_macho_classlist(
 							reinterpret_cast<const std::uint8_t*>(meta_data_address) +
 								ClassDataMethodsOffset,
 						sizeof(meta_methods));
-					RegisterMethodList(cls, meta_methods, true);
+					RegisterMethodList(cls, meta_methods, true, image_slide);
 				}
 			}
 		}
@@ -1980,7 +2013,7 @@ extern "C" std::size_t darling_objc_register_macho_classlist(
 }
 
 extern "C" std::size_t darling_objc_register_macho_selrefs(
-	const void* selrefs, std::size_t bytes)
+	const void* selrefs, std::size_t bytes, std::intptr_t image_slide)
 {
 	if (!selrefs || bytes < sizeof(std::uintptr_t))
 		return 0;
@@ -1991,6 +2024,9 @@ extern "C" std::size_t darling_objc_register_macho_selrefs(
 		std::memcpy(&name_address,
 			static_cast<const std::uint8_t*>(selrefs) +
 				index * sizeof(name_address), sizeof(name_address));
+		if (name_address < reinterpret_cast<std::uintptr_t>(selrefs))
+			name_address = static_cast<std::uintptr_t>(
+				static_cast<std::intptr_t>(name_address) + image_slide);
 		const auto* name = reinterpret_cast<const char*>(name_address);
 		if (!name || name[0] == '\0' || strnlen_s(name, 1024) == 1024)
 			continue;

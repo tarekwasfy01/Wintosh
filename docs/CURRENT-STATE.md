@@ -948,3 +948,8 @@ ARM64, 32-bit, chained-fixup, and dynamic-loader paths remain eager. Host x64
 and ARM64 builds pass; this revision has not run the existing smoke tests or a
 linker-produced macOS Mach-O fixture. The trampoline also lacks dyld's extended
 XSAVE state preservation.
+
+The x86_64 binder trampoline now preserves host-enabled extended processor state
+with XSAVE/XRSTOR when CPUID and OSXSAVE permit it, and falls back to
+FXSAVE/FXRSTOR otherwise. This revision compiled in the local x64 Clang build;
+neither runtime branch has been exercised by a fixture.

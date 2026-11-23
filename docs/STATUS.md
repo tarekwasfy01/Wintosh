@@ -2120,3 +2120,10 @@ also supports guest calls made from another host thread. ARM64, 32-bit and
 chained-fixup images remain eager, as does dynamic loading. The x64 executable
 and ARM64 host library build successfully. No guest fixture or runtime test
 was run, so the actual Apple stub-helper-to-slot path remains unverified.
+
+### Trampoline extended-state preservation (2026-11-23)
+
+The x86_64 binder trampoline now detects XSAVE and OSXSAVE, reads the enabled
+XCR0 state, allocates an aligned save area, and uses XSAVE/XRSTOR around the
+resolver. Older x64 hosts use FXSAVE/FXRSTOR. The x64 Clang executable builds;
+no runtime fixture exercised either state-save branch.

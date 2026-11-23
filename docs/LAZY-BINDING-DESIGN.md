@@ -46,8 +46,7 @@ and binding tables are destroyed.
    imports and verify each call patches only its corresponding slot.
 2. Verify repeated and concurrent first calls, unresolved weak and strong
    imports, and provider-image lazy calls.
-3. Preserve extended vector state where the Darwin ABI requires it; the current
-   trampoline saves XMM registers but does not implement dyld's XSAVE path.
+3. Exercise the XSAVE and FXSAVE trampoline branches with an ABI fixture.
 4. Implement the distinct ARM64 stub-helper protocol and assess chained-fixup
    lazy imports before deferring those formats.
 5. Implement lazy resolution for dynamic loading rather than marking all
@@ -62,6 +61,16 @@ preserves guest argument registers around resolution:
 LLVM's Mach-O linker places `__dyld_private` in the image-loader-cache input
 section used by the stub-helper:
 [LLD SyntheticSections.cpp](https://github.com/llvm/llvm-project/blob/main/lld/MachO/SyntheticSections.cpp).
+The xstate area size comes from CPUID leaf `0xD`, and XGETBV is gated by the
+XSAVE/OSXSAVE feature bits described in the
+[Intel Software Developer's Manual](https://cdrdv2-public.intel.com/868137/325462-089-sdm-vol-1-2abcd-3abcd-4.pdf).
 
 The implementation is Wintosh-owned adapter code. It does not copy Apple's
 assembler or dyld implementation.
+
+
+The x86_64 trampoline now checks CPUID/OSXSAVE and uses XGETBV plus XSAVE/XRSTOR
+for the user state enabled by the host OS; older systems use FXSAVE/FXRSTOR.
+This expands preserved state beyond XMM registers, but only the assembler build
+has been verified. No runtime ABI fixture has exercised the XSAVE and fallback
+branches yet.

@@ -4578,3 +4578,7 @@ above for that path. ARM64, 32-bit, chained-fixup, and dynamic-loaded images
 still bind eagerly. The host x64/ARM64 builds succeeded, but this revision's
 runtime smokes and real Mach-O guest behavior remain unverified. See
 [LAZY-BINDING-DESIGN.md](LAZY-BINDING-DESIGN.md) for the exact boundary.
+
+The binder trampoline now includes CPUID/OSXSAVE-selected XSAVE/XRSTOR state
+preservation with an FXSAVE/FXRSTOR fallback. Assembly compilation succeeds;
+runtime state preservation still needs a dedicated ABI fixture.

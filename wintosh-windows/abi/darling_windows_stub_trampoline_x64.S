@@ -30,14 +30,40 @@ darling_windows_darwin_stub_trampoline_probe:
     mov [rsp+0x30], r8
     mov [rsp+0x38], r9
     mov [rsp+0x40], r10
-    movdqu [rsp+0x50], xmm0
-    movdqu [rsp+0x60], xmm1
-    movdqu [rsp+0x70], xmm2
-    movdqu [rsp+0x80], xmm3
-    movdqu [rsp+0x90], xmm4
-    movdqu [rsp+0xA0], xmm5
-    movdqu [rsp+0xB0], xmm6
-    movdqu [rsp+0xC0], xmm7
+
+    /* Preserve the full OS-enabled xstate, including AVX/AVX-512 when
+       Windows exposes it. Keep an FXSAVE fallback for older x86_64 hosts. */
+    mov eax, 1
+    cpuid
+    bt ecx, 26                  /* XSAVE */
+    jnc darling_windows_stub_save_legacy_state
+    bt ecx, 27                  /* OSXSAVE */
+    jnc darling_windows_stub_save_legacy_state
+    xor ecx, ecx
+    xgetbv
+    mov [rbp-0x10], eax
+    mov [rbp-0x18], edx
+    mov eax, 0x0D
+    xor ecx, ecx
+    cpuid
+    mov eax, ebx                /* bytes required for enabled XCR0 state */
+    add eax, 63
+    and eax, -64
+    sub rsp, rax
+    and rsp, -64
+    mov qword ptr [rbp-0x20], 1
+    mov eax, [rbp-0x10]
+    mov edx, [rbp-0x18]
+    xsave64 [rsp]
+    jmp darling_windows_stub_state_saved
+
+darling_windows_stub_save_legacy_state:
+    sub rsp, 0x23F
+    and rsp, -64
+    mov qword ptr [rbp-0x20], 0
+    fxsave64 [rsp]
+
+darling_windows_stub_state_saved:
 
     mov rdi, [rbp+8]
     mov rsi, [rbp+16]
@@ -45,6 +71,19 @@ darling_windows_darwin_stub_trampoline_probe:
     mov r11, rax
     test r11, r11
     jz darling_windows_abi_dyld_stub_binder_fail_closed
+
+    cmp qword ptr [rbp-0x20], 1
+    jne darling_windows_stub_restore_legacy_state
+    mov eax, [rbp-0x10]
+    mov edx, [rbp-0x18]
+    xrstor64 [rsp]
+    jmp darling_windows_stub_state_restored
+
+darling_windows_stub_restore_legacy_state:
+    fxrstor64 [rsp]
+
+darling_windows_stub_state_restored:
+    lea rsp, [rbp-0x100]
 
     mov rax, [rsp+0x00]
     mov rbx, [rsp+0x08]
@@ -55,14 +94,6 @@ darling_windows_darwin_stub_trampoline_probe:
     mov r8, [rsp+0x30]
     mov r9, [rsp+0x38]
     mov r10, [rsp+0x40]
-    movdqu xmm0, [rsp+0x50]
-    movdqu xmm1, [rsp+0x60]
-    movdqu xmm2, [rsp+0x70]
-    movdqu xmm3, [rsp+0x80]
-    movdqu xmm4, [rsp+0x90]
-    movdqu xmm5, [rsp+0xA0]
-    movdqu xmm6, [rsp+0xB0]
-    movdqu xmm7, [rsp+0xC0]
 
     mov rsp, rbp
     pop rbp

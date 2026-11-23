@@ -743,6 +743,13 @@ smaller than the clip; the scroll view exposes the same visible rectangle and
 finds the nearest ancestor.
 Rotation, sibling occlusion, and printing visibility are not modeled.
 
+`NSView` exposes `boundsOrigin`/`setBoundsOrigin:` and
+`boundsSize`/`setBoundsSize:` as component-level views of its bounds rectangle.
+Setters preserve the untouched components and route through `setBounds:`,
+keeping coordinate conversion, child resizing, scroll-view refresh, and redraw
+invalidation consistent. The guest Objective-C dispatcher handles the
+CGPoint/CGSize value encodings; no dedicated Mach-O selector fixture exists.
+
 `NSView.autoresizingMask` and `setAutoresizingMask:` now store the six flexible
 margin/size bits and keyed view decoding restores `NSAutoresizingMask`. Changes
 to a parent bounds size distribute the delta proportionally among a child's

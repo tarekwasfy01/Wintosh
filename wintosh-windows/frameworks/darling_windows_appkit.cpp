@@ -15381,6 +15381,37 @@ DarlingObjcRect NSViewBounds(id self, SEL)
 	return found == g_views.end() ? DarlingObjcRect{} : found->second.bounds;
 }
 
+DarlingObjcPoint NSViewBoundsOrigin(id self, SEL)
+{
+	const DarlingObjcRect bounds = NSViewBounds(self, nullptr);
+	return {bounds.x, bounds.y};
+}
+
+DarlingObjcPoint NSViewBoundsSize(id self, SEL)
+{
+	const DarlingObjcRect bounds = NSViewBounds(self, nullptr);
+	return {bounds.width, bounds.height};
+}
+
+void NSViewSetBoundsOrigin(id self, SEL, DarlingObjcPoint origin)
+{
+	if (!std::isfinite(origin.x) || !std::isfinite(origin.y)) return;
+	DarlingObjcRect bounds = NSViewBounds(self, nullptr);
+	bounds.x = origin.x;
+	bounds.y = origin.y;
+	NSViewSetBounds(self, nullptr, bounds);
+}
+
+void NSViewSetBoundsSize(id self, SEL, DarlingObjcPoint size)
+{
+	if (!std::isfinite(size.x) || !std::isfinite(size.y) ||
+		size.x < 0.0 || size.y < 0.0) return;
+	DarlingObjcRect bounds = NSViewBounds(self, nullptr);
+	bounds.width = size.x;
+	bounds.height = size.y;
+	NSViewSetBounds(self, nullptr, bounds);
+}
+
 bool NSViewIsFlipped(id, SEL)
 {
 	return false;
@@ -21666,6 +21697,16 @@ void RegisterAppKitClasses()
 		class_addMethod(view, sel_registerName("bounds"),
 			reinterpret_cast<IMP>(&NSViewBounds),
 			"{CGRect={CGPoint=dd}{CGSize=dd}}@:");
+		class_addMethod(view, sel_registerName("boundsOrigin"),
+			reinterpret_cast<IMP>(&NSViewBoundsOrigin), "{CGPoint=dd}@:");
+		class_addMethod(view, sel_registerName("setBoundsOrigin:"),
+			reinterpret_cast<IMP>(&NSViewSetBoundsOrigin),
+			"v@:{CGPoint=dd}");
+		class_addMethod(view, sel_registerName("boundsSize"),
+			reinterpret_cast<IMP>(&NSViewBoundsSize), "{CGSize=dd}@:");
+		class_addMethod(view, sel_registerName("setBoundsSize:"),
+			reinterpret_cast<IMP>(&NSViewSetBoundsSize),
+			"v@:{CGSize=dd}");
 		class_addMethod(view, sel_registerName("visibleRect"),
 			reinterpret_cast<IMP>(&NSViewVisibleRect),
 			"{CGRect={CGPoint=dd}{CGSize=dd}}@:");

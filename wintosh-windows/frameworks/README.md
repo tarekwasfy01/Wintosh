@@ -486,6 +486,7 @@ is accepted; `SetWindowPos` performs the redraw and a true flag also calls
 Win32 windows. Each window owns a default content `NSView`; the view layer
 supports `-initWithFrame:`, `-frame`, `-setFrame:`, `-frameOrigin`, `-frameSize`,
 `-setFrameOrigin:`, `-setFrameSize:`, `-bounds`, and `-setBounds:`,
+`-boundsOrigin`, `-setBoundsOrigin:`, `-boundsSize`, and `-setBoundsSize:`,
 `-window`, `-superview`, `-subviews`, `-nextResponder`, `-isDescendantOf:`,
 `-isHidden`, `-setHidden:`, and `-isHiddenOrHasHiddenAncestor`,
 `-convertPoint:toView:`, `-convertPoint:fromView:`, `-convertRect:toView:`,
@@ -508,6 +509,9 @@ composes the transforms along each ancestor chain:
 The adapter uses unit scale on an axis whose bounds extent is zero. This
 matches Apple's same-window and nil-to-window behavior
 ([`convertPoint:toView:`](https://developer.apple.com/documentation/appkit/nsview/convert%28_%3Ato%3A%29-6u9ir?changes=_2___8_8&language=objc)).
+The bounds-origin and bounds-size setters update the corresponding component
+through `setBounds:`, so view conversion, child autoresizing, scroll-view
+refresh, and redraw invalidation follow the same path as a full bounds update.
 Hidden state propagates to descendant native controls without changing
 descendant `isHidden` values, matching Apple's [hidden-view semantics](https://developer.apple.com/documentation/appkit/nsview/ishidden).
 When a view's effective hidden state changes through `setHidden:` or reparenting,

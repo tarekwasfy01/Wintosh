@@ -14239,23 +14239,19 @@ id FindAppKitViewAtPoint(id view, double x, double y, unsigned depth)
 		if (found == g_views.end()) return nullptr;
 		if (found->second.hidden) return nullptr;
 		bounds = found->second.bounds;
-		if (x < bounds.x || y < bounds.y || x >= bounds.x + bounds.width ||
-			y >= bounds.y + bounds.height) return nullptr;
 		subviews = found->second.subviews;
 	}
+	const ViewCoordinateOrigin origin = NSViewOriginInWindow(view);
+	darling_windows_CGAffineTransform window_to_local{};
+	if (!origin.valid || !ViewInvertTransform(origin.transform, window_to_local))
+		return nullptr;
+	const DarlingObjcPoint local_point = ViewApplyTransform(window_to_local,
+		{x, y});
+	if (local_point.x < bounds.x || local_point.y < bounds.y ||
+		local_point.x >= bounds.x + bounds.width ||
+		local_point.y >= bounds.y + bounds.height) return nullptr;
 	for (auto child = subviews.rbegin(); child != subviews.rend(); ++child) {
-		DarlingObjcRect frame{};
-		DarlingObjcRect child_bounds{};
-		{
-			std::lock_guard lock(g_windows_mutex);
-			const auto found = g_views.find(*child);
-			if (found == g_views.end()) continue;
-			frame = found->second.frame;
-			child_bounds = found->second.bounds;
-		}
-		const double child_x = x - frame.x + child_bounds.x;
-		const double child_y = y - frame.y + child_bounds.y;
-		if (id result = FindAppKitViewAtPoint(*child, child_x, child_y,
+		if (id result = FindAppKitViewAtPoint(*child, x, y,
 			depth + 1); result != nullptr) return result;
 	}
 	return view;

@@ -17,10 +17,12 @@ NSView coordinate chains now compose full affine matrices, including bounds
 scaling/flips and the `frameRotation`/`boundsRotation` properties in degrees.
 Point, size, and rectangle conversions, view drawing CTMs, dirty-rectangle
 mapping, native-control placement, scroll visibility, and scrollbar placement
-use the same transforms. Rotated clipping and native controls are represented
+use the same transforms. Mouse and wheel hit-testing now inversely maps window
+locations into each candidate view's bounds, so rotated views receive input at
+their rendered position. Rotated clipping and native controls are represented
 by axis-aligned bounding rectangles on Win32, so their edge geometry is
 approximate. The x64 executable and ARM64 host library compile; no guest Mach-O
-fixture has exercised rotated view behavior.
+fixture has exercised rotated view behavior or input delivery.
 
 ### AppKit NSAffineTransform subset (2026-11-23)
 

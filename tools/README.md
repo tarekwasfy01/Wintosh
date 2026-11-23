@@ -34,16 +34,17 @@ Generated entries are empty integration stubs with local IDs. They are not
 Darwin implementations and must be replaced or completed after reviewing the
 corresponding upstream definitions and licenses.
 
-## i386 Mach-O packaging prototype
+## Bounded i386 Mach-O linker
 
-`python tools/pack_i386_macho.py input.o output.macho` accepts one
-little-endian i386 `MH_OBJECT` whose external `_main` is in the first
-`__TEXT,__text` section. It preserves only local 32-bit PC-relative
-`GENERIC_RELOC_VANILLA` relocations targeting that same section; other text
-relocations and undefined external symbols fail closed. It emits a
-single-segment `MH_EXECUTE` and discards non-text metadata such as unwind
-sections. This is a bounded packaging experiment, not a general object linker
-or application build path. Its verified sample is recorded in
+`python tools/link_i386_macho.py --output app.macho main.o helper.o` accepts
+little-endian i386 `MH_OBJECT` files. It combines each input's single
+`__TEXT,__text` section, resolves external symbols defined in those sections,
+and links 32-bit PC-relative `GENERIC_RELOC_VANILLA` fields. Local relocations
+to their own section remain translation invariant; external references are
+patched from the resolved symbol and input-section placement. Other relocation
+types, data sections, dylibs, CRT, and frameworks are outside this prototype.
+It emits a single-segment `MH_EXECUTE` and discards non-text metadata such as
+unwind sections. Its verified scope and limits are recorded in
 [LINKER-RESEARCH.md](../docs/porting/LINKER-RESEARCH.md).
 
 The scripts and this documentation are original Wintosh tooling. Upstream

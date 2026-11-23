@@ -125,22 +125,20 @@ The separate i386 object-to-image experiment is bounded as follows:
 
 | Build transition | Windows Win32 |
 |---|---:|
-| Clang i386 Mach-O `__text` section packaged as `MH_EXECUTE` | 1§ |
-| Mach-O object-symbol resolution | 0 |
+| Clang i386 objects linked into `MH_EXECUTE` | 1§ |
+| Mach-O object-symbol resolution in supplied text sections | 1§ |
 | i386 same-section PC-relative relocation preservation | 1§ |
-| Cross-section/object i386 relocation linking | 0 |
+| Cross-object i386 PC-relative external call | 1§ |
 | Compiler-produced image started by Wintosh | 1§ |
 
-`1§` covers a Clang-produced C object with a defined `_main`, no undefined
-external symbols, and a local `GENERIC_RELOC_VANILLA` 32-bit PC-relative
-reference from `_main` to `_helper` in the same `__text` section. Moving both
-ends by slide `δ` preserves the encoded displacement:
-`(S + δ) - (P + 4 + δ) = S - (P + 4)`. The packer validates and preserves that
-field, emits one executable segment, discards other sections, and does not
-resolve symbols. `llvm-objdump` identified the output as i386 `MH_EXECUTE`;
-Wintosh returned 42. See
-[LINKER-RESEARCH.md](LINKER-RESEARCH.md) for the exact boundary. This does not
-prove cross-section linking, compiler CRT, imports, or frameworks.
+`1§` covers both a local same-section call and a two-object `_main` to `_helper`
+call. For a local relocation, a common slide `δ` preserves the displacement:
+`(S + δ) - (P + 4 + δ) = S - (P + 4)`. For the measured external Clang
+relocation, the linker combines the stored addend with the resolved symbol
+offset and source-section placement. The two-object output worked with either
+input ordering and returned 42 in Wintosh. Other relocation kinds, data,
+compiler CRT, imported runtime symbols, and frameworks remain unproven. See
+[LINKER-RESEARCH.md](LINKER-RESEARCH.md) for the exact link contract.
 
 The ARM64
 source path now admits matching-architecture ARM64 code and includes a

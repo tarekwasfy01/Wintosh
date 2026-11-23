@@ -2348,29 +2348,45 @@ Win32 path contains a native i386 Darwin-start stack transfer. Runtime execution
 of a 32-bit chained-fixup Mach-O has not yet been demonstrated; metadata and
 fixup parsing alone are not guest execution evidence.
 
-### Clang i386 object section packaging prototype (2026-11-23)
+### Initial i386 object section packaging prototype (2026-11-23)
 
-`tools/pack_i386_macho.py` now parses a narrow little-endian i386 `MH_OBJECT`
-case, requires a defined external `_main` in the first `__TEXT,__text` section,
-accepts only local 32-bit PC-relative `GENERIC_RELOC_VANILLA` references to
-that same text section, and rejects other text relocations and undefined
-external symbols. It emits one 4096-byte `MH_EXECUTE` segment with `LC_MAIN`;
-non-text sections, including unwind metadata, are discarded. The first Visual
-Studio Clang-produced C object passed through with no text relocation. This
-proves bounded object-to-image packaging, not general Mach-O linking: external
-symbol resolution, cross-section/file relocations, CRT startup, dependencies,
-and frameworks remain unsupported. The `ld64-msys` source documents MSYS2 as its
-Windows build environment, but this host has neither MSYS2 nor Cygwin and the
-shell cannot resolve GitHub.
+The first version of `tools/link_i386_macho.py` parsed one little-endian i386
+`MH_OBJECT`, required a defined external `_main` in `__TEXT,__text`, preserved
+only local 32-bit PC-relative `GENERIC_RELOC_VANILLA` references to that same
+section, and rejected undefined external symbols. It emitted one 4096-byte
+`MH_EXECUTE` segment and discarded non-text sections, including unwind
+metadata. That first Visual Studio Clang-produced object had no text
+relocations; its runtime result was 42. The next stages below add local calls
+and then cross-object symbol resolution. CRT startup, dependencies, and
+frameworks remain open. The `ld64-msys` source documents MSYS2 as its Windows
+build environment; this host has neither MSYS2 nor Cygwin.
 
 ### i386 same-section PC-relative relocation preservation (2026-11-23)
 
 A second Clang i386 object contains `_helper` and `_main`, with a local
 `GENERIC_RELOC_VANILLA` at `__text+0x27`: 32-bit, PC-relative, non-external,
-and targeting section ordinal 1 (`__TEXT,__text`). The packer now checks each
+and targeting section ordinal 1 (`__TEXT,__text`). The linker now checks each
 field's bounds, width, type, target section, scattered flag, and overlap. It
 preserves the bytes because translation by a common image slide cancels:
 `(S + δ) - (P + 4 + δ) = S - (P + 4)`. The generated `LC_MAIN.entryoff` was
 `0x210`; `llvm-objdump` identified i386 `MH_EXECUTE`, and the Win32 runner
-returned 42 after `_main` called `_helper`. Cross-section and external
-relocations remain unsupported.
+returned 42 after `_main` called `_helper`. At that stage, cross-object and
+external relocations were still unsupported.
+
+### i386 cross-object external PC-relative linking (2026-11-23)
+
+`tools/link_i386_macho.py` now accepts multiple little-endian i386 `MH_OBJECT` inputs,
+places their `__TEXT,__text` sections in order with section alignment, builds
+an external text-symbol map, and resolves undefined symbols against supplied
+objects. It supports only non-scattered 32-bit PC-relative
+`GENERIC_RELOC_VANILLA` records whose targets resolve within those text
+sections. Other relocation kinds, duplicate definitions, unresolved symbols,
+and definitions outside `__text` fail closed.
+
+Separate Clang objects defined `_main` and `_helper`. The external relocation
+in `_main` was at section offset `0x17`, type Vanilla, PC-relative, length 2,
+external. With `main.o helper.o`, the call displacement became `+0x15`; with
+`helper.o main.o`, it became `-0x2b`. Both outputs were recognized as i386
+`MH_EXECUTE` and returned 42 in the Win32 runner. This verifies one external
+symbol and one cross-object call form, not CRT, data, dylib imports, or
+frameworks.

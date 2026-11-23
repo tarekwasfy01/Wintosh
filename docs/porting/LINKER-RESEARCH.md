@@ -4,33 +4,31 @@ Stand: 2026-11-23
 
 ## Ausgangslage
 
-Clang erzeugt auf diesem Windows-Host echte i386-Mach-O-Objekte. Das
-installierte `ld64.lld.exe` weist `-arch i386` zurück. Der neue
-`tools/pack_i386_macho.py`-Prototyp übernimmt den `__TEXT,__text`-Abschnitt
-eines engen Ein-Objekt-Falls in ein `MH_EXECUTE`-Image. Lokale 32-Bit-
-PC-relative Relokationen, deren Ziel derselbe Abschnitt ist, bleiben gültig.
-Damit ist die Kette
+Clang erzeugt auf diesem Windows-Host i386-Mach-O-Objekte. Das vorhandene
+`ld64.lld.exe` weist `-arch i386` zurück. `tools/link_i386_macho.py` ist nun
+ein begrenzter i386-Linker-Prototyp: Er kombiniert die `__TEXT,__text`-
+Sections mehrerer `MH_OBJECT`-Dateien, löst externe Definitionen aus diesen
+Sections auf und unterstützt 32-Bit-PC-relative
+`GENERIC_RELOC_VANILLA`-Relokationen. Das Ergebnis ist ein minimales
+`MH_EXECUTE` ohne CRT, Imports, Datenbereiche oder Frameworks.
 
 \[
-\text{Clang Mach-O object} \xrightarrow{\text{section packaging}} \text{MH_EXECUTE}
+\text{Mach-O objects} \xrightarrow{\text{resolve + PC-relative relocate}}
+\text{single-segment i386 MH_EXECUTE}
 \]
-
-konkret ausführbar. Das ist **kein Linken**: Der Packer löst weder Symbole noch
-Relokationen auf. Ein echter Mach-O-Linker bleibt erforderlich.
 
 ## Kandidatenmatrix
 
-Bewertung je Kriterium: `1` = belegt/erfüllt, `0` = belegt/nicht erfüllt,
-`?` = noch offen. Ein positiver Wert gilt nur für den beschriebenen Umfang.
+Bewertung: `1` = im genannten Umfang belegt, `0` = nicht verfügbar/nicht
+implementiert, `?` = offen. Ein positiver Wert ist kein Vollständigkeitsbeleg.
 
-| Kandidat | i386 Mach-O-Ziel | Windows-Host belegt | C-Objekte/Relokationen | GUI-/Framework-Linking | Entscheidung |
+| Kandidat | i386 Mach-O-Ziel | Windows-Host belegt | Objektlinken | CRT/Dylibs/Frameworks | Entscheidung |
 |---|---:|---:|---:|---:|---|
-| Vorhandenes LLVM `ld64.lld` | 0 (lokaler Aufruf lehnt `-arch i386` ab) | 1 | ? | ? | derzeit kein i386-Pfad |
-| Apple `ld64` / `ld-classic` | 1 (Apple-Handbuch dokumentiert i386) | 0 (Upstream ist Apples Darwin-Linker) | 1 (voller Linker) | ? | Referenz für Format und Semantik |
-| `tpoechtrager/cctools-port` | 1 (i386 in Zielarchitekturen) | 0 (README listet Linux, BSD, macOS und iOS als Hosts) | 1 (portiert `ld64`) | ? | Quell-/Portierungsreferenz |
-| `LongDirtyAnimAlf/ld64-msys` | ? (geerbter ld64-Code; lokal noch nicht gebaut) | 1 (README nennt MSYS2/Windows) | ? | ? | bester Build-Prototyp, falls MSYS2 bereitsteht |
-| Wintosh `pack_i386_macho.py` | 1 (emittiert i386 `MH_EXECUTE`) | 1 | begrenzt (nur same-section i386 PC-relative Relokationen) | 0 | Verifizierter Format-/Runner-Prototyp, kein allgemeiner Linker |
-| Eigenständiger minimaler i386-Linker | begrenzt planbar | 1 | ? (noch nicht implementiert) | 0 (außerhalb des ersten Umfangs) | spätere Option mit expliziter Relokationsmenge |
+| Vorhandenes LLVM `ld64.lld` | 0 (lokal `-arch i386` abgelehnt) | 1 | 0 | 0 | kein i386-Pfad |
+| Apple `ld64` / `ld-classic` | 1 (Apple-Handbuch dokumentiert i386) | 0 (Upstream Darwin-Host) | 1 (voller Linker) | ? | Semantik-Referenz |
+| `tpoechtrager/cctools-port` | 1 (i386 als Ziel) | 0 (README listet Linux/BSD/macOS/iOS Hosts) | 1 (portiert `ld64`) | ? | Portierungsreferenz |
+| `LongDirtyAnimAlf/ld64-msys` | ? (geerbter ld64-Code) | 1 (README nennt MSYS2/Windows) | ? | ? | Alternative für MSYS2-Prototyp |
+| Wintosh `link_i386_macho.py` | 1 | 1 | begrenzt (Textsections + PC-relative Vanilla) | 0 | verifiziert für kleine statische C-Gäste |
 
 Quellen:
 
@@ -39,49 +37,66 @@ Quellen:
 - [`cctools-port` README](https://github.com/tpoechtrager/cctools-port)
 - [`ld64-msys` README](https://github.com/LongDirtyAnimAlf/ld64-msys)
 
-`ld64-msys` basiert auf Apple-/cctools-Code. Vor Übernahme von Quelldateien
-müssen die Copyright- und Lizenzhinweise jeder Datei geprüft und erhalten
-werden. Dieser Arbeitsstand kopiert daraus keinen Code.
+`ld64-msys` basiert auf Apple-/cctools-Code. Vor einer Übernahme von Dateien
+müssen deren Copyright- und Lizenzhinweise einzeln geprüft und erhalten
+werden. Es wurde kein fremder Linker-Code in Wintosh kopiert.
 
-## Formales Abnahmemodell
+## Unterstützter Link-Vertrag
 
-Für Objektmenge \(O\), Ziel \(a\) und Linker \(L\) gilt:
+Jedes Objekt muss little-endian i386 `MH_OBJECT` mit genau einer
+`__TEXT,__text`-Section und `LC_SYMTAB` sein. Die Section wird in Eingabereihenfolge
+mit ihrer Alignment-Anforderung angeordnet. Externe `N_SECT`-Definitionen
+müssen in dieser Text-Section liegen; alle externen `N_UNDF`-Symbole müssen von
+einem der Eingabeobjekte definiert werden. Doppelte Definitionen werden
+abgewiesen.
+
+Die Relokationsmatrix des Prototyps ist:
+
+| i386 Relokation | Behandlung |
+|---|---|
+| local, non-scattered, PC-relative, length 2, Vanilla, Ziel eigene Text-Section | unverändert übernommen; gemeinsamer Slide kürzt sich heraus |
+| external, non-scattered, PC-relative, length 2, Vanilla, Zieldefinition in einer Eingabe-Text-Section | aufgelöst und gepatcht |
+| andere Relokationstypen oder Ziele außerhalb der Text-Sections | explizit abgewiesen |
+
+Für Clangs undefiniertes externes Call-Ziel enthält das gespeicherte Feld den
+lageabhängigen Anteil \(A=-P-4\). Bei Eingabe-Section-Placement \(B_i\) und
+aufgelöstem Symbol-Offset \(S_j\) wird
 
 \[
-\operatorname{LinkOK}(L,O,a) =
-\operatorname{Parse}(O) \land
-\operatorname{Resolve}(O) \land
-\operatorname{Relocate}(O,a) \land
-\operatorname{EmitMachO}(L,a)
+D = A + S_j - B_i = S_j - (B_i + P + 4)
 \]
 
-Der verifizierte Packerschritt ist enger als ein minimaler Link:
+geschrieben. `D` muss in einen vorzeichenbehafteten 32-Bit-Wert passen. Bei
+local same-section PC-relative references bleibt der ursprüngliche Abstand
+gültig, da \((S+\delta)-(P+4+\delta)=S-(P+4)\).
 
-\[
-O = \{\text{Clang-i386-Objekt mit `_main`, ohne undefinierte externe Symbole}\},
-\quad a = \text{i386 Darwin}
-\]
+Der Output ist auf ein 4096-Byte-Image mit Code ab Datei-Offset `0x200`
+begrenzt. Nicht-Text-Sections einschließlich Unwind-Metadaten werden
+weggelassen. Das Image erhält `LC_SEGMENT` und `LC_MAIN`; es enthält keine
+Symtab, `LC_LOAD_DYLIB`, `LC_DYLD_INFO`, CRT oder Systembibliotheken.
 
-Gemessen wurde zunächst ein Clang-Objekt mit drei Sections, ohne `__text`-
-Relokation, einem externen `_main` und ohne undefinierte externe Symbole. Der
-Packer schrieb ein 4096-Byte-Image mit `LC_MAIN.entryoff=0x200`. Danach wurde
-ein Objekt mit `_helper` und `_main` verarbeitet: Clang erzeugte eine lokale,
-32-Bit PC-relative `GENERIC_RELOC_VANILLA`-Relokation auf `__TEXT,__text`.
-Der Packer validierte sie und übernahm den Abschnitt unverändert; der Entry lag
-bei `0x210`. `llvm-objdump` erkannte `MH_EXECUTE/I386`, und der Win32-Runner
-gab Exitcode 42 zurück. Nicht-Text-Sections einschließlich Unwind-Metadaten
-werden weggelassen. Das beweist noch kein objektübergreifendes Linken.
+## Laufzeitnachweis
 
-Der nächste Linker-Abnahmeschritt ist eine echte i386-Relokation zwischen zwei
-Objekt-Sections oder Dateien. Danach folgen undefinierte Symbole, Darwin-Startup plus
-`_exit`, dann ausgewählte Systembibliotheken. Jede Stufe muss ihre Eingabemenge
-und offenen Relokationen benennen; ein erfolgreicher Link allein beweist keine
-ABI- oder Framework-Kompatibilität.
+Zwei Clang-Objekte wurden separat übersetzt: `main.o` definiert `_main` und
+referenziert undefiniert `_helper`; `helper.o` definiert `_helper` und gibt 42
+zurück. `llvm-objdump` zeigte in `main.o` die externe 32-Bit-PC-relative
+`GENERIC_RELOC_VANILLA`-Relokation an `__text+0x17`.
 
-## Nächste technische Aktion
+Mit `main.o helper.o` schrieb der Linker den Call-Displacement `+0x15`; bei
+umgekehrter Eingabereihenfolge schrieb er `-0x2b`. Beide Ausgaben wurden als
+i386 `MH_EXECUTE` erkannt und liefen im Win32-Wintosh-Runner mit Exitcode 42.
+Die zweite Anordnung prüft, dass das Ziel vor dem Aufrufer liegen darf.
 
-Der Windows-Host besitzt Visual-Studio-Clang/LLD, aber weder `C:\msys64` noch
-`C:\cygwin64`; außerdem kann die Shell hier GitHub nicht auflösen. Der
-`ld64-msys`-Build ist daher noch nicht lokal ausführbar. Dessen README nennt
-MSYS2 und einen Bash-`configure`/`make`-Build als Pfad. Vor einer Quell-
-Übernahme bleibt das Datei-für-Datei-Lizenzinventar Pflicht.
+Das beweist begrenztes objektübergreifendes Linken und Ausführen, keine
+beliebigen macOS-Programme. Noch offen sind weitere i386-Relokationen,
+`__data`/`__const`, echte Darwin-CRT-Initialisierung, externe Host-Imports,
+dyld, libc und Framework-Abhängigkeiten.
+
+## Nächster Ausbau
+
+Der nächste Link-Schritt ist Daten-Section-Platzierung mit lokalen und
+externen absoluten i386-Relokationen; danach kommen stubs und importierte
+Darwin-Symbole. Der Windows-Host besitzt weder `C:\msys64` noch `C:\cygwin64`,
+und die Shell kann GitHub nicht auflösen. `ld64-msys` ist deshalb keine aktuell
+baubare lokale Alternative. Es bleibt möglich, den Prototyp anhand der
+gemessenen Mach-O-Relokationen gezielt auszubauen.

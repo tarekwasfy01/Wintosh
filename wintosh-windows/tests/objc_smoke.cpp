@@ -1064,6 +1064,9 @@ int main()
 		reinterpret_cast<std::uintptr_t>(&category_protocol_list),
 		reinterpret_cast<std::uintptr_t>(&raw_properties), 0};
 	const std::uintptr_t category_address = reinterpret_cast<std::uintptr_t>(&category);
+	auto* category_image = darling_objc_begin_image_registration();
+	if (category_image == nullptr)
+		return 49;
 	if (darling_objc_register_macho_categories(&category_address,
 		sizeof(category_address)) != 1 ||
 		class_getMethodImplementation(objc_getClass("ImageRegisteredClass"),
@@ -1149,6 +1152,17 @@ int main()
 	std::free(copied_ivars);
 	std::free(copied_properties);
 	std::free(copied_protocols);
+	darling_objc_end_image_registration(category_image);
+	darling_objc_unregister_image(category_image);
+	if (class_respondsToSelector(objc_getClass("ImageRegisteredClass"),
+			sel_registerName(category_method_name)) ||
+		class_respondsToSelector(objc_getClass("ImageRegisteredClass"),
+			sel_registerName(category_class_method_name)) ||
+		class_getProperty(objc_getClass("ImageRegisteredClass"),
+			category_property_name) != nullptr ||
+		class_conformsToProtocol(objc_getClass("ImageRegisteredClass"),
+			category_protocol_metadata) || objc_getProtocol(category_protocol_name) != nullptr)
+		return 50;
 	const char image_selector_name[] = "imageSelector";
 	const std::uintptr_t image_selector_ref =
 		reinterpret_cast<std::uintptr_t>(image_selector_name);

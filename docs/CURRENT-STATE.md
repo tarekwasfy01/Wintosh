@@ -46,7 +46,11 @@ recovered. Static and dynamic image registration now process class lists before
 category lists, independent of Mach-O section ordering. Category method lists
 also receive the image slide for selector-reference normalization; an ARM64
 Mach-O fixture with an actual `__objc_catlist` invokes a category class method
-through `objc_msgSend`.
+through `objc_msgSend`. Dynamic image tokens now track category-added methods,
+protocol conformances, and properties and remove those additions on image
+unload; `objc_smoke` checks that the category stops responding, its property
+disappears, and its image-owned protocol is unregistered. Category replacement
+of a selector that already exists on the target class is still unsupported.
 
 ## Mach broker update, 2026-11-23
 

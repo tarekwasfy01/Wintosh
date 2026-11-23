@@ -82,9 +82,18 @@ struct objc_protocol final {
 	bool registered{};
 };
 
+struct darling_objc_category_registration final {
+	Class target{};
+	std::vector<SEL> instance_methods;
+	std::vector<SEL> class_methods;
+	std::vector<Protocol> protocols;
+	std::vector<std::string> properties;
+};
+
 struct darling_objc_image_token final {
 	std::vector<Class> classes;
 	std::vector<std::uintptr_t> guest_class_addresses;
+	std::vector<darling_objc_category_registration> categories;
 	std::vector<Protocol> protocols;
 	std::vector<id> constant_strings;
 };
@@ -2227,6 +2236,24 @@ static std::size_t RegisterMachOCategoriesWithImage(
 		Class cls = objc_getClass(name);
 		if (!cls)
 			continue;
+		darling_objc_category_registration contribution;
+		contribution.target = cls;
+		std::unordered_set<SEL> old_instance_methods;
+		std::unordered_set<SEL> old_class_methods;
+		for (const auto& [selector, method] : cls->methods) {
+			(void)method;
+			old_instance_methods.insert(selector);
+		}
+		for (const auto& [selector, method] : cls->class_methods) {
+			(void)method;
+			old_class_methods.insert(selector);
+		}
+		const auto old_protocols = cls->protocols;
+		std::unordered_set<std::string> old_properties;
+		for (const auto& [property_name, property] : cls->properties) {
+			(void)property;
+			old_properties.insert(property_name);
+		}
 		RegisterMethodList(cls, instance_methods, false, image_slide,
 			image_vm_begin, image_vm_end);
 		RegisterMethodList(cls, class_methods, true, image_slide,
@@ -2234,6 +2261,28 @@ static std::size_t RegisterMachOCategoriesWithImage(
 		RegisterProtocolList(cls, protocols);
 		RegisterPropertyList(cls, instance_properties);
 		RegisterPropertyList(cls, class_properties);
+		if (active_image_token != nullptr) {
+			for (const auto& [selector, method] : cls->methods) {
+				(void)method;
+				if (!old_instance_methods.contains(selector))
+					contribution.instance_methods.push_back(selector);
+			}
+			for (const auto& [selector, method] : cls->class_methods) {
+				(void)method;
+				if (!old_class_methods.contains(selector))
+					contribution.class_methods.push_back(selector);
+			}
+			for (Protocol protocol : cls->protocols) {
+				if (!old_protocols.contains(protocol))
+					contribution.protocols.push_back(protocol);
+			}
+			for (const auto& [property_name, property] : cls->properties) {
+				(void)property;
+				if (!old_properties.contains(property_name))
+					contribution.properties.push_back(property_name);
+			}
+			active_image_token->categories.push_back(std::move(contribution));
+		}
 		++registered;
 	}
 	return registered;
@@ -2420,6 +2469,22 @@ extern "C" void darling_objc_unregister_image(darling_objc_image_token* token)
 	std::lock_guard lock(RuntimeMutex());
 	for (id object : token->constant_strings)
 		ConstantStrings().erase(object);
+	for (auto category = token->categories.rbegin();
+		category != token->categories.rend(); ++category) {
+		Class cls = category->target;
+		if (cls == nullptr) continue;
+		for (SEL selector : category->instance_methods)
+			cls->methods.erase(selector);
+		for (SEL selector : category->class_methods) {
+			cls->class_methods.erase(selector);
+			if (cls->metaclass)
+				cls->metaclass->methods.erase(selector);
+		}
+		for (Protocol protocol : category->protocols)
+			cls->protocols.erase(protocol);
+		for (const auto& property : category->properties)
+			cls->properties.erase(property);
+	}
 	const std::unordered_set<Class> image_classes(token->classes.begin(),
 		token->classes.end());
 	std::unordered_set<Class> retained_classes;

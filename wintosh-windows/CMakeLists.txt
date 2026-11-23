@@ -248,6 +248,17 @@ if (WIN32)
                 -Runner "$<TARGET_FILE:wintosh>"
                 -OutputDirectory "${CMAKE_CURRENT_BINARY_DIR}/real-import-lazy-e2e")
         set_tests_properties(wintosh_real_import_lazy_e2e PROPERTIES RUN_SERIAL TRUE)
+        if (WINTOSH_DYNARMIC_SOURCE_DIR AND WINTOSH_DYNARMIC_BUILD_DIR)
+            add_test(NAME wintosh_arm64_host_import_e2e
+                COMMAND powershell.exe -NoProfile -ExecutionPolicy Bypass -File
+                    "${CMAKE_CURRENT_SOURCE_DIR}/tests/arm64_import_e2e.ps1"
+                    -Clang "${CMAKE_CXX_COMPILER}"
+                    -Linker "${WINTOSH_LD64_LLD}"
+                    -Runner "$<TARGET_FILE:wintosh>"
+                    -OutputDirectory "${CMAKE_CURRENT_BINARY_DIR}/arm64-host-import-e2e")
+            set_tests_properties(wintosh_arm64_host_import_e2e
+                PROPERTIES RUN_SERIAL TRUE TIMEOUT 60)
+        endif()
         add_test(NAME wintosh_macho_printf_e2e
             COMMAND powershell.exe -NoProfile -ExecutionPolicy Bypass -File
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/macho_printf_e2e.ps1"

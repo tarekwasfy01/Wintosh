@@ -16,8 +16,8 @@ Beide Pfade sind noch nicht end-to-end mit einer realen macOS-Anwendung belegt:
 |---|---:|---:|
 | ARM64-Mach-O lesen und CPU-Slice auswählen | vorhanden | vorhanden |
 | Segmente mappen und unterstützte Relokationen anwenden | vorhanden | vorhanden |
-| ARM64-Instruktionen ausführen | Dynarmic-Backend implementiert, Laufzeit-Fixture fehlt | native CPU, noch nicht end-to-end belegt |
-| Darwin-Imports aus ARM64-Gastcode aufrufen | begrenzter SVC-Importpfad implementiert, Laufzeit-Fixture fehlt | teilweise vorhandene ABI-Brücke |
+| ARM64-Instruktionen ausführen | Dynarmic-Backend mit ARM64-`main`-Fixture belegt | native CPU, noch nicht end-to-end belegt |
+| Darwin-Imports aus ARM64-Gastcode aufrufen | `_strlen` über SVC-Trampolin end-to-end belegt; weitere Imports nur teilweise | teilweise vorhandene ABI-Brücke |
 | Darwin-Systemdienste und GUI aus dem ARM64-Gast bedienen | fehlt | bestehende Windows-Implementierungen, ARM64-Gastbelege fehlen |
 
 Ein CPU-Backend allein schließt somit nicht den Ausführungspfad.
@@ -221,11 +221,11 @@ festgelegt werden.
 | ARM64 parse/map/Relokations-Subset | implementiert, bestehende Grenzen gelten |
 | Dynarmic-Commit lokal untersucht | `9d458233`; Windows-x64-A64 statisch gebaut |
 | Dynarmic-Abhängigkeit reproduzierbar gebaut | lokal mit Probe-CMake-Dateianpassung; noch nicht im Projekt fixiert |
-| A64-Backend in Wintosh | optionaler Adapter kompiliert und gelinkt; keine Laufzeit-Fixture |
+| A64-Backend in Wintosh | optionaler Adapter lokal gebaut; ARM64-Import-Fixture läuft auf x64 Windows |
 | A64-Trap-Zustand | x0–x30, v0–v31, SP, PC, PSTATE, FPCR und FPSR rückführbar und fortsetzbar |
 | Darwin-UNIX-SVC | `exit`, `wait4` (mit lokaler Status-/Rusage-Kopie), `read`, `write`, `readv`, `writev`, `pread`, `pwrite`, `open`, `close`, `link`, `unlink`, `chdir`, `chmod`, `fchmod`, `symlink`, `readlink`, `umask`, Prozess-/Gruppen-ID-Aufrufe, `dup`, `dup2`, `pipe`, `socket`, `socketpair`, `connect`, `bind`, `listen`, `accept`, `recvfrom`, `sendto`, `getpeername`, `getsockname`, `shutdown`, `gettimeofday`, `getrusage`, `getpriority`, `setpriority`, `access`, `rename`, `mkdir`, `rmdir`, `fsync`, `fdatasync`, `stat`, `lstat`, `fstat`, `lseek`, `truncate`, `ftruncate`, `mmap`, `munmap` (nur ganzes Mapping), `mprotect`, `msync`, `madvise`, `sysctl` (implementierte zweistufige `KERN`-/`HW`-MIBs), `kill`, `sigaction`, `sigprocmask`; andere UNIX-Nummern liefern `ENOSYS`; kein Mach-Trap-Dispatcher |
 | x64-Host-Gast-Speicherprüfung | Segmentrechte und Bereichsgrenzen im Callback umgesetzt; Hauptexecutable, Bootstrap-dylibs, Startpuffer und dynamische Mappings werden registriert; keine Laufzeit-Fixture |
-| A64-Import-Trampoline und ABI-Dispatcher | fehlt |
+| A64-Import-Trampoline und ABI-Dispatcher | teilweise: `_strlen`-Fixture besteht; Objective-C- und übrige ABI-Klassen noch nicht zur Laufzeit belegt |
 | ARM64 Mach-O end-to-end auf x64 Windows | fehlt |
 
 Die lokal erfolgreiche x64-Clang-Kompilierung belegt nur den vorhandenen

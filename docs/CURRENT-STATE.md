@@ -12,13 +12,14 @@ scalar and pointer imports (`malloc`, `free`, retain/release, `strlen`, and
 memory routines) have adapters. Other host imports fail closed with their
 symbol name.
 
-The local Release build of `wintosh.exe` and its host library succeeded. No
-tests were run and no ARM64 guest runtime fixture has yet exercised the trap,
-host-call ABI, or Cocoa startup. Therefore this is source/build evidence for a
-bounded bridge, not evidence that arbitrary macOS applications run on Windows.
-The Darwin/XNU syscall surface, Mach traps, callbacks, dynamic imports during
-execution, full framework coverage, and reproducible Dynarmic dependency pin
-remain open.
+The local Release build of `wintosh.exe` and its host library succeeded. A
+source-derived ARM64 Mach-O fixture calls imported `_strlen` through the SVC
+trampoline and exits with status 42 on x64 Windows. This verifies one integer/
+pointer import path and the guest return sentinel. Objective-C messaging,
+guest-to-guest calls in the same run, framework startup, and arbitrary macOS
+applications remain unverified. The Darwin/XNU syscall surface, Mach traps,
+callbacks, dynamic imports during execution, full framework coverage, and a
+reproducible Dynarmic dependency pin remain open.
 
 ## Mach broker update, 2026-11-23
 

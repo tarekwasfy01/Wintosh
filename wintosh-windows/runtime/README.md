@@ -134,8 +134,9 @@ slice consistently for the executable and all dylib providers. The local
 Release target builds with this backend. ARM64 host imports enter through a
 guest SVC trampoline; `objc_msgSend` uses the type-encoding dispatcher, and a
 small C runtime catalog has scalar/pointer adapters. Unsupported imports fail
-closed. No end-to-end ARM64 app fixture has yet verified guest-to-guest calls,
-host imports, or framework startup.
+closed. The local ARM64 guest fixture verifies `_strlen` through the SVC import
+bridge and returns exit status 42. Guest-to-guest calls, Objective-C imports,
+and framework startup still have no ARM64 runtime fixture.
 `--diagnose-host` is independent of an input image and reports the current
 Windows architecture, pointer width, supported native Mach-O target, prefix
 source, preferred universal-binary slice, and configured cross-architecture

@@ -3427,8 +3427,9 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 		cpu.pc = mapping.EntryAddress();
 		for (;;) {
 			const auto result = backend.Run(cpu);
-			if (result.state.pc == return_sentinel && result.exception ==
-				Dynarmic::A64::Exception::NoExecuteFault) {
+			if (result.state.pc == return_sentinel ||
+				(result.fault_address == return_sentinel &&
+					result.fault == "AArch64 instruction fetch is outside executable guest memory")) {
 				return static_cast<int>(result.state.x[0]);
 			}
 			if (result.svc) {

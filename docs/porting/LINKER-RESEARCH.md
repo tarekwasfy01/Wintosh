@@ -117,14 +117,15 @@ Systembibliotheken, Host-Imports und Frameworks.
 
 ## Nächster Ausbau
 
-Eine weitere Clang-Datei enthielt `__TEXT,__cstring` mit den Bytes `41 00`,
-eine globale Datenvariable mit absolutem Verweis darauf sowie Code, der den
-Zeiger dereferenzierte. Der Linker legte den Literalbereich im Output-
-Datenbereich ab, rebased den Zeiger, und Wintosh gab den ersten Bytewert
-**65** zurück. Der konstante Abschnitt bleibt dabei schreibbar; korrekte
-Read-only-Seitenschutzabbildung ist noch offen.
+Eine Clang-Datei enthielt `__TEXT,__cstring` mit den Bytes `41 00`, eine
+globale Datenvariable mit absolutem Verweis darauf sowie Code, der den Zeiger
+dereferenzierte. Der Linker gibt den Literalbereich im nicht beschreibbaren
+`__TEXT,__const`-Segment aus, rebased den Zeiger, und Wintosh gibt den ersten
+Bytewert **65** zurück. Eine zweite Datei referenzierte ein lokales Literal
+direkt aus dem Code; die Relokation wurde angewandt und der Gast gab **66**
+zurück.
 
-Als Nächstes kommen echte getrennte Read-only-Sections und mehr Literaltypen.
+Als Nächstes kommen weitere getrennte Literaltypen und Section-Kombinationen.
 Danach folgen importierte Darwin-Symbole und ausgewählte CRT/libc-Pfade. Der Windows-
 Host besitzt weder `C:\msys64` noch `C:\cygwin64`; `ld64-msys` ist hier derzeit
 keine baubare lokale Alternative. Die Datei-für-Datei-Lizenzprüfung bleibt

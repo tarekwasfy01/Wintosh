@@ -2416,9 +2416,9 @@ rebases for those slots. A two-object fixture referenced `_external_global`
 through that pointer table, mutated it, and returned 42 in the Win32 runner.
 
 The linker also accepts one `__TEXT,__cstring` or `__const` section per object.
-It folds those bytes into the output data segment and adjusts local absolute
-relocations. A global pointer to the C string `"A"` was rebased and
-dereferenced by a compiler-produced guest; Wintosh returned 65. The bytes are
-currently writable in the output image, so read-only page protection is not
-preserved. Additional literal sections, symbol tables, Darwin imports, and CRT
-startup remain open.
+It emits their bytes as a non-writable `__TEXT,__const` section and adjusts
+local absolute relocations. A global pointer to the C string `"A"` was rebased
+and dereferenced by a compiler-produced guest; Wintosh returned 65. A second
+fixture referenced `"B"` directly from code and returned 66. Additional
+literal-section combinations, symbol tables, Darwin imports, and CRT startup
+remain open.

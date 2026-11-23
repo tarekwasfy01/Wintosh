@@ -140,9 +140,9 @@ and a single-object mutable `int` global initialized to 40, incremented, read
 back, and returned as 42 after the dyld slide rebase, a zero-initialized
 `__common` global written and returned as 42, plus a cross-object global
 resolved through an indirect pointer slot and returned as 42. For a local
-relocation, a global pointer to a `__cstring` literal also returned byte value
-65. Constant bytes are folded into writable output data, so section protection
-is not yet preserved. A common slide `δ` preserves a same-section displacement:
+relocation, global and local pointers to `__cstring` literals returned byte
+values 65 and 66. The linker emits those bytes in a non-writable
+`__TEXT,__const` section. A common slide `δ` preserves a same-section displacement:
 `(S + δ) - (P + 4 + δ) = S - (P + 4)`. For the measured external Clang
 relocation, the linker combines the stored addend with the resolved symbol
 offset and source-section placement. The two-object output worked with either

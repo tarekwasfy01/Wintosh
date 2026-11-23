@@ -46,9 +46,9 @@ definitions between those sections, and supports 32-bit
 pointers receive dyld type-2 rebases for the image slide. It resolves bounded
 `__IMPORT,__pointers` indirect-symbol slots when their target definition is
 among the supplied objects; this does not implement Darwin shared-library
-imports. Constant-section bytes are currently placed in the writable data
-segment, so the prototype does not preserve read-only page protection. Other
-relocation forms, dylibs, CRT, and frameworks remain outside this prototype.
+imports. Constant-section bytes are emitted in a `__TEXT,__const` section in
+the non-writable `__TEXT` segment. Other relocation forms, dylibs, CRT, and
+frameworks remain outside this prototype.
 It emits a segmented `MH_EXECUTE` and drops unsupported
 metadata such as unwind sections. Two-object call and data fixtures, plus
 single-object initialized and zero-initialized global fixtures, ran in Wintosh

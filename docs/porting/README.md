@@ -61,3 +61,6 @@ launch/NIB dependency chain and the latest bounded WSL observation.
 
 For currently unverified loader/emulator references and their upstream scope,
 see [LOADER-EMULATOR-REFERENCES.md](LOADER-EMULATOR-REFERENCES.md).
+
+The current i386 Mach-O object-linker candidates and staged acceptance model
+are documented in [LINKER-RESEARCH.md](LINKER-RESEARCH.md).

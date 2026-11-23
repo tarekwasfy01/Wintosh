@@ -12,16 +12,16 @@ scalar and pointer imports (`malloc`, `free`, retain/release, `strlen`, and
 memory routines) have adapters. Other host imports fail closed with their
 symbol name.
 
-The local Release build of `wintosh.exe` and its host library succeeded. A
+The local Release build of `wintosh.exe` and its host library succeeded. The
 source-derived ARM64 Mach-O fixtures call imported `_strlen` through the SVC
 trampoline and invoke a guest-compiled class method through `objc_msgSend`; both
-exit with status 42 on x64 Windows. The Objective-C fixture covers one
-zero-argument integer-returning guest method, compact relative method lists,
-selector references, and guest callback execution. It does not establish the
-general Objective-C ABI, framework startup, or arbitrary macOS application
-support. The Darwin/XNU syscall surface, Mach traps, callbacks, dynamic imports
-during execution, full framework coverage, and a reproducible Dynarmic
-dependency pin remain open.
+exit with status 42 on x64 Windows. The Objective-C fixture covers compact
+relative method lists, selector references, two integer arguments, one double
+argument, and integer/double guest returns through `objc_msgSend`. It does not
+establish the general Objective-C ABI, aggregate/block/variadic callbacks,
+framework startup, or arbitrary macOS application support. The Darwin/XNU
+syscall surface, Mach traps, callbacks, dynamic imports during execution, full
+framework coverage, and a reproducible Dynarmic dependency pin remain open.
 
 ## Mach broker update, 2026-11-23
 

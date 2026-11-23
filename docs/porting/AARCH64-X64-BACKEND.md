@@ -17,7 +17,7 @@ Beide Pfade sind noch nicht end-to-end mit einer realen macOS-Anwendung belegt:
 | ARM64-Mach-O lesen und CPU-Slice auswählen | vorhanden | vorhanden |
 | Segmente mappen und unterstützte Relokationen anwenden | vorhanden | vorhanden |
 | ARM64-Instruktionen ausführen | Dynarmic-Backend mit ARM64-`main`-Fixture belegt | native CPU, noch nicht end-to-end belegt |
-| Darwin-Imports aus ARM64-Gastcode aufrufen | `_strlen` und ein skalarer Objective-C-Gastmethoden-Callback über SVC end-to-end belegt; weitere Imports nur teilweise | teilweise vorhandene ABI-Brücke |
+| Darwin-Imports aus ARM64-Gastcode aufrufen | `_strlen` und Objective-C-Gastcallbacks mit Integer-/Double-Argumenten und -Rückgaben über SVC end-to-end belegt; weitere Imports nur teilweise | teilweise vorhandene ABI-Brücke |
 | Darwin-Systemdienste und GUI aus dem ARM64-Gast bedienen | fehlt | bestehende Windows-Implementierungen, ARM64-Gastbelege fehlen |
 
 Ein CPU-Backend allein schließt somit nicht den Ausführungspfad.
@@ -139,9 +139,10 @@ Dynarmic-Speicher-Callbacks prüfen jede Instruktions- und Datenadresse gegen
 die registrierten Segmente und deren Darwin-Rechte. Argument-, Umgebungs- und
 Startup-Puffer werden für den Gastzugriff registriert. Ein kompatibler
 `main`-Return wird über einen privaten Nicht-Ausführbar-Sentinel erkannt.
-Lokale Release-Fixtures belegen `_strlen`-Import und einen begrenzten
-`objc_msgSend`-Gastcallback. Ein funktionierender macOS-App- oder
-Frameworkstart ist damit nicht belegt.
+Lokale Release-Fixtures belegen `_strlen`-Import und begrenzte
+`objc_msgSend`-Gastcallbacks mit Integer- und Double-Argumenten sowie
+Rückgabewerten. Ein funktionierender macOS-App- oder Frameworkstart ist damit
+nicht belegt.
 
 Der Adapterzustand ist als `A64CpuState` mit `x0..x30`, `v0..v31`, `SP`,
 `PC`, `PSTATE`, `FPCR` und `FPSR` modelliert. Jeder Lauf gibt diesen Zustand
@@ -226,7 +227,7 @@ festgelegt werden.
 | A64-Trap-Zustand | x0–x30, v0–v31, SP, PC, PSTATE, FPCR und FPSR rückführbar und fortsetzbar |
 | Darwin-UNIX-SVC | `exit`, `wait4` (mit lokaler Status-/Rusage-Kopie), `read`, `write`, `readv`, `writev`, `pread`, `pwrite`, `open`, `close`, `link`, `unlink`, `chdir`, `chmod`, `fchmod`, `symlink`, `readlink`, `umask`, Prozess-/Gruppen-ID-Aufrufe, `dup`, `dup2`, `pipe`, `socket`, `socketpair`, `connect`, `bind`, `listen`, `accept`, `recvfrom`, `sendto`, `getpeername`, `getsockname`, `shutdown`, `gettimeofday`, `getrusage`, `getpriority`, `setpriority`, `access`, `rename`, `mkdir`, `rmdir`, `fsync`, `fdatasync`, `stat`, `lstat`, `fstat`, `lseek`, `truncate`, `ftruncate`, `mmap`, `munmap` (nur ganzes Mapping), `mprotect`, `msync`, `madvise`, `sysctl` (implementierte zweistufige `KERN`-/`HW`-MIBs), `kill`, `sigaction`, `sigprocmask`; andere UNIX-Nummern liefern `ENOSYS`; kein Mach-Trap-Dispatcher |
 | x64-Host-Gast-Speicherprüfung | Segmentrechte und Bereichsgrenzen im Callback umgesetzt; Hauptexecutable, Bootstrap-dylibs, Startpuffer und dynamische Mappings werden registriert; keine Laufzeit-Fixture |
-| A64-Import-Trampoline und ABI-Dispatcher | teilweise: `_strlen` sowie ein nullargumentiger Integer-Objective-C-Gastcallback bestehen; übrige ABI-Klassen nur teilweise belegt |
+| A64-Import-Trampoline und ABI-Dispatcher | teilweise: `_strlen` sowie Integer-/Double-Objective-C-Gastcallbacks mit Argumenten bestehen; übrige ABI-Klassen nur teilweise belegt |
 | Schmale ARM64 Mach-O Runtime-Fixtures auf x64 Windows | `_strlen` und ein Objective-C-Gastcallback bestehen; App-Bundles/Frameworkstart fehlen |
 
 Die lokalen Fixtures belegen nur die jeweils beschriebenen AArch64-Instruktions-

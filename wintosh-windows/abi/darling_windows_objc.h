@@ -62,11 +62,13 @@ Class DARLING_OBJC_GUEST_ABI objc_getClass(const char* name);
 Class DARLING_OBJC_GUEST_ABI objc_getMetaClass(const char* name);
 int DARLING_OBJC_GUEST_ABI objc_getClassList(Class* buffer, int buffer_count);
 std::size_t DARLING_OBJC_GUEST_ABI darling_objc_register_macho_classlist(const void* classlist,
-	std::size_t bytes, std::intptr_t image_slide = 0);
+	std::size_t bytes, std::intptr_t image_slide = 0,
+	std::uintptr_t image_vm_begin = 0, std::uintptr_t image_vm_end = 0);
 std::size_t DARLING_OBJC_GUEST_ABI darling_objc_register_macho_categories(const void* categories,
 	std::size_t bytes);
 std::size_t DARLING_OBJC_GUEST_ABI darling_objc_register_macho_selrefs(const void* selrefs,
-	std::size_t bytes, std::intptr_t image_slide = 0);
+	std::size_t bytes, std::intptr_t image_slide = 0,
+	std::uintptr_t image_vm_begin = 0, std::uintptr_t image_vm_end = 0);
 std::size_t DARLING_OBJC_GUEST_ABI darling_objc_register_macho_constant_strings(
 	const void* strings, std::size_t bytes);
 bool DARLING_OBJC_GUEST_ABI darling_objc_is_constant_string(id object);

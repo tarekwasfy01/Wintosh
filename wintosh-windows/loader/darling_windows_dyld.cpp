@@ -177,6 +177,17 @@ darling_objc_image_token* RegisterDynamicObjectiveCSections(const MachOImage& im
 {
 	auto* token = darling_objc_begin_image_registration();
 	if (token == nullptr) return nullptr;
+	std::uintptr_t image_vm_begin = std::numeric_limits<std::uintptr_t>::max();
+	std::uintptr_t image_vm_end = 0;
+	for (const auto& segment : image.Segments()) {
+		if (segment.vm_size == 0 || segment.vm_address >
+			std::numeric_limits<std::uintptr_t>::max() - segment.vm_size)
+			continue;
+		image_vm_begin = std::min(image_vm_begin,
+			static_cast<std::uintptr_t>(segment.vm_address));
+		image_vm_end = std::max(image_vm_end,
+			static_cast<std::uintptr_t>(segment.vm_address + segment.vm_size));
+	}
 	for (const auto& section : image.Sections()) {
 		if (section.section_name != "__objc_classlist" &&
 			section.section_name != "__objc_nlclslist" &&
@@ -193,7 +204,8 @@ darling_objc_image_token* RegisterDynamicObjectiveCSections(const MachOImage& im
 		else if (section.section_name == "__objc_selrefs")
 			darling_objc_register_macho_selrefs(
 				reinterpret_cast<const void*>(address),
-				static_cast<std::size_t>(section.size), mapping.Slide());
+				static_cast<std::size_t>(section.size), mapping.Slide(),
+				image_vm_begin, image_vm_end);
 		else if (section.section_name == "__cfstring")
 			darling_objc_register_macho_constant_strings(
 				reinterpret_cast<const void*>(address),
@@ -201,7 +213,8 @@ darling_objc_image_token* RegisterDynamicObjectiveCSections(const MachOImage& im
 		else
 			darling_objc_register_macho_classlist(
 				reinterpret_cast<const void*>(address),
-				static_cast<std::size_t>(section.size), mapping.Slide());
+				static_cast<std::size_t>(section.size), mapping.Slide(),
+				image_vm_begin, image_vm_end);
 	}
 	darling_objc_end_image_registration(token);
 	return token;

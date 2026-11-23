@@ -30,6 +30,7 @@
 #include <stdexcept>
 #include <system_error>
 #include <utility>
+#include <string_view>
 
 namespace darling::windows_host {
 
@@ -60,6 +61,71 @@ using DarlingHostMemcpyImport = void* (DARLING_HOST_GUEST_ABI *)(
 using DarlingObjcUnaryImport = void* (DARLING_HOST_GUEST_ABI *)(void*);
 using DarlingObjcNameImport = std::uintptr_t (DARLING_HOST_GUEST_ABI *)(
 	const char*);
+
+bool ReadArm64ObjcScalarType(std::string_view encoding, std::size_t& cursor,
+	bool allow_void, unsigned depth = 0)
+{
+	if (depth > 8)
+		return false;
+	while (cursor < encoding.size() &&
+		std::string_view("rnNoORV").find(encoding[cursor]) != std::string_view::npos)
+		++cursor;
+	if (cursor >= encoding.size())
+		return false;
+	const char type = encoding[cursor++];
+	if (type == '^') {
+		if (cursor < encoding.size() && encoding[cursor] == '?') {
+			++cursor;
+			return true;
+		}
+		return ReadArm64ObjcScalarType(encoding, cursor, true, depth + 1);
+	}
+	if (type == '@') {
+		if (cursor < encoding.size() && encoding[cursor] == '?')
+			return false;
+		if (cursor < encoding.size() && encoding[cursor] == '"') {
+			++cursor;
+			const auto end = encoding.find('"', cursor);
+			if (end == std::string_view::npos)
+				return false;
+			cursor = end + 1;
+		}
+		return true;
+	}
+	if (type == 'v')
+		return allow_void;
+	return std::string_view("cCsSiIlLqQBfd#:*?").find(type) !=
+		std::string_view::npos;
+}
+
+void SkipArm64ObjcTypeOffset(std::string_view encoding, std::size_t& cursor)
+{
+	if (cursor < encoding.size() && (encoding[cursor] == '+' || encoding[cursor] == '-'))
+		++cursor;
+	while (cursor < encoding.size() && encoding[cursor] >= '0' &&
+		encoding[cursor] <= '9')
+		++cursor;
+}
+
+bool SupportsArm64ObjcGuestCallback(std::string_view encoding)
+{
+	std::size_t cursor = 0;
+	if (!ReadArm64ObjcScalarType(encoding, cursor, true))
+		return false;
+	SkipArm64ObjcTypeOffset(encoding, cursor);
+	if (cursor >= encoding.size() || encoding[cursor++] != '@')
+		return false;
+	SkipArm64ObjcTypeOffset(encoding, cursor);
+	if (cursor >= encoding.size() || encoding[cursor++] != ':')
+		return false;
+	SkipArm64ObjcTypeOffset(encoding, cursor);
+	while (cursor < encoding.size()) {
+		if (!ReadArm64ObjcScalarType(encoding, cursor, false))
+			return false;
+		SkipArm64ObjcTypeOffset(encoding, cursor);
+	}
+	return true;
+}
 
 void RemoveActiveLazyBindingSession(const MachOLazyBindingSession* session) noexcept
 {
@@ -3467,20 +3533,12 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 						const auto implementation_address =
 							reinterpret_cast<std::uintptr_t>(implementation);
 						if (backend.ContainsExecutableGuestAddress(implementation_address)) {
-							std::string encoding = method_getTypeEncoding(method) ?
+							const std::string_view encoding = method_getTypeEncoding(method) ?
 								method_getTypeEncoding(method) : "";
-						encoding.erase(std::remove_if(encoding.begin(), encoding.end(),
-							[](unsigned char character) {
-								return character >= '0' && character <= '9';
-							}), encoding.end());
-							if (encoding != "q@:" && encoding != "Q@:" &&
-								encoding != "i@:" && encoding != "I@:" &&
-								encoding != "B@:" && encoding != "c@:" &&
-								encoding != "C@:" && encoding != "v@:" &&
-								encoding != "d@:" && encoding != "f@:") {
+							if (!SupportsArm64ObjcGuestCallback(encoding)) {
 								throw std::runtime_error(
 									"ARM64 guest Objective-C callback signature is unsupported: " +
-									encoding);
+									std::string(encoding));
 							}
 							A64CpuState nested = result.state;
 							nested.pc = implementation_address;

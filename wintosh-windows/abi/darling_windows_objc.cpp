@@ -1637,8 +1637,19 @@ extern "C" std::uintptr_t darling_windows_objc_msgSendSuper2_sysv_dispatch(
 }
 #endif
 
+std::uintptr_t NormalizeImagePointer(std::uintptr_t address,
+	std::intptr_t image_slide, std::uintptr_t image_vm_begin,
+	std::uintptr_t image_vm_end)
+{
+	if (image_vm_begin <= address && address < image_vm_end)
+		return static_cast<std::uintptr_t>(
+			static_cast<std::intptr_t>(address) + image_slide);
+	return address;
+}
+
 void RegisterMethodList(Class cls, std::uintptr_t method_list_address,
-	bool class_method = false, std::intptr_t image_slide = 0)
+	bool class_method = false, std::intptr_t image_slide = 0,
+	std::uintptr_t image_vm_begin = 0, std::uintptr_t image_vm_end = 0)
 {
 	if (!cls || !method_list_address)
 		return;
@@ -1684,9 +1695,8 @@ void RegisterMethodList(Class cls, std::uintptr_t method_list_address,
 				std::uintptr_t selector_name = 0;
 				std::memcpy(&selector_name, reinterpret_cast<const void*>(name_address),
 					sizeof(selector_name));
-				if (selector_name < name_address)
-					selector_name = static_cast<std::uintptr_t>(
-						static_cast<std::intptr_t>(selector_name) + image_slide);
+				selector_name = NormalizeImagePointer(selector_name, image_slide,
+					image_vm_begin, image_vm_end);
 				name_address = selector_name;
 			}
 		} else {
@@ -1923,7 +1933,8 @@ extern "C" int objc_getClassList(Class* buffer, int buffer_count)
 }
 
 extern "C" std::size_t darling_objc_register_macho_classlist(
-	const void* classlist, std::size_t bytes, std::intptr_t image_slide)
+	const void* classlist, std::size_t bytes, std::intptr_t image_slide,
+	std::uintptr_t image_vm_begin, std::uintptr_t image_vm_end)
 {
 	if (!classlist || bytes < sizeof(std::uintptr_t))
 		return 0;
@@ -1969,7 +1980,8 @@ extern "C" std::size_t darling_objc_register_macho_classlist(
 					reinterpret_cast<const std::uint8_t*>(data_address) +
 					ClassDataMethodsOffset,
 				sizeof(method_list_address));
-			RegisterMethodList(cls, method_list_address, false, image_slide);
+			RegisterMethodList(cls, method_list_address, false, image_slide,
+				image_vm_begin, image_vm_end);
 		std::uintptr_t protocol_list_address = 0;
 		std::memcpy(&protocol_list_address,
 					reinterpret_cast<const std::uint8_t*>(data_address) +
@@ -2004,7 +2016,8 @@ extern "C" std::size_t darling_objc_register_macho_classlist(
 							reinterpret_cast<const std::uint8_t*>(meta_data_address) +
 								ClassDataMethodsOffset,
 						sizeof(meta_methods));
-					RegisterMethodList(cls, meta_methods, true, image_slide);
+					RegisterMethodList(cls, meta_methods, true, image_slide,
+						image_vm_begin, image_vm_end);
 				}
 			}
 		}
@@ -2013,7 +2026,8 @@ extern "C" std::size_t darling_objc_register_macho_classlist(
 }
 
 extern "C" std::size_t darling_objc_register_macho_selrefs(
-	const void* selrefs, std::size_t bytes, std::intptr_t image_slide)
+	const void* selrefs, std::size_t bytes, std::intptr_t image_slide,
+	std::uintptr_t image_vm_begin, std::uintptr_t image_vm_end)
 {
 	if (!selrefs || bytes < sizeof(std::uintptr_t))
 		return 0;
@@ -2024,9 +2038,8 @@ extern "C" std::size_t darling_objc_register_macho_selrefs(
 		std::memcpy(&name_address,
 			static_cast<const std::uint8_t*>(selrefs) +
 				index * sizeof(name_address), sizeof(name_address));
-		if (name_address < reinterpret_cast<std::uintptr_t>(selrefs))
-			name_address = static_cast<std::uintptr_t>(
-				static_cast<std::intptr_t>(name_address) + image_slide);
+		name_address = NormalizeImagePointer(name_address, image_slide,
+			image_vm_begin, image_vm_end);
 		const auto* name = reinterpret_cast<const char*>(name_address);
 		if (!name || name[0] == '\0' || strnlen_s(name, 1024) == 1024)
 			continue;

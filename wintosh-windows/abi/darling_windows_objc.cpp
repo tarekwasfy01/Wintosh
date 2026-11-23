@@ -1371,6 +1371,15 @@ std::uintptr_t DispatchSysVObjcCall(DarlingSysVObjcCallFrame* input,
 			method.guest_abi, receiver, selector, bytes, length);
 		return 0;
 	}
+	if (types == "v@:^{CGPoint=dd}q") {
+		const auto* points = reinterpret_cast<const DarlingObjcPoint*>(
+			frame->gp[argument_index]);
+		const auto count = static_cast<std::int64_t>(
+			frame->gp[argument_index + 1]);
+		InvokeObjcImplementation<void, const DarlingObjcPoint*, std::int64_t>(
+			imp, method.guest_abi, receiver, selector, points, count);
+		return 0;
+	}
 	if (types == "B@:@") {
 		const id argument = reinterpret_cast<id>(frame->gp[argument_index]);
 		return InvokeObjcImplementation<bool>(imp, method.guest_abi, receiver,
@@ -3369,6 +3378,16 @@ id DarlingObjcMsgSendDispatch(id receiver, SEL selector,
 		if (implementation)
 			reinterpret_cast<VoidMethod>(implementation)(receiver, selector,
 				DARLING_OBJC_VA_ARG(arguments, std::int64_t));
+	} else if (std::strcmp(types, "v@:^{CGPoint=dd}q") == 0) {
+		const IMP implementation = FindMethod(receiver, selector);
+		using PointsMethod = void (*)(id, SEL, const DarlingObjcPoint*,
+			std::int64_t);
+		const auto* points = DARLING_OBJC_VA_ARG(arguments,
+			const DarlingObjcPoint*);
+		const auto count = DARLING_OBJC_VA_ARG(arguments, std::int64_t);
+		if (implementation)
+			reinterpret_cast<PointsMethod>(implementation)(receiver, selector,
+				points, count);
 	} else if (std::strcmp(types, "v@:@") == 0) {
 		darling_objc_msgSend_void1_object(receiver, selector,
 			DARLING_OBJC_VA_ARG(arguments, id));
@@ -3718,6 +3737,15 @@ id DarlingObjcMsgSendSuperDispatch(id receiver, Class superclass, SEL selector,
 		if (implementation)
 			reinterpret_cast<void (*)(id, SEL, std::int64_t)>(implementation)(receiver, selector,
 				varargs.template Next<std::int64_t>());
+	} else if (std::strcmp(types, "v@:^{CGPoint=dd}q") == 0) {
+		const IMP implementation = class_getMethodImplementation(superclass, selector);
+		using PointsMethod = void (*)(id, SEL, const DarlingObjcPoint*,
+			std::int64_t);
+		const auto* points = varargs.template Next<const DarlingObjcPoint*>();
+		const auto count = varargs.template Next<std::int64_t>();
+		if (implementation)
+			reinterpret_cast<PointsMethod>(implementation)(receiver, selector,
+				points, count);
 	} else if (std::strcmp(types, "^v@:^v") == 0) {
 		const IMP implementation = class_getMethodImplementation(superclass, selector);
 		using PointerMethod = void* (*)(id, SEL, void*);

@@ -939,6 +939,15 @@ control-point offsets to `currentPoint`, then appends a cubic segment. The
 existing Objective-C ABI dispatcher already handles the three CGPoint
 arguments. No Mach-O guest fixture has exercised this selector yet.
 
+`appendBezierPathWithPoints:count:` now reads up to one million finite guest
+points with `ReadProcessMemory`, rejects unreadable or overflowing buffers,
+and appends a connected line sequence. The first point starts a new subpath
+when the path is empty or its last stored element closes a shape; otherwise it
+connects from the current open subpath. Its x86_64 SysV and Windows ARM64
+Objective-C dispatch paths decode the point pointer and signed `NSInteger`
+count. A Mach-O guest fixture has not verified these selector and pointer
+semantics.
+
 ### NSBezierPath center arcs (2026-11-23)
 
 `appendBezierPathWithArcWithCenter:radius:startAngle:endAngle:clockwise:`

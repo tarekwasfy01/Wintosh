@@ -187,6 +187,35 @@ for scalar floating returns, CGRect HFA returns, and NSRange integer-pair
 returns. The C++ dispatchers and assembly shims compile to COFF, but neither a
 linked ARM64 runner nor runtime guest execution has been verified. Do not infer
 Cocoa compatibility from the object files.
+
+## NSBezierPath point-array dispatch
+
+For a guest array `P = (p₀, …, pₙ₋₁)` of 16-byte `CGPoint` values, the path
+operation is modeled as
+
+`Append(P) = (Move(p₀) if no open subpath else Line(p₀)) · Πᵢ₌₁ⁿ⁻¹ Line(pᵢ)`.
+
+If the current path is closed (its last command is `Close`, `Rect`, or `Oval`),
+the first point begins a new subpath. The operation never closes the new path.
+Every coordinate must be finite, `0 < n ≤ 1,000,000`, and the guest byte range
+`[P, P + 16n)` must be readable before any path command is committed. This
+gives the host adapter a bounded memory-copy contract rather than dereferencing
+an unchecked Mach-O pointer.
+
+The method encoding is `v@:^{CGPoint=dd}q`: two explicit arguments, a pointer
+to points and signed 64-bit `NSInteger` count. The call transform is
+architecture-dependent:
+
+| Guest architecture | Guest argument source | Host IMP argument form | Implemented path |
+|---|---|---|---|
+| x86_64 Darwin SysV | GP slots for pointer and count after `self,_cmd` | typed fixed-arity call; guest IMP preserves SysV | encoding-specific dispatcher |
+| Windows ARM64 host | Darwin variadic stack slots | typed call in Windows ARM64 integer registers | ARM64 stack reader and method dispatcher |
+
+`Dispatch(P,n)` is valid only if the encoding selects this signature, both
+arguments retain their width/signedness, and the complete point range is
+copied. The source implements these edges; a guest fixture has not yet checked
+selector dispatch or the resulting path elements.
+
 Therefore architecture support composes as
 
 `E(host, guest) = P(host, guest) AND M(host, guest) AND X(host, guest)`,

@@ -815,6 +815,10 @@ mutating the NSBezierPath. The context flatness is restored before clipping.
 `relativeMoveToPoint:` / `relativeLineToPoint:` add offsets to that point.
 `relativeCurveToPoint:controlPoint1:controlPoint2:` adds all three supplied
 offsets to the current point and appends the resulting cubic Bézier segment.
+`appendBezierPathWithPoints:count:` copies a bounded array of finite `NSPoint`
+values from guest memory, starts with a move when the receiver has no open
+subpath, and appends the remaining points as connected lines. A closed path
+starts a new subpath; the operation does not close the appended path.
 `appendBezierPathWithArcFromPoint:toPoint:radius:` computes tangent points and
 the corner-circle center, appends a line to the first tangent, then cubic
 segments no larger than 90 degrees. The radius is reduced when either adjacent

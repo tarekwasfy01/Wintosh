@@ -2519,6 +2519,42 @@ void NSBezierPathLineToPoint(id self, SEL, DarlingObjcPoint point)
 	NSBezierPathAppend(self, BezierCommand{BezierCommandKind::Line, {point}});
 }
 
+void NSBezierPathAppendPoints(id self, SEL, const DarlingObjcPoint* guest_points,
+	std::int64_t count)
+{
+	constexpr std::int64_t maximum_points = 1'000'000;
+	if (self == nullptr || guest_points == nullptr || count <= 0 ||
+		count > maximum_points) return;
+	const auto point_count = static_cast<std::size_t>(count);
+	if (point_count > (std::numeric_limits<std::size_t>::max)() /
+		sizeof(DarlingObjcPoint)) return;
+	const std::size_t byte_count = point_count * sizeof(DarlingObjcPoint);
+	std::vector<DarlingObjcPoint> points;
+	try { points.resize(point_count); }
+	catch (...) { return; }
+	SIZE_T bytes_read = 0;
+	if (!ReadProcessMemory(GetCurrentProcess(), guest_points, points.data(),
+		byte_count, &bytes_read) || bytes_read != byte_count) return;
+	for (const auto& point : points)
+		if (!std::isfinite(point.x) || !std::isfinite(point.y)) return;
+	try {
+		std::vector<BezierCommand> commands;
+		commands.reserve(point_count);
+		std::lock_guard lock(g_bezier_mutex);
+		auto& path = g_bezier_paths[self].commands;
+		const bool starts_new_subpath = path.empty() ||
+			path.back().kind == BezierCommandKind::Close ||
+			path.back().kind == BezierCommandKind::Rect ||
+			path.back().kind == BezierCommandKind::Oval;
+		commands.push_back({starts_new_subpath ? BezierCommandKind::Move :
+			BezierCommandKind::Line, {points.front()}});
+		for (std::size_t index = 1; index < point_count; ++index)
+			commands.push_back({BezierCommandKind::Line, {points[index]}});
+		path.insert(path.end(), commands.begin(), commands.end());
+	} catch (...) {
+	}
+}
+
 void NSBezierPathCurveToPoint(id self, SEL, DarlingObjcPoint end,
 	DarlingObjcPoint control1, DarlingObjcPoint control2)
 {
@@ -21382,6 +21418,10 @@ void RegisterAppKitClasses()
 		class_addMethod(bezier_path, sel_registerName("lineToPoint:"),
 			reinterpret_cast<IMP>(&NSBezierPathLineToPoint),
 			"v@:{CGPoint=dd}");
+		class_addMethod(bezier_path,
+			sel_registerName("appendBezierPathWithPoints:count:"),
+			reinterpret_cast<IMP>(&NSBezierPathAppendPoints),
+			"v@:^{CGPoint=dd}q");
 		class_addMethod(bezier_path,
 			sel_registerName("relativeMoveToPoint:"),
 			reinterpret_cast<IMP>(&NSBezierPathRelativeMoveToPoint),

@@ -2330,5 +2330,8 @@ The loader now parses `DYLD_CHAINED_PTR_32` for 32-bit Mach-O images using its
 addend. Rebase targets receive the image slide; tagged non-pointer values are
 restored by subtracting dyld's `(64 MiB + max_valid_pointer) / 2` bias. The
 fixup writer uses the 32-bit absolute path and rejects width/image mismatches.
-The Windows x64 build compiles this parser path, but there is no 32-bit chained
-Mach-O runtime fixture yet.
+The Windows x64 build compiles this parser path, but it cannot execute 32-bit
+Mach-O on its 64-bit host. A separate Win32 build was attempted and is currently
+blocked by the repository's 64-bit-only ABI-bridge assertion and x64-specific
+`CONTEXT.Rip/Rsp` use in the runner. The Win32 host target and a 32-bit chained
+Mach-O runtime fixture remain unimplemented.

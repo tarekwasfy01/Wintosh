@@ -856,6 +856,11 @@ extern "C" bool darling_objc_run_pending_guest_callbacks()
 	}
 }
 
+extern "C" bool darling_objc_has_guest_method_invoker()
+{
+	return active_guest_method_invoker != nullptr;
+}
+
 namespace {
 
 ObjcMethodSnapshot LookupMethodSnapshot(Class start, SEL selector,

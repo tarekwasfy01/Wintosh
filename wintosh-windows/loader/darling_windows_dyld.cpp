@@ -1315,7 +1315,7 @@ int DynamicImageExecuteEntry(const DarwinDynamicImage& image,
 	for (const auto& provider : image.providers)
 		providers.emplace_back(&provider.image, &provider.mapping);
 	return image.image.ExecuteEntry(image.mapping, arguments, environment, {},
-		entry_abi, providers);
+		entry_abi, providers, false);
 }
 
 const std::filesystem::path& DynamicImagePath(const DarwinDynamicImage& image) noexcept

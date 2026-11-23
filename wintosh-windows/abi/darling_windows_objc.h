@@ -92,6 +92,7 @@ void DARLING_OBJC_GUEST_ABI darling_objc_ensure_class_initialized(Class cls);
 void DARLING_OBJC_GUEST_ABI darling_objc_queue_guest_callback(IMP implementation,
 	id receiver, SEL selector);
 bool DARLING_OBJC_GUEST_ABI darling_objc_run_pending_guest_callbacks();
+bool DARLING_OBJC_GUEST_ABI darling_objc_has_guest_method_invoker();
 void DARLING_OBJC_GUEST_ABI darling_objc_unregister_image(darling_objc_image_token* token);
 Protocol DARLING_OBJC_GUEST_ABI objc_allocateProtocol(const char* name);
 Protocol DARLING_OBJC_GUEST_ABI objc_getProtocol(const char* name);

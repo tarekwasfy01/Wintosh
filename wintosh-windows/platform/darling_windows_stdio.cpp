@@ -121,6 +121,10 @@ std::mutex exit_handler_mutex;
 struct DarlingExitHandler final {
 	std::function<void()> function;
 	void* dso_handle{};
+	void* guest_function{};
+	void* guest_argument{};
+	bool guest_callback{};
+	bool guest_has_argument{};
 };
 std::vector<DarlingExitHandler> darling_exit_handlers;
 std::mutex darwin_environment_mutex;
@@ -7131,7 +7135,7 @@ extern "C" int darling_windows_atexit_guest(void (*function)())
 			// source-compatible registration fallback for synthetic fixtures.
 			function();
 #endif
-		}, nullptr});
+		}, nullptr, reinterpret_cast<void*>(function), nullptr, true, false});
 		return 0;
 	} catch (...) {
 		return -1;
@@ -7173,10 +7177,35 @@ extern "C" int darling_windows_cxa_atexit_guest(void (*function)(void*),
 #else
 			function(argument);
 #endif
-		}, dso_handle});
+		}, dso_handle, reinterpret_cast<void*>(function), argument, true, true});
 		return 0;
 	} catch (...) {
 		return -1;
+	}
+}
+
+extern "C" void darling_windows_cxa_finalize_guest(void* dso_handle,
+	void (*invoke)(void*, void*, bool, void*), void* context)
+{
+	std::vector<DarlingExitHandler> pending;
+	{
+		std::lock_guard lock(exit_handler_mutex);
+		for (std::size_t index = darling_exit_handlers.size(); index != 0; --index) {
+			const auto position = index - 1;
+			if (dso_handle != nullptr &&
+				darling_exit_handlers[position].dso_handle != dso_handle)
+				continue;
+			pending.push_back(std::move(darling_exit_handlers[position]));
+			darling_exit_handlers.erase(darling_exit_handlers.begin() +
+				static_cast<std::ptrdiff_t>(position));
+		}
+	}
+	for (auto& handler : pending) {
+		if (handler.guest_callback && invoke)
+			invoke(handler.guest_function, handler.guest_argument,
+				handler.guest_has_argument, context);
+		else if (handler.function)
+			handler.function();
 	}
 }
 

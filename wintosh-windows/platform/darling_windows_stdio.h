@@ -336,6 +336,8 @@ extern "C" int darling_windows_cxa_atexit(void (*function)(void*), void* argumen
 	void* dso_handle);
 extern "C" int darling_windows_cxa_atexit_guest(void (*function)(void*),
 	void* argument, void* dso_handle);
+extern "C" void darling_windows_cxa_finalize_guest(void* dso_handle,
+	void (*invoke)(void*, void*, bool, void*), void* context);
 extern "C" void darling_windows_cxa_finalize(void* dso_handle);
 extern "C" int darling_windows_getpid();
 extern "C" std::uint64_t darling_windows_pthread_self();

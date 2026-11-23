@@ -467,7 +467,8 @@ public:
 		const std::vector<std::string>& environment = {},
 		const std::vector<std::string>& apple_parameters = {},
 		DarwinEntryAbi entry_abi = DarwinEntryAbi::CompatibleMain,
-		const std::vector<std::pair<const MachOImage*, const Mapping*>>& additional_images = {}) const;
+		const std::vector<std::pair<const MachOImage*, const Mapping*>>& additional_images = {},
+		bool finalize_process = true) const;
 
 private:
 	MachOImage(HANDLE file, HANDLE mapping, const std::uint8_t* view,
@@ -533,6 +534,8 @@ public:
 
 	[[nodiscard]] const std::vector<MappedMachOSegment>& Segments() const noexcept { return m_segments; }
 	[[nodiscard]] std::uintptr_t EntryAddress() const noexcept { return m_entry_address; }
+	[[nodiscard]] bool TerminatorsExecuted() const noexcept { return m_terminators_executed; }
+	void MarkTerminatorsExecuted() const noexcept { m_terminators_executed = true; }
 	[[nodiscard]] std::intptr_t Slide() const noexcept { return m_slide; }
 	[[nodiscard]] std::uintptr_t CreateArm64HostImportThunk(
 		const std::string& symbol, std::uintptr_t target) const;
@@ -559,6 +562,7 @@ private:
 	std::size_t m_reservation_bytes = 0;
 	std::size_t m_thunk_pool_offset = 0;
 	mutable std::size_t m_thunk_pool_used = 0;
+	mutable bool m_terminators_executed = false;
 	mutable std::vector<std::pair<std::uintptr_t, std::uintptr_t>> m_branch_thunks;
 	mutable std::vector<Arm64HostImport> m_arm64_host_imports;
 	// Preserve the linked contents of relocation sites so resolver rebinding

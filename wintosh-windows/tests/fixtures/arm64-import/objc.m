@@ -7,6 +7,28 @@ extern unsigned long strlen(const char *value);
 extern void *malloc(unsigned long bytes);
 extern void *realloc(void *allocation, unsigned long bytes);
 extern void free(void *allocation);
+extern int write(int descriptor, const void *bytes, unsigned long length);
+extern int atexit(void (*function)(void));
+extern int __cxa_atexit(void (*function)(void *), void *argument, void *dso);
+
+static void WintoshCxaAtexitMarker(void *bytes)
+{
+	static const char marker[] = "ARM64_CXA_ATEXIT=PASS\n";
+	(void)bytes;
+	(void)write(1, marker, sizeof(marker) - 1);
+}
+
+static void WintoshAtexitMarker(void)
+{
+	static const char marker[] = "ARM64_ATEXIT=PASS\n";
+	(void)write(1, marker, sizeof(marker) - 1);
+}
+
+__attribute__((destructor)) static void WintoshTerminatorMarker(void)
+{
+	static const char marker[] = "ARM64_TERMINATOR=PASS\n";
+	(void)write(1, marker, sizeof(marker) - 1);
+}
 
 typedef struct {
 	double x;
@@ -199,6 +221,10 @@ typedef WintoshTriple (*WintoshSendTriple)(id, SEL, WintoshTriple);
 
 int main(int argc, char **argv, char **envp)
 {
+	if (atexit(WintoshAtexitMarker) != 0)
+		return 3;
+	if (__cxa_atexit(WintoshCxaAtexitMarker, (void *)0, (void *)0) != 0)
+		return 4;
 	(void)argc;
 	(void)argv;
 	(void)envp;

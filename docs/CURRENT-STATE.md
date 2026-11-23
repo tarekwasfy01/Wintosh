@@ -67,9 +67,7 @@ own `+load` implementation. `objc_smoke` verifies superclass order even when
 the subclass appears first in `__objc_classlist`, as well as class-before-
 category ordering. The order follows Apple's documented load contract
 ([`NSObject +load`](https://developer.apple.com/documentation/objectivec/nsobject-swift.class/load%28%29)).
-Cross-architecture ARM64 `+load` on x64 Windows is rejected until a guest-call
-trampoline is available; ARM64 images without `+load` continue through the
-existing path. Objective-C message dispatch now also invokes `+initialize`
+Objective-C message dispatch invokes `+initialize`
 once per class, superclass first. The class state machine lets same-thread
 recursive messages proceed while other threads wait for initialization to
 finish; `objc_smoke` verifies parent-before-child order, reentrancy, and the
@@ -84,8 +82,10 @@ guest invoker, the queue runs FIFO before the entry point. Class addresses that
 also appear in `__objc_nlclslist` are deduplicated against `__objc_classlist`,
 so a class's `+load` runs once. The ARM64 end-to-end fixture verifies one
 constructor, superclass-first class `+load`, and category `+load` exactly once
-and in that order. Dynamic ARM64 image loading and terminators remain separate
-unverified lifecycle paths.
+and in that order. The same guest-call dispatcher now runs `__cxa_atexit`,
+`atexit`, and `__mod_term_func` callbacks on normal return, preserving reverse
+registration and terminator order. The ARM64 end-to-end fixture checks visible
+markers in that sequence. Dynamic ARM64 image loading remains unverified.
 
 ## Mach broker update, 2026-11-23
 

@@ -38,7 +38,10 @@ its superclass. On x64 Windows with Dynarmic, ARM64 `__mod_init_func`, class
 guest callback loop before entry. The ARM64 fixture checks each callback runs
 once and verifies constructor, superclass-first class, then category order.
 Class entries repeated between `__objc_classlist` and `__objc_nlclslist` are
-deduplicated. Dynamic ARM64 image loading and terminators still need fixtures.
+deduplicated. The ARM64 end-to-end fixture registers `__cxa_atexit`, `atexit`,
+and a `__mod_term_func` terminator and checks that they run through the guest
+dispatcher in that order after normal process return. Dynamic ARM64 image
+loading still needs fixtures.
 
 The Objective-C message dispatcher calls `+initialize` once per class, after
 its superclass has initialized. Reentrant messages from the initializing
@@ -46,8 +49,9 @@ thread proceed, and competing threads wait. `objc_smoke` verifies inheritance,
 reentrancy, and one-shot behavior. For ARM64 guests on x64 Windows, the Dynarmic
 callback loop invokes guest `+initialize` implementations using guest register
 and stack state; the ARM64 end-to-end fixture checks superclass-before-subclass
-initialization. ARM64 `+load` remains a startup-time gap because image
-registration precedes the guest execution callback context.
+initialization. ARM64 startup installs that callback context before queuing
+constructors and `+load`, so those methods also execute in guest register and
+stack state.
 The Win32 target compiles the host library and runner and has launched a
 hand-built i386 `LC_MAIN` Mach-O with no imports; its compatible `main` returned
 42. This confirms the basic mapping and cdecl entry path, not general app

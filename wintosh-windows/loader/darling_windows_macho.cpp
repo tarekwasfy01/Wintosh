@@ -3253,15 +3253,34 @@ void MachOImage::ExecuteInitializers(const Mapping& mapping) const
 
 void MachOImage::ExecuteTerminators(const Mapping& mapping) const
 {
+	if (mapping.TerminatorsExecuted())
+		return;
 #if defined(WINTOSH_HAS_DYNARMIC)
 	if (IsArm64()) {
 		const auto has_terminator = std::any_of(m_sections.begin(), m_sections.end(),
 			[](const auto& section) {
 				return section.section_name == "__mod_term_func" && section.size != 0;
 			});
-		if (has_terminator)
-			throw std::runtime_error(
-				"ARM64 Mach-O terminators require the guest-call/import dispatcher");
+		if (has_terminator && !darling_objc_has_guest_method_invoker())
+			throw std::runtime_error("ARM64 Mach-O terminators require the guest-call/import dispatcher");
+		for (const auto& section : m_sections) {
+			if (section.section_name != "__mod_term_func")
+				continue;
+			if (section.size % sizeof(std::uintptr_t) != 0)
+				throw std::runtime_error("Mach-O __mod_term_func section is not pointer-aligned");
+			const auto address = SectionAddress(mapping, section.segment_name, section.section_name);
+			const auto count = static_cast<std::size_t>(section.size / sizeof(std::uintptr_t));
+			for (std::size_t index = count; index != 0; --index) {
+				const auto function_address = *reinterpret_cast<const std::uintptr_t*>(address +
+					(index - 1) * sizeof(std::uintptr_t));
+				if (function_address == 0 || function_address == static_cast<std::uintptr_t>(-1))
+					continue;
+				darling_objc_queue_guest_callback(reinterpret_cast<IMP>(function_address), nullptr, nullptr);
+			}
+		}
+		if (has_terminator && !darling_objc_run_pending_guest_callbacks())
+			throw std::runtime_error("ARM64 Mach-O terminators could not be dispatched");
+		mapping.MarkTerminatorsExecuted();
 		return;
 	}
 #endif
@@ -3286,6 +3305,7 @@ void MachOImage::ExecuteTerminators(const Mapping& mapping) const
 			terminator();
 		}
 	}
+	mapping.MarkTerminatorsExecuted();
 }
 
 int MachOImage::ExecuteEntry(const Mapping& mapping,
@@ -3293,7 +3313,8 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 	const std::vector<std::string>& environment,
 	const std::vector<std::string>& apple_parameters,
 	DarwinEntryAbi entry_abi,
-	const std::vector<std::pair<const MachOImage*, const Mapping*>>& additional_images) const
+	const std::vector<std::pair<const MachOImage*, const Mapping*>>& additional_images,
+	bool finalize_process) const
 {
 #if defined(WINTOSH_HAS_DYNARMIC)
 	if (!IsArm64())
@@ -3537,7 +3558,22 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 			A64CpuState resumed = trap.state;
 			const auto& x = trap.state.x;
 			const auto& name = imported->symbol;
-			if (name == "_objc_msgSend") {
+			if (name == "_write") {
+				const auto bytes = static_cast<std::size_t>(x[2]);
+				if (bytes > (1u << 20) || !backend.ContainsGuestRange(x[1], bytes, false))
+					throw std::runtime_error("ARM64 nested write import received an invalid guest range");
+				resumed.x[0] = static_cast<std::uint64_t>(darling_windows_write(
+					static_cast<int>(x[0]), reinterpret_cast<const void*>(
+						static_cast<std::uintptr_t>(x[1])), bytes));
+			} else if (name == "_atexit") {
+				resumed.x[0] = static_cast<std::uint64_t>(darling_windows_atexit_guest(
+					reinterpret_cast<void (*)()>(static_cast<std::uintptr_t>(x[0]))));
+			} else if (name == "___cxa_atexit" || name == "_cxa_atexit") {
+				resumed.x[0] = static_cast<std::uint64_t>(darling_windows_cxa_atexit_guest(
+					reinterpret_cast<void (*)(void*)>(static_cast<std::uintptr_t>(x[0])),
+					reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[1])),
+					reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[2]))));
+			} else if (name == "_objc_msgSend") {
 				const auto receiver = reinterpret_cast<id>(
 					static_cast<std::uintptr_t>(x[0]));
 				const auto selector = reinterpret_cast<SEL>(
@@ -3691,6 +3727,26 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 				throw std::runtime_error("ARM64 Objective-C guest callback stopped before return");
 			}
 		};
+		const auto invoke_guest_exit = +[](void* function, void* argument,
+			bool has_argument, void* opaque) {
+			auto& context = *static_cast<GuestInitializerContext*>(opaque);
+			A64CpuState callback = *context.seed;
+			callback.pc = reinterpret_cast<std::uintptr_t>(function);
+			callback.x[0] = has_argument ? reinterpret_cast<std::uintptr_t>(argument) : 0;
+			callback.x[1] = 0;
+			const auto result = (*context.run)(callback, *context.depth + 1);
+			*context.seed = result.state;
+		};
+		const auto finalize_guest_process = [&]() {
+			initializer_depth = 0;
+			darling_windows_cxa_finalize_guest(nullptr, invoke_guest_exit,
+				&initializer_context);
+			ExecuteTerminators(mapping);
+			for (auto image = additional_images.rbegin(); image != additional_images.rend(); ++image) {
+				if (image->first && image->second)
+					image->first->ExecuteTerminators(*image->second);
+			}
+		};
 		void* previous_invoker_context = nullptr;
 		const auto previous_invoker = darling_objc_set_guest_method_invoker(
 			invoke_guest_initializer, &initializer_context,
@@ -3715,6 +3771,10 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 			if (result.state.pc == return_sentinel ||
 				(result.fault_address == return_sentinel &&
 					result.fault == "AArch64 instruction fetch is outside executable guest memory")) {
+				if (finalize_process) {
+					initializer_seed = result.state;
+					finalize_guest_process();
+				}
 				return static_cast<int>(result.state.x[0]);
 			}
 			if (result.svc) {
@@ -3730,7 +3790,22 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 					cpu = result.state;
 					const auto& x = result.state.x;
 					const auto& name = imported->symbol;
-					if (name == "_objc_msgSend" || name == "_objc_msgSendSuper" ||
+					if (name == "_write") {
+						const auto bytes = static_cast<std::size_t>(x[2]);
+						if (bytes > (1u << 20) || !backend.ContainsGuestRange(x[1], bytes, false))
+							throw std::runtime_error("ARM64 write import received an invalid guest range");
+						cpu.x[0] = static_cast<std::uint64_t>(darling_windows_write(
+							static_cast<int>(x[0]), reinterpret_cast<const void*>(
+								static_cast<std::uintptr_t>(x[1])), bytes));
+					} else if (name == "_atexit") {
+						cpu.x[0] = static_cast<std::uint64_t>(darling_windows_atexit_guest(
+							reinterpret_cast<void (*)()>(static_cast<std::uintptr_t>(x[0]))));
+					} else if (name == "___cxa_atexit" || name == "_cxa_atexit") {
+						cpu.x[0] = static_cast<std::uint64_t>(darling_windows_cxa_atexit_guest(
+							reinterpret_cast<void (*)(void*)>(static_cast<std::uintptr_t>(x[0])),
+							reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[1])),
+							reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[2]))));
+					} else if (name == "_objc_msgSend" || name == "_objc_msgSendSuper" ||
 						name == "_objc_msgSendSuper2") {
 						if (name == "_objc_msgSend") {
 							const auto receiver = reinterpret_cast<id>(
@@ -3891,6 +3966,10 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 					syscall_word & 0x00ffffffu);
 				const auto& arguments = result.state.x;
 				if (syscall_number == 1) { // SYS_exit
+					if (finalize_process) {
+						initializer_seed = result.state;
+						finalize_guest_process();
+					}
 					return static_cast<int>(arguments[0]);
 				}
 
@@ -5142,6 +5221,7 @@ MachOImage::Mapping::Mapping(Mapping&& other) noexcept :
 	m_reservation_bytes(other.m_reservation_bytes),
 	m_thunk_pool_offset(other.m_thunk_pool_offset),
 	m_thunk_pool_used(other.m_thunk_pool_used),
+	m_terminators_executed(other.m_terminators_executed),
 	m_branch_thunks(std::move(other.m_branch_thunks)),
 	m_arm64_host_imports(std::move(other.m_arm64_host_imports)),
 	m_relocation_original_values(std::move(other.m_relocation_original_values)),
@@ -5166,6 +5246,7 @@ MachOImage::Mapping& MachOImage::Mapping::operator=(Mapping&& other) noexcept
 		m_reservation_bytes = other.m_reservation_bytes;
 		m_thunk_pool_offset = other.m_thunk_pool_offset;
 		m_thunk_pool_used = other.m_thunk_pool_used;
+		m_terminators_executed = other.m_terminators_executed;
 		m_branch_thunks = std::move(other.m_branch_thunks);
 		m_arm64_host_imports = std::move(other.m_arm64_host_imports);
 		m_relocation_original_values = std::move(other.m_relocation_original_values);
@@ -5194,6 +5275,7 @@ void MachOImage::Mapping::Reset() noexcept
 	m_reservation_bytes = 0;
 	m_thunk_pool_offset = 0;
 	m_thunk_pool_used = 0;
+	m_terminators_executed = false;
 	m_branch_thunks.clear();
 	m_arm64_host_imports.clear();
 	m_relocation_original_values.clear();

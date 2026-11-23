@@ -3661,6 +3661,17 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 						reinterpret_cast<const char*>(static_cast<std::uintptr_t>(arguments[0])),
 						static_cast<int>(arguments[1]));
 					break;
+				case 124: // SYS_fchmod
+					if (arguments[0] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max()) ||
+						arguments[1] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max())) {
+						error_number = EINVAL;
+						break;
+					}
+					syscall_result = darling_windows_fchmod(
+						static_cast<int>(arguments[0]), static_cast<int>(arguments[1]));
+					break;
 				case 20: // SYS_getpid
 					syscall_result = darling_windows_getpid();
 					syscall_result_x1 = static_cast<std::uint64_t>(
@@ -3725,6 +3736,46 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 						std::memcpy(reinterpret_cast<void*>(static_cast<std::uintptr_t>(
 							arguments[2])), &previous, sizeof(previous));
 					}
+					break;
+				}
+				case 96: // SYS_setpriority
+					if (arguments[0] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max()) ||
+						arguments[1] > std::numeric_limits<std::uint32_t>::max() ||
+						arguments[2] > std::numeric_limits<std::uint32_t>::max()) {
+						error_number = EINVAL;
+						break;
+					}
+					syscall_result = darling_windows_setpriority(
+						static_cast<int>(arguments[0]), static_cast<std::uint32_t>(arguments[1]),
+						static_cast<std::int32_t>(static_cast<std::uint32_t>(arguments[2])));
+					break;
+				case 100: // SYS_getpriority
+					if (arguments[0] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max()) ||
+						arguments[1] > std::numeric_limits<std::uint32_t>::max()) {
+						error_number = EINVAL;
+						break;
+					}
+					syscall_result = darling_windows_getpriority(
+						static_cast<int>(arguments[0]), static_cast<std::uint32_t>(arguments[1]));
+					break;
+				case 117: { // SYS_getrusage
+					if (arguments[0] > std::numeric_limits<std::uint32_t>::max()) {
+						error_number = EINVAL;
+						break;
+					}
+					if (!backend.ContainsGuestRange(arguments[1],
+						sizeof(darling_rusage), true)) {
+						error_number = EFAULT;
+						break;
+					}
+					darling_rusage usage{};
+					syscall_result = darling_windows_getrusage(
+						static_cast<std::int32_t>(static_cast<std::uint32_t>(arguments[0])), &usage);
+					if (syscall_result == 0)
+						std::memcpy(reinterpret_cast<void*>(static_cast<std::uintptr_t>(
+							arguments[1])), &usage, sizeof(usage));
 					break;
 				}
 				case 24: // SYS_getuid

@@ -54,6 +54,16 @@ int main()
 		void* partial_mapping = darling_windows_mmap(nullptr, page_size * 3, 3,
 			0x1000 | 2, -1, 0);
 		if (partial_mapping == reinterpret_cast<void*>(-1) ||
+			darling_windows_mprotect(partial_mapping, page_size * 3, 0) != 0) {
+			if (partial_mapping != reinterpret_cast<void*>(-1))
+				darling_windows_munmap(partial_mapping, page_size * 3);
+			throw std::runtime_error("partial MAP_FIXED preparation failed");
+		}
+		void* fixed_replacement = darling_windows_mmap(
+			static_cast<char*>(partial_mapping) + page_size, page_size, 3,
+			0x1000 | 2 | 0x0010, -1, 0);
+		if (partial_mapping == reinterpret_cast<void*>(-1) ||
+			fixed_replacement != static_cast<char*>(partial_mapping) + page_size ||
 			darling_windows_munmap(static_cast<char*>(partial_mapping) + page_size, page_size) != 0 ||
 			darling_windows_munmap(static_cast<char*>(partial_mapping) + page_size, page_size) == 0 ||
 			darling_windows_munmap(partial_mapping, page_size) != 0 ||

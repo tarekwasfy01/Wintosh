@@ -19,11 +19,13 @@ read-only, unmaps the middle page, verifies that the bridge rejects a repeated
 unmap of the hole, then unmaps the left and right pages. The first and last
 releases use raw Darwin `svc #0x80` syscall 73; the middle release and repeated
 unmap use the imported `_munmap` bridge, checking that both paths share the
-same ownership intervals. It also makes a page
-inaccessible and checks that `MAP_FIXED` cannot release a guest region while
-ignoring its current protection. This covers partial anonymous mappings owned
-by the ARM64 guest bridge. File-backed views still require a whole-view unmap, and replacing
-an already mapped guest region with `MAP_FIXED` remains unsupported there.
+same ownership intervals. While the mapping is `PROT_NONE`, raw Darwin
+`svc #0x80` syscall 197 replaces its middle page with `MAP_FIXED`; the imported
+`_mmap` bridge then replaces the first page. The fixture writes through both
+replacements and restores protection across the full mapping. This covers
+partial anonymous mappings owned by the ARM64 guest bridge. File-backed views
+still require a whole-view unmap; cross-allocation, image, and file-view
+replacements with `MAP_FIXED` remain unsupported.
 
 The guest fixture also creates a file with `open`, writes seed bytes, maps it
 with `MAP_SHARED`, changes one byte, unmaps it, seeks back, reads the bytes, and

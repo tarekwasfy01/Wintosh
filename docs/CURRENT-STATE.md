@@ -39,9 +39,11 @@ imported `_munmap` bridge both operate on that shared interval state. The fixtur
 exercises guest `open`/`write`/`mmap(MAP_SHARED)`/`munmap`/`lseek`/`read`/`close`
 with a persisted byte change, then modifies a `MAP_PRIVATE` view and verifies
 that the file remains unchanged after unmapping.
-Fixed replacement of existing
-guest regions (overlaps are rejected even for `PROT_NONE` memory), partial
-file-view unmapping, and full syscall error/errno parity remain incomplete. Nested Darwin
+Raw `SYS_mmap` 197 and imported `_mmap` can replace page-aligned subranges fully
+covered by one guest-owned anonymous reservation, including pages previously
+set to `PROT_NONE`; the fixture writes through both replacement pages. Cross-
+allocation, image, and file-view replacements remain unsupported. Partial
+file-view unmapping and full syscall error/errno parity remain incomplete. Nested Darwin
 syscalls, Mach traps, broader import catalog coverage, full framework coverage,
 and a reproducible Dynarmic dependency pin remain open.
 

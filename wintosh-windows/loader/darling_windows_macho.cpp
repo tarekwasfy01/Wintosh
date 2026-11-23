@@ -3737,10 +3737,18 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 				darling::windows_host::DarwinErrno::Set(EINVAL);
 				return std::uintptr_t{static_cast<std::uint64_t>(-1)};
 			}
+			std::optional<std::uint64_t> replaced_allocation_base;
 			if ((x[3] & map_fixed) != 0 && x[0] != 0 &&
 				backend.HasGuestRangeOverlap(x[0], rounded_length)) {
-				darling::windows_host::DarwinErrno::Set(EINVAL);
-				return std::uintptr_t{static_cast<std::uint64_t>(-1)};
+				replaced_allocation_base = backend.DynamicGuestMappingBaseForRange(
+					x[0], rounded_length);
+				if (!replaced_allocation_base || std::none_of(guest_mmap_allocations.begin(),
+					guest_mmap_allocations.end(), [replaced_allocation_base](const auto& allocation) {
+						return allocation.first == *replaced_allocation_base;
+					})) {
+					darling::windows_host::DarwinErrno::Set(EINVAL);
+					return std::uintptr_t{static_cast<std::uint64_t>(-1)};
+				}
 			}
 			void* mapped = darling_windows_mmap(
 				reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0])), length,
@@ -3752,17 +3760,24 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 			const auto address = reinterpret_cast<std::uintptr_t>(mapped);
 			A64GuestMemoryRegion region{address, rounded_length, (x[2] & 1) != 0,
 				(x[2] & 2) != 0, (x[2] & 4) != 0, true, address, length, true};
-			if (!backend.RegisterDynamicGuestMapping(region)) {
+			const bool registered = replaced_allocation_base ?
+				backend.ReplaceDynamicGuestMappingRange(address, rounded_length, region) :
+				backend.RegisterDynamicGuestMapping(region);
+			if (!registered) {
 				(void)darling_windows_munmap(mapped, length);
+				if (replaced_allocation_base)
+					(void)backend.RemoveDynamicGuestMappingRange(address, rounded_length);
 				darling::windows_host::DarwinErrno::Set(EINVAL);
 				return std::uintptr_t{static_cast<std::uint64_t>(-1)};
 			}
-			try {
-				guest_mmap_allocations.emplace_back(address, length);
-			} catch (...) {
-				(void)backend.RemoveDynamicGuestMapping(address);
-				(void)darling_windows_munmap(mapped, length);
-				throw;
+			if (!replaced_allocation_base) {
+				try {
+					guest_mmap_allocations.emplace_back(address, length);
+				} catch (...) {
+					(void)backend.RemoveDynamicGuestMapping(address);
+					(void)darling_windows_munmap(mapped, length);
+					throw;
+				}
 			}
 			return address;
 		};
@@ -4539,10 +4554,18 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 					const auto rounded_length = ((length + page_size - 1) / page_size) * page_size;
 					void* requested = reinterpret_cast<void*>(static_cast<std::uintptr_t>(arguments[0]));
 					constexpr std::uint64_t map_fixed = 0x0010;
+					std::optional<std::uint64_t> replaced_allocation_base;
 					if ((arguments[3] & map_fixed) != 0 &&
-						backend.HasDynamicGuestMapping(arguments[0])) {
-						error_number = EINVAL;
-						break;
+						backend.HasGuestRangeOverlap(arguments[0], rounded_length)) {
+						replaced_allocation_base = backend.DynamicGuestMappingBaseForRange(
+							arguments[0], rounded_length);
+						if (!replaced_allocation_base || std::none_of(guest_mmap_allocations.begin(),
+							guest_mmap_allocations.end(), [replaced_allocation_base](const auto& allocation) {
+								return allocation.first == *replaced_allocation_base;
+							})) {
+							error_number = EINVAL;
+							break;
+						}
 					}
 					const auto descriptor = static_cast<int>(static_cast<std::int32_t>(arguments[4]));
 					const auto offset = static_cast<std::int64_t>(arguments[5]);
@@ -4555,18 +4578,25 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 					A64GuestMemoryRegion region{mapped_address, rounded_length,
 						(arguments[2] & 1) != 0, (arguments[2] & 2) != 0,
 						(arguments[2] & 4) != 0, true, mapped_address, length, true};
-					if (!backend.RegisterDynamicGuestMapping(region)) {
+					const bool registered = replaced_allocation_base ?
+						backend.ReplaceDynamicGuestMappingRange(mapped_address,
+							rounded_length, region) : backend.RegisterDynamicGuestMapping(region);
+					if (!registered) {
 						(void)darling_windows_munmap(mapped, length);
+						if (replaced_allocation_base)
+							(void)backend.RemoveDynamicGuestMappingRange(mapped_address, rounded_length);
 						error_number = EINVAL;
 						break;
 					}
-					try {
-						guest_mmap_allocations.emplace_back(mapped_address, length);
-					} catch (...) {
-						(void)backend.RemoveDynamicGuestMapping(mapped_address);
-						(void)darling_windows_munmap(mapped, length);
-						error_number = ENOMEM;
-						break;
+					if (!replaced_allocation_base) {
+						try {
+							guest_mmap_allocations.emplace_back(mapped_address, length);
+						} catch (...) {
+							(void)backend.RemoveDynamicGuestMapping(mapped_address);
+							(void)darling_windows_munmap(mapped, length);
+							error_number = ENOMEM;
+							break;
+						}
 					}
 					syscall_result = static_cast<std::int64_t>(mapped_address);
 					break;

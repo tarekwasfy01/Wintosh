@@ -36,23 +36,6 @@ std::map<std::uintptr_t, AnonymousMappingSegment> anonymous_mappings;
 	throw std::system_error(static_cast<int>(GetLastError()), std::system_category(), operation);
 }
 
-bool ReleaseOwnedAnonymousMappingImpl(void* address)
-{
-	std::lock_guard lock(anonymous_mapping_mutex);
-	const auto found = anonymous_mappings.find(reinterpret_cast<std::uintptr_t>(address));
-	if (found == anonymous_mappings.end()) {
-		return false;
-	}
-	const auto reservation = found->second.reservation;
-	if (!VirtualFree(reservation, 0, MEM_RELEASE)) {
-		ThrowLastError("VirtualFree(MAP_FIXED)");
-	}
-	std::erase_if(anonymous_mappings, [reservation](const auto& item) {
-		return item.second.reservation == reservation;
-	});
-	return true;
-}
-
 bool UnmapOwnedAnonymousRange(void* address, std::size_t length)
 {
 	const auto start = reinterpret_cast<std::uintptr_t>(address);
@@ -105,6 +88,36 @@ bool UnmapOwnedAnonymousRange(void* address, std::size_t length)
 	return true;
 }
 
+bool TryReplaceOwnedAnonymousRange(void* address, std::size_t length,
+	DWORD protection)
+{
+	const auto start = reinterpret_cast<std::uintptr_t>(address);
+	if (length == 0 || start > (std::numeric_limits<std::uintptr_t>::max)() - length)
+		return false;
+	const auto end = start + length;
+	std::lock_guard lock(anonymous_mapping_mutex);
+	auto found = anonymous_mappings.upper_bound(start);
+	if (found == anonymous_mappings.begin())
+		return false;
+	--found;
+	const auto reservation = found->second.reservation;
+	auto cursor = start;
+	for (auto it = found; it != anonymous_mappings.end() && cursor < end; ++it) {
+		const auto segment_start = it->first;
+		const auto segment_end = segment_start + it->second.bytes;
+		if (it->second.reservation != reservation || segment_start > cursor || segment_end <= cursor)
+			return false;
+		cursor = (std::min)(end, segment_end);
+	}
+	if (cursor != end)
+		return false;
+	if (!VirtualFree(address, length, MEM_DECOMMIT))
+		ThrowLastError("VirtualFree(MAP_FIXED/MEM_DECOMMIT)");
+	if (VirtualAlloc(address, length, MEM_COMMIT, protection) != address)
+		ThrowLastError("VirtualAlloc(MAP_FIXED/MEM_COMMIT)");
+	return true;
+}
+
 DWORD Protection(DarwinMemoryProtection value)
 {
 	const auto bits = static_cast<std::uint8_t>(value);
@@ -124,11 +137,6 @@ void RegisterOwnedAnonymousMapping(void* address, std::size_t length)
 	std::lock_guard lock(anonymous_mapping_mutex);
 	const auto start = reinterpret_cast<std::uintptr_t>(address);
 	anonymous_mappings.emplace(start, AnonymousMappingSegment{length, address, length});
-}
-
-bool ReleaseOwnedAnonymousMapping(void* address)
-{
-	return ReleaseOwnedAnonymousMappingImpl(address);
 }
 
 void* DarwinMemory::Mmap(std::size_t bytes, DarwinMemoryProtection protection)
@@ -194,13 +202,17 @@ extern "C" void* darling_windows_mmap_anonymous(void* address, std::size_t lengt
 	const DWORD page_protection = execute ?
 		(write ? PAGE_EXECUTE_READWRITE : (read ? PAGE_EXECUTE_READ : PAGE_EXECUTE)) :
 		(write ? PAGE_READWRITE : (read ? PAGE_READONLY : PAGE_NOACCESS));
+	bool replaced_owned_mapping = false;
 	if ((flags & map_fixed) != 0 && address != nullptr) {
 		try {
-			(void)darling::windows_host::ReleaseOwnedAnonymousMapping(address);
+			replaced_owned_mapping = darling::windows_host::TryReplaceOwnedAnonymousRange(
+				address, allocation_length, page_protection);
 		} catch (...) {
 			darling::windows_host::DarwinErrno::SetFromWin32(GetLastError());
 			return reinterpret_cast<void*>(-1);
 		}
+		if (replaced_owned_mapping)
+			return address;
 	}
 	void* mapped = VirtualAlloc((flags & map_fixed) != 0 ? address : nullptr,
 		allocation_length, MEM_RESERVE | MEM_COMMIT, page_protection);

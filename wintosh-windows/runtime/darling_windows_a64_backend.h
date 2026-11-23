@@ -81,6 +81,8 @@ public:
 	[[nodiscard]] bool RemoveDynamicGuestMapping(std::uint64_t address) noexcept;
 	[[nodiscard]] bool RemoveDynamicGuestMappingRange(std::uint64_t address,
 		std::size_t bytes) noexcept;
+	[[nodiscard]] bool ReplaceDynamicGuestMappingRange(std::uint64_t address,
+		std::size_t bytes, A64GuestMemoryRegion replacement) noexcept;
 	[[nodiscard]] bool CanProtectGuestRange(std::uint64_t address,
 		std::size_t bytes) const noexcept;
 	[[nodiscard]] bool ProtectGuestRange(std::uint64_t address,

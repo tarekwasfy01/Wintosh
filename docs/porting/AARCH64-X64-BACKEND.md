@@ -214,8 +214,11 @@ page-ausgerichtete Teilbereiche anonymer Gast-Mappings abtrennen. Host- und
 Gasttabellen werden dabei gemeinsam in linke und rechte Restintervalle zerlegt;
 die Windows-Reservierung bleibt erhalten, bis kein aktiver Teil mehr existiert.
 Datei-Views werden weiterhin nur als vollständige View freigegeben. Feste
-Ersetzungen bestehender Gast-Mappings und nicht registrierte Bereiche schlagen
-geschlossen fehl. Dadurch bleibt die Backend-Tabelle mit dem tatsächlich
+Ersetzungen sind auf `MAP_FIXED`-Teilbereiche beschränkt, die vollständig von
+derselben besessenen anonymen Reservierung abgedeckt sind. Der Host recommittet
+die Windows-Seiten; der Gast-Index bildet `M′ = (M \\ U) ∪ U′` mit den neuen
+Rechten ab. Überlappungen mit Images, Datei-Views, Lücken oder fremden
+Reservierungen schlagen geschlossen fehl. Dadurch bleibt die Backend-Tabelle mit dem tatsächlich
 besessenen Hostspeicher synchron. Formal ist eine Reservierung
 `R = [b, b + n)` und ihre aktive Gastabbildung die Intervallmenge
 `M = ⋃ᵢ [lᵢ, rᵢ)`. Ein Unmap-Intervall `U = [u, u + k)` ist nur gültig, wenn

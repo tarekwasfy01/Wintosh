@@ -20,6 +20,23 @@ static long WintoshSyscallMunmap(void *address, unsigned long length)
 		: "memory", "cc");
 	return (long)x0;
 }
+
+static void *WintoshSyscallMmap(void *address, unsigned long length,
+	int protection, int flags, int descriptor, long offset)
+{
+	register unsigned long x0 __asm__("x0") = (unsigned long)address;
+	register unsigned long x1 __asm__("x1") = length;
+	register unsigned long x2 __asm__("x2") = (unsigned long)protection;
+	register unsigned long x3 __asm__("x3") = (unsigned long)flags;
+	register unsigned long x4 __asm__("x4") = (unsigned long)descriptor;
+	register unsigned long x5 __asm__("x5") = (unsigned long)offset;
+	register unsigned long x16 __asm__("x16") = 197;
+	__asm__ volatile("svc #0x80"
+		: "+r"(x0), "+r"(x1)
+		: "r"(x2), "r"(x3), "r"(x4), "r"(x5), "r"(x16)
+		: "memory", "cc");
+	return (void *)x0;
+}
 extern int atexit(void (*function)(void));
 extern int __cxa_atexit(void (*function)(void *), void *argument, void *dso);
 extern void *dlopen(const char *path, int mode);
@@ -67,9 +84,19 @@ static long WintoshMappedMemoryRoundTrip(void)
 		return 10;
 	if (mprotect((void *)memory, page_size * 3, 0) != 0)
 		return 12;
-	void *fixed_overlap = mmap((void *)memory, page_size, 3, 0x1012, -1, 0);
-	if (fixed_overlap != (void *)-1)
+	void *syscall_replacement = WintoshSyscallMmap(
+		(void *)(memory + page_size), page_size, 3, 0x1012, -1, 0);
+	if (syscall_replacement != (void *)(memory + page_size))
+		return 18;
+	memory[page_size] = 40;
+	if (memory[page_size] != 40)
+		return 19;
+	void *fixed_replacement = mmap((void *)memory, page_size, 3, 0x1012, -1, 0);
+	if (fixed_replacement != (void *)memory)
 		return 15;
+	memory[0] = 41;
+	if (memory[0] != 41)
+		return 17;
 	if (mprotect((void *)memory, page_size * 3, 3) != 0)
 		return 16;
 	memory[0] = 42;

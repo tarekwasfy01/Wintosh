@@ -472,6 +472,51 @@ bool DarlingWindowsA64Backend::RemoveDynamicGuestMappingRange(
 	return true;
 }
 
+bool DarlingWindowsA64Backend::ReplaceDynamicGuestMappingRange(
+	std::uint64_t address, std::size_t bytes,
+	A64GuestMemoryRegion replacement) noexcept
+{
+	const auto base = DynamicGuestMappingBaseForRange(address, bytes);
+	const auto allocation_size = base ? DynamicGuestMappingSize(*base) : std::nullopt;
+	if (!base || !allocation_size || replacement.address != address ||
+		replacement.bytes != bytes || bytes == 0 ||
+		address > std::numeric_limits<std::uint64_t>::max() - bytes)
+		return false;
+	const auto end = address + bytes;
+	std::vector<A64GuestMemoryRegion> updated;
+	try {
+		updated.reserve(m_memory.size() + 1);
+		for (const auto& region : m_memory) {
+			const auto region_end = region.address + region.bytes;
+			if (!region.dynamically_allocated || region.allocation_base != *base ||
+				region_end <= address || region.address >= end) {
+				updated.push_back(region);
+				continue;
+			}
+			if (region.address < address) {
+				auto left = region;
+				left.bytes = static_cast<std::size_t>(address - region.address);
+				updated.push_back(left);
+			}
+			if (region_end > end) {
+				auto right = region;
+				right.address = end;
+				right.bytes = static_cast<std::size_t>(region_end - end);
+				updated.push_back(right);
+			}
+		}
+		replacement.dynamically_allocated = true;
+		replacement.allocation_base = *base;
+		replacement.allocation_size = *allocation_size;
+		replacement.guest_protectable = true;
+		updated.push_back(replacement);
+	} catch (...) {
+		return false;
+	}
+	m_memory.swap(updated);
+	return true;
+}
+
 bool DarlingWindowsA64Backend::CanProtectGuestRange(std::uint64_t address,
 	std::size_t bytes) const noexcept
 {

@@ -2455,3 +2455,8 @@ with `_strlen`; it returned **42**. The first measurement used `-fno-pic` and
 difference relocations. After those relocation forms were implemented, the PIC
 build of the guest also linked and returned **42**. This verifies these
 host-bound libc calls for one guest, not complete libc semantics.
+
+Two separate PIC i386 objects were linked in both orders. `main` called an
+external `helper`; the helper read a local constant through PIC addressing.
+Both images returned **84**, showing that the paired section-difference
+relocations are adjusted after input sections are concatenated.

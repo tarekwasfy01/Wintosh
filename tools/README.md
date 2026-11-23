@@ -62,7 +62,8 @@ with status 23, and `_atexit` ran a cleanup callback that called `_puts` after
 `main` returned 3. A libc guest also copied `ABC` with `_memcpy`, checked
 string lengths, read `WINTOSH_FIXTURE=42` through `_getenv`, and returned 42.
 The same fixture compiled as PIC returned 42 as well. These are host exports,
-not a complete libSystem.
+not a complete libSystem. Separate PIC `main` and `helper` objects linked and
+ran in either input order, returning 84 after a local literal access.
 See
 [LINKER-RESEARCH.md](../docs/porting/LINKER-RESEARCH.md) for the exact contract.
 

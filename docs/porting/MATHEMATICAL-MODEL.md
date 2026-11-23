@@ -156,6 +156,8 @@ The same libc guest compiled as PIC also returned 42 after applying paired
 scattered section-difference relocations. For object target `A`, minuend `B`,
 and stored field value `V`, the linker computes `C = V - (A - B)` and writes
 `A' - B' + C` at final placement; a common slide cancels from the difference.
+Two separate PIC objects with a cross-object function call and local literal
+access also returned 84 in both input orders.
 A common slide `δ` preserves a same-section displacement:
 `(S + δ) - (P + 4 + δ) = S - (P + 4)`. For the measured external Clang
 relocation, the linker combines the stored addend with the resolved symbol

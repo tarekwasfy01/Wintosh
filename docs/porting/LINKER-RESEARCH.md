@@ -170,3 +170,6 @@ bestimmt der Linker den zusätzlichen Addend `C = V - (A - B)` und schreibt
 `A' - B' + C` für die neu platzierten Adressen. Gemeinsamer Slide `δ` kürzt
 sich aus `A' - B'` heraus. LLVM RuntimeDyld verwendet dieselbe Zerlegung in
 [seiner i386 Mach-O-Implementierung](https://llvm.org/docs/doxygen/RuntimeDyldMachOI386_8h_source.html).
+Zwei getrennte PIC-Objekte mit externem `main`-zu-`helper`-Aufruf und einem
+lokalen Literalzugriff im Helper wurden in beiden Eingabereihenfolgen gelinkt;
+beide gestarteten Images gaben **84** zurück.

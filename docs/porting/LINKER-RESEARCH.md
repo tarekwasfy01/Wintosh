@@ -7,7 +7,7 @@ Stand: 2026-11-23
 Clang erzeugt auf diesem Windows-Host i386-Mach-O-Objekte. Das vorhandene
 `ld64.lld.exe` weist `-arch i386` zurück. `tools/link_i386_macho.py` ist ein
 begrenzter i386-Linker-Prototyp: Er kombiniert `__TEXT,__text` und optionale
-`__TEXT,__cstring` oder `__const`, `__DATA,__data` sowie nullinitialisierte
+`__TEXT,__cstring`- und `__const`-Sections, `__DATA,__data` sowie nullinitialisierte
 `__bss`/`__common`-Bereiche sowie `__DATA,__mod_init_func`- und
 `__mod_term_func`-Pointer mehrerer
 `MH_OBJECT`-Dateien und löst begrenzte
@@ -198,3 +198,8 @@ aus. Der Exitstatus 42 blieb erhalten. Dafür vergrößert der
 Prototyp den `__TEXT`-Dateioffset auf 0x400, sodass die Load Commands für beide
 Runtime-Pointersektionen Platz haben; das Codebudget innerhalb der 4-KiB-Seite
 verringert sich entsprechend.
+
+Ein weiterer Gast enthielt getrennte `__TEXT,__const`- und
+`__TEXT,__cstring`-Sections. Der Linker gab beide Read-only-Bereiche mit eigenen
+Section-Headern, ausgerichteten VM-/Dateioffsets und ihrer Relocation aus. Der
+Gast dereferenzierte den CString-Zeiger und gab **40** zurück.

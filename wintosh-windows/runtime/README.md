@@ -50,6 +50,8 @@ destructor after `main`, returning status 42.
 The linker also retains `__DATA,__mod_term_func`; a combined constructor and
 terminator image printed `guest terminator` after `main` and preserved status
 42.
+The linker can emit `__const` and `__cstring` together as distinct read-only
+sections; a relocated CString read returned 40.
 Apple's [dyld4 design notes](https://github.com/apple-oss-distributions/dyld/blob/main/doc/dyld4.md)
 describe process startup with argc, argv, envp, and Apple parameters on the
 initial stack. That current description does not establish compatibility with

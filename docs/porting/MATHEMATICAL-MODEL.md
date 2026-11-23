@@ -137,6 +137,7 @@ The separate i386 object-to-image experiment is bounded as follows:
 | i386 zero-initialized `__common` global read/write | 1§ |
 | i386 cross-object global via `__IMPORT,__pointers` | 1§ |
 | i386 pointer into `__cstring` and literal read | 1§ |
+| Simultaneous i386 `__const` and `__cstring` sections | 1§ |
 | i386 host-bound `_puts` and `_printf` calls | 1§ |
 | i386 host-bound heap, `_exit`, and `_atexit` lifecycle calls | 1§ |
 | Compiler-produced image started by Wintosh | 1§ |

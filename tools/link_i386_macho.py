@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Link bounded i386 Mach-O text and data objects into a minimal MH_EXECUTE.
 
-This bring-up linker handles one __TEXT,__text, optional __TEXT,__cstring or
+This bring-up linker handles one __TEXT,__text, optional __TEXT,__cstring and
 __const, initialized/zero-fill __DATA, indirect pointer section, and
 __DATA,__mod_init_func/__mod_term_func sections per object. Clang's
 __TEXT,__StaticInit contribution is merged into executable text. Const bytes
@@ -51,6 +51,7 @@ S_ZEROFILL = 0x1
 S_NON_LAZY_SYMBOL_POINTERS = 0x6
 S_MOD_INIT_FUNC_POINTERS = 0x9
 S_MOD_TERM_FUNC_POINTERS = 0xA
+S_CSTRING_LITERALS = 0x2
 
 
 class FormatError(ValueError):
@@ -85,6 +86,7 @@ class MachObject:
     text: ObjectSection
     static_init: ObjectSection | None
     const: ObjectSection | None
+    cstring: ObjectSection | None
     data: ObjectSection | None
     bss: ObjectSection | None
     pointers: ObjectSection | None
@@ -157,7 +159,9 @@ def parse_object(path: Path, data: bytes) -> MachObject:
                     kind = "text"
                 elif (sectname, segname) == ("__StaticInit", "__TEXT"):
                     kind = "static_init"
-                elif (sectname, segname) in (("__cstring", "__TEXT"), ("__const", "__TEXT")):
+                elif (sectname, segname) == ("__cstring", "__TEXT"):
+                    kind = "cstring"
+                elif (sectname, segname) == ("__const", "__TEXT"):
                     kind = "const"
                 elif (sectname, segname) == ("__data", "__DATA"):
                     kind = "data"
@@ -219,6 +223,7 @@ def parse_object(path: Path, data: bytes) -> MachObject:
     text_record = next((record for record in input_sections.values() if record[0] == "text"), None)
     static_init_record = next((record for record in input_sections.values() if record[0] == "static_init"), None)
     const_record = next((record for record in input_sections.values() if record[0] == "const"), None)
+    cstring_record = next((record for record in input_sections.values() if record[0] == "cstring"), None)
     data_record = next((record for record in input_sections.values() if record[0] == "data"), None)
     bss_record = next((record for record in input_sections.values() if record[0] == "bss"), None)
     pointer_record = next((record for record in input_sections.values() if record[0] == "ptr"), None)
@@ -357,6 +362,7 @@ def parse_object(path: Path, data: bytes) -> MachObject:
     text_section = make_section(text_record)
     static_init_section = make_section(static_init_record) if static_init_record is not None else None
     const_section = make_section(const_record) if const_record is not None else None
+    cstring_section = make_section(cstring_record) if cstring_record is not None else None
     data_section = make_section(data_record) if data_record is not None else None
     bss_section = make_section(bss_record) if bss_record is not None else None
     pointer_section = make_section(pointer_record) if pointer_record is not None else None
@@ -393,6 +399,7 @@ def parse_object(path: Path, data: bytes) -> MachObject:
         text=text_section,
         static_init=static_init_section,
         const=const_section,
+        cstring=cstring_section,
         data=data_section,
         bss=bss_section,
         pointers=pointer_section,
@@ -424,6 +431,7 @@ def link_objects(
     text_offsets: list[int] = []
     data_offsets: list[int] = []
     const_offsets: list[int] = []
+    cstring_offsets: list[int] = []
     bss_offsets: list[int] = []
     pointer_offsets: list[int] = []
     initializer_offsets: list[int] = []
@@ -432,10 +440,12 @@ def link_objects(
     text_size = 0
     data_size = 0
     const_size = 0
+    cstring_size = 0
     bss_size = 0
     text_align_exp = 0
     data_align_exp = 0
     const_align_exp = 0
+    cstring_align_exp = 0
     bss_align_exp = 0
     pointer_align_exp = 0
     initializer_align_exp = 0
@@ -472,6 +482,13 @@ def link_objects(
             const_offsets.append(const_size)
             const_size += len(obj.const.contents)
             const_align_exp = max(const_align_exp, obj.const.alignment.bit_length() - 1)
+        if obj.cstring is None:
+            cstring_offsets.append(0)
+        else:
+            cstring_size = align_up(cstring_size, obj.cstring.alignment)
+            cstring_offsets.append(cstring_size)
+            cstring_size += len(obj.cstring.contents)
+            cstring_align_exp = max(cstring_align_exp, obj.cstring.alignment.bit_length() - 1)
         if obj.bss is None:
             bss_offsets.append(0)
         else:
@@ -578,8 +595,16 @@ def link_objects(
     if text_size > PAGE_SIZE - TEXT_FILE_OFFSET:
         raise FormatError("combined __text and import stubs exceed one page")
     const_start = align_up(TEXT_FILE_OFFSET + text_size, 1 << const_align_exp) - TEXT_FILE_OFFSET
-    if const_start + const_size > PAGE_SIZE - TEXT_FILE_OFFSET:
-        raise FormatError("combined __text and __const exceed the one-page text image limit")
+    cstring_start = (
+        align_up(TEXT_FILE_OFFSET + const_start + const_size, 1 << cstring_align_exp) - TEXT_FILE_OFFSET
+        if cstring_size else 0
+    )
+    readonly_end = max(
+        text_size, const_start + const_size,
+        cstring_start + cstring_size if cstring_size else 0,
+    )
+    if readonly_end > PAGE_SIZE - TEXT_FILE_OFFSET:
+        raise FormatError("combined __text, __const, and __cstring exceed the one-page text image limit")
     import_slot_offsets: dict[str, int] = {}
     for index, obj in enumerate(objects):
         if obj.pointers is None:
@@ -611,16 +636,19 @@ def link_objects(
 
     text = bytearray(text_size)
     const = bytearray(const_size)
+    cstring = bytearray(cstring_size)
     data = bytearray(combined_data_size)
     preferred_vm = {"text": TEXT_VM_BASE, "data": DATA_VM_BASE}
     section_placements = {
         "text": text_offsets, "data": data_offsets, "const": const_offsets,
+        "cstring": cstring_offsets,
         "static_init": static_init_offsets,
         "bss": bss_offsets, "ptr": pointer_offsets, "init": initializer_offsets,
         "term": terminator_offsets,
     }
     section_sizes = {
         "text": text_size, "data": data_size, "const": const_size,
+        "cstring": cstring_size,
         "static_init": static_init_size,
         "bss": bss_size, "ptr": pointer_size, "init": initializer_size,
         "term": terminator_size,
@@ -646,6 +674,9 @@ def link_objects(
         if obj.const is not None:
             const_base = const_offsets[index]
             const[const_base : const_base + len(obj.const.contents)] = obj.const.contents
+        if obj.cstring is not None:
+            cstring_base = cstring_offsets[index]
+            cstring[cstring_base : cstring_base + len(obj.cstring.contents)] = obj.cstring.contents
         if obj.pointers is not None:
             pointer_base = pointer_start + pointer_offsets[index]
             data[pointer_base : pointer_base + len(obj.pointers.contents)] = obj.pointers.contents
@@ -662,6 +693,7 @@ def link_objects(
                 obj.text if relocation.source_kind == "text" else
                 obj.static_init if relocation.source_kind == "static_init" else
                 obj.const if relocation.source_kind == "const" else
+                obj.cstring if relocation.source_kind == "cstring" else
                 obj.pointers if relocation.source_kind == "ptr" else
                 obj.initializers if relocation.source_kind == "init" else
                 obj.terminators if relocation.source_kind == "term" else
@@ -673,17 +705,24 @@ def link_objects(
                 pointer_start + source_base if relocation.source_kind == "ptr" else
                 initializer_start + source_base if relocation.source_kind == "init" else
                 terminator_start + source_base if relocation.source_kind == "term" else
-                source_base if relocation.source_kind in ("const", "static_init") else
+                source_base if relocation.source_kind in ("const", "cstring", "static_init") else
                 bss_start + source_base if relocation.source_kind == "bss" else source_base
             )
             source_output_vm = (
                 TEXT_VM_BASE + const_start + source_base if relocation.source_kind == "const" else
+                TEXT_VM_BASE + cstring_start + source_base if relocation.source_kind == "cstring" else
                 TEXT_VM_BASE + source_base if relocation.source_kind in ("text", "static_init") else
                 preferred_vm["data"] + source_file_base if relocation.source_kind in ("ptr", "bss", "init", "term")
                 else preferred_vm[relocation.source_kind] + source_base
             )
             source_site = source_file_base + relocation.offset
-            source_bytes = const if relocation.source_kind == "const" else data if relocation.source_kind in ("ptr", "bss", "init", "term") else text if relocation.source_kind == "static_init" else output_sections[relocation.source_kind]
+            source_bytes = (
+                const if relocation.source_kind == "const" else
+                cstring if relocation.source_kind == "cstring" else
+                data if relocation.source_kind in ("ptr", "bss", "init", "term") else
+                text if relocation.source_kind == "static_init" else
+                output_sections[relocation.source_kind]
+            )
 
             if relocation.minuend_kind is not None:
                 target_kind = relocation.target_kind
@@ -703,6 +742,8 @@ def link_objects(
                         return preferred_vm["data"] + pointer_start + base + offset
                     if kind == "const":
                         return TEXT_VM_BASE + const_start + base + offset
+                    if kind == "cstring":
+                        return TEXT_VM_BASE + cstring_start + base + offset
                     if kind in ("text", "static_init"):
                         return TEXT_VM_BASE + base + offset
                     return preferred_vm[kind] + base + offset
@@ -743,6 +784,8 @@ def link_objects(
                         target_vm = preferred_vm["data"] + pointer_start + target_base + target_value
                     elif target_kind == "const":
                         target_vm = TEXT_VM_BASE + const_start + target_base + target_value
+                    elif target_kind == "cstring":
+                        target_vm = TEXT_VM_BASE + cstring_start + target_base + target_value
                     else:
                         target_vm = preferred_vm[target_kind] + target_base + target_value
                     if target_value >= section_sizes[target_kind]:
@@ -783,6 +826,7 @@ def link_objects(
                     obj.text if target_kind == "text" else
                     obj.static_init if target_kind == "static_init" else
                     obj.const if target_kind == "const" else
+                    obj.cstring if target_kind == "cstring" else
                     obj.initializers if target_kind == "init" else
                     obj.terminators if target_kind == "term" else
                     obj.bss if target_kind == "bss" else
@@ -803,6 +847,8 @@ def link_objects(
                     target_output_vm = preferred_vm["data"] + pointer_start + target_base
                 elif target_kind == "const":
                     target_output_vm = TEXT_VM_BASE + const_start + target_base
+                elif target_kind == "cstring":
+                    target_output_vm = TEXT_VM_BASE + cstring_start + target_base
                 else:
                     target_output_vm = preferred_vm[target_kind] + target_base
                 if relocation.pc_relative:
@@ -822,10 +868,12 @@ def link_objects(
                     if not 0 <= linked_value <= 0xFFFFFFFF:
                         raise FormatError("local absolute relocation overflows i386")
                     struct.pack_into("<I", source_bytes, source_site, linked_value)
-                    segment_index = 0 if relocation.source_kind in ("text", "static_init", "const") else 1
+                    segment_index = 0 if relocation.source_kind in ("text", "static_init", "const", "cstring") else 1
                     segment_offset = (
-                        (TEXT_FILE_OFFSET + (const_start if relocation.source_kind == "const" else 0)
-                         if relocation.source_kind in ("text", "static_init", "const") else 0) +
+                        (TEXT_FILE_OFFSET + (
+                            const_start if relocation.source_kind == "const" else
+                            cstring_start if relocation.source_kind == "cstring" else 0
+                         ) if relocation.source_kind in ("text", "static_init", "const", "cstring") else 0) +
                         source_site
                     )
                     rebase_sites.add((segment_index, segment_offset))
@@ -848,6 +896,8 @@ def link_objects(
                 target_vm = DATA_VM_BASE + pointer_start + target_base + target_value
             elif target_kind == "const":
                 target_vm = TEXT_VM_BASE + const_start + target_base + target_value
+            elif target_kind == "cstring":
+                target_vm = TEXT_VM_BASE + cstring_start + target_base + target_value
             else:
                 target_vm = preferred_vm[target_kind] + target_base + target_value
             slot_offset = pointer_start + pointer_offsets[index] + slot * 4
@@ -861,10 +911,11 @@ def link_objects(
     if entry_kind != "text":
         raise FormatError(f"entry symbol {entry_name} is not in __text")
     return (
-        bytes(text), bytes(const), const_start, bytes(data), initializer_start,
+        bytes(text), bytes(const), const_start, bytes(cstring), cstring_start,
+        bytes(data), initializer_start,
         initializer_size, terminator_start, terminator_size,
         text_offsets[entry_index] + entry_value,
-        cpu_subtype, text_align_exp, const_align_exp, data_align_exp,
+        cpu_subtype, text_align_exp, const_align_exp, cstring_align_exp, data_align_exp,
         sorted(rebase_sites), sorted(set(bind_sites)),
     )
 
@@ -922,10 +973,11 @@ def make_segment_command(
 
 def make_executable(
     text: bytes, const: bytes, const_start: int, data: bytes,
+    cstring: bytes, cstring_start: int,
     initializer_start: int, initializer_size: int,
     terminator_start: int, terminator_size: int,
     entry_offset: int, cpu_subtype: int,
-    text_align_exp: int, const_align_exp: int, data_align_exp: int,
+    text_align_exp: int, const_align_exp: int, cstring_align_exp: int, data_align_exp: int,
     rebase_sites: list[tuple[int, int]],
     bind_sites: list[tuple[int, str]],
 ) -> bytes:
@@ -935,20 +987,27 @@ def make_executable(
         raise FormatError("entry symbol lies outside combined __text")
     if const and const_start + len(const) > PAGE_SIZE - TEXT_FILE_OFFSET:
         raise FormatError("combined __text and __const exceed one page")
+    if cstring and cstring_start + len(cstring) > PAGE_SIZE - TEXT_FILE_OFFSET:
+        raise FormatError("combined read-only text sections exceed one page")
     if len(data) > PAGE_SIZE:
         raise FormatError("combined __data exceeds the one-page prototype image limit")
 
-    text_sections = ()
+    text_sections = []
     if const:
-        text_sections = ((
+        text_sections.append((
             b"__const", b"__TEXT", TEXT_VM_BASE + const_start, len(const),
             TEXT_FILE_OFFSET + const_start, const_align_exp, 0,
-        ),)
+        ))
+    if cstring:
+        text_sections.append((
+            b"__cstring", b"__TEXT", TEXT_VM_BASE + cstring_start, len(cstring),
+            TEXT_FILE_OFFSET + cstring_start, cstring_align_exp, S_CSTRING_LITERALS,
+        ))
     commands = [make_segment_command(
         b"__TEXT", 0x1000, 0, PAGE_SIZE, 7, 5,
         b"__text", b"__TEXT", TEXT_VM_BASE, len(text), TEXT_FILE_OFFSET,
         text_align_exp, S_ATTR_PURE_INSTRUCTIONS | S_ATTR_SOME_INSTRUCTIONS,
-        text_sections,
+        tuple(text_sections),
     )]
     if data:
         runtime_sections = []
@@ -1016,6 +1075,8 @@ def make_executable(
     image[TEXT_FILE_OFFSET : TEXT_FILE_OFFSET + len(text)] = text
     if const:
         image[TEXT_FILE_OFFSET + const_start : TEXT_FILE_OFFSET + const_start + len(const)] = const
+    if cstring:
+        image[TEXT_FILE_OFFSET + cstring_start : TEXT_FILE_OFFSET + cstring_start + len(cstring)] = cstring
     if data:
         image[DATA_FILE_OFFSET : DATA_FILE_OFFSET + len(data)] = data
     if rebase_stream:
@@ -1034,16 +1095,17 @@ def main() -> int:
 
     try:
         objects = [parse_object(path, path.read_bytes()) for path in args.inputs]
-        (text, const, const_start, data, initializer_start, initializer_size,
+        (text, const, const_start, cstring, cstring_start, data, initializer_start, initializer_size,
          terminator_start, terminator_size,
          entry_offset, cpu_subtype,
-         text_align_exp, const_align_exp, data_align_exp, rebase_sites,
+         text_align_exp, const_align_exp, cstring_align_exp, data_align_exp, rebase_sites,
          bind_sites) = link_objects(objects, args.entry)
         image = make_executable(
-            text, const, const_start, data, initializer_start, initializer_size,
+            text, const, const_start, data, cstring, cstring_start,
+            initializer_start, initializer_size,
             terminator_start, terminator_size,
             entry_offset, cpu_subtype,
-            text_align_exp, const_align_exp, data_align_exp, rebase_sites,
+            text_align_exp, const_align_exp, cstring_align_exp, data_align_exp, rebase_sites,
             bind_sites,
         )
         args.output.write_bytes(image)

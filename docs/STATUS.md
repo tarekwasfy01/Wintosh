@@ -2478,3 +2478,9 @@ The initializer set a BSS global to 42 before `main`; the terminator printed
 `guest terminator` after `main`, and the process preserved status 42. The
 prototype uses a 0x400 `__TEXT` file offset to fit both runtime pointer sections
 in its load commands, reducing the available text bytes within the fixed page.
+
+An i386 guest containing separate `__TEXT,__const` and `__TEXT,__cstring`
+sections linked with distinct output section headers and ran. It read the
+CString through a relocated data pointer and returned **40**. PIC, C++ global
+object, and init/term fixtures continued to run after the read-only-section
+layout change.

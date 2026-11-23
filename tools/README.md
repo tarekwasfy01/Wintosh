@@ -38,8 +38,8 @@ corresponding upstream definitions and licenses.
 
 `python tools/link_i386_macho.py --output app.macho main.o helper.o` accepts
 little-endian i386 `MH_OBJECT` files. It combines each input's `__TEXT,__text`,
-optional `__TEXT,__StaticInit` code, one optional `__TEXT,__cstring` or
-`__const`, and optional `__DATA,__data` and zerofill sections plus
+optional `__TEXT,__StaticInit` code, separate optional `__TEXT,__cstring` and
+`__const` sections, and optional `__DATA,__data` and zerofill sections plus
 `__DATA,__mod_init_func` / `__mod_term_func`, resolves external
 definitions between those sections, and supports 32-bit
 `GENERIC_RELOC_VANILLA` PC-relative and absolute references plus paired
@@ -69,6 +69,8 @@ A constructor guest whose `__mod_init_func` set a global before `main` returned
 42, proving that the emitted section reaches Wintosh's initializer phase.
 A linked `__mod_term_func` fixture ran after `main`, printed `guest terminator`,
 and preserved the constructor guest's status 42.
+A mixed read-only guest containing both `__const` and `__cstring` ran and
+returned 40 after dereferencing the CString pointer.
 A no-standard-library C++ guest also constructed a global object before `main`
 and ran its `___cxa_atexit` destructor afterward, printing `cxx destructor`
 while preserving status 42. `___dso_handle` is represented by a guest-local

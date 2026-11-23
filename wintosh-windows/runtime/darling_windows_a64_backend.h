@@ -65,6 +65,8 @@ public:
 	[[nodiscard]] A64ExecutionResult Run(const A64CpuState& initial_state) const;
 	[[nodiscard]] bool ContainsGuestRange(std::uint64_t address,
 		std::size_t bytes, bool guest_writes) const noexcept;
+	[[nodiscard]] bool HasGuestRangeOverlap(std::uint64_t address,
+		std::size_t bytes) const noexcept;
 	[[nodiscard]] bool ContainsGuestCString(std::uint64_t address,
 		std::size_t maximum_bytes) const noexcept;
 	[[nodiscard]] bool ContainsExecutableGuestAddress(

@@ -14,6 +14,10 @@ extern void *dlopen(const char *path, int mode);
 extern void *dlsym(void *handle, const char *symbol);
 extern int dlclose(void *handle);
 extern const char *dlerror(void);
+extern void *mmap(void *address, unsigned long length, int protection,
+	int flags, int descriptor, long offset);
+extern int mprotect(void *address, unsigned long length, int protection);
+extern int munmap(void *address, unsigned long length);
 
 typedef long (*WintoshDynamicAnswer)(void);
 typedef long (*WintoshDynamicObjcSend)(id, SEL);
@@ -35,6 +39,31 @@ static void WintoshTerminatorMarker(void)
 {
 	static const char marker[] = "ARM64_TERMINATOR=PASS\n";
 	(void)write(1, marker, sizeof(marker) - 1);
+}
+
+static long WintoshMappedMemoryRoundTrip(void)
+{
+	volatile unsigned char *memory = (volatile unsigned char *)mmap(
+		(void *)0, 4096, 3, 0x1002, -1, 0);
+	if (memory == (volatile unsigned char *)-1)
+		return 10;
+	if (mprotect((void *)memory, 4096, 0) != 0)
+		return 12;
+	void *fixed_overlap = mmap((void *)memory, 4096, 3, 0x1012, -1, 0);
+	if (fixed_overlap != (void *)-1)
+		return 15;
+	if (mprotect((void *)memory, 4096, 3) != 0)
+		return 16;
+	memory[0] = 42;
+	const long value = memory[0];
+	const int protected = mprotect((void *)memory, 4096, 1);
+	const int unmapped = munmap((void *)memory, 4096);
+	const int repeated_unmap = munmap((void *)memory, 4096);
+	if (value != 42) return 20;
+	if (protected != 0) return 30;
+	if (unmapped != 0) return 40;
+	if (repeated_unmap != -1) return 50;
+	return 1;
 }
 
 __attribute__((used, section("__DATA,__mod_term_func")))
@@ -336,6 +365,9 @@ int main(int argc, char **argv, char **envp)
 		(id)probe, length_plus, "Wintosh");
 	const long heap_value = ((WintoshSendLong)objc_msgSend)(
 		(id)probe, heap_round_trip);
+	const long mapped_value = WintoshMappedMemoryRoundTrip();
+	if (mapped_value != 1)
+		return (int)(40 + mapped_value);
 	return value == 42 && inherited == 42 &&
 		category == 42 && sum == 42 &&
 		incremented == 42.0 &&
@@ -343,5 +375,5 @@ int main(int argc, char **argv, char **envp)
 		pair.x == 21.0 && pair.y == 22.0 && quad.a == 11.0 &&
 		quad.b == 12.0 && quad.c == 13.0 && quad.d == 14.0 &&
 		triple.a == 11 && triple.b == 12 && triple.c == 13 && nested == 42 &&
-		nested_length == 42 && heap_value == 42 ? 42 : 1;
+		nested_length == 42 && heap_value == 42 && mapped_value == 1 ? 42 : 1;
 }

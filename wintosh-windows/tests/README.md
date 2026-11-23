@@ -13,6 +13,14 @@ performs nested `sel_registerName`, `objc_msgSend`, `_strlen`, `_malloc`, and
 `_realloc`/`_free` imports, verifying guest heap write/read/resize/free. It is
 not a general Objective-C or macOS application test.
 
+The same guest calls imported `_mmap`, `_mprotect`, and `_munmap`: it creates an
+anonymous private page, writes and reads it, changes it to read-only, unmaps it,
+and verifies that the bridge rejects a second unmap. It also makes a page
+inaccessible and checks that `MAP_FIXED` cannot release a guest region while
+ignoring its current protection. This covers whole mappings owned by the ARM64
+guest bridge; file-backed maps, partial unmaps, and replacing an already mapped
+guest region with `MAP_FIXED` remain unsupported there.
+
 The ARM64 Objective-C fixture also verifies class inheritance by invoking a
 class method implemented on its guest superclass.
 Its guest `+initialize` methods record base-class then subclass order, and the

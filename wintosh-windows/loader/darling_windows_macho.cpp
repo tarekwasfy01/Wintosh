@@ -3601,6 +3601,7 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 		} restore_active_arm64_execution{previous_active_backend,
 			previous_active_imports};
 		std::vector<std::uintptr_t> guest_malloc_allocations;
+		std::vector<std::pair<std::uintptr_t, std::size_t>> guest_mmap_allocations;
 		std::vector<std::unique_ptr<char[]>> guest_loader_error_buffers;
 		const auto copy_guest_loader_error = [&](const char* error) {
 			if (error == nullptr)
@@ -3673,6 +3674,109 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 			guest_malloc_allocations.erase(found);
 			return register_guest_malloc(resized, requested_bytes, free_target);
 		};
+		const auto map_guest_memory = [&](const A64CpuState& state) {
+			const auto& x = state.x;
+			if (x[1] == 0 || x[1] > std::numeric_limits<std::size_t>::max() ||
+				x[2] > 7 || x[3] > std::numeric_limits<int>::max() ||
+				x[4] > std::numeric_limits<std::uint32_t>::max()) {
+				darling::windows_host::DarwinErrno::Set(EINVAL);
+				return std::uintptr_t{static_cast<std::uint64_t>(-1)};
+			}
+			const auto length = static_cast<std::size_t>(x[1]);
+			const auto page_size = static_cast<std::size_t>(darling_windows_getpagesize());
+			if (page_size == 0 || length >
+				std::numeric_limits<std::size_t>::max() - (page_size - 1)) {
+				darling::windows_host::DarwinErrno::Set(75);
+				return std::uintptr_t{static_cast<std::uint64_t>(-1)};
+			}
+			const auto rounded_length = ((length + page_size - 1) / page_size) * page_size;
+			constexpr std::uint64_t map_fixed = 0x0010;
+			if ((x[3] & map_fixed) != 0 && x[0] == 0) {
+				darling::windows_host::DarwinErrno::Set(EINVAL);
+				return std::uintptr_t{static_cast<std::uint64_t>(-1)};
+			}
+			if ((x[3] & map_fixed) != 0 && x[0] != 0 &&
+				backend.HasGuestRangeOverlap(x[0], rounded_length)) {
+				darling::windows_host::DarwinErrno::Set(EINVAL);
+				return std::uintptr_t{static_cast<std::uint64_t>(-1)};
+			}
+			void* mapped = darling_windows_mmap(
+				reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0])), length,
+				static_cast<int>(x[2]), static_cast<int>(x[3]),
+				static_cast<int>(static_cast<std::int32_t>(x[4])),
+				static_cast<std::int64_t>(x[5]));
+			if (mapped == reinterpret_cast<void*>(-1))
+				return std::uintptr_t{static_cast<std::uint64_t>(-1)};
+			const auto address = reinterpret_cast<std::uintptr_t>(mapped);
+			A64GuestMemoryRegion region{address, rounded_length, (x[2] & 1) != 0,
+				(x[2] & 2) != 0, (x[2] & 4) != 0, true, address, length, true};
+			if (!backend.RegisterDynamicGuestMapping(region)) {
+				(void)darling_windows_munmap(mapped, length);
+				darling::windows_host::DarwinErrno::Set(EINVAL);
+				return std::uintptr_t{static_cast<std::uint64_t>(-1)};
+			}
+			try {
+				guest_mmap_allocations.emplace_back(address, length);
+			} catch (...) {
+				(void)backend.RemoveDynamicGuestMapping(address);
+				(void)darling_windows_munmap(mapped, length);
+				throw;
+			}
+			return address;
+		};
+		const auto unmap_guest_memory = [&](const A64CpuState& state) {
+			const auto address = static_cast<std::uintptr_t>(state.x[0]);
+			if (state.x[0] > std::numeric_limits<std::uintptr_t>::max() ||
+				state.x[1] > std::numeric_limits<std::size_t>::max()) {
+				darling::windows_host::DarwinErrno::Set(EINVAL);
+				return std::uint64_t{static_cast<std::uint64_t>(-1)};
+			}
+			const auto length = static_cast<std::size_t>(state.x[1]);
+			const auto found = std::find(guest_mmap_allocations.begin(),
+				guest_mmap_allocations.end(), std::pair{address, length});
+			if (found == guest_mmap_allocations.end()) {
+				darling::windows_host::DarwinErrno::Set(EINVAL);
+				return std::uint64_t{static_cast<std::uint64_t>(-1)};
+			}
+			const auto result = darling_windows_munmap(
+				reinterpret_cast<void*>(address), length);
+			if (result == 0) {
+				(void)backend.RemoveDynamicGuestMapping(address);
+				guest_mmap_allocations.erase(found);
+			}
+			return static_cast<std::uint64_t>(static_cast<std::int64_t>(result));
+		};
+		const auto protect_guest_memory = [&](const A64CpuState& state) {
+			const auto address = state.x[0];
+			if (address > std::numeric_limits<std::uintptr_t>::max() ||
+				state.x[1] == 0 || state.x[1] > std::numeric_limits<std::size_t>::max() ||
+				state.x[2] > 7) {
+				darling::windows_host::DarwinErrno::Set(EINVAL);
+				return std::uint64_t{static_cast<std::uint64_t>(-1)};
+			}
+			const auto length = static_cast<std::size_t>(state.x[1]);
+			const auto page_size = static_cast<std::size_t>(darling_windows_getpagesize());
+			if (page_size == 0 || length >
+				std::numeric_limits<std::size_t>::max() - (page_size - 1)) {
+				darling::windows_host::DarwinErrno::Set(75);
+				return std::uint64_t{static_cast<std::uint64_t>(-1)};
+			}
+			const auto rounded_length = ((length + page_size - 1) / page_size) * page_size;
+			if (!backend.CanProtectGuestRange(address, rounded_length)) {
+				darling::windows_host::DarwinErrno::Set(EINVAL);
+				return std::uint64_t{static_cast<std::uint64_t>(-1)};
+			}
+			const auto result = darling_windows_mprotect(
+				reinterpret_cast<void*>(static_cast<std::uintptr_t>(address)), length,
+				static_cast<int>(state.x[2]));
+			if (result == 0 && !backend.ProtectGuestRange(address, rounded_length,
+				(state.x[2] & 1) != 0, (state.x[2] & 2) != 0,
+				(state.x[2] & 4) != 0)) {
+				darling::windows_host::DarwinErrno::Set(EFAULT);
+				return std::uint64_t{static_cast<std::uint64_t>(-1)};
+			}
+			return static_cast<std::uint64_t>(static_cast<std::int64_t>(result));
+		};
 		A64CpuState cpu{};
 		cpu.x = registers;
 		cpu.sp = stack_pointer;
@@ -3737,6 +3841,12 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 				resumed.x[0] = static_cast<std::uint64_t>(
 					reinterpret_cast<int (*)(void*)>(imported->target)(
 						reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0]))));
+			} else if (name == "_mmap" || name == "mmap") {
+				resumed.x[0] = map_guest_memory(trap.state);
+			} else if (name == "_munmap" || name == "munmap") {
+				resumed.x[0] = unmap_guest_memory(trap.state);
+			} else if (name == "_mprotect" || name == "mprotect") {
+				resumed.x[0] = protect_guest_memory(trap.state);
 			} else if (name == "_write") {
 				const auto bytes = static_cast<std::size_t>(x[2]);
 				if (bytes > (1u << 20) || !backend.ContainsGuestRange(x[1], bytes, false))
@@ -4016,6 +4126,12 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 						cpu.x[0] = static_cast<std::uint64_t>(
 							reinterpret_cast<int (*)(void*)>(imported->target)(
 								reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0]))));
+					} else if (name == "_mmap" || name == "mmap") {
+						cpu.x[0] = map_guest_memory(result.state);
+					} else if (name == "_munmap" || name == "munmap") {
+						cpu.x[0] = unmap_guest_memory(result.state);
+					} else if (name == "_mprotect" || name == "mprotect") {
+						cpu.x[0] = protect_guest_memory(result.state);
 					} else if (name == "_write") {
 						const auto bytes = static_cast<std::size_t>(x[2]);
 						if (bytes > (1u << 20) || !backend.ContainsGuestRange(x[1], bytes, false))

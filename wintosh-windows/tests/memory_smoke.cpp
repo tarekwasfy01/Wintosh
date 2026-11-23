@@ -93,8 +93,16 @@ int main()
 		if (offset_descriptor < 0) {
 			throw std::runtime_error("offset mmap reopen failed");
 		}
+		constexpr std::int64_t offset_page = 4096;
+		constexpr char offset_payload[] = "FILE";
+		if (darling_windows_lseek(offset_descriptor, offset_page, 0) != offset_page ||
+			darling_windows_write(offset_descriptor, offset_payload,
+				sizeof(offset_payload) - 1) != static_cast<int>(sizeof(offset_payload) - 1)) {
+			darling_windows_close(offset_descriptor);
+			throw std::runtime_error("offset mmap seed write failed");
+		}
 		void* private_mapping = darling_windows_mmap(nullptr, 4, 3, 0x0002,
-			offset_descriptor, 5);
+			offset_descriptor, offset_page);
 		if (private_mapping == reinterpret_cast<void*>(-1) ||
 			std::memcmp(private_mapping, "FILE", 4) != 0) {
 			if (private_mapping != reinterpret_cast<void*>(-1)) darling_windows_munmap(private_mapping, 4);
@@ -107,7 +115,7 @@ int main()
 			throw std::runtime_error("private offset mmap unmap failed");
 		}
 		void* shared_offset_mapping = darling_windows_mmap(nullptr, 4, 3, 0x0001,
-			offset_descriptor, 5);
+			offset_descriptor, offset_page);
 		if (shared_offset_mapping == reinterpret_cast<void*>(-1) ||
 			std::memcmp(shared_offset_mapping, "FILE", 4) != 0) {
 			if (shared_offset_mapping != reinterpret_cast<void*>(-1)) darling_windows_munmap(shared_offset_mapping, 4);
@@ -139,13 +147,16 @@ int main()
 			throw std::runtime_error("fixed file mmap replacement failed");
 		}
 		const int offset_verify_descriptor = darling_windows_open(file_name.c_str(), 0, 0);
-		char offset_verify[sizeof(file_payload)]{};
-		const auto offset_verified = offset_verify_descriptor < 0 ? -1 :
+		char offset_verify[4]{};
+		const auto offset_seek = offset_verify_descriptor < 0 ? -1 :
+			darling_windows_lseek(offset_verify_descriptor, offset_page, 0);
+		const auto offset_verified = offset_seek != offset_page ? -1 :
 			darling_windows_read(offset_verify_descriptor, offset_verify, sizeof(offset_verify));
 		if (offset_verify_descriptor >= 0) darling_windows_close(offset_verify_descriptor);
 		(void)std::filesystem::remove(file_path);
 		if (offset_verified != static_cast<int>(sizeof(offset_verify)) ||
-			offset_verify[5] != 'S' || offset_verify[0] != 'X') {
+			offset_verify[0] != 'S' || offset_verify[1] != 'I' ||
+			offset_verify[2] != 'L' || offset_verify[3] != 'E') {
 			throw std::runtime_error("offset mmap persistence/COW failed");
 		}
 		std::cout << "DARWIN_SYSCALL_MEMORY=PASS\n";

@@ -314,6 +314,21 @@ bool DarlingWindowsA64Backend::ContainsGuestRange(std::uint64_t address,
 	return bytes == 0;
 }
 
+bool DarlingWindowsA64Backend::HasGuestRangeOverlap(std::uint64_t address,
+	std::size_t bytes) const noexcept
+{
+	if (bytes == 0)
+		return false;
+	if (address > std::numeric_limits<std::uint64_t>::max() - bytes)
+		return true;
+	const auto end = address + bytes;
+	return std::any_of(m_memory.begin(), m_memory.end(),
+		[address, end](const auto& region) {
+			const auto region_end = region.address + region.bytes;
+			return address < region_end && region.address < end;
+		});
+}
+
 bool DarlingWindowsA64Backend::ContainsGuestCString(std::uint64_t address,
 	std::size_t maximum_bytes) const noexcept
 {

@@ -3,9 +3,10 @@
 
 This bring-up linker handles one __TEXT,__text, optional __TEXT,__cstring or
 __const, initialized/zero-fill __DATA, indirect pointer section, and
-__DATA,__mod_init_func section per object. Const bytes are emitted in a
-read-only __TEXT,__const output section. It
-supports bounded 32-bit GENERIC_RELOC_VANILLA and paired scattered
+__DATA,__mod_init_func/__mod_term_func sections per object. Clang's
+__TEXT,__StaticInit contribution is merged into executable text. Const bytes
+are emitted in a read-only __TEXT,__const output section. It supports bounded
+32-bit GENERIC_RELOC_VANILLA and paired scattered
 GENERIC_RELOC_SECTDIFF/LOCAL_SECTDIFF relocations, plus dyld rebases. It does
 not link a Darwin CRT, dylibs, unwind tables, or other relocation kinds.
 """
@@ -40,15 +41,16 @@ GENERIC_RELOC_PAIR = 1
 GENERIC_RELOC_SECTDIFF = 2
 GENERIC_RELOC_LOCAL_SECTDIFF = 4
 PAGE_SIZE = 0x1000
-TEXT_FILE_OFFSET = 0x200
+TEXT_FILE_OFFSET = 0x400
 DATA_FILE_OFFSET = PAGE_SIZE
-TEXT_VM_BASE = 0x1200
+TEXT_VM_BASE = 0x1400
 DATA_VM_BASE = 0x2000
 S_ATTR_PURE_INSTRUCTIONS = 0x80000000
 S_ATTR_SOME_INSTRUCTIONS = 0x00000400
 S_ZEROFILL = 0x1
 S_NON_LAZY_SYMBOL_POINTERS = 0x6
 S_MOD_INIT_FUNC_POINTERS = 0x9
+S_MOD_TERM_FUNC_POINTERS = 0xA
 
 
 class FormatError(ValueError):
@@ -87,6 +89,7 @@ class MachObject:
     bss: ObjectSection | None
     pointers: ObjectSection | None
     initializers: ObjectSection | None
+    terminators: ObjectSection | None
     pointer_symbols: tuple[str, ...]
     cpu_subtype: int
     definitions: dict[str, tuple[str, int]]
@@ -164,6 +167,8 @@ def parse_object(path: Path, data: bytes) -> MachObject:
                     kind = "ptr"
                 elif (sectname, segname) == ("__mod_init_func", "__DATA"):
                     kind = "init"
+                elif (sectname, segname) == ("__mod_term_func", "__DATA"):
+                    kind = "term"
                 if kind is not None:
                     if any(existing[0] == kind for existing in input_sections.values()):
                         raise FormatError(f"{path}: multiple __{kind} sections")
@@ -176,6 +181,8 @@ def parse_object(path: Path, data: bytes) -> MachObject:
                         raise FormatError(f"{path}: __IMPORT,__pointers has an unsupported section type")
                     if kind == "init" and (_flags & 0xFF) != S_MOD_INIT_FUNC_POINTERS:
                         raise FormatError(f"{path}: __DATA,__mod_init_func has an unsupported section type")
+                    if kind == "term" and (_flags & 0xFF) != S_MOD_TERM_FUNC_POINTERS:
+                        raise FormatError(f"{path}: __DATA,__mod_term_func has an unsupported section type")
                     if kind != "bss" and is_zerofill:
                         raise FormatError(f"{path}: __{kind} unexpectedly uses S_ZEROFILL")
                     if is_zerofill and nreloc:
@@ -216,6 +223,7 @@ def parse_object(path: Path, data: bytes) -> MachObject:
     bss_record = next((record for record in input_sections.values() if record[0] == "bss"), None)
     pointer_record = next((record for record in input_sections.values() if record[0] == "ptr"), None)
     initializer_record = next((record for record in input_sections.values() if record[0] == "init"), None)
+    terminator_record = next((record for record in input_sections.values() if record[0] == "term"), None)
     if text_record is None:
         raise FormatError(f"{path}: missing __TEXT,__text")
     if symtab is None:
@@ -353,9 +361,11 @@ def parse_object(path: Path, data: bytes) -> MachObject:
     bss_section = make_section(bss_record) if bss_record is not None else None
     pointer_section = make_section(pointer_record) if pointer_record is not None else None
     initializer_section = make_section(initializer_record) if initializer_record is not None else None
-    if initializer_record is not None and (
-            initializer_record[2] % 4 != 0 or initializer_record[4] < 2):
+    terminator_section = make_section(terminator_record) if terminator_record is not None else None
+    if initializer_record is not None and initializer_record[2] % 4 != 0:
         raise FormatError(f"{path}: __DATA,__mod_init_func is not a 32-bit pointer array")
+    if terminator_record is not None and terminator_record[2] % 4 != 0:
+        raise FormatError(f"{path}: __DATA,__mod_term_func is not a 32-bit pointer array")
     pointer_symbols: tuple[str, ...] = ()
     if pointer_record is not None:
         if dysymtab is None:
@@ -387,6 +397,7 @@ def parse_object(path: Path, data: bytes) -> MachObject:
         bss=bss_section,
         pointers=pointer_section,
         initializers=initializer_section,
+        terminators=terminator_section,
         pointer_symbols=pointer_symbols,
         cpu_subtype=cpu_subtype,
         definitions=definitions,
@@ -416,6 +427,7 @@ def link_objects(
     bss_offsets: list[int] = []
     pointer_offsets: list[int] = []
     initializer_offsets: list[int] = []
+    terminator_offsets: list[int] = []
     static_init_offsets: list[int] = []
     text_size = 0
     data_size = 0
@@ -428,6 +440,8 @@ def link_objects(
     pointer_align_exp = 0
     initializer_align_exp = 0
     initializer_size = 0
+    terminator_size = 0
+    terminator_align_exp = 0
     static_init_size = 0
     static_init_align_exp = 0
     for obj in objects:
@@ -474,11 +488,20 @@ def link_objects(
         if obj.initializers is None:
             initializer_offsets.append(0)
         else:
-            initializer_size = align_up(initializer_size, obj.initializers.alignment)
+            initializer_size = align_up(initializer_size, max(4, obj.initializers.alignment))
             initializer_offsets.append(initializer_size)
             initializer_size += len(obj.initializers.contents)
             initializer_align_exp = max(
                 initializer_align_exp, obj.initializers.alignment.bit_length() - 1
+            )
+        if obj.terminators is None:
+            terminator_offsets.append(0)
+        else:
+            terminator_size = align_up(terminator_size, max(4, obj.terminators.alignment))
+            terminator_offsets.append(terminator_size)
+            terminator_size += len(obj.terminators.contents)
+            terminator_align_exp = max(
+                terminator_align_exp, obj.terminators.alignment.bit_length() - 1
             )
     if text_size == 0:
         raise FormatError("combined __text exceeds the one-page prototype image limit")
@@ -491,8 +514,8 @@ def link_objects(
     combined_data_size = bss_start + bss_size
     if combined_data_size > PAGE_SIZE:
         raise FormatError("combined __data and zero-fill storage exceed one page")
-    if text_align_exp > 9:
-        raise FormatError("combined __text alignment exceeds the fixed 0x200 file offset")
+    if text_align_exp > 10:
+        raise FormatError("combined __text alignment exceeds the fixed 0x400 file offset")
 
     definitions: dict[str, tuple[int, str, int]] = {}
     undefined: set[str] = set()
@@ -573,10 +596,14 @@ def link_objects(
     data_align_exp = max(data_align_exp, 2 if import_slot_offsets else pointer_align_exp)
     data_end = pointer_start + pointer_size if pointer_size else bss_start + bss_size
     initializer_start = (
-        align_up(data_end, 1 << initializer_align_exp) if initializer_size else data_end
+        align_up(data_end, max(4, 1 << initializer_align_exp)) if initializer_size else data_end
     )
-    data_align_exp = max(data_align_exp, initializer_align_exp)
-    combined_data_size = initializer_start + initializer_size if initializer_size else data_end
+    after_initializers = initializer_start + initializer_size if initializer_size else data_end
+    terminator_start = (
+        align_up(after_initializers, max(4, 1 << terminator_align_exp)) if terminator_size else after_initializers
+    )
+    data_align_exp = max(data_align_exp, initializer_align_exp, terminator_align_exp)
+    combined_data_size = terminator_start + terminator_size if terminator_size else after_initializers
     if combined_data_size > PAGE_SIZE:
         raise FormatError("combined __DATA and import pointer storage exceed one page")
     if entry_name not in definitions:
@@ -590,11 +617,13 @@ def link_objects(
         "text": text_offsets, "data": data_offsets, "const": const_offsets,
         "static_init": static_init_offsets,
         "bss": bss_offsets, "ptr": pointer_offsets, "init": initializer_offsets,
+        "term": terminator_offsets,
     }
     section_sizes = {
         "text": text_size, "data": data_size, "const": const_size,
         "static_init": static_init_size,
         "bss": bss_size, "ptr": pointer_size, "init": initializer_size,
+        "term": terminator_size,
     }
     output_sections = {"text": text, "data": data}
     rebase_sites: set[tuple[int, int]] = set()
@@ -623,6 +652,9 @@ def link_objects(
         if obj.initializers is not None:
             init_base = initializer_start + initializer_offsets[index]
             data[init_base : init_base + len(obj.initializers.contents)] = obj.initializers.contents
+        if obj.terminators is not None:
+            term_base = terminator_start + terminator_offsets[index]
+            data[term_base : term_base + len(obj.terminators.contents)] = obj.terminators.contents
 
         for relocation in obj.relocations:
             source_base = section_placements[relocation.source_kind][index]
@@ -632,6 +664,7 @@ def link_objects(
                 obj.const if relocation.source_kind == "const" else
                 obj.pointers if relocation.source_kind == "ptr" else
                 obj.initializers if relocation.source_kind == "init" else
+                obj.terminators if relocation.source_kind == "term" else
                 obj.bss if relocation.source_kind == "bss" else obj.data
             )
             if source_section is None:
@@ -639,17 +672,18 @@ def link_objects(
             source_file_base = (
                 pointer_start + source_base if relocation.source_kind == "ptr" else
                 initializer_start + source_base if relocation.source_kind == "init" else
+                terminator_start + source_base if relocation.source_kind == "term" else
                 source_base if relocation.source_kind in ("const", "static_init") else
                 bss_start + source_base if relocation.source_kind == "bss" else source_base
             )
             source_output_vm = (
                 TEXT_VM_BASE + const_start + source_base if relocation.source_kind == "const" else
                 TEXT_VM_BASE + source_base if relocation.source_kind in ("text", "static_init") else
-                preferred_vm["data"] + source_file_base if relocation.source_kind in ("ptr", "bss", "init")
+                preferred_vm["data"] + source_file_base if relocation.source_kind in ("ptr", "bss", "init", "term")
                 else preferred_vm[relocation.source_kind] + source_base
             )
             source_site = source_file_base + relocation.offset
-            source_bytes = const if relocation.source_kind == "const" else data if relocation.source_kind in ("ptr", "bss", "init") else text if relocation.source_kind == "static_init" else output_sections[relocation.source_kind]
+            source_bytes = const if relocation.source_kind == "const" else data if relocation.source_kind in ("ptr", "bss", "init", "term") else text if relocation.source_kind == "static_init" else output_sections[relocation.source_kind]
 
             if relocation.minuend_kind is not None:
                 target_kind = relocation.target_kind
@@ -659,8 +693,11 @@ def link_objects(
 
                 def output_address(kind: str, offset: int) -> int:
                     base = section_placements[kind][index]
-                    if kind in ("bss", "init"):
-                        start = initializer_start if kind == "init" else bss_start
+                    if kind in ("bss", "init", "term"):
+                        start = (
+                            initializer_start if kind == "init" else
+                            terminator_start if kind == "term" else bss_start
+                        )
                         return preferred_vm["data"] + start + base + offset
                     if kind == "ptr":
                         return preferred_vm["data"] + pointer_start + base + offset
@@ -694,8 +731,11 @@ def link_objects(
                 else:
                     target_index, target_kind, target_value = target
                     target_base = section_placements[target_kind][target_index]
-                    if target_kind in ("bss", "init"):
-                        start = initializer_start if target_kind == "init" else bss_start
+                    if target_kind in ("bss", "init", "term"):
+                        start = (
+                            initializer_start if target_kind == "init" else
+                            terminator_start if target_kind == "term" else bss_start
+                        )
                         target_vm = preferred_vm["data"] + start + target_base + target_value
                     elif target_kind in ("text", "static_init"):
                         target_vm = TEXT_VM_BASE + target_base + target_value
@@ -744,14 +784,18 @@ def link_objects(
                     obj.static_init if target_kind == "static_init" else
                     obj.const if target_kind == "const" else
                     obj.initializers if target_kind == "init" else
+                    obj.terminators if target_kind == "term" else
                     obj.bss if target_kind == "bss" else
                     obj.pointers if target_kind == "ptr" else obj.data
                 )
                 if target_section is None:
                     raise FormatError("local relocation targets a missing section")
                 target_base = section_placements[target_kind][index]
-                if target_kind in ("bss", "init"):
-                    start = initializer_start if target_kind == "init" else bss_start
+                if target_kind in ("bss", "init", "term"):
+                    start = (
+                        initializer_start if target_kind == "init" else
+                        terminator_start if target_kind == "term" else bss_start
+                    )
                     target_output_vm = preferred_vm["data"] + start + target_base
                 elif target_kind in ("text", "static_init"):
                     target_output_vm = TEXT_VM_BASE + target_base
@@ -818,7 +862,7 @@ def link_objects(
         raise FormatError(f"entry symbol {entry_name} is not in __text")
     return (
         bytes(text), bytes(const), const_start, bytes(data), initializer_start,
-        initializer_size,
+        initializer_size, terminator_start, terminator_size,
         text_offsets[entry_index] + entry_value,
         cpu_subtype, text_align_exp, const_align_exp, data_align_exp,
         sorted(rebase_sites), sorted(set(bind_sites)),
@@ -879,6 +923,7 @@ def make_segment_command(
 def make_executable(
     text: bytes, const: bytes, const_start: int, data: bytes,
     initializer_start: int, initializer_size: int,
+    terminator_start: int, terminator_size: int,
     entry_offset: int, cpu_subtype: int,
     text_align_exp: int, const_align_exp: int, data_align_exp: int,
     rebase_sites: list[tuple[int, int]],
@@ -906,19 +951,26 @@ def make_executable(
         text_sections,
     )]
     if data:
-        initializer_sections = ()
+        runtime_sections = []
         data_section_size = len(data)
         if initializer_size:
-            data_section_size = initializer_start
-            initializer_sections = ((
+            data_section_size = min(data_section_size, initializer_start)
+            runtime_sections.append((
                 b"__mod_init_func", b"__DATA", DATA_VM_BASE + initializer_start,
                 initializer_size, DATA_FILE_OFFSET + initializer_start, 2,
                 S_MOD_INIT_FUNC_POINTERS,
-            ),)
+            ))
+        if terminator_size:
+            data_section_size = min(data_section_size, terminator_start)
+            runtime_sections.append((
+                b"__mod_term_func", b"__DATA", DATA_VM_BASE + terminator_start,
+                terminator_size, DATA_FILE_OFFSET + terminator_start, 2,
+                S_MOD_TERM_FUNC_POINTERS,
+            ))
         commands.append(make_segment_command(
             b"__DATA", DATA_VM_BASE, DATA_FILE_OFFSET, PAGE_SIZE, 7, 3,
             b"__data", b"__DATA", DATA_VM_BASE, data_section_size, DATA_FILE_OFFSET,
-            data_align_exp, additional_sections=initializer_sections,
+            data_align_exp, additional_sections=tuple(runtime_sections),
         ))
 
     rebase_stream = bytearray()
@@ -983,11 +1035,13 @@ def main() -> int:
     try:
         objects = [parse_object(path, path.read_bytes()) for path in args.inputs]
         (text, const, const_start, data, initializer_start, initializer_size,
+         terminator_start, terminator_size,
          entry_offset, cpu_subtype,
          text_align_exp, const_align_exp, data_align_exp, rebase_sites,
          bind_sites) = link_objects(objects, args.entry)
         image = make_executable(
             text, const, const_start, data, initializer_start, initializer_size,
+            terminator_start, terminator_size,
             entry_offset, cpu_subtype,
             text_align_exp, const_align_exp, data_align_exp, rebase_sites,
             bind_sites,

@@ -8,7 +8,8 @@ Clang erzeugt auf diesem Windows-Host i386-Mach-O-Objekte. Das vorhandene
 `ld64.lld.exe` weist `-arch i386` zurück. `tools/link_i386_macho.py` ist ein
 begrenzter i386-Linker-Prototyp: Er kombiniert `__TEXT,__text` und optionale
 `__TEXT,__cstring` oder `__const`, `__DATA,__data` sowie nullinitialisierte
-`__bss`/`__common`-Bereiche und `__DATA,__mod_init_func`-Pointer mehrerer
+`__bss`/`__common`-Bereiche sowie `__DATA,__mod_init_func`- und
+`__mod_term_func`-Pointer mehrerer
 `MH_OBJECT`-Dateien und löst begrenzte
 `__IMPORT,__pointers`-Slots über die indirekte Symboltabelle auf. Es verarbeitet
 32-Bit-`GENERIC_RELOC_VANILLA`-Relokationen und gepaarte gestreute
@@ -81,7 +82,7 @@ Sections identisch sind, kürzt sich ein gemeinsamer Slide heraus:
 
 `D_local = D_input + (V_target,out - V_target,in) - (V_source,out - V_source,in)`.
 
-Der Output hat ein 4096-Byte-`__TEXT`-Segment mit Code ab Datei-Offset `0x200`
+Der Output hat ein 4096-Byte-`__TEXT`-Segment mit Code ab Datei-Offset `0x400`
 und bei vorhandenen Daten ein 4096-Byte-`__DATA`-Segment ab Datei-Offset
 `0x1000`. Andere Sections einschließlich Unwind-Metadaten werden weggelassen.
 Das Image erhält `LC_SEGMENT` und `LC_MAIN`; `LC_DYLD_INFO_ONLY` kommt hinzu,
@@ -190,3 +191,10 @@ Ein C++-Objektfixture ohne Standardbibliothek erzeugte zusätzlich
 Wert vor `main`; nach Status **42** lief der registrierte Destruktor und gab
 `cxx destructor` aus. Das belegt eine C++-Globalobjekt-Lebensdauer, nicht die
 allgemeine C++-ABI, Exceptions, RTTI oder Standardbibliothek.
+
+Ein kombiniertes Image mit C-Initializer und `__mod_term_func`-Pointer setzte
+vor `main` sein Zero-fill-Global auf **42** und gab nach `main` `guest terminator`
+aus. Der Exitstatus 42 blieb erhalten. Dafür vergrößert der
+Prototyp den `__TEXT`-Dateioffset auf 0x400, sodass die Load Commands für beide
+Runtime-Pointersektionen Platz haben; das Codebudget innerhalb der 4-KiB-Seite
+verringert sich entsprechend.

@@ -2472,3 +2472,9 @@ The emitted `__StaticInit` code constructed the object before `main`; its
 `___cxa_atexit` registration ran the destructor after `main`. The destructor
 printed `cxx destructor`; the process preserved status **42**. This is one
 static-object lifecycle case, not full C++ ABI or exception-runtime support.
+
+A C initializer image was combined with a separate `__mod_term_func` object.
+The initializer set a BSS global to 42 before `main`; the terminator printed
+`guest terminator` after `main`, and the process preserved status 42. The
+prototype uses a 0x400 `__TEXT` file offset to fit both runtime pointer sections
+in its load commands, reducing the available text bytes within the fixed page.

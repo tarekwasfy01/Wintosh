@@ -47,6 +47,9 @@ initializer, and the guest returned 42.
 A no-standard-library C++ fixture likewise ran `__StaticInit`, registered
 `___cxa_atexit` with a guest-local `___dso_handle`, and printed from its global
 destructor after `main`, returning status 42.
+The linker also retains `__DATA,__mod_term_func`; a combined constructor and
+terminator image printed `guest terminator` after `main` and preserved status
+42.
 Apple's [dyld4 design notes](https://github.com/apple-oss-distributions/dyld/blob/main/doc/dyld4.md)
 describe process startup with argc, argv, envp, and Apple parameters on the
 initial stack. That current description does not establish compatibility with

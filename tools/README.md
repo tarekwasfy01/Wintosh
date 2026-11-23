@@ -40,7 +40,7 @@ corresponding upstream definitions and licenses.
 little-endian i386 `MH_OBJECT` files. It combines each input's `__TEXT,__text`,
 optional `__TEXT,__StaticInit` code, one optional `__TEXT,__cstring` or
 `__const`, and optional `__DATA,__data` and zerofill sections plus
-`__DATA,__mod_init_func`, resolves external
+`__DATA,__mod_init_func` / `__mod_term_func`, resolves external
 definitions between those sections, and supports 32-bit
 `GENERIC_RELOC_VANILLA` PC-relative and absolute references plus paired
 scattered `GENERIC_RELOC_SECTDIFF` and `GENERIC_RELOC_LOCAL_SECTDIFF` fields
@@ -67,6 +67,8 @@ not a complete libSystem. Separate PIC `main` and `helper` objects linked and
 ran in either input order, returning 84 after a local literal access.
 A constructor guest whose `__mod_init_func` set a global before `main` returned
 42, proving that the emitted section reaches Wintosh's initializer phase.
+A linked `__mod_term_func` fixture ran after `main`, printed `guest terminator`,
+and preserved the constructor guest's status 42.
 A no-standard-library C++ guest also constructed a global object before `main`
 and ran its `___cxa_atexit` destructor afterward, printing `cxx destructor`
 while preserving status 42. `___dso_handle` is represented by a guest-local

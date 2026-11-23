@@ -26,7 +26,10 @@ segment. A two-object global fixture also resolved Clang's
 `__IMPORT,__pointers` indirect slot to a definition in the companion object,
 then wrote and read the value and returned 42. This resolves only symbols
 defined by supplied object files; Darwin dylib imports, CRT, and framework
-linking remain outside the prototype.
+linking remain outside the prototype. A pointer from mutable data to a
+`__cstring` literal also rebased correctly and returned its first byte (65).
+At present the linker folds constant bytes into writable data, so read-only
+page protections are not preserved.
 Apple's [dyld4 design notes](https://github.com/apple-oss-distributions/dyld/blob/main/doc/dyld4.md)
 describe process startup with argc, argv, envp, and Apple parameters on the
 initial stack. That current description does not establish compatibility with

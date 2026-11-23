@@ -126,12 +126,13 @@ The separate i386 object-to-image experiment is bounded as follows:
 | Build transition | Windows Win32 |
 |---|---:|
 | Clang i386 objects linked into `MH_EXECUTE` | 1§ |
-| Mach-O object-symbol resolution in supplied text/data sections | 1§ |
+| Mach-O object-symbol resolution in supported sections | 1§ |
 | i386 same-section PC-relative relocation preservation | 1§ |
 | Cross-object i386 PC-relative external call | 1§ |
 | i386 `__DATA` global read/write with dyld slide rebase | 1§ |
 | i386 zero-initialized `__common` global read/write | 1§ |
 | i386 cross-object global via `__IMPORT,__pointers` | 1§ |
+| i386 pointer into `__cstring` and literal read | 1§ |
 | Compiler-produced image started by Wintosh | 1§ |
 
 `1§` covers a local same-section call, a two-object `_main` to `_helper` call,
@@ -139,12 +140,14 @@ and a single-object mutable `int` global initialized to 40, incremented, read
 back, and returned as 42 after the dyld slide rebase, a zero-initialized
 `__common` global written and returned as 42, plus a cross-object global
 resolved through an indirect pointer slot and returned as 42. For a local
-relocation, a common slide `δ` preserves the displacement:
+relocation, a global pointer to a `__cstring` literal also returned byte value
+65. Constant bytes are folded into writable output data, so section protection
+is not yet preserved. A common slide `δ` preserves a same-section displacement:
 `(S + δ) - (P + 4 + δ) = S - (P + 4)`. For the measured external Clang
 relocation, the linker combines the stored addend with the resolved symbol
 offset and source-section placement. The two-object output worked with either
-input ordering and returned 42 in Wintosh. The global-data proof does not cover
-cross-object data references. Other relocation kinds, compiler CRT,
+input ordering and returned 42 in Wintosh. The indirect-pointer proof covers
+one cross-object global form only. Other relocation kinds, compiler CRT,
 imported runtime symbols, and frameworks remain unproven. See
 [LINKER-RESEARCH.md](LINKER-RESEARCH.md) for the exact link contract.
 

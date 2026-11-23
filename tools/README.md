@@ -37,19 +37,23 @@ corresponding upstream definitions and licenses.
 ## Bounded i386 Mach-O linker
 
 `python tools/link_i386_macho.py --output app.macho main.o helper.o` accepts
-little-endian i386 `MH_OBJECT` files. It combines each input's `__TEXT,__text`
-and optional `__DATA,__data` and zerofill sections, resolves external
+little-endian i386 `MH_OBJECT` files. It combines each input's `__TEXT,__text`,
+one optional `__TEXT,__cstring` or `__const`, and optional `__DATA,__data` and
+zerofill sections, resolves external
 definitions between those sections, and supports 32-bit
 `GENERIC_RELOC_VANILLA` PC-relative and absolute references. Zerofill and
 `__common` storage are placed in the zero-initialized data segment; absolute
 pointers receive dyld type-2 rebases for the image slide. It resolves bounded
 `__IMPORT,__pointers` indirect-symbol slots when their target definition is
 among the supplied objects; this does not implement Darwin shared-library
-imports. Other relocation forms, dylibs, CRT, and frameworks remain outside
-this prototype. It emits a segmented `MH_EXECUTE` and drops unsupported
+imports. Constant-section bytes are currently placed in the writable data
+segment, so the prototype does not preserve read-only page protection. Other
+relocation forms, dylibs, CRT, and frameworks remain outside this prototype.
+It emits a segmented `MH_EXECUTE` and drops unsupported
 metadata such as unwind sections. Two-object call and data fixtures, plus
 single-object initialized and zero-initialized global fixtures, ran in Wintosh
-and returned 42. See
+and returned 42. A global pointer to `__cstring` also loaded its literal and
+returned its first byte (`A` = 65). See
 [LINKER-RESEARCH.md](../docs/porting/LINKER-RESEARCH.md) for the exact contract.
 
 The scripts and this documentation are original Wintosh tooling. Upstream

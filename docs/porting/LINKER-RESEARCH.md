@@ -7,10 +7,10 @@ Stand: 2026-11-23
 Clang erzeugt auf diesem Windows-Host i386-Mach-O-Objekte. Das vorhandene
 `ld64.lld.exe` weist `-arch i386` zurück. `tools/link_i386_macho.py` ist ein
 begrenzter i386-Linker-Prototyp: Er kombiniert `__TEXT,__text` und optionale
-`__DATA,__data`-Sections sowie nullinitialisierte `__bss`/`__common`-Bereiche
-mehrerer `MH_OBJECT`-Dateien und löst begrenzte `__IMPORT,__pointers`-Slots
-über die indirekte Symboltabelle auf. Es verarbeitet 32-Bit-
-`GENERIC_RELOC_VANILLA`-Relokationen. Absolute interne Adressen erhalten
+`__TEXT,__cstring` oder `__const`, `__DATA,__data` sowie nullinitialisierte
+`__bss`/`__common`-Bereiche mehrerer `MH_OBJECT`-Dateien und löst begrenzte
+`__IMPORT,__pointers`-Slots über die indirekte Symboltabelle auf. Es verarbeitet
+32-Bit-`GENERIC_RELOC_VANILLA`-Relokationen. Absolute interne Adressen erhalten
 `DYLD_INFO_ONLY`-Rebases für den Laufzeit-Slide.
 
 \[
@@ -29,7 +29,7 @@ implementiert, `?` = offen. Ein positiver Wert ist kein Vollständigkeitsbeleg.
 | Apple `ld64` / `ld-classic` | 1 (Apple-Handbuch dokumentiert i386) | 0 (Upstream Darwin-Host) | 1 (voller Linker) | ? | Semantik-Referenz |
 | `tpoechtrager/cctools-port` | 1 (i386 als Ziel) | 0 (README listet Linux/BSD/macOS/iOS Hosts) | 1 (portiert `ld64`) | ? | Portierungsreferenz |
 | `LongDirtyAnimAlf/ld64-msys` | ? (geerbter ld64-Code) | 1 (README nennt MSYS2/Windows) | ? | ? | Alternative für MSYS2-Prototyp |
-| Wintosh `link_i386_macho.py` | 1 | 1 | begrenzt (Text/Daten + 32-bit Vanilla) | 0 | verifiziert für kleine statische C-Gäste |
+| Wintosh `link_i386_macho.py` | 1 | 1 | begrenzt (Text, Daten, Zerofill, C-String, Vanilla) | 0 | verifiziert für kleine statische C-Gäste |
 
 Quellen:
 
@@ -45,8 +45,9 @@ werden. Es wurde kein fremder Linker-Code in Wintosh kopiert.
 ## Unterstützter Link-Vertrag
 
 Jedes Objekt muss little-endian i386 `MH_OBJECT` mit genau einer
-`__TEXT,__text`-Section, höchstens einer `__DATA,__data`-Section und einer
-zerofill-Section `__bss` oder `__common` sowie `LC_SYMTAB` sein. Die Sections
+`__TEXT,__text`-Section, höchstens einer `__TEXT,__cstring`- oder `__const`-
+Section, einer `__DATA,__data`-Section und einer zerofill-Section `__bss`
+oder `__common` sowie `LC_SYMTAB` sein. Die Sections
 werden in Eingabereihenfolge mit ihrer Alignment-Anforderung platziert.
 Externe `N_SECT`-Definitionen müssen in diesen Sections liegen; undefinierte
 externe Symbole und indirekte Pointer-Ziele müssen durch ein Eingabeobjekt
@@ -116,8 +117,15 @@ Systembibliotheken, Host-Imports und Frameworks.
 
 ## Nächster Ausbau
 
-Als Nächstes kommen Datenreferenzen zwischen Objektdateien. Danach folgen
-importierte Darwin-Symbole und ausgewählte CRT/libc-Pfade. Der Windows-
+Eine weitere Clang-Datei enthielt `__TEXT,__cstring` mit den Bytes `41 00`,
+eine globale Datenvariable mit absolutem Verweis darauf sowie Code, der den
+Zeiger dereferenzierte. Der Linker legte den Literalbereich im Output-
+Datenbereich ab, rebased den Zeiger, und Wintosh gab den ersten Bytewert
+**65** zurück. Der konstante Abschnitt bleibt dabei schreibbar; korrekte
+Read-only-Seitenschutzabbildung ist noch offen.
+
+Als Nächstes kommen echte getrennte Read-only-Sections und mehr Literaltypen.
+Danach folgen importierte Darwin-Symbole und ausgewählte CRT/libc-Pfade. Der Windows-
 Host besitzt weder `C:\msys64` noch `C:\cygwin64`; `ld64-msys` ist hier derzeit
 keine baubare lokale Alternative. Die Datei-für-Datei-Lizenzprüfung bleibt
 Pflicht, bevor Quellcode daraus übernommen wird.

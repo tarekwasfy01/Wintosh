@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Link a bounded set of i386 Mach-O text objects into a minimal MH_EXECUTE.
+"""Link bounded i386 Mach-O text and data objects into a minimal MH_EXECUTE.
 
-This bring-up linker handles one __TEXT,__text and optional initialized and
-zero-fill __DATA sections per input object. It supports 32-bit
-GENERIC_RELOC_VANILLA relocations to symbols in those sections, including
-dyld-rebased absolute addresses. It does not link a Darwin CRT, dylibs, unwind
-tables, or other Mach-O relocation kinds.
+This bring-up linker handles one __TEXT,__text, optional __TEXT,__cstring or
+__const, initialized/zero-fill __DATA, and indirect pointer section per object.
+Const bytes are currently folded into the writable output data segment. It
+supports bounded 32-bit GENERIC_RELOC_VANILLA relocations and dyld rebases.
+It does not link a Darwin CRT, dylibs, unwind tables, or other relocation kinds.
 """
 
 from __future__ import annotations
@@ -72,6 +72,7 @@ class ObjectSection:
 class MachObject:
     path: Path
     text: ObjectSection
+    const: ObjectSection | None
     data: ObjectSection | None
     bss: ObjectSection | None
     pointers: ObjectSection | None
@@ -140,6 +141,8 @@ def parse_object(path: Path, data: bytes) -> MachObject:
                 kind = None
                 if (sectname, segname) == ("__text", "__TEXT"):
                     kind = "text"
+                elif (sectname, segname) in (("__cstring", "__TEXT"), ("__const", "__TEXT")):
+                    kind = "const"
                 elif (sectname, segname) == ("__data", "__DATA"):
                     kind = "data"
                 elif (sectname, segname) in (("__bss", "__DATA"), ("__common", "__DATA")):
@@ -190,6 +193,7 @@ def parse_object(path: Path, data: bytes) -> MachObject:
     if cursor != commands_end:
         raise FormatError(f"{path}: load-command sizes do not match sizeofcmds")
     text_record = next((record for record in input_sections.values() if record[0] == "text"), None)
+    const_record = next((record for record in input_sections.values() if record[0] == "const"), None)
     data_record = next((record for record in input_sections.values() if record[0] == "data"), None)
     bss_record = next((record for record in input_sections.values() if record[0] == "bss"), None)
     pointer_record = next((record for record in input_sections.values() if record[0] == "ptr"), None)
@@ -284,6 +288,7 @@ def parse_object(path: Path, data: bytes) -> MachObject:
         return ObjectSection(kind, contents, addr, ordinal, 1 << align_exp, size)
 
     text_section = make_section(text_record)
+    const_section = make_section(const_record) if const_record is not None else None
     data_section = make_section(data_record) if data_record is not None else None
     bss_section = make_section(bss_record) if bss_record is not None else None
     pointer_section = make_section(pointer_record) if pointer_record is not None else None
@@ -312,6 +317,7 @@ def parse_object(path: Path, data: bytes) -> MachObject:
     return MachObject(
         path=path,
         text=text_section,
+        const=const_section,
         data=data_section,
         bss=bss_section,
         pointers=pointer_section,
@@ -339,13 +345,16 @@ def link_objects(
 
     text_offsets: list[int] = []
     data_offsets: list[int] = []
+    const_offsets: list[int] = []
     bss_offsets: list[int] = []
     pointer_offsets: list[int] = []
     text_size = 0
     data_size = 0
+    const_size = 0
     bss_size = 0
     text_align_exp = 0
     data_align_exp = 0
+    const_align_exp = 0
     bss_align_exp = 0
     pointer_align_exp = 0
     for obj in objects:
@@ -360,6 +369,13 @@ def link_objects(
             data_offsets.append(data_size)
             data_size += len(obj.data.contents)
             data_align_exp = max(data_align_exp, obj.data.alignment.bit_length() - 1)
+        if obj.const is None:
+            const_offsets.append(0)
+        else:
+            const_size = align_up(const_size, obj.const.alignment)
+            const_offsets.append(const_size)
+            const_size += len(obj.const.contents)
+            const_align_exp = max(const_align_exp, obj.const.alignment.bit_length() - 1)
         if obj.bss is None:
             bss_offsets.append(0)
         else:
@@ -375,7 +391,9 @@ def link_objects(
             pointer_offsets.append(0)
     if text_size == 0 or text_size > PAGE_SIZE - TEXT_FILE_OFFSET:
         raise FormatError("combined __text exceeds the one-page prototype image limit")
-    bss_start = align_up(data_size, 1 << bss_align_exp) if bss_size else data_size
+    const_start = align_up(data_size, 1 << const_align_exp)
+    data_align_exp = max(data_align_exp, const_align_exp)
+    bss_start = align_up(const_start + const_size, 1 << bss_align_exp) if bss_size else const_start + const_size
     combined_data_size = bss_start + bss_size
     if combined_data_size > PAGE_SIZE:
         raise FormatError("combined __data and zero-fill storage exceed one page")
@@ -408,7 +426,7 @@ def link_objects(
         bss_size += common_sizes[name]
     for name, offset in common_offsets.items():
         definitions[name] = (0, "bss", offset)
-    bss_start = align_up(data_size, 1 << max(bss_align_exp, 0)) if bss_size else data_size
+    bss_start = align_up(const_start + const_size, 1 << max(bss_align_exp, const_align_exp)) if bss_size else const_start + const_size
     pointer_start = align_up(bss_start + bss_size, 1 << pointer_align_exp)
     data_align_exp = max(data_align_exp, pointer_align_exp)
     pointer_size = 0
@@ -431,11 +449,11 @@ def link_objects(
     data = bytearray(combined_data_size)
     preferred_vm = {"text": TEXT_VM_BASE, "data": DATA_VM_BASE}
     section_placements = {
-        "text": text_offsets, "data": data_offsets,
+        "text": text_offsets, "data": data_offsets, "const": const_offsets,
         "bss": bss_offsets, "ptr": pointer_offsets,
     }
     section_sizes = {
-        "text": text_size, "data": data_size,
+        "text": text_size, "data": data_size, "const": const_size,
         "bss": bss_size, "ptr": pointer_size,
     }
     output_sections = {"text": text, "data": data}
@@ -447,6 +465,9 @@ def link_objects(
         if obj.data is not None:
             data_base = data_offsets[index]
             data[data_base : data_base + len(obj.data.contents)] = obj.data.contents
+        if obj.const is not None:
+            const_base = const_start + const_offsets[index]
+            data[const_base : const_base + len(obj.const.contents)] = obj.const.contents
         if obj.pointers is not None:
             pointer_base = pointer_start + pointer_offsets[index]
             data[pointer_base : pointer_base + len(obj.pointers.contents)] = obj.pointers.contents
@@ -455,6 +476,7 @@ def link_objects(
             source_base = section_placements[relocation.source_kind][index]
             source_section = (
                 obj.text if relocation.source_kind == "text" else
+                obj.const if relocation.source_kind == "const" else
                 obj.pointers if relocation.source_kind == "ptr" else
                 obj.bss if relocation.source_kind == "bss" else obj.data
             )
@@ -462,14 +484,15 @@ def link_objects(
                 raise FormatError("relocation source section is missing")
             source_file_base = (
                 pointer_start + source_base if relocation.source_kind == "ptr" else
+                const_start + source_base if relocation.source_kind == "const" else
                 bss_start + source_base if relocation.source_kind == "bss" else source_base
             )
             source_output_vm = (
-                preferred_vm["data"] + source_file_base if relocation.source_kind in ("ptr", "bss")
+                preferred_vm["data"] + source_file_base if relocation.source_kind in ("ptr", "bss", "const")
                 else preferred_vm[relocation.source_kind] + source_base
             )
             source_site = source_file_base + relocation.offset
-            source_bytes = data if relocation.source_kind in ("ptr", "bss") else output_sections[relocation.source_kind]
+            source_bytes = data if relocation.source_kind in ("ptr", "bss", "const") else output_sections[relocation.source_kind]
 
             if relocation.external_symbol is not None:
                 target = definitions.get(relocation.external_symbol)
@@ -482,6 +505,8 @@ def link_objects(
                     target_vm = preferred_vm["data"] + bss_start + target_base + target_value
                 elif target_kind == "ptr":
                     target_vm = preferred_vm["data"] + pointer_start + target_base + target_value
+                elif target_kind == "const":
+                    target_vm = preferred_vm["data"] + const_start + target_base + target_value
                 else:
                     target_vm = preferred_vm[target_kind] + target_base + target_value
                 if target_value >= section_sizes[target_kind]:
@@ -514,6 +539,7 @@ def link_objects(
                     raise FormatError("local relocation has no target section")
                 target_section = (
                     obj.text if target_kind == "text" else
+                    obj.const if target_kind == "const" else
                     obj.bss if target_kind == "bss" else
                     obj.pointers if target_kind == "ptr" else obj.data
                 )
@@ -524,6 +550,8 @@ def link_objects(
                     target_output_vm = preferred_vm["data"] + bss_start + target_base
                 elif target_kind == "ptr":
                     target_output_vm = preferred_vm["data"] + pointer_start + target_base
+                elif target_kind == "const":
+                    target_output_vm = preferred_vm["data"] + const_start + target_base
                 else:
                     target_output_vm = preferred_vm[target_kind] + target_base
                 if relocation.pc_relative:
@@ -565,6 +593,8 @@ def link_objects(
                 target_vm = DATA_VM_BASE + bss_start + target_base + target_value
             elif target_kind == "ptr":
                 target_vm = DATA_VM_BASE + pointer_start + target_base + target_value
+            elif target_kind == "const":
+                target_vm = DATA_VM_BASE + const_start + target_base + target_value
             else:
                 target_vm = preferred_vm[target_kind] + target_base + target_value
             slot_offset = pointer_start + pointer_offsets[index] + slot * 4

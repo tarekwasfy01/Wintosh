@@ -11,6 +11,11 @@ metadata for receiver-side materialization. Local Release builds of both
 this update; full voucher, port-death, and XNU-compatible right semantics
 remain open.
 
+If a queued request's reply receive port has since been destroyed, broker
+receive now preserves the request and clears the reply capability before
+delivery. This avoids losing the request after dequeue; dead-name notification
+and full XNU port-death semantics remain unimplemented.
+
 ## Reading this status
 
 This file records implemented behavior and known limits; it is not a claim of

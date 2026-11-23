@@ -855,6 +855,15 @@ int wmain(int argc, wchar_t** argv)
 							ool_owner->second != envelope.session_token)
 							throw std::invalid_argument("Mach IPC OOL mapping belongs to another session");
 					}
+					// A sender may destroy its reply receive port after enqueueing a
+					// request. Preserve the request and deliver it without a reply
+					// capability; a dead reply port must not consume/drop the message.
+					if (queue.front().local_port_token != 0 &&
+						(!allocated_ports.contains(queue.front().local_port_token) ||
+						 !port_rights.contains(queue.front().local_port_token))) {
+						queue.front().local_port_token = 0;
+						queue.front().local_disposition = 0;
+					}
 					for (std::size_t index = 0;
 						index < queue.front().port_descriptor_tokens.size(); ++index) {
 						const auto disposition = queue.front().port_descriptor_dispositions[index];

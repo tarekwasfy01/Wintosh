@@ -38,4 +38,7 @@ reply capability independently of body descriptors. Send validates the
 session's right, accounts move/copy/make reply rights while queued, and
 materializes the reply port in the receiver's local capability table. This is
 a selected Mach header-right subset; vouchers, complete receive-right
-accounting, and complete port-death/notification propagation remain open.
+accounting, and complete port-death/notification propagation remain open. If
+the reply receive port is destroyed before delivery, the broker preserves the
+request but delivers it without a reply capability; XNU dead-name notification
+and exact destroyed-right semantics are not modeled yet.

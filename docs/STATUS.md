@@ -2144,3 +2144,12 @@ the selected stream offset and returns the final resolved target. This follows
 dyld's compressed lazy binder, which walks the sequence through `DONE`. The x64
 executable and ARM64 host library compile; no runtime lazy-sequence fixture was
 run.
+
+### ARM64 threaded-bind chain bounds (2026-11-23)
+
+Threaded-bind chain traversal is now bounded by the remaining pointer capacity
+of its segment, rather than by the number of unique entries in the ordinal
+table. This permits chains that reuse imports across more slots than there are
+distinct bind targets, while retaining per-node segment bounds and requiring
+the chain to terminate within the segment. The x64 executable and ARM64 host
+library compile; no guest Mach-O fixture exercised threaded-bind chains.

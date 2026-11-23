@@ -2055,7 +2055,12 @@ void MachOImage::ApplyBindActions(const Mapping& mapping,
 				throw std::out_of_range("Mach-O threaded bind offset is outside its segment");
 			}
 			auto vm_address = segment.vm_address + action.segment_offset;
-			for (std::size_t node = 0; node <= action.threaded_table_size; ++node) {
+			// The ordinal table contains unique bind targets, not the number of
+			// pointers in the chain. A binary may reuse one target across many
+			// slots, so bound traversal by the segment's pointer capacity instead.
+			const auto maximum_nodes = (segment.vm_size - action.segment_offset) /
+				sizeof(std::uint64_t);
+			for (std::uint64_t node = 0; node < maximum_nodes; ++node) {
 				if (vm_address < segment.vm_address ||
 					vm_address - segment.vm_address > segment.vm_size ||
 					segment.vm_size - (vm_address - segment.vm_address) < sizeof(std::uint64_t)) {
@@ -2093,10 +2098,18 @@ void MachOImage::ApplyBindActions(const Mapping& mapping,
 				if (next == 0) {
 					break;
 				}
-				if (node == action.threaded_table_size) {
-					throw std::runtime_error("Mach-O threaded bind chain is cyclic");
+				const auto relative = vm_address - segment.vm_address;
+				const auto next_bytes = static_cast<std::uint64_t>(next) * 8;
+				if (next_bytes > segment.vm_size - relative ||
+					vm_address > std::numeric_limits<std::uint64_t>::max() - next_bytes) {
+					throw std::out_of_range(
+						"Mach-O threaded bind chain leaves its segment");
 				}
-				vm_address += static_cast<std::uint64_t>(next) * 8;
+				vm_address += next_bytes;
+				if (node + 1 == maximum_nodes) {
+					throw std::runtime_error(
+						"Mach-O threaded bind chain has no terminator");
+				}
 			}
 			continue;
 		}

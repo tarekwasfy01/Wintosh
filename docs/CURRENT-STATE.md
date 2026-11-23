@@ -78,8 +78,14 @@ its callback loop, so guest `+initialize` runs as ARM64 code with the original
 guest register and stack state. The ARM64 import fixture now gives its base
 class and subclass initializers ordered side effects, then verifies the
 subclass observes the final order through `objc_msgSend`; the e2e run exits 42.
-ARM64 `+load` remains a separate startup-time gap because image registration
-occurs before this execution callback context exists.
+ARM64 startup now queues each image's `__mod_init_func` callbacks followed by
+that image's class and category `+load` callbacks. Once Dynarmic installs the
+guest invoker, the queue runs FIFO before the entry point. Class addresses that
+also appear in `__objc_nlclslist` are deduplicated against `__objc_classlist`,
+so a class's `+load` runs once. The ARM64 end-to-end fixture verifies one
+constructor, superclass-first class `+load`, and category `+load` exactly once
+and in that order. Dynamic ARM64 image loading and terminators remain separate
+unverified lifecycle paths.
 
 ## Mach broker update, 2026-11-23
 

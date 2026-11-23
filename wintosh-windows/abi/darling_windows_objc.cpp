@@ -746,6 +746,27 @@ std::string CanonicalObjcEncoding(const std::string& encoding);
 namespace {
 thread_local darling_objc_guest_method_invoker active_guest_method_invoker = nullptr;
 thread_local void* active_guest_method_invoker_context = nullptr;
+struct PendingGuestCallback final {
+	IMP implementation{};
+	id receiver{};
+	SEL selector{};
+};
+std::mutex& PendingGuestCallbacksMutex()
+{
+	static std::mutex mutex;
+	return mutex;
+}
+std::vector<PendingGuestCallback>& PendingGuestCallbacks()
+{
+	static std::vector<PendingGuestCallback> callbacks;
+	return callbacks;
+}
+
+void QueueGuestCallback(IMP implementation, id receiver, SEL selector)
+{
+	std::lock_guard lock(PendingGuestCallbacksMutex());
+	PendingGuestCallbacks().push_back({implementation, receiver, selector});
+}
 }
 
 void EnsureClassInitialized(Class cls)
@@ -805,6 +826,34 @@ extern "C" darling_objc_guest_method_invoker darling_objc_set_guest_method_invok
 extern "C" void darling_objc_ensure_class_initialized(Class cls)
 {
 	EnsureClassInitialized(cls);
+}
+
+extern "C" void darling_objc_queue_guest_callback(IMP implementation,
+	id receiver, SEL selector)
+{
+	if (!implementation) return;
+	if (active_guest_method_invoker) {
+		active_guest_method_invoker(implementation, receiver, selector,
+			active_guest_method_invoker_context);
+		return;
+	}
+	QueueGuestCallback(implementation, receiver, selector);
+}
+
+extern "C" bool darling_objc_run_pending_guest_callbacks()
+{
+	if (!active_guest_method_invoker) return false;
+	for (;;) {
+		PendingGuestCallback callback;
+		{
+			std::lock_guard lock(PendingGuestCallbacksMutex());
+			if (PendingGuestCallbacks().empty()) return true;
+			callback = PendingGuestCallbacks().front();
+			PendingGuestCallbacks().erase(PendingGuestCallbacks().begin());
+		}
+		active_guest_method_invoker(callback.implementation, callback.receiver,
+			callback.selector, active_guest_method_invoker_context);
+	}
 }
 
 namespace {
@@ -2109,6 +2158,12 @@ extern "C" std::size_t darling_objc_register_macho_classlist(
 				index * sizeof(class_address), sizeof(class_address));
 		if (!class_address)
 			continue;
+		if (guest_indices.contains(class_address) ||
+			(active_image_token && std::find(
+				active_image_token->guest_class_addresses.begin(),
+				active_image_token->guest_class_addresses.end(), class_address) !=
+				active_image_token->guest_class_addresses.end()))
+			continue;
 		std::uintptr_t data_address = 0;
 		std::memcpy(&data_address,
 			reinterpret_cast<const std::uint8_t*>(class_address) +
@@ -2646,8 +2701,14 @@ extern "C" bool darling_objc_load_image(darling_objc_image_token* token,
 #if defined(_WIN64) && !defined(_M_ARM64) && !defined(__aarch64__)
 	if (arm64_guest && (!token->class_load_methods.empty() ||
 		std::any_of(token->categories.begin(), token->categories.end(),
-			[](const auto& category) { return category.load_method.has_value(); })))
+			[](const auto& category) { return category.load_method.has_value(); }))) {
+#if defined(WINTOSH_HAS_DYNARMIC)
+		// Image registration happens before the ARM64 execution context exists.
+		// Retain the load callbacks until ExecuteEntry installs its guest invoker.
+#else
 		return false;
+#endif
+	}
 #else
 	(void)arm64_guest;
 #endif
@@ -2665,14 +2726,46 @@ extern "C" bool darling_objc_load_image(darling_objc_image_token* token,
 		token->class_load_methods.end(), [&](const auto& left, const auto& right) {
 			return superclass_depth(left.target) < superclass_depth(right.target);
 		});
-	for (const auto& method : token->class_load_methods)
+	for (const auto& method : token->class_load_methods) {
+		if (arm64_guest) {
+#if defined(_WIN64) && !defined(_M_ARM64) && !defined(__aarch64__)
+			if (!active_guest_method_invoker) {
+				QueueGuestCallback(method.implementation,
+					reinterpret_cast<id>(method.target), load_selector);
+				continue;
+			}
+#endif
+			if (active_guest_method_invoker) {
+				active_guest_method_invoker(method.implementation,
+					reinterpret_cast<id>(method.target), load_selector,
+					active_guest_method_invoker_context);
+				continue;
+			}
+		}
 		InvokeObjcImplementation<void>(method.implementation, method.guest_abi,
 			reinterpret_cast<id>(method.target), load_selector);
+	}
 	for (const auto& category : token->categories) {
-		if (category.load_method)
+		if (category.load_method) {
+			if (arm64_guest) {
+#if defined(_WIN64) && !defined(_M_ARM64) && !defined(__aarch64__)
+				if (!active_guest_method_invoker) {
+					QueueGuestCallback(category.load_method->implementation,
+						reinterpret_cast<id>(category.load_method->target), load_selector);
+					continue;
+				}
+#endif
+				if (active_guest_method_invoker) {
+					active_guest_method_invoker(category.load_method->implementation,
+						reinterpret_cast<id>(category.load_method->target), load_selector,
+						active_guest_method_invoker_context);
+					continue;
+				}
+			}
 			InvokeObjcImplementation<void>(category.load_method->implementation,
 				category.load_method->guest_abi,
 				reinterpret_cast<id>(category.load_method->target), load_selector);
+		}
 	}
 	return true;
 }

@@ -27,6 +27,17 @@ typedef struct {
 } WintoshTriple;
 
 static int wintosh_initialize_order;
+static int wintosh_load_stage;
+static int wintosh_constructor_count;
+static int wintosh_base_load_count;
+static int wintosh_probe_load_count;
+static int wintosh_category_load_count;
+
+__attribute__((constructor)) static void WintoshImageConstructor(void)
+{
+	++wintosh_constructor_count;
+	wintosh_load_stage = wintosh_load_stage == 0 ? 1 : -1;
+}
 
 __attribute__((objc_root_class))
 @interface WintoshBase
@@ -34,6 +45,11 @@ __attribute__((objc_root_class))
 @end
 
 @implementation WintoshBase
++ (void)load
+{
+	++wintosh_base_load_count;
+	wintosh_load_stage = wintosh_load_stage == 1 ? 2 : -1;
+}
 + (void)initialize
 {
 	wintosh_initialize_order = wintosh_initialize_order == 0 ? 1 : -1;
@@ -59,9 +75,15 @@ __attribute__((objc_root_class))
 + (long)lengthPlus:(const char *)value;
 + (long)heapRoundTrip;
 + (long)initializedOrder;
++ (long)loadedOrder;
 @end
 
 @implementation WintoshProbe
++ (void)load
+{
+	++wintosh_probe_load_count;
+	wintosh_load_stage = wintosh_load_stage == 2 ? 3 : -1;
+}
 + (void)initialize
 {
 	wintosh_initialize_order = wintosh_initialize_order == 1 ? 2 : -1;
@@ -69,6 +91,15 @@ __attribute__((objc_root_class))
 + (long)initializedOrder
 {
 	return wintosh_initialize_order;
+}
++ (long)loadedOrder
+{
+	return ((wintosh_constructor_count & 3) << 6) |
+		((wintosh_base_load_count & 3) << 4) |
+		((wintosh_probe_load_count & 3) << 2) |
+		(wintosh_category_load_count & 3) |
+		(wintosh_load_stage == 4 ? 16 : 0) +
+		(wintosh_load_stage > 0 ? wintosh_load_stage * 10 : 90);
 }
 + (long)answer
 {
@@ -143,6 +174,11 @@ __attribute__((objc_root_class))
 @end
 
 @implementation WintoshProbe (WintoshCategory)
++ (void)load
+{
+	++wintosh_category_load_count;
+	wintosh_load_stage = wintosh_load_stage == 3 ? 4 : -1;
+}
 + (long)categoryAnswer
 {
 	return 42;
@@ -183,6 +219,7 @@ int main(int argc, char **argv, char **envp)
 	SEL length_plus = sel_registerName("lengthPlus:");
 	SEL heap_round_trip = sel_registerName("heapRoundTrip");
 	SEL initialized_order = sel_registerName("initializedOrder");
+	SEL loaded_order = sel_registerName("loadedOrder");
 	if (probe == (Class)0 || answer == (SEL)0 || inherited_answer == (SEL)0 ||
 		category_answer == (SEL)0 ||
 		add == (SEL)0 ||
@@ -190,11 +227,16 @@ int main(int argc, char **argv, char **envp)
 		sum_seven == (SEL)0 || shift_pair == (SEL)0 || shift_quad == (SEL)0 ||
 		advance_triple == (SEL)0 || nested_answer == (SEL)0 ||
 		length_plus == (SEL)0 || heap_round_trip == (SEL)0 ||
-		initialized_order == (SEL)0)
+		initialized_order == (SEL)0 || loaded_order == (SEL)0)
 		return 1;
 	const long value = ((WintoshSendLong)objc_msgSend)((id)probe, answer);
 	const long initialized = ((WintoshSendLong)objc_msgSend)((id)probe,
 		initialized_order);
+	const long loaded = ((WintoshSendLong)objc_msgSend)((id)probe, loaded_order);
+	if (initialized != 2)
+		return 2;
+	if (loaded != 125)
+		return (int)loaded;
 	const long inherited = ((WintoshSendLong)objc_msgSend)(
 		(id)probe, inherited_answer);
 	const long category = ((WintoshSendLong)objc_msgSend)(
@@ -219,7 +261,7 @@ int main(int argc, char **argv, char **envp)
 		(id)probe, length_plus, "Wintosh");
 	const long heap_value = ((WintoshSendLong)objc_msgSend)(
 		(id)probe, heap_round_trip);
-	return value == 42 && initialized == 2 && inherited == 42 &&
+	return value == 42 && inherited == 42 &&
 		category == 42 && sum == 42 &&
 		incremented == 42.0 &&
 		echoed == (id)probe && dereferenced == 42 && seven == 42 &&

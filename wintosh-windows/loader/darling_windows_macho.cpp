@@ -3208,13 +3208,23 @@ void MachOImage::ExecuteInitializers(const Mapping& mapping) const
 {
 #if defined(WINTOSH_HAS_DYNARMIC)
 	if (IsArm64()) {
-		const auto has_initializer = std::any_of(m_sections.begin(), m_sections.end(),
-			[](const auto& section) {
-				return section.section_name == "__mod_init_func" && section.size != 0;
-			});
-		if (has_initializer)
-			throw std::runtime_error(
-				"ARM64 Mach-O initializers require the guest-call/import dispatcher");
+		for (const auto& section : m_sections) {
+			if (section.section_name != "__mod_init_func") continue;
+			if (section.size % sizeof(std::uintptr_t) != 0)
+				throw std::runtime_error("ARM64 Mach-O __mod_init_func section is not pointer-aligned");
+			const auto address = SectionAddress(mapping, section.segment_name,
+				section.section_name);
+			const auto count = static_cast<std::size_t>(section.size /
+				sizeof(std::uintptr_t));
+			for (std::size_t index = 0; index < count; ++index) {
+				const auto function_address = *reinterpret_cast<const std::uintptr_t*>(
+					address + index * sizeof(std::uintptr_t));
+				if (function_address == 0 ||
+					function_address == static_cast<std::uintptr_t>(-1)) continue;
+				darling_objc_queue_guest_callback(
+					reinterpret_cast<IMP>(function_address), nullptr, nullptr);
+			}
+		}
 		return;
 	}
 #endif
@@ -3508,7 +3518,8 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 			callback.pc = reinterpret_cast<std::uintptr_t>(implementation);
 			callback.x[0] = reinterpret_cast<std::uintptr_t>(receiver);
 			callback.x[1] = reinterpret_cast<std::uintptr_t>(selector);
-			(void)(*context.run)(callback, *context.depth + 1);
+			const auto result = (*context.run)(callback, *context.depth + 1);
+			*context.seed = result.state;
 		};
 		dispatch_guest_import = [&](const A64ExecutionResult& trap,
 			unsigned depth) -> A64CpuState {
@@ -3694,6 +3705,11 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 			}
 		} restore_initializer_invoker{previous_invoker,
 			previous_invoker_context};
+		initializer_seed = cpu;
+		initializer_depth = 0;
+		if (!darling_objc_run_pending_guest_callbacks())
+			throw std::runtime_error(
+				"ARM64 startup callbacks require the guest-call dispatcher");
 		for (;;) {
 			const auto result = backend.Run(cpu);
 			if (result.state.pc == return_sentinel ||

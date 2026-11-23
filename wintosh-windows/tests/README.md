@@ -17,6 +17,8 @@ The ARM64 Objective-C fixture also verifies class inheritance by invoking a
 class method implemented on its guest superclass.
 Its guest `+initialize` methods record base-class then subclass order, and the
 fixture reads the final value through `objc_msgSend` on x64 Windows/Dynarmic.
+Its ARM64 startup fixture also checks one `__mod_init_func` constructor,
+superclass-first class `+load`, and category `+load`, each exactly once.
 It also compiles a real Objective-C category into `__objc_catlist` and calls
 its class method through the guest Objective-C dispatch path. `objc_smoke`
 registers category methods/protocols/properties under an image token and checks

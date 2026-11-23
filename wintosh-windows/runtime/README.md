@@ -33,9 +33,12 @@ Image registration also captures Objective-C `+load` separately from regular
 method dispatch. After an image's C/C++ initializers, class `+load` callbacks
 run superclass first, followed by that image's category `+load` callbacks.
 The `objc_smoke` fixture checks both rules, including a subclass listed before
-its superclass. On x64 Windows, an ARM64 image containing `+load` is rejected
-until image startup callbacks can use the guest-call dispatcher; ARM64 images
-without `+load` retain the existing path.
+its superclass. On x64 Windows with Dynarmic, ARM64 `__mod_init_func`, class
+`+load`, and category `+load` callbacks are queued in image order and run in the
+guest callback loop before entry. The ARM64 fixture checks each callback runs
+once and verifies constructor, superclass-first class, then category order.
+Class entries repeated between `__objc_classlist` and `__objc_nlclslist` are
+deduplicated. Dynamic ARM64 image loading and terminators still need fixtures.
 
 The Objective-C message dispatcher calls `+initialize` once per class, after
 its superclass has initialized. Reentrant messages from the initializing

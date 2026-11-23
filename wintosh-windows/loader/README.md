@@ -7,9 +7,9 @@ Classic `LC_DYLD_INFO` lazy-bind streams contain concatenated per-symbol
 opcode sequences. Their `BIND_OPCODE_DONE` markers end the current symbol
 sequence, so parsing continues through the remaining stream and records the
 sequence's starting offset for the lazy resolver. Non-lazy and weak-bind streams
-still stop at their terminal `DONE` marker. This matches Apple's legacy dyld
-`eachLazyBind` implementation; the lazy path has not yet been exercised by a
-real macOS binary.
+still stop at their terminal `DONE` marker. This follows Apple's legacy dyld
+`eachLazyBind` implementation and now passes a compiler- and linker-produced
+x86_64 Mach-O end-to-end fixture with two real first-call lazy imports.
 
 Import resolution now preserves the client image and two-level dylib ordinal
 from the Mach-O symbol description. Undefined-symbol records, bind opcodes, and

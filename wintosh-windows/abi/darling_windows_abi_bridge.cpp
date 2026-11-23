@@ -13,6 +13,7 @@
 #include "darling_windows_tlv.h"
 
 #include <cstdio>
+#include <cstdarg>
 #include <cstdint>
 #include <cstring>
 #include <cinttypes>
@@ -126,6 +127,18 @@ extern "C" int darling_windows_abi_printf_windows_helper(const char* format, con
 		return -1;
 	}
 	std::fflush(stdout); return written;
+}
+#elif defined(_M_IX86) || defined(__i386__)
+extern "C" int darling_windows_abi_printf(const char* format, ...)
+{
+	if (format == nullptr)
+		return -1;
+	std::va_list arguments;
+	va_start(arguments, format);
+	const int result = std::vfprintf(stdout, format, arguments);
+	va_end(arguments);
+	std::fflush(stdout);
+	return result;
 }
 #else
 extern "C" int darling_windows_abi_printf(const char* format, ...)

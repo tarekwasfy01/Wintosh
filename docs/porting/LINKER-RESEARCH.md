@@ -59,6 +59,7 @@ definiert sein. Doppelte starke Definitionen werden abgewiesen.
 | external, non-scattered, PC-relative, length 2, Vanilla, Zieldefinition in Eingaben | aufgelöst und gepatcht |
 | local/external, non-scattered, absolute, length 2, Vanilla, Zieldefinition in Eingaben | Linkzeit-Adresse geschrieben; dyld type-2 absolute32 rebase ausgegeben |
 | local text reference to `__IMPORT,__pointers`, indirect target defined in inputs | pointer slot laid out, bound and rebased |
+| unresolved external PC-relative call | local `jmp [pointer]` thunk and flat-lookup bind opcode emitted |
 | andere Relokationstypen oder Ziele außerhalb der verknüpften Sections | explizit abgewiesen |
 
 Für Clangs undefiniertes externes PC-relative Call-Ziel enthält das Feld den
@@ -125,8 +126,18 @@ Bytewert **65** zurück. Eine zweite Datei referenzierte ein lokales Literal
 direkt aus dem Code; die Relokation wurde angewandt und der Gast gab **66**
 zurück.
 
+Clang erzeugte für `puts("hello from guest")` und `printf("guest=%d\\n", 7)`
+undefinierte externe PC-relative Calls. Für jedes solche Symbol legt der
+Linker einen 6-Byte-i386-Thunk `FF 25 <abs32>` und einen 4-Byte-Pointer an.
+Der Call-Displacement wird auf den lokalen Thunk gelinkt; dessen Pointer
+erhält einen Rebase, und `LC_DYLD_INFO_ONLY` enthält zusätzlich einen
+Flat-Lookup-Bind-Stream. Wintosh band `_puts`/`_printf` über seine
+Host-Symboltabelle: `puts` druckte die Zeile, `printf` druckte `guest=7` und
+der Gast endete mit Status 3. Das ist die vorhandene Host-Bridge, keine
+Darwin-libSystem-Implementierung. Unbekannte Symbole bleiben ein Linkfehler.
+
 Als Nächstes kommen weitere getrennte Literaltypen und Section-Kombinationen.
-Danach folgen importierte Darwin-Symbole und ausgewählte CRT/libc-Pfade. Der Windows-
+Danach folgen zusätzliche CRT/libc-Aufrufe und Darwin-Imports. Der Windows-
 Host besitzt weder `C:\msys64` noch `C:\cygwin64`; `ld64-msys` ist hier derzeit
 keine baubare lokale Alternative. Die Datei-für-Datei-Lizenzprüfung bleibt
 Pflicht, bevor Quellcode daraus übernommen wird.

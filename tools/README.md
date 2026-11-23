@@ -44,16 +44,18 @@ definitions between those sections, and supports 32-bit
 `GENERIC_RELOC_VANILLA` PC-relative and absolute references. Zerofill and
 `__common` storage are placed in the zero-initialized data segment; absolute
 pointers receive dyld type-2 rebases for the image slide. It resolves bounded
-`__IMPORT,__pointers` indirect-symbol slots when their target definition is
-among the supplied objects; this does not implement Darwin shared-library
-imports. Constant-section bytes are emitted in a `__TEXT,__const` section in
-the non-writable `__TEXT` segment. Other relocation forms, dylibs, CRT, and
-frameworks remain outside this prototype.
+`__IMPORT,__pointers` slots against supplied objects and emits local function
+stubs plus bind opcodes for unresolved PC-relative calls. Those calls resolve
+only if Wintosh's host-symbol table exports the requested Darwin name; this
+does not load Darwin shared libraries. Constant-section bytes are emitted in
+a `__TEXT,__const` section in the non-writable `__TEXT` segment. Other
+relocation forms, dylibs, CRT, and frameworks remain outside this prototype.
 It emits a segmented `MH_EXECUTE` and drops unsupported
 metadata such as unwind sections. Two-object call and data fixtures, plus
 single-object initialized and zero-initialized global fixtures, ran in Wintosh
-and returned 42. A global pointer to `__cstring` also loaded its literal and
-returned its first byte (`A` = 65). See
+and returned 42. `__cstring` pointer and direct references returned 65 and 66.
+Host-bound `_puts` and `_printf` calls also ran; the formatted guest returned
+3. See
 [LINKER-RESEARCH.md](../docs/porting/LINKER-RESEARCH.md) for the exact contract.
 
 The scripts and this documentation are original Wintosh tooling. Upstream

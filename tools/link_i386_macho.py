@@ -336,7 +336,8 @@ def align_up(value: int, alignment: int) -> int:
 
 def link_objects(
     objects: list[MachObject], entry_name: str
-    ) -> tuple[bytes, bytes, int, bytes, int, int, int, int, int, list[tuple[int, int]]]:
+    ) -> tuple[bytes, bytes, int, bytes, int, int, int, int, int,
+               list[tuple[int, int]], list[tuple[int, str]]]:
     if not objects:
         raise FormatError("at least one input object is required")
     cpu_subtype = objects[0].cpu_subtype
@@ -389,9 +390,9 @@ def link_objects(
         else:
             pointer_align_exp = max(pointer_align_exp, obj.pointers.alignment.bit_length() - 1)
             pointer_offsets.append(0)
-    if text_size == 0 or text_size > PAGE_SIZE - TEXT_FILE_OFFSET:
+    if text_size == 0:
         raise FormatError("combined __text exceeds the one-page prototype image limit")
-    const_start = align_up(TEXT_FILE_OFFSET + text_size, 1 << const_align_exp) - TEXT_FILE_OFFSET
+    const_start = 0
     bss_start = align_up(data_size, 1 << bss_align_exp) if bss_size else data_size
     combined_data_size = bss_start + bss_size
     if combined_data_size > PAGE_SIZE:
@@ -438,11 +439,43 @@ def link_objects(
     combined_data_size = pointer_start + pointer_size if pointer_size else bss_start + bss_size
     if combined_data_size > PAGE_SIZE:
         raise FormatError("combined __data and common zero-fill storage exceed one page")
-    if const_start + const_size > PAGE_SIZE - TEXT_FILE_OFFSET:
-        raise FormatError("combined __text and __const exceed the one-page text image limit")
-    missing = sorted(undefined - definitions.keys())
+    pointer_import_names = {name for obj in objects for name in obj.pointer_symbols}
+    function_import_names = {
+        relocation.external_symbol
+        for obj in objects for relocation in obj.relocations
+        if relocation.external_symbol is not None and relocation.pc_relative
+    }
+    import_names = (pointer_import_names | function_import_names) - definitions.keys()
+    missing = sorted(undefined - definitions.keys() - import_names)
     if missing:
         raise FormatError("unresolved external symbols: " + ", ".join(missing))
+    stub_offsets: dict[str, int] = {}
+    for name in sorted(function_import_names & import_names):
+        text_size = align_up(text_size, 4)
+        stub_offsets[name] = text_size
+        text_size += 6
+    if text_size > PAGE_SIZE - TEXT_FILE_OFFSET:
+        raise FormatError("combined __text and import stubs exceed one page")
+    const_start = align_up(TEXT_FILE_OFFSET + text_size, 1 << const_align_exp) - TEXT_FILE_OFFSET
+    if const_start + const_size > PAGE_SIZE - TEXT_FILE_OFFSET:
+        raise FormatError("combined __text and __const exceed the one-page text image limit")
+    import_slot_offsets: dict[str, int] = {}
+    for index, obj in enumerate(objects):
+        if obj.pointers is None:
+            continue
+        for slot, name in enumerate(obj.pointer_symbols):
+            import_slot_offsets.setdefault(name,
+                pointer_offsets[index] + slot * 4)
+    for name in sorted(import_names):
+        if name not in import_slot_offsets:
+            pointer_size = align_up(pointer_size, 4)
+            import_slot_offsets[name] = pointer_size
+            pointer_size += 4
+    pointer_start = align_up(bss_start + bss_size, 4 if import_slot_offsets else 1 << pointer_align_exp)
+    data_align_exp = max(data_align_exp, 2 if import_slot_offsets else pointer_align_exp)
+    combined_data_size = pointer_start + pointer_size if pointer_size else bss_start + bss_size
+    if combined_data_size > PAGE_SIZE:
+        raise FormatError("combined __DATA and import pointer storage exceed one page")
     if entry_name not in definitions:
         raise FormatError(f"entry symbol {entry_name} was not found in input objects")
 
@@ -460,6 +493,12 @@ def link_objects(
     }
     output_sections = {"text": text, "data": data}
     rebase_sites: set[tuple[int, int]] = set()
+    bind_sites: list[tuple[int, str]] = []
+    for name, stub_offset in stub_offsets.items():
+        pointer_vm = DATA_VM_BASE + pointer_start + import_slot_offsets[name]
+        text[stub_offset : stub_offset + 2] = b"\xff\x25"
+        struct.pack_into("<I", text, stub_offset + 2, pointer_vm)
+        rebase_sites.add((0, TEXT_FILE_OFFSET + stub_offset + 2))
 
     for index, obj in enumerate(objects):
         text_base = text_offsets[index]
@@ -500,20 +539,22 @@ def link_objects(
             if relocation.external_symbol is not None:
                 target = definitions.get(relocation.external_symbol)
                 if target is None:
-                    raise FormatError(f"unresolved relocation symbol {relocation.external_symbol}")
-                target_index, target_kind, target_value = target
-                target_base = section_placements[target_kind][target_index]
-                target_storage_base = bss_start if target_kind == "bss" else 0
-                if target_kind == "bss":
-                    target_vm = preferred_vm["data"] + bss_start + target_base + target_value
-                elif target_kind == "ptr":
-                    target_vm = preferred_vm["data"] + pointer_start + target_base + target_value
-                elif target_kind == "const":
-                    target_vm = TEXT_VM_BASE + const_start + target_base + target_value
+                    if not relocation.pc_relative or relocation.external_symbol not in stub_offsets:
+                        raise FormatError(f"unresolved relocation symbol {relocation.external_symbol}")
+                    target_vm = TEXT_VM_BASE + stub_offsets[relocation.external_symbol]
                 else:
-                    target_vm = preferred_vm[target_kind] + target_base + target_value
-                if target_value >= section_sizes[target_kind]:
-                    raise FormatError(f"relocation target {relocation.external_symbol} is outside its section")
+                    target_index, target_kind, target_value = target
+                    target_base = section_placements[target_kind][target_index]
+                    if target_kind == "bss":
+                        target_vm = preferred_vm["data"] + bss_start + target_base + target_value
+                    elif target_kind == "ptr":
+                        target_vm = preferred_vm["data"] + pointer_start + target_base + target_value
+                    elif target_kind == "const":
+                        target_vm = TEXT_VM_BASE + const_start + target_base + target_value
+                    else:
+                        target_vm = preferred_vm[target_kind] + target_base + target_value
+                    if target_value >= section_sizes[target_kind]:
+                        raise FormatError(f"relocation target {relocation.external_symbol} is outside its section")
                 if relocation.pc_relative:
                     addend = struct.unpack_from("<i", source_bytes, source_site)[0]
                     linked_value = addend + target_vm - source_output_vm
@@ -588,7 +629,8 @@ def link_objects(
         for slot, name in enumerate(obj.pointer_symbols):
             target = definitions.get(name)
             if target is None:
-                raise FormatError(f"unresolved import pointer symbol {name}")
+                bind_sites.append((pointer_start + pointer_offsets[index] + slot * 4, name))
+                continue
             target_index, target_kind, target_value = target
             if target_value >= section_sizes[target_kind]:
                 raise FormatError(f"import pointer target {name} lies outside its section")
@@ -605,6 +647,9 @@ def link_objects(
             struct.pack_into("<I", data, slot_offset, target_vm)
             rebase_sites.add((1, slot_offset))
 
+    for name in sorted(import_names - pointer_import_names):
+        bind_sites.append((pointer_start + import_slot_offsets[name], name))
+
     entry_index, entry_kind, entry_value = definitions[entry_name]
     if entry_kind != "text":
         raise FormatError(f"entry symbol {entry_name} is not in __text")
@@ -612,7 +657,7 @@ def link_objects(
         bytes(text), bytes(const), const_start, bytes(data),
         text_offsets[entry_index] + entry_value,
         cpu_subtype, text_align_exp, const_align_exp, data_align_exp,
-        sorted(rebase_sites),
+        sorted(rebase_sites), sorted(set(bind_sites)),
     )
 
 
@@ -624,6 +669,19 @@ def encode_uleb(value: int) -> bytes:
         result.append(byte | (0x80 if value else 0))
         if value == 0:
             return bytes(result)
+
+
+def encode_bind_stream(bind_sites: list[tuple[int, str]]) -> bytes:
+    stream = bytearray()
+    for segment_offset, symbol in bind_sites:
+        stream.extend((0x3E, 0x40))  # flat lookup, symbol name
+        stream.extend(symbol.encode("utf-8"))
+        stream.extend((0, 0x51, 0x71))  # pointer bind, segment 1 + offset
+        stream.extend(encode_uleb(segment_offset))
+        stream.append(0x90)  # DO_BIND
+    if stream:
+        stream.append(0)
+    return bytes(stream)
 
 
 def make_segment_command(
@@ -659,6 +717,7 @@ def make_executable(
     entry_offset: int, cpu_subtype: int,
     text_align_exp: int, const_align_exp: int, data_align_exp: int,
     rebase_sites: list[tuple[int, int]],
+    bind_sites: list[tuple[int, str]],
 ) -> bytes:
     if not text:
         raise FormatError("combined __text is empty")
@@ -695,25 +754,31 @@ def make_executable(
             rebase_stream.extend(encode_uleb(segment_offset))
             rebase_stream.append(0x51)
         rebase_stream.append(0)
-        rebase_offset = (DATA_FILE_OFFSET + PAGE_SIZE) if data else PAGE_SIZE
+    bind_stream = encode_bind_stream(bind_sites)
+    stream_base = (DATA_FILE_OFFSET + PAGE_SIZE) if data else PAGE_SIZE
+    rebase_offset = stream_base if rebase_stream else 0
+    bind_offset = stream_base + len(rebase_stream) if bind_stream else 0
+    if rebase_stream or bind_stream:
         dyld_info = struct.pack(
             "<12I", LC_DYLD_INFO_ONLY, 48, rebase_offset, len(rebase_stream),
-            0, 0, 0, 0, 0, 0, 0, 0,
+            bind_offset, len(bind_stream), 0, 0, 0, 0, 0, 0,
         )
         commands.append(dyld_info)
 
     main = struct.pack("<IIQQ", LC_MAIN, 24, TEXT_FILE_OFFSET + entry_offset, 0)
     commands.append(main)
     sizeofcmds = sum(map(len, commands))
-    flags = MH_DYLDLINK if rebase_sites else 0
+    flags = MH_DYLDLINK if rebase_sites or bind_sites else 0
     header = struct.pack(
         "<IiiIIII", MH_MAGIC, CPU_TYPE_I386, cpu_subtype, MH_EXECUTE,
         len(commands), sizeofcmds, flags,
     )
 
     image_size = (DATA_FILE_OFFSET + PAGE_SIZE) if data else PAGE_SIZE
-    if rebase_sites:
+    if rebase_stream:
         image_size = max(image_size, rebase_offset + len(rebase_stream))
+    if bind_stream:
+        image_size = max(image_size, bind_offset + len(bind_stream))
     image = bytearray(image_size)
     image[:28] = header
     cursor = 28
@@ -727,8 +792,10 @@ def make_executable(
         image[TEXT_FILE_OFFSET + const_start : TEXT_FILE_OFFSET + const_start + len(const)] = const
     if data:
         image[DATA_FILE_OFFSET : DATA_FILE_OFFSET + len(data)] = data
-    if rebase_sites:
+    if rebase_stream:
         image[rebase_offset : rebase_offset + len(rebase_stream)] = rebase_stream
+    if bind_stream:
+        image[bind_offset : bind_offset + len(bind_stream)] = bind_stream
     return bytes(image)
 
 
@@ -742,10 +809,12 @@ def main() -> int:
     try:
         objects = [parse_object(path, path.read_bytes()) for path in args.inputs]
         (text, const, const_start, data, entry_offset, cpu_subtype,
-         text_align_exp, const_align_exp, data_align_exp, rebase_sites) = link_objects(objects, args.entry)
+         text_align_exp, const_align_exp, data_align_exp, rebase_sites,
+         bind_sites) = link_objects(objects, args.entry)
         image = make_executable(
             text, const, const_start, data, entry_offset, cpu_subtype,
             text_align_exp, const_align_exp, data_align_exp, rebase_sites,
+            bind_sites,
         )
         args.output.write_bytes(image)
     except (OSError, FormatError, struct.error, UnicodeError) as error:

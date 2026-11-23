@@ -2422,3 +2422,17 @@ and dereferenced by a compiler-produced guest; Wintosh returned 65. A second
 fixture referenced `"B"` directly from code and returned 66. Additional
 literal-section combinations, symbol tables, Darwin imports, and CRT startup
 remain open.
+
+### i386 external call thunks and host binds (2026-11-23)
+
+The linker now converts unresolved external PC-relative calls into local
+6-byte `jmp dword ptr [abs32]` thunks. It allocates 32-bit pointer slots,
+rebases each thunk's pointer operand, and emits flat-lookup bind opcodes in
+`LC_DYLD_INFO_ONLY`. Wintosh's existing host resolver supplies the address at
+launch; unresolved names without a host export still fail before guest entry.
+
+Clang-produced guests called `_puts` and `_printf`. `puts` printed
+`hello from guest`; the Win32 ABI bridge now uses the native x86 cdecl
+`va_list` path for `printf`, which printed `guest=7` and returned status 3.
+This proves two host exports through the bind path, not libSystem or arbitrary
+Darwin imports.

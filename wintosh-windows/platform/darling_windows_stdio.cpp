@@ -7942,6 +7942,21 @@ extern "C" void* darling_windows_dlopen(const char* path, int mode)
 		dynamic_loader_error = "dlopen: invalid UTF-8 library path";
 		return nullptr;
 	}
+	std::string dynamic_open_error;
+	const auto release_load_claim = [&]() noexcept {
+		try {
+			const auto key = std::filesystem::absolute(wide_path).lexically_normal().wstring();
+			std::lock_guard lock(dynamic_image_mutex);
+			const auto loading = dynamic_image_loads.find(key);
+			if (loading != dynamic_image_loads.end()) {
+				loading->second->complete = true;
+				auto state = loading->second;
+				dynamic_image_loads.erase(loading);
+				state->condition.notify_all();
+			}
+		} catch (...) {
+		}
+	};
 	try {
 		const auto normalized_path = std::filesystem::absolute(wide_path).lexically_normal();
 		const auto key = normalized_path.wstring();
@@ -8029,23 +8044,19 @@ extern "C" void* darling_windows_dlopen(const char* path, int mode)
 		NotifyGuestDyldImageChanges();
 		dynamic_loader_error.clear();
 		return image;
+	} catch (const std::exception& error) {
+		dynamic_open_error = error.what();
+		release_load_claim();
 	} catch (...) {
-		try {
-			const auto key = std::filesystem::absolute(wide_path).lexically_normal().wstring();
-			std::lock_guard lock(dynamic_image_mutex);
-			const auto loading = dynamic_image_loads.find(key);
-			if (loading != dynamic_image_loads.end()) {
-				loading->second->complete = true;
-				auto state = loading->second;
-				dynamic_image_loads.erase(loading);
-				state->condition.notify_all();
-			}
-		} catch (...) {
-		}
+		dynamic_open_error = "unknown Mach-O loader failure";
+		release_load_claim();
 	}
 	const HMODULE module = LoadLibraryW(wide_path.c_str());
 	if (module == nullptr) {
-		SetDynamicLoaderError("dlopen");
+		if (!dynamic_open_error.empty())
+			dynamic_loader_error = "dlopen: " + dynamic_open_error;
+		else
+			SetDynamicLoaderError("dlopen");
 		return nullptr;
 	}
 	dynamic_loader_error.clear();

@@ -143,6 +143,10 @@ std::filesystem::path ExpandRPath(const std::filesystem::path& image_directory,
 	const std::filesystem::path& rpath)
 {
 	const auto value = rpath.string();
+	if (value == "@loader_path")
+		return image_directory;
+	if (value == "@executable_path")
+		return executable_directory;
 	if (value.rfind("@loader_path/", 0) == 0) {
 		const auto separator = value.find('/');
 		return image_directory / value.substr(separator + 1);

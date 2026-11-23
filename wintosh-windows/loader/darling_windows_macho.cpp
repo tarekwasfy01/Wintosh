@@ -3601,6 +3601,28 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 		} restore_active_arm64_execution{previous_active_backend,
 			previous_active_imports};
 		std::vector<std::uintptr_t> guest_malloc_allocations;
+		std::vector<std::unique_ptr<char[]>> guest_loader_error_buffers;
+		const auto copy_guest_loader_error = [&](const char* error) {
+			if (error == nullptr)
+				return std::uintptr_t{0};
+			const auto* terminator = static_cast<const char*>(std::memchr(error, 0, 4096));
+			if (terminator == nullptr)
+				throw std::runtime_error("Darwin loader error string is not terminated");
+			const auto bytes = static_cast<std::size_t>(terminator - error) + 1;
+			auto buffer = std::make_unique<char[]>(bytes);
+			std::memcpy(buffer.get(), error, bytes);
+			const auto address = reinterpret_cast<std::uintptr_t>(buffer.get());
+			if (!backend.RegisterDynamicGuestMapping({address, bytes, true, false,
+				false, true, address, bytes, false}))
+				throw std::runtime_error("cannot register ARM64 Darwin loader error string");
+			try {
+				guest_loader_error_buffers.push_back(std::move(buffer));
+			} catch (...) {
+				(void)backend.RemoveDynamicGuestMapping(address);
+				throw;
+			}
+			return address;
+		};
 		const auto register_guest_malloc = [&](void* allocation, std::size_t requested_bytes,
 			DarlingHostFreeImport free_target) {
 			const auto address = reinterpret_cast<std::uintptr_t>(allocation);
@@ -3694,7 +3716,10 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 			initializer_depth = depth;
 			const auto& x = trap.state.x;
 			const auto& name = imported->symbol;
-			if (name == "_dlopen") {
+			if (name == "_dlerror") {
+				resumed.x[0] = copy_guest_loader_error(
+					reinterpret_cast<const char* (*)()>(imported->target)());
+			} else if (name == "_dlopen") {
 				if (x[0] != 0 && !backend.ContainsGuestCString(x[0], 1u << 20))
 					throw std::runtime_error("ARM64 nested dlopen import received an invalid path");
 				resumed.x[0] = reinterpret_cast<std::uintptr_t (*)(const char*, int)>(
@@ -3967,7 +3992,10 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 					initializer_depth = 0;
 					const auto& x = result.state.x;
 					const auto& name = imported->symbol;
-					if (name == "_dlopen") {
+					if (name == "_dlerror") {
+						cpu.x[0] = copy_guest_loader_error(
+							reinterpret_cast<const char* (*)()>(imported->target)());
+					} else if (name == "_dlopen") {
 						if (x[0] != 0 && !backend.ContainsGuestCString(x[0], 1u << 20))
 							throw std::runtime_error("ARM64 dlopen import received an invalid path");
 						cpu.x[0] = reinterpret_cast<std::uintptr_t (*)(const char*, int)>(

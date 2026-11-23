@@ -1,6 +1,7 @@
 /* Original Wintosh ARM64 dynamic-image fixture; GPL-3.0-only. */
 
 extern int write(int descriptor, const void *bytes, unsigned long length);
+extern long wintosh_dynamic_dependency_answer(void);
 
 __attribute__((constructor)) static void WintoshDynamicConstructor(void)
 {
@@ -25,5 +26,5 @@ static void (*WintoshDynamicTerminator)(void) = WintoshDynamicModuleTerminator;
 
 long wintosh_dynamic_answer(void)
 {
-	return 42;
+	return wintosh_dynamic_dependency_answer() + 12;
 }

@@ -90,8 +90,11 @@ markers in that sequence. The ARM64 fixture now also uses guest
 executes a function, runs its DSO-scoped C++ exit callback and explicit
 `__mod_term_func`, then releases its guest mappings and import thunks. Dynamic
 Objective-C class and category `+load` callbacks now run in that guest
-dispatcher; the fixture invokes a method from each before `dlclose`. Larger
-dependency graphs and general application bundles remain unverified.
+dispatcher; the fixture invokes a method from each before `dlclose`. The image
+also links to a second ARM64 dylib through `@rpath`, with `@loader_path` in
+`LC_RPATH`; the fixture checks dependency-before-client initialization and
+reverse dependency/client termination order. This covers a two-image dynamic
+graph only; larger graphs and general application bundles remain unverified.
 
 ## Mach broker update, 2026-11-23
 

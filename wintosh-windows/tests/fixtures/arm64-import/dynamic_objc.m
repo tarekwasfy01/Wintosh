@@ -21,7 +21,6 @@ __attribute__((objc_root_class))
 @end
 
 @interface WintoshDynamicLoadProbe (WintoshDynamicCategory)
-+ (void)categoryLoadProbe;
 + (long)categoryAnswer;
 @end
 

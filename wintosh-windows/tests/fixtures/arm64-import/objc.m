@@ -13,6 +13,7 @@ extern int __cxa_atexit(void (*function)(void *), void *argument, void *dso);
 extern void *dlopen(const char *path, int mode);
 extern void *dlsym(void *handle, const char *symbol);
 extern int dlclose(void *handle);
+extern const char *dlerror(void);
 
 typedef long (*WintoshDynamicAnswer)(void);
 typedef long (*WintoshDynamicObjcSend)(id, SEL);
@@ -240,8 +241,12 @@ int main(int argc, char **argv, char **envp)
 	if (argc < 2 || argv[1] == (char *)0)
 		return 5;
 	void *dynamic_image = dlopen(argv[1], 2);
-	if (dynamic_image == (void *)0)
+	if (dynamic_image == (void *)0) {
+		const char *error = dlerror();
+		if (error != (const char *)0)
+			(void)write(2, error, strlen(error));
 		return 6;
+	}
 	WintoshDynamicAnswer dynamic_answer =
 		(WintoshDynamicAnswer)dlsym(dynamic_image, "wintosh_dynamic_answer");
 	if (dynamic_answer == (WintoshDynamicAnswer)0 || dynamic_answer() != 42)

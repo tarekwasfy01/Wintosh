@@ -123,6 +123,17 @@ __attribute__((objc_root_class))
 }
 @end
 
+@interface WintoshProbe (WintoshCategory)
++ (long)categoryAnswer;
+@end
+
+@implementation WintoshProbe (WintoshCategory)
++ (long)categoryAnswer
+{
+	return 42;
+}
+@end
+
 typedef long (*WintoshSendLong)(id, SEL);
 typedef long (*WintoshSendLongString)(id, SEL, const char *);
 typedef long (*WintoshSendLongPair)(id, SEL, long, long);
@@ -143,6 +154,7 @@ int main(int argc, char **argv, char **envp)
 	Class probe = objc_getClass("WintoshProbe");
 	SEL answer = sel_registerName("answer");
 	SEL inherited_answer = sel_registerName("inheritedAnswer");
+	SEL category_answer = sel_registerName("categoryAnswer");
 	SEL add = sel_registerName("add:to:");
 	SEL increment = sel_registerName("increment:");
 	SEL echo = sel_registerName("echo:");
@@ -156,6 +168,7 @@ int main(int argc, char **argv, char **envp)
 	SEL length_plus = sel_registerName("lengthPlus:");
 	SEL heap_round_trip = sel_registerName("heapRoundTrip");
 	if (probe == (Class)0 || answer == (SEL)0 || inherited_answer == (SEL)0 ||
+		category_answer == (SEL)0 ||
 		add == (SEL)0 ||
 		increment == (SEL)0 || echo == (SEL)0 || read_value == (SEL)0 ||
 		sum_seven == (SEL)0 || shift_pair == (SEL)0 || shift_quad == (SEL)0 ||
@@ -165,6 +178,8 @@ int main(int argc, char **argv, char **envp)
 	const long value = ((WintoshSendLong)objc_msgSend)((id)probe, answer);
 	const long inherited = ((WintoshSendLong)objc_msgSend)(
 		(id)probe, inherited_answer);
+	const long category = ((WintoshSendLong)objc_msgSend)(
+		(id)probe, category_answer);
 	const long sum = ((WintoshSendLongPair)objc_msgSend)((id)probe, add, 20, 22);
 	const double incremented = ((WintoshSendDouble)objc_msgSend)(
 		(id)probe, increment, 41.0);
@@ -185,7 +200,8 @@ int main(int argc, char **argv, char **envp)
 		(id)probe, length_plus, "Wintosh");
 	const long heap_value = ((WintoshSendLong)objc_msgSend)(
 		(id)probe, heap_round_trip);
-	return value == 42 && inherited == 42 && sum == 42 && incremented == 42.0 &&
+	return value == 42 && inherited == 42 && category == 42 && sum == 42 &&
+		incremented == 42.0 &&
 		echoed == (id)probe && dereferenced == 42 && seven == 42 &&
 		pair.x == 21.0 && pair.y == 22.0 && quad.a == 11.0 &&
 		quad.b == 12.0 && quad.c == 13.0 && quad.d == 14.0 &&

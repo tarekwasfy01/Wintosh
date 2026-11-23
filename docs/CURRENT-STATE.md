@@ -42,7 +42,11 @@ image's otherwise unreferenced parent and child classes together. `objc_smoke`
 registers synthetic Mach-O records with the subclass before the superclass,
 verifies the inheritance chain, then unloads the image and checks that both
 registrations disappear. Cyclic or malformed class metadata still cannot be
-recovered.
+recovered. Static and dynamic image registration now process class lists before
+category lists, independent of Mach-O section ordering. Category method lists
+also receive the image slide for selector-reference normalization; an ARM64
+Mach-O fixture with an actual `__objc_catlist` invokes a category class method
+through `objc_msgSend`.
 
 ## Mach broker update, 2026-11-23
 

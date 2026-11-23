@@ -66,6 +66,9 @@ std::size_t DARLING_OBJC_GUEST_ABI darling_objc_register_macho_classlist(const v
 	std::uintptr_t image_vm_begin = 0, std::uintptr_t image_vm_end = 0);
 std::size_t DARLING_OBJC_GUEST_ABI darling_objc_register_macho_categories(const void* categories,
 	std::size_t bytes);
+std::size_t DARLING_OBJC_GUEST_ABI darling_objc_register_macho_categories_with_slide(
+	const void* categories, std::size_t bytes, std::intptr_t image_slide,
+	std::uintptr_t image_vm_begin, std::uintptr_t image_vm_end);
 std::size_t DARLING_OBJC_GUEST_ABI darling_objc_register_macho_selrefs(const void* selrefs,
 	std::size_t bytes, std::intptr_t image_slide = 0,
 	std::uintptr_t image_vm_begin = 0, std::uintptr_t image_vm_end = 0);

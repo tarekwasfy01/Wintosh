@@ -191,25 +191,32 @@ void RegisterObjectiveCSections(const MachOImage& image,
 		image_vm_end = std::max(image_vm_end,
 			static_cast<std::uintptr_t>(segment.vm_address + segment.vm_size));
 	}
+	// Class records must exist before categories are attached; Mach-O section
+	// order does not guarantee that class lists precede category lists.
 	for (const auto& section : image.Sections()) {
 		if (section.section_name != "__objc_classlist" &&
-			section.section_name != "__objc_nlclslist" &&
-			section.section_name != "__objc_catlist" &&
+			section.section_name != "__objc_nlclslist")
+			continue;
+		const auto address = image.SectionAddress(mapping, section.segment_name,
+			section.section_name);
+		darling_objc_register_macho_classlist(
+			reinterpret_cast<const void*>(address),
+			static_cast<std::size_t>(section.size), mapping.Slide(),
+			image_vm_begin, image_vm_end);
+	}
+	for (const auto& section : image.Sections()) {
+		if (section.section_name != "__objc_catlist" &&
 			section.section_name != "__objc_selrefs")
 			continue;
 		const auto address = image.SectionAddress(mapping, section.segment_name,
 			section.section_name);
 		if (section.section_name == "__objc_catlist")
-			darling_objc_register_macho_categories(
-				reinterpret_cast<const void*>(address),
-				static_cast<std::size_t>(section.size));
-		else if (section.section_name == "__objc_selrefs")
-			darling_objc_register_macho_selrefs(
+			darling_objc_register_macho_categories_with_slide(
 				reinterpret_cast<const void*>(address),
 				static_cast<std::size_t>(section.size), mapping.Slide(),
 				image_vm_begin, image_vm_end);
-		else
-			darling_objc_register_macho_classlist(
+		else if (section.section_name == "__objc_selrefs")
+			darling_objc_register_macho_selrefs(
 				reinterpret_cast<const void*>(address),
 				static_cast<std::size_t>(section.size), mapping.Slide(),
 				image_vm_begin, image_vm_end);

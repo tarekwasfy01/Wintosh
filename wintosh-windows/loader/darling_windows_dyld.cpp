@@ -188,19 +188,32 @@ darling_objc_image_token* RegisterDynamicObjectiveCSections(const MachOImage& im
 		image_vm_end = std::max(image_vm_end,
 			static_cast<std::uintptr_t>(segment.vm_address + segment.vm_size));
 	}
+	// Register every class before categories; Mach-O section order is not an
+	// Objective-C initialization-order guarantee, and categories may target a
+	// class declared later in the same image.
 	for (const auto& section : image.Sections()) {
 		if (section.section_name != "__objc_classlist" &&
-			section.section_name != "__objc_nlclslist" &&
-			section.section_name != "__objc_catlist" &&
+			section.section_name != "__objc_nlclslist")
+			continue;
+		const auto address = image.SectionAddress(mapping, section.segment_name,
+			section.section_name);
+		darling_objc_register_macho_classlist(
+			reinterpret_cast<const void*>(address),
+			static_cast<std::size_t>(section.size), mapping.Slide(),
+			image_vm_begin, image_vm_end);
+	}
+	for (const auto& section : image.Sections()) {
+		if (section.section_name != "__objc_catlist" &&
 			section.section_name != "__objc_selrefs" &&
 			section.section_name != "__cfstring")
 			continue;
 		const auto address = image.SectionAddress(mapping, section.segment_name,
 			section.section_name);
 		if (section.section_name == "__objc_catlist")
-			darling_objc_register_macho_categories(
+			darling_objc_register_macho_categories_with_slide(
 				reinterpret_cast<const void*>(address),
-				static_cast<std::size_t>(section.size));
+				static_cast<std::size_t>(section.size), mapping.Slide(),
+				image_vm_begin, image_vm_end);
 		else if (section.section_name == "__objc_selrefs")
 			darling_objc_register_macho_selrefs(
 				reinterpret_cast<const void*>(address),
@@ -210,11 +223,6 @@ darling_objc_image_token* RegisterDynamicObjectiveCSections(const MachOImage& im
 			darling_objc_register_macho_constant_strings(
 				reinterpret_cast<const void*>(address),
 				static_cast<std::size_t>(section.size));
-		else
-			darling_objc_register_macho_classlist(
-				reinterpret_cast<const void*>(address),
-				static_cast<std::size_t>(section.size), mapping.Slide(),
-				image_vm_begin, image_vm_end);
 	}
 	darling_objc_end_image_registration(token);
 	return token;

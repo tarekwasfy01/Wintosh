@@ -2164,8 +2164,9 @@ extern "C" bool darling_objc_register_object_finalizer(id object,
 	return ObjectFinalizers.emplace(object, finalizer).second;
 }
 
-extern "C" std::size_t darling_objc_register_macho_categories(
-	const void* categories, std::size_t bytes)
+static std::size_t RegisterMachOCategoriesWithImage(
+	const void* categories, std::size_t bytes, std::intptr_t image_slide,
+	std::uintptr_t image_vm_begin, std::uintptr_t image_vm_end)
 {
 	if (!categories || bytes < sizeof(std::uintptr_t))
 		return 0;
@@ -2226,14 +2227,30 @@ extern "C" std::size_t darling_objc_register_macho_categories(
 		Class cls = objc_getClass(name);
 		if (!cls)
 			continue;
-		RegisterMethodList(cls, instance_methods);
-		RegisterMethodList(cls, class_methods, true);
+		RegisterMethodList(cls, instance_methods, false, image_slide,
+			image_vm_begin, image_vm_end);
+		RegisterMethodList(cls, class_methods, true, image_slide,
+			image_vm_begin, image_vm_end);
 		RegisterProtocolList(cls, protocols);
 		RegisterPropertyList(cls, instance_properties);
 		RegisterPropertyList(cls, class_properties);
 		++registered;
 	}
 	return registered;
+}
+
+extern "C" std::size_t darling_objc_register_macho_categories(
+	const void* categories, std::size_t bytes)
+{
+	return RegisterMachOCategoriesWithImage(categories, bytes, 0, 0, 0);
+}
+
+extern "C" std::size_t darling_objc_register_macho_categories_with_slide(
+	const void* categories, std::size_t bytes, std::intptr_t image_slide,
+	std::uintptr_t image_vm_begin, std::uintptr_t image_vm_end)
+{
+	return RegisterMachOCategoriesWithImage(categories, bytes, image_slide,
+		image_vm_begin, image_vm_end);
 }
 
 extern "C" Protocol objc_allocateProtocol(const char* name)

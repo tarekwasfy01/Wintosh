@@ -22,7 +22,9 @@ The guest class registrar resolves class metadata in two phases, so subclasses
 can precede their guest superclasses in the class list. It also tracks guest
 class addresses across image unload and retains only superclass chains still
 needed by classes in other images; the ARM64 fixture verifies an inherited
-class method.
+class method. Both static and dynamic image paths register classes before
+categories, and the ARM64 Mach-O fixture exercises a category-defined class
+method.
 The Win32 target compiles the host library and runner and has launched a
 hand-built i386 `LC_MAIN` Mach-O with no imports; its compatible `main` returned
 42. This confirms the basic mapping and cdecl entry path, not general app

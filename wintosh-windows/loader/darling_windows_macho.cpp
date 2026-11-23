@@ -121,6 +121,20 @@ bool RangeFits(std::size_t file_bytes, std::uint64_t offset, std::uint64_t bytes
 	return offset <= file_bytes && bytes <= file_bytes - offset;
 }
 
+std::uint64_t CheckedAddOffset(std::uint64_t left, std::uint64_t right)
+{
+	if (right > std::numeric_limits<std::uint64_t>::max() - left)
+		throw std::overflow_error("Mach-O segment offset addition overflow");
+	return left + right;
+}
+
+std::uint64_t CheckedMultiplyOffset(std::uint64_t left, std::uint64_t right)
+{
+	if (left != 0 && right > std::numeric_limits<std::uint64_t>::max() / left)
+		throw std::overflow_error("Mach-O segment offset multiplication overflow");
+	return left * right;
+}
+
 std::uint64_t ReadULEB(const std::uint8_t* bytes, std::size_t size, std::size_t& cursor)
 {
 	std::uint64_t value = 0;
@@ -222,25 +236,28 @@ void ParseSimpleBindStream(const std::uint8_t* bytes, std::size_t size,
 			segment_offset = ReadULEB(bytes, size, cursor);
 			break;
 		case 0x80:
-			segment_offset += ReadULEB(bytes, size, cursor);
+			segment_offset = CheckedAddOffset(segment_offset,
+				ReadULEB(bytes, size, cursor));
 			break;
 		case 0x90:
 			actions.push_back({symbol, segment_index, segment_offset, type, addend,
 				ordinal, weak || weak_import, lazy, false, 0,
 				lazy ? lazy_sequence_offset : action_offset, weak});
-			segment_offset += 8;
+			segment_offset = CheckedAddOffset(segment_offset, 8);
 			break;
 		case 0xa0:
 			actions.push_back({symbol, segment_index, segment_offset, type, addend,
 				ordinal, weak || weak_import, lazy, false, 0,
 				lazy ? lazy_sequence_offset : action_offset, weak});
-			segment_offset += ReadULEB(bytes, size, cursor) + 8;
+			segment_offset = CheckedAddOffset(segment_offset,
+				CheckedAddOffset(ReadULEB(bytes, size, cursor), 8));
 			break;
 		case 0xb0:
 			actions.push_back({symbol, segment_index, segment_offset, type, addend,
 				ordinal, weak || weak_import, lazy, false, 0,
 				lazy ? lazy_sequence_offset : action_offset, weak});
-			segment_offset += static_cast<std::uint64_t>(immediate) * 8 + 8;
+			segment_offset = CheckedAddOffset(segment_offset,
+				static_cast<std::uint64_t>(immediate) * 8 + 8);
 			break;
 		case 0xc0: {
 			const auto repeat = ReadULEB(bytes, size, cursor);
@@ -251,7 +268,8 @@ void ParseSimpleBindStream(const std::uint8_t* bytes, std::size_t size,
 				actions.push_back({symbol, segment_index, segment_offset, type, addend,
 					ordinal, weak || weak_import, lazy, false, 0,
 					lazy ? lazy_sequence_offset : action_offset, weak});
-				segment_offset += skip + 8;
+				segment_offset = CheckedAddOffset(segment_offset,
+					CheckedAddOffset(skip, 8));
 			}
 			break;
 		}
@@ -825,7 +843,7 @@ MachOImage MachOImage::Open(const std::wstring& path)
 					threaded_bind_targets.push_back(action);
 				} else {
 					bind_actions.push_back(action);
-					segment_offset += 8;
+					segment_offset = CheckedAddOffset(segment_offset, 8);
 				}
 			};
 			while (cursor < size) {
@@ -868,18 +886,21 @@ MachOImage MachOImage::Open(const std::wstring& path)
 					segment_offset = ReadULEB(bytes, size, cursor);
 					break;
 				case 0x80:
-					segment_offset += ReadULEB(bytes, size, cursor);
+					segment_offset = CheckedAddOffset(segment_offset,
+						ReadULEB(bytes, size, cursor));
 					break;
 				case 0x90:
 					emit_bind();
 					break;
 				case 0xa0:
 					emit_bind();
-					segment_offset += ReadULEB(bytes, size, cursor);
+					segment_offset = CheckedAddOffset(segment_offset,
+						ReadULEB(bytes, size, cursor));
 					break;
 				case 0xb0:
 					emit_bind();
-					segment_offset += static_cast<std::uint64_t>(immediate) * 8;
+					segment_offset = CheckedAddOffset(segment_offset,
+						static_cast<std::uint64_t>(immediate) * 8);
 					break;
 				case 0xc0:
 				{
@@ -889,7 +910,7 @@ MachOImage MachOImage::Open(const std::wstring& path)
 						"Mach-O bind repeat count is unreasonable");
 					for (std::uint64_t index = 0; index < repeat; ++index) {
 						emit_bind();
-						segment_offset += skip;
+						segment_offset = CheckedAddOffset(segment_offset, skip);
 					}
 					break;
 				}
@@ -947,7 +968,7 @@ MachOImage MachOImage::Open(const std::wstring& path)
 				Require(count <= 4096, "Mach-O dyld rebase count is unreasonable");
 				for (std::uint64_t index = 0; index < count; ++index) {
 					rebase_actions.push_back({segment_index, segment_offset, type});
-					segment_offset += 8;
+					segment_offset = CheckedAddOffset(segment_offset, 8);
 				}
 			};
 			while (cursor < size) {
@@ -967,10 +988,12 @@ MachOImage MachOImage::Open(const std::wstring& path)
 					segment_offset = ReadULEB(bytes, size, cursor);
 					break;
 				case 0x30:
-					segment_offset += ReadULEB(bytes, size, cursor);
+					segment_offset = CheckedAddOffset(segment_offset,
+						ReadULEB(bytes, size, cursor));
 					break;
 				case 0x40:
-					segment_offset += static_cast<std::uint64_t>(immediate) * 8;
+					segment_offset = CheckedAddOffset(segment_offset,
+						static_cast<std::uint64_t>(immediate) * 8);
 					break;
 				case 0x50:
 					emit_rebases(immediate);
@@ -980,17 +1003,20 @@ MachOImage MachOImage::Open(const std::wstring& path)
 					break;
 				case 0x80:
 					emit_rebases(1);
-					segment_offset += static_cast<std::uint64_t>(immediate) * 8;
+					segment_offset = CheckedAddOffset(segment_offset,
+						static_cast<std::uint64_t>(immediate) * 8);
 					break;
 				case 0x70:
 					emit_rebases(1);
-					segment_offset += ReadULEB(bytes, size, cursor);
+					segment_offset = CheckedAddOffset(segment_offset,
+						ReadULEB(bytes, size, cursor));
 					break;
 				case 0x90: {
 					const auto count = ReadULEB(bytes, size, cursor);
 					const auto skip = ReadULEB(bytes, size, cursor);
 					emit_rebases(count);
-					segment_offset += skip * count;
+					segment_offset = CheckedAddOffset(segment_offset,
+						CheckedMultiplyOffset(skip, count));
 					break;
 				}
 				default:

@@ -2193,3 +2193,12 @@ table. This permits chains that reuse imports across more slots than there are
 distinct bind targets, while retaining per-node segment bounds and requiring
 the chain to terminate within the segment. The x64 executable and ARM64 host
 library compile; no guest Mach-O fixture exercised threaded-bind chains.
+
+### Checked dyld bind and rebase offset arithmetic (2026-11-23)
+
+Classic bind, weak/lazy bind, and rebase bytecode parsing now checks every
+segment-offset addition and the rebase `skip * count` product for `uint64_t`
+overflow before storing actions. The existing per-action VM/file segment
+bounds checks still validate the resulting addresses when fixups are applied.
+The x64 executable and ARM64 host library compile; no malformed Mach-O fixture
+has exercised the new overflow rejection paths.

@@ -51,6 +51,7 @@ extern "C" {
 HANDLE darling_windows_dispatch_duplicate_descriptor_handle(int descriptor);
 id NSFontAttributeName = nullptr;
 id NSForegroundColorAttributeName = nullptr;
+id NSParagraphStyleAttributeName = nullptr;
 id NSPasteboardTypeString = nullptr;
 id NSPasteboardTypePNG = nullptr;
 id NSPasteboardTypeTIFF = nullptr;
@@ -365,6 +366,11 @@ struct AppKitFontState final {
 	std::wstring name;
 	double point_size{};
 };
+struct AppKitParagraphStyleState final {
+	std::int64_t alignment{4};
+	std::int64_t line_break_mode{};
+	double line_spacing{};
+};
 struct AppKitAttributedStringState final {
 	id string{};
 	id attributes{};
@@ -524,6 +530,9 @@ struct AppKitUserDefaultsState final {
 std::mutex g_fonts_mutex;
 std::unordered_map<id, AppKitFontState> g_fonts;
 thread_local id g_current_font = nullptr;
+std::mutex g_paragraph_styles_mutex;
+std::unordered_map<id, AppKitParagraphStyleState> g_paragraph_styles;
+id g_default_paragraph_style = nullptr;
 std::mutex g_attributed_strings_mutex;
 std::unordered_map<id, AppKitAttributedStringState> g_attributed_strings;
 std::mutex g_notifications_mutex;
@@ -978,13 +987,10 @@ void NSGraphicsContextRestoreGraphicsState(Class, SEL)
 	CGContextRestoreGState(g_current_cg_context);
 }
 
-void NSStringDrawAtPoint(id self, SEL, darling_windows_CGPoint point)
+void NSStringDrawWideText(std::wstring_view text, darling_windows_CGPoint point)
 {
-	if (self == nullptr || g_current_cg_context == nullptr ||
+	if (g_current_cg_context == nullptr ||
 		!std::isfinite(point.x) || !std::isfinite(point.y)) return;
-	const char* utf8 = NSStringUTF8String(self, nullptr);
-	if (utf8 == nullptr || *utf8 == '\0') return;
-	const auto text = Utf8ToWide(utf8);
 	if (text.empty() || text.size() > static_cast<std::size_t>(INT_MAX)) return;
 	const std::size_t width = CGBitmapContextGetWidth(g_current_cg_context);
 	const std::size_t height = CGBitmapContextGetHeight(g_current_cg_context);
@@ -1072,6 +1078,15 @@ void NSStringDrawAtPoint(id self, SEL, darling_windows_CGPoint point)
 		SelectObject(memory, previous_bitmap);
 	DeleteObject(dib);
 	DeleteDC(memory);
+}
+
+void NSStringDrawAtPoint(id self, SEL, darling_windows_CGPoint point)
+{
+	if (self == nullptr) return;
+	const char* utf8 = NSStringUTF8String(self, nullptr);
+	if (utf8 == nullptr || *utf8 == '\0') return;
+	const auto text = Utf8ToWide(utf8);
+	NSStringDrawWideText(text, point);
 }
 
 struct AppKitTextStyleScope final {
@@ -1185,6 +1200,123 @@ void NSFontSet(id self, SEL)
 	if (previous != nullptr) objc_release(previous);
 }
 
+void NSParagraphStyleFinalize(id object)
+{
+	std::lock_guard lock(g_paragraph_styles_mutex);
+	g_paragraph_styles.erase(object);
+	if (g_default_paragraph_style == object) g_default_paragraph_style = nullptr;
+}
+
+id NSParagraphStyleCreate(Class cls, const AppKitParagraphStyleState& state)
+{
+	if (cls == nullptr) return nullptr;
+	id object = class_createInstance(cls, 0);
+	if (object == nullptr) return nullptr;
+	try {
+		std::lock_guard lock(g_paragraph_styles_mutex);
+		g_paragraph_styles.emplace(object, state);
+	} catch (...) {
+		objc_release(object);
+		return nullptr;
+	}
+	if (!darling_objc_register_object_finalizer(object,
+		&NSParagraphStyleFinalize)) {
+		NSParagraphStyleFinalize(object);
+		objc_release(object);
+		return nullptr;
+	}
+	return object;
+}
+
+id NSParagraphStyleDefault(Class cls, SEL)
+{
+	if (cls == nullptr) return nullptr;
+	if (Class immutable_style = objc_getClass("NSParagraphStyle"))
+		cls = immutable_style;
+	id existing = nullptr;
+	{
+		std::lock_guard lock(g_paragraph_styles_mutex);
+		existing = g_default_paragraph_style;
+	}
+	if (existing != nullptr) return objc_retainAutorelease(existing);
+	id created = NSParagraphStyleCreate(cls, {});
+	if (created == nullptr) return nullptr;
+	bool installed = false;
+	{
+		std::lock_guard lock(g_paragraph_styles_mutex);
+		if (g_default_paragraph_style == nullptr) {
+			g_default_paragraph_style = created;
+			installed = true;
+		} else {
+			existing = g_default_paragraph_style;
+		}
+	}
+	if (!installed) objc_release(created);
+	return objc_retainAutorelease(installed ? created : existing);
+}
+
+AppKitParagraphStyleState NSParagraphStyleSnapshot(id self)
+{
+	std::lock_guard lock(g_paragraph_styles_mutex);
+	const auto found = g_paragraph_styles.find(self);
+	return found == g_paragraph_styles.end() ? AppKitParagraphStyleState{} :
+		found->second;
+}
+
+std::int64_t NSParagraphStyleAlignment(id self, SEL)
+{
+	return NSParagraphStyleSnapshot(self).alignment;
+}
+
+void NSMutableParagraphStyleSetAlignment(id self, SEL, std::int64_t alignment)
+{
+	if (alignment < 0 || alignment > 4) return;
+	std::lock_guard lock(g_paragraph_styles_mutex);
+	g_paragraph_styles[self].alignment = alignment;
+}
+
+std::int64_t NSParagraphStyleLineBreakMode(id self, SEL)
+{
+	return NSParagraphStyleSnapshot(self).line_break_mode;
+}
+
+void NSMutableParagraphStyleSetLineBreakMode(id self, SEL,
+	std::int64_t line_break_mode)
+{
+	if (line_break_mode < 0 || line_break_mode > 5) return;
+	std::lock_guard lock(g_paragraph_styles_mutex);
+	g_paragraph_styles[self].line_break_mode = line_break_mode;
+}
+
+double NSParagraphStyleLineSpacing(id self, SEL)
+{
+	return NSParagraphStyleSnapshot(self).line_spacing;
+}
+
+void NSMutableParagraphStyleSetLineSpacing(id self, SEL, double spacing)
+{
+	if (!std::isfinite(spacing)) return;
+	std::lock_guard lock(g_paragraph_styles_mutex);
+	g_paragraph_styles[self].line_spacing = spacing;
+}
+
+id NSParagraphStyleCopy(id self, SEL, void*)
+{
+	return objc_retain(self);
+}
+
+id NSMutableParagraphStyleCopy(id self, SEL, void*)
+{
+	return NSParagraphStyleCreate(objc_getClass("NSParagraphStyle"),
+		NSParagraphStyleSnapshot(self));
+}
+
+id NSMutableParagraphStyleMutableCopy(id self, SEL, void*)
+{
+	return NSParagraphStyleCreate(objc_getClass("NSMutableParagraphStyle"),
+		NSParagraphStyleSnapshot(self));
+}
+
 void NSStringDrawInRectWithAttributes(id self, DarlingObjcRect rect,
 	id attributes)
 {
@@ -1205,7 +1337,35 @@ void NSStringDrawInRectWithAttributes(id self, DarlingObjcRect rect,
 			if (color != nullptr) NSColorApply(color, true, false);
 		}
 	}
+	std::int64_t alignment = 0;
+	std::int64_t line_break_mode = 0;
+	double line_spacing = 0.0;
+	if (attributes != nullptr && NSParagraphStyleAttributeName != nullptr) {
+		const id style = NSDictionaryObjectForKey(attributes, nullptr,
+			NSParagraphStyleAttributeName);
+		if (style != nullptr) {
+			const SEL alignment_selector = sel_registerName("alignment");
+			const SEL line_break_selector = sel_registerName("lineBreakMode");
+			const SEL spacing_selector = sel_registerName("lineSpacing");
+			if (class_getInstanceMethod(object_getClass(style), alignment_selector))
+				alignment = darling_objc_msgSend_int64_0(style, alignment_selector);
+			if (class_getInstanceMethod(object_getClass(style), line_break_selector))
+				line_break_mode = darling_objc_msgSend_int64_0(style,
+					line_break_selector);
+			if (class_getInstanceMethod(object_getClass(style), spacing_selector))
+				line_spacing = darling_objc_msgSend_double0(style, spacing_selector);
+		}
+	}
+	if (alignment < 0 || alignment > 4) alignment = 0;
+	if (line_break_mode < 0 || line_break_mode > 5) line_break_mode = 0;
+	if (!std::isfinite(line_spacing)) line_spacing = 0.0;
+	const char* utf8 = NSStringUTF8String(self, nullptr);
+	if (utf8 == nullptr || *utf8 == '\0') return;
+	const std::wstring text = Utf8ToWide(utf8);
+	if (text.size() > static_cast<std::size_t>(INT_MAX)) return;
 	int ascent = 12;
+	int line_height = 15;
+	std::vector<std::wstring> lines;
 	HDC metrics_context = CreateCompatibleDC(nullptr);
 	if (metrics_context != nullptr) {
 		HGDIOBJ font = GetStockObject(DEFAULT_GUI_FONT);
@@ -1215,17 +1375,112 @@ void NSStringDrawInRectWithAttributes(id self, DarlingObjcRect rect,
 		HGDIOBJ previous_font = font == nullptr ? nullptr :
 			SelectObject(metrics_context, font);
 		TEXTMETRICW metrics{};
-		if (GetTextMetricsW(metrics_context, &metrics)) ascent = metrics.tmAscent;
+		if (GetTextMetricsW(metrics_context, &metrics)) {
+			ascent = metrics.tmAscent;
+			const double requested_line_height = std::clamp(
+				static_cast<double>(metrics.tmHeight) + line_spacing, 1.0, 65536.0);
+			line_height = static_cast<int>(std::lround(requested_line_height));
+		}
+		const int max_width = static_cast<int>(std::clamp(std::floor(rect.width),
+			1.0, static_cast<double>(INT_MAX)));
+		const std::size_t maximum_lines = static_cast<std::size_t>(std::clamp(
+			std::ceil(rect.height / line_height) + 1.0, 1.0, 16384.0));
+		const bool wrap_words = line_break_mode == 0;
+		const bool wrap_characters = line_break_mode == 1;
+		std::size_t paragraph_start = 0;
+		try {
+			while (paragraph_start <= text.size() && lines.size() < maximum_lines) {
+				std::size_t paragraph_end = text.find_first_of(L"\r\n",
+					paragraph_start);
+				if (paragraph_end == std::wstring::npos) paragraph_end = text.size();
+				std::size_t offset = paragraph_start;
+				if (offset == paragraph_end) {
+					lines.emplace_back();
+				} else {
+					while (offset < paragraph_end && lines.size() < maximum_lines) {
+						const auto remaining = paragraph_end - offset;
+					if (!wrap_words && !wrap_characters) {
+						lines.emplace_back(text.substr(offset, remaining));
+						break;
+					}
+					int fit = 0;
+					SIZE extent{};
+					if (!GetTextExtentExPointW(metrics_context, text.data() + offset,
+						static_cast<int>(remaining), max_width, &fit, nullptr, &extent))
+						fit = 0;
+					if (fit >= static_cast<int>(remaining)) {
+						lines.emplace_back(text.substr(offset, remaining));
+						break;
+					}
+					if (fit <= 0) fit = 1;
+				if (static_cast<std::size_t>(fit) < remaining && fit > 0 &&
+					text[offset + static_cast<std::size_t>(fit) - 1] >= 0xd800 &&
+					text[offset + static_cast<std::size_t>(fit) - 1] <= 0xdbff &&
+					text[offset + static_cast<std::size_t>(fit)] >= 0xdc00 &&
+					text[offset + static_cast<std::size_t>(fit)] <= 0xdfff) {
+					if (fit > 1) --fit;
+					else fit = 2;
+				}
+					std::size_t take = static_cast<std::size_t>(fit);
+					if (wrap_words) {
+						const auto break_at = text.find_last_of(L" \t", offset + take - 1);
+						if (break_at != std::wstring::npos && break_at >= offset)
+							take = (std::max)(std::size_t(1), break_at - offset);
+					}
+					std::wstring line = text.substr(offset, take);
+					while (!line.empty() && (line.back() == L' ' ||
+						line.back() == L'\t')) line.pop_back();
+					lines.push_back(std::move(line));
+					offset += take;
+					while (offset < paragraph_end && (text[offset] == L' ' ||
+						text[offset] == L'\t')) ++offset;
+				}
+			}
+			if (paragraph_end == text.size()) break;
+			paragraph_start = paragraph_end + 1;
+			if (text[paragraph_end] == L'\r' && paragraph_start < text.size() &&
+				text[paragraph_start] == L'\n') ++paragraph_start;
+		}
+		} catch (...) {
+			lines.clear();
+		}
 		if (previous_font != nullptr && previous_font != HGDI_ERROR)
 			SelectObject(metrics_context, previous_font);
 		font_lock.unlock();
 		DeleteDC(metrics_context);
 	}
+	if (lines.empty()) lines.push_back(text);
 	CGContextSaveGState(g_current_cg_context);
 	CGContextClipToRect(g_current_cg_context, {{rect.x, rect.y},
 		{rect.width, rect.height}});
-	NSStringDrawAtPoint(self, nullptr,
-		{rect.x, rect.y + rect.height - static_cast<double>(ascent)});
+	for (std::size_t index = 0; index < lines.size(); ++index) {
+		const double baseline = rect.y + rect.height - ascent -
+			static_cast<double>(index) * line_height;
+		if (baseline < rect.y) break;
+		int text_width = 0;
+		HDC measure = CreateCompatibleDC(nullptr);
+		if (measure != nullptr) {
+			HGDIOBJ font = GetStockObject(DEFAULT_GUI_FONT);
+			std::unique_lock font_lock(g_fonts_mutex);
+			const auto selected_font = g_fonts.find(g_current_font);
+			if (selected_font != g_fonts.end()) font = selected_font->second.handle;
+			const HGDIOBJ previous_font = font == nullptr ? nullptr :
+				SelectObject(measure, font);
+			SIZE extent{};
+			if (!lines[index].empty() && GetTextExtentPoint32W(measure,
+				lines[index].data(), static_cast<int>(lines[index].size()), &extent))
+				text_width = extent.cx;
+			if (previous_font != nullptr && previous_font != HGDI_ERROR)
+				SelectObject(measure, previous_font);
+			font_lock.unlock();
+			DeleteDC(measure);
+		}
+		double x = rect.x;
+		if (alignment == 1) x += (std::max)(0.0, rect.width - text_width);
+		else if (alignment == 2)
+			x += (std::max)(0.0, (rect.width - text_width) / 2.0);
+		NSStringDrawWideText(lines[index], {x, baseline});
+	}
 	CGContextRestoreGState(g_current_cg_context);
 }
 
@@ -21068,6 +21323,10 @@ void RegisterAppKitClasses()
 		NSForegroundColorAttributeName = objc_retain(NSStringStringWithUTF8String(
 			string, nullptr, "NSColor"));
 	}
+	if (NSParagraphStyleAttributeName == nullptr) {
+		NSParagraphStyleAttributeName = objc_retain(NSStringStringWithUTF8String(
+			string, nullptr, "NSParagraphStyle"));
+	}
 	if (NSPasteboardTypeString == nullptr) {
 		NSPasteboardTypeString = objc_retain(NSStringStringWithUTF8String(
 			string, nullptr, "public.utf8-plain-text"));
@@ -21134,6 +21393,32 @@ void RegisterAppKitClasses()
 	class_addMethod(string, sel_registerName("mutableCopyWithZone:"),
 		reinterpret_cast<IMP>(&NSStringMutableCopyWithZone), "@@:^v");
 
+	Class paragraph_style = RegisterHostClass("NSParagraphStyle", root);
+	if (paragraph_style == nullptr) return;
+	class_addClassMethod(paragraph_style, sel_registerName("defaultParagraphStyle"),
+		reinterpret_cast<IMP>(&NSParagraphStyleDefault), "@@:");
+	class_addMethod(paragraph_style, sel_registerName("alignment"),
+		reinterpret_cast<IMP>(&NSParagraphStyleAlignment), "q@:");
+	class_addMethod(paragraph_style, sel_registerName("lineBreakMode"),
+		reinterpret_cast<IMP>(&NSParagraphStyleLineBreakMode), "q@:");
+	class_addMethod(paragraph_style, sel_registerName("lineSpacing"),
+		reinterpret_cast<IMP>(&NSParagraphStyleLineSpacing), "d@:");
+	class_addMethod(paragraph_style, sel_registerName("copyWithZone:"),
+		reinterpret_cast<IMP>(&NSParagraphStyleCopy), "@@:^v");
+	Class mutable_paragraph_style = RegisterHostClass(
+		"NSMutableParagraphStyle", paragraph_style);
+	if (mutable_paragraph_style == nullptr) return;
+	class_addMethod(mutable_paragraph_style, sel_registerName("setAlignment:"),
+		reinterpret_cast<IMP>(&NSMutableParagraphStyleSetAlignment), "v@:q");
+	class_addMethod(mutable_paragraph_style,
+		sel_registerName("setLineBreakMode:"),
+		reinterpret_cast<IMP>(&NSMutableParagraphStyleSetLineBreakMode), "v@:q");
+	class_addMethod(mutable_paragraph_style, sel_registerName("setLineSpacing:"),
+		reinterpret_cast<IMP>(&NSMutableParagraphStyleSetLineSpacing), "v@:d");
+	class_addMethod(mutable_paragraph_style, sel_registerName("copyWithZone:"),
+		reinterpret_cast<IMP>(&NSMutableParagraphStyleCopy), "@@:^v");
+	class_addMethod(mutable_paragraph_style, sel_registerName("mutableCopyWithZone:"),
+		reinterpret_cast<IMP>(&NSMutableParagraphStyleMutableCopy), "@@:^v");
 	Class attributed_string = RegisterHostClass("NSAttributedString", root);
 	if (attributed_string == nullptr) return;
 	class_addClassMethod(attributed_string,
@@ -23144,6 +23429,8 @@ extern "C" std::uintptr_t darling_windows_appkit_symbol(const char* name)
 		return reinterpret_cast<std::uintptr_t>(&NSPasteboardNameGeneral);
 	if (std::strcmp(name, "NSForegroundColorAttributeName") == 0)
 		return reinterpret_cast<std::uintptr_t>(&NSForegroundColorAttributeName);
+	if (std::strcmp(name, "NSParagraphStyleAttributeName") == 0)
+		return reinterpret_cast<std::uintptr_t>(&NSParagraphStyleAttributeName);
 	if (std::strcmp(name, "NSCocoaErrorDomain") == 0)
 		return reinterpret_cast<std::uintptr_t>(&NSCocoaErrorDomain);
 	if (std::strcmp(name, "NSLocalizedDescriptionKey") == 0)

@@ -960,23 +960,23 @@ bytes after GDI updates its color channels. The Windows host now links `gdi32`.
 view draw and released when that bitmap pass ends. GDI may substitute a missing
 font face. `drawAtPoint:withAttributes:` reads font and foreground-color values
 using the exported `NSFontAttributeName` and `NSForegroundColorAttributeName`
-data symbols. Paragraph styling, wrapping, text measurement, advanced
-typographic layout, and verified Cocoa baseline parity remain absent.
-`drawInRect:` and `drawInRect:withAttributes:` now clip and draw one left-aligned
-line using the selected font's ascent to place its baseline; the temporary font
-and color attributes are restored after drawing. `NSAttributedString` also
-implements `drawInRect:`. These rectangle methods do not wrap text or apply
-paragraph alignment.
+data symbols. `drawInRect:` and `drawInRect:withAttributes:` now clip within
+their rectangle, wrap by words or characters, and align left, center, or right
+using the selected font's GDI metrics. Temporary font and color attributes are
+restored after drawing. `NSParagraphStyle` and `NSMutableParagraphStyle` expose
+default style, alignment, line-break mode, and line spacing; the standard
+`NSParagraphStyleAttributeName` symbol is exported. `NSAttributedString` also
+implements `drawInRect:` using those style attributes. Justification,
+natural-direction/RTL layout, truncation modes, per-run attributes, glyph
+shaping, full text measurement, and verified Cocoa baseline parity remain
+absent. No Mach-O drawing fixture has verified rendered pixels.
 `NSAttributedString` now has immutable string/attributes construction,
 `string`, `length`, and `drawAtPoint:`; its retained dictionary feeds the same
 font/color renderer. `NSMutableAttributedString` adds mutable construction,
 `mutableString`, UTF-16 range replacement, and `setAttributes:range:` for the
-entire string. Partial attribute ranges are ignored; per-run styling,
-paragraph layout, wrapping, and measurement remain unsupported. Clang and MSVC
-Release host-library builds succeeded after this addition. No Mach-O drawing
-fixture has verified rendered pixels.
-Clang and MSVC Release host-library builds succeed; no Mach-O drawing fixture
-has verified rendered pixels.
+entire string. Partial attribute ranges are ignored; per-run styling and full
+paragraph layout remain unsupported. Clang and MSVC Release host-library builds
+succeed; no Mach-O drawing fixture has verified rendered pixels.
 
 ### AppKit rounded `NSBezierPath` rectangles (2026-11-16)
 

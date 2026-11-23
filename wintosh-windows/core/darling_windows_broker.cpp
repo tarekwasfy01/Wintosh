@@ -667,12 +667,25 @@ int wmain(int argc, wchar_t** argv)
 					auto message = std::move(queue.front());
 					queue.pop_front();
 					for (std::size_t index = 0; index < message.port_descriptor_tokens.size(); ++index) {
-						auto rights = port_rights.find(message.port_descriptor_tokens[index]);
+						const auto token = message.port_descriptor_tokens[index];
+						auto rights = port_rights.find(token);
 						if (rights == port_rights.end()) throw std::invalid_argument("missing received Mach IPC rights");
 						switch (message.port_descriptor_dispositions[index]) {
-						case 16: ++rights->second.receive; break; // move receive
-						case 17: ++rights->second.send; break; // move send
-						case 18: ++rights->second.send_once; break; // move send-once
+						case 16:
+							++rights->second.receive;
+							if (envelope.session_token != 0 && port_session_owners.contains(token))
+								port_session_owners[token] = envelope.session_token;
+							break; // move receive
+						case 17:
+							++rights->second.send;
+							if (envelope.session_token != 0 && port_session_owners.contains(token))
+								port_session_owners[token] = envelope.session_token;
+							break; // move send
+						case 18:
+							++rights->second.send_once;
+							if (envelope.session_token != 0 && port_session_owners.contains(token))
+								port_session_owners[token] = envelope.session_token;
+							break; // move send-once
 						default: break;
 						}
 					}

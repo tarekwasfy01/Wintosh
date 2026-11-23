@@ -2159,15 +2159,17 @@ assertions protect this ABI layout. `mach_msg` now validates selected remote
 and reply dispositions, reserves moved rights as in-transit before local queue
 insertion with rollback on failure, and swaps destination/reply header fields
 plus disposition bits on local receive. `mach_msg_destroy` now releases
-copied-out header rights as well as body descriptors. Voucher disposition and
-brokered header-right transfers are rejected as unsupported. Preflight can race
+copied-out header rights as well as body descriptors. At the time of this
+status entry, voucher disposition and brokered header-right transfers were
+rejected as unsupported; the 2026-11-23 update above adds a selected brokered
+reply-right subset. Preflight can race
 external right mutation. Body MOVE-SEND, MOVE-SEND-ONCE, and MOVE-RECEIVE
 descriptors now use transit references too. Queue teardown releases transit
 header/body rights, queued OOL storage, and selected copied/created body
 rights. Local OOL receive now validates the owned allocation and declared size
 before dequeue, instead of interpreting the OOL layout as port descriptors.
 Broker capability aliasing and stronger concurrency guarantees remain
-required; brokered header-right transfers remain unsupported.
+required; brokered header-right transfers remain incomplete beyond that subset.
 
 The Objective-C runtime's fixed-arity exports use SysV ABI declarations in x64 Clang builds. objc_msgSend/objc_msgSendSuper/objc_msgSendSuper2 use assembly entry shims and typed aggregate AppKit dispatch plus raw forwarding for scalar-only guest IMP signatures, including mixed GP/XMM registers and bounded overflow stack words. The `objc_msgSend_stret` family handles no-argument CGRect returns, including legacy and Super2 superclass search, through the x86_64 hidden result buffer. Aggregate classification and returns, variadic IMPs, blocks, and exception behavior remain incomplete; see abi/README.md and the objc-guest-abi matrix row.
 

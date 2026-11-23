@@ -16,6 +16,22 @@ Failed validation or queueing restores the aggregate and sender row. Full
 receive-right reference counting and complete port-death/notification
 propagation remain open Mach-kernel behaviors.
 
+For a reply capability `p` sent from session `s` to destination owner `d`, the
+broker keeps the sender and in-flight counts distinct:
+
+| Disposition | Send transition | Receive transition |
+|---|---|---|
+| `MOVE_SEND` (17) | `S[p,s] -= 1; T[p] += 1` | `T[p] -= 1; S[p,d] += 1` |
+| `MOVE_SEND_ONCE` (18) | `O[p,s] -= 1; T_o[p] += 1` | `T_o[p] -= 1; O[p,d] += 1` |
+| `COPY_SEND` (19) | `G_send[p] += 1` | `S[p,d] += 1` |
+| `MAKE_SEND_ONCE` (21) | require receive right; `G_once[p] += 1` | `O[p,d] += 1` |
+
+Here `S` and `O` are per-session send and send-once rights, `T` and `T_o`
+are queued transit rights, and `G` is the broker aggregate. The wire fields
+`local_port_token` and `local_disposition` carry this capability separately
+from descriptors. The disposition values follow Apple's
+[XNU Mach message definitions](https://github.com/apple-oss-distributions/xnu/blob/main/osfmk/mach/message.h).
+
 The broker envelope protocol is version 8. `remote_disposition` carries the
 destination right, while `local_port_token` and `local_disposition` carry the
 reply capability independently of body descriptors. Send validates the

@@ -50,10 +50,12 @@ destructor after `main`, returning status 42.
 An i386 `_Thread_local` fixture also returned 42 after changing its initial
 value from 40 to 42 and adding it to a zero-initialized TLS value. The loader
 populated `__thread_data`, `__thread_bss`, `__thread_vars`, and `__thread_ptrs`;
-its descriptor thunk uses an i386 assembly adapter because
-Darwin passes the descriptor in EAX while the Windows C++ bridge expects a
-stack argument. This is one static C TLV access path only; per-thread isolation,
-TLV destructors, and TLV across dynamically loaded images remain unverified.
+its descriptor thunk uses an i386 assembly adapter because Darwin passes thedescriptor in EAX while the Windows C++ bridge expects a stack argument. A
+worker created with `pthread_create` saw the initial value 40, changed its
+thread-local copy to 77, and left the main thread's value 9 unchanged;
+`pthread_join` returned the worker result. The Win32 resolver uses i386-width
+thread handles at the Darwin C boundary. TLV destructors and TLV across
+dynamically loaded images remain unverified.
 The linker also retains `__DATA,__mod_term_func`; a combined constructor and
 terminator image printed `guest terminator` after `main` and preserved status
 42.

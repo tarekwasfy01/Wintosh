@@ -5,8 +5,10 @@ SDK headers or Apple binaries. `build-fixtures.ps1` performs Clang
 Darwin-target checks, emits source-derived x86_64 Mach-O objects, and can link
 them with LLVM `ld64.lld` for Wintosh execution. The `argv-env`, `memory`,
 `qsort-callback`, `file-io`, and `crash` fixtures have dedicated Windows E2E
-coverage; `pthread-tlv` remains syntax-/host-TLV-only because this installed
-Clang rejects Darwin `__thread` for the local target.
+coverage; the x86_64 `pthread-tlv` fixture remains syntax-/host-TLV-only because
+this installed Clang rejects Darwin `__thread` for the local target. Static C
+i386 TLV and pthread isolation have a separate runner fixture at
+`wintosh-windows/tests/i386_tlv_e2e.ps1`.
 
 Fixtures: `argv-env.c`, `memory.c`, `qsort-callback.c`, `file-io.c`,
 `pthread-tlv.c`, and `crash.c`. Each is an independent gate fixture.

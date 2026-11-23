@@ -81,8 +81,10 @@ Wintosh initialized its Darwin TLV descriptor through an i386 register-to-stack
 bridge and returned 42 after changing the initialized variable from 40 to 42
 and adding it to a zero-initialized TLS variable. The reusable check is
 `wintosh-windows/tests/i386_tlv_e2e.ps1`; it requires Clang, Python,
-and a Win32 runner. This proves one static C TLV access path, not TLS destructors,
-multiple images, dynamic loading, or concurrent threads.
+and a Win32 runner. The same check also runs a `pthread_create`/`pthread_join`
+worker: it receives the initial value 40, changes its copy to 77, and leaves
+the main thread's value at 9. This proves one static C TLV image on two threads,
+not TLS destructors, multiple images, or dynamic loading.
 See
 [LINKER-RESEARCH.md](../docs/porting/LINKER-RESEARCH.md) for the exact contract.
 

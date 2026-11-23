@@ -2439,11 +2439,16 @@ Wintosh initializes the descriptor after ordinary bindings, so emitting a
 dyld bind there would overwrite the runtime adapter. Darwin i386 passes the
 descriptor in EAX, while the C++ resolver accepts a stack argument; the Win32
 runner now adapts that call in its i386 assembly trampoline. The reusable
-`i386_tlv_e2e.ps1` fixture changed an initialized `_Thread_local` integer
-from 40 to 42, added it to a zero-initialized TLS integer, and exited with
-status 42. This verifies `__thread_data` and `__thread_bss` in one statically
-linked C image on the main thread. Per-thread isolation, C++ TLV destructors,
-multiple TLV images, and dynamic-library loading remain unverified.
+`i386_tlv_e2e.ps1` fixtures verify `__thread_data` and `__thread_bss` in one
+static C image. One fixture exits with 42 after reading and writing initialized
+and zero-initialized TLS. The worker fixture sets the main thread's value to 9,
+starts a pthread, verifies the worker receives the template value 40, changes
+its copy to 77, and returns 77 through `pthread_join`; the main thread still
+reads 9 and exits 42. The resolver produced distinct storage addresses for the
+same descriptor key on the two threads. C++ TLV destructors, multiple TLV
+images, and dynamic-library loading remain unverified. The Win32 host resolver
+uses i386-width `pthread_t` adapters for `pthread_create` and `pthread_join`,
+then maps those thread handles to its internal host-width tokens.
 
 ### i386 external call thunks and host binds (2026-11-23)
 

@@ -346,6 +346,11 @@ extern "C" int darling_windows_pthread_getname_np(std::uint64_t thread,
 extern "C" int darling_windows_pthread_create(std::uint64_t* thread, const void* attributes,
 	void* (*start)(void*), void* argument);
 extern "C" int darling_windows_pthread_join(std::uint64_t thread, void** result);
+#if defined(_M_IX86)
+extern "C" int darling_windows_pthread_create_i386(std::uint32_t* thread,
+	const void* attributes, void* (*start)(void*), void* argument);
+extern "C" int darling_windows_pthread_join_i386(std::uint32_t thread, void** result);
+#endif
 extern "C" int darling_windows_pthread_detach(std::uint64_t thread);
 extern "C" int darling_windows_pthread_cancel(std::uint64_t thread);
 extern "C" int darling_windows_pthread_setcancelstate(int state, int* old_state);

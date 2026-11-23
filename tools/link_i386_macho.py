@@ -367,13 +367,31 @@ def parse_object(path: Path, data: bytes) -> MachObject:
             if external:
                 if symbolnum >= len(symbols):
                     raise FormatError(f"{path}: external relocation symbol index is invalid")
-                symbol_name, symbol_type, _symbol_section, _symbol_value = symbols[symbolnum]
-                if not symbol_name or not (symbol_type & N_EXT):
-                    raise FormatError(f"{path}: external relocation does not name an external symbol")
-                relocations.append(Relocation(
-                    source_kind, address, symbol_name, None, bool(pcrel),
-                    reloc_type=reloc_type,
-                ))
+                symbol_name, symbol_type, symbol_section, symbol_value = symbols[symbolnum]
+                if not symbol_name:
+                    raise FormatError(
+                        f"{path}: external relocation has an empty symbol name"
+                    )
+                if symbol_type & N_EXT:
+                    relocations.append(Relocation(
+                        source_kind, address, symbol_name, None, bool(pcrel),
+                        reloc_type=reloc_type,
+                    ))
+                else:
+                    if reloc_type != GENERIC_RELOC_TLV or (symbol_type & N_TYPE) != N_SECT:
+                        raise FormatError(
+                            f"{path}: external relocation references unsupported local symbol {symbol_name}"
+                        )
+                    target_record = input_sections.get(symbol_section)
+                    if target_record is None:
+                        raise FormatError(f"{path}: local TLV symbol is outside a supported section")
+                    target_offset = symbol_value - target_record[3]
+                    if target_offset < 0 or target_offset > target_record[2]:
+                        raise FormatError(f"{path}: local TLV symbol lies outside its section")
+                    relocations.append(Relocation(
+                        source_kind, address, None, target_record[0], bool(pcrel),
+                        target_offset=target_offset, reloc_type=reloc_type,
+                    ))
             else:
                 target_record = input_sections.get(symbolnum)
                 if target_record is None:
@@ -1013,6 +1031,25 @@ def link_objects(
                 if target_section is None:
                     raise FormatError("local relocation targets a missing section")
                 target_base = section_placements[target_kind][index]
+                if relocation.reloc_type == GENERIC_RELOC_TLV:
+                    if target_kind != "tlv_vars" or relocation.target_offset % 12 != 0:
+                        raise FormatError("local TLV relocation has no aligned descriptor")
+                    if relocation.target_offset + 12 > section_sizes["tlv_vars"]:
+                        raise FormatError("local TLV descriptor lies outside __thread_vars")
+                    target_vm = (
+                        preferred_vm["data"] + tlv_pointers_start +
+                        tlv_pointer_offsets[index] +
+                        (relocation.target_offset // 12) * 4
+                    )
+                    encoded_pic_addend = struct.unpack_from("<i", source_bytes, source_site)[0]
+                    pic_base_offset = relocation.offset + 4 - encoded_pic_addend
+                    linked_value = target_vm - (
+                        TEXT_VM_BASE + source_base + pic_base_offset
+                    )
+                    if not -(1 << 31) <= linked_value < (1 << 31):
+                        raise FormatError("local i386 TLV relocation overflows PIC displacement")
+                    struct.pack_into("<i", source_bytes, source_site, linked_value)
+                    continue
                 if relocation.source_kind == "tlv_vars" and relocation.offset % 12 == 8 and target_kind in ("tls_data", "tls_bss"):
                     tls_template_start = tls_data_start if tls_data_size else tls_bss_start
                     tls_target_start = tls_data_start if target_kind == "tls_data" else tls_bss_start

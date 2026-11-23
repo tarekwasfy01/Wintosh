@@ -3332,6 +3332,30 @@ extern "C" int darling_windows_pthread_join(std::uint64_t thread, void** result)
 	return 0;
 }
 
+#if defined(_M_IX86)
+extern "C" int darling_windows_pthread_create_i386(std::uint32_t* thread,
+	const void* attributes, void* (*start)(void*), void* argument)
+{
+	if (thread == nullptr) return 22;
+	std::uint64_t host_thread = 0;
+	const auto status = darling_windows_pthread_create(&host_thread, attributes,
+		start, argument);
+	if (status != 0) return status;
+	if (host_thread > (std::numeric_limits<std::uint32_t>::max)()) {
+		(void)darling_windows_pthread_detach(host_thread);
+		return 11;
+	}
+	*thread = static_cast<std::uint32_t>(host_thread);
+	return 0;
+}
+
+extern "C" int darling_windows_pthread_join_i386(std::uint32_t thread,
+	void** result)
+{
+	return darling_windows_pthread_join(static_cast<std::uint64_t>(thread), result);
+}
+#endif
+
 extern "C" int darling_windows_pthread_detach(std::uint64_t thread)
 {
 	std::unique_ptr<DarlingPthreadStart> context;
@@ -6340,10 +6364,18 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_getname_np);
 	}
 	if (std::strcmp(name, "_pthread_create") == 0 || std::strcmp(name, "pthread_create") == 0) {
+#if defined(_M_IX86)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_create_i386);
+#else
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_create);
+#endif
 	}
 	if (std::strcmp(name, "_pthread_join") == 0 || std::strcmp(name, "pthread_join") == 0) {
+#if defined(_M_IX86)
+		return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_join_i386);
+#else
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_join);
+#endif
 	}
 	if (std::strcmp(name, "_pthread_detach") == 0 || std::strcmp(name, "pthread_detach") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_pthread_detach);

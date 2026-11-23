@@ -848,11 +848,55 @@ extern "C" darling_kern_return_t darling_windows_thread_get_state(
 	std::uint32_t* count)
 {
 #ifndef _WIN64
+#if defined(_M_IX86)
+	if (thread == 0 || state == nullptr || count == nullptr)
+		return 4;
+	if (flavor != darling_i386_thread_state_flavor)
+		return darling_kern_not_supported;
+	if (*count < darling_i386_thread_state_count) return 4;
+	CONTEXT context{};
+	context.ContextFlags = CONTEXT_FULL;
+	HANDLE handle = nullptr;
+	bool owned = false;
+	bool suspended = false;
+	if (thread == darling_windows_mach_thread_self()) {
+		RtlCaptureContext(&context);
+	} else {
+		handle = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT,
+			FALSE, thread);
+		if (handle == nullptr) return 4;
+		owned = true;
+		if (SuspendThread(handle) == static_cast<DWORD>(-1)) {
+			CloseHandle(handle);
+			return 4;
+		}
+		suspended = true;
+		if (!GetThreadContext(handle, &context)) {
+			ResumeThread(handle);
+			CloseHandle(handle);
+			return 4;
+		}
+	}
+	auto* result = static_cast<darling_i386_thread_state*>(state);
+	result->eax = context.Eax; result->ebx = context.Ebx;
+	result->ecx = context.Ecx; result->edx = context.Edx;
+	result->edi = context.Edi; result->esi = context.Esi;
+	result->ebp = context.Ebp; result->esp = context.Esp;
+	result->ss = context.SegSs; result->eflags = context.EFlags;
+	result->eip = context.Eip; result->cs = context.SegCs;
+	result->ds = context.SegDs; result->es = context.SegEs;
+	result->fs = context.SegFs; result->gs = context.SegGs;
+	*count = darling_i386_thread_state_count;
+	if (suspended) ResumeThread(handle);
+	if (owned) CloseHandle(handle);
+	return 0;
+#else
 	(void)thread;
 	(void)flavor;
 	(void)state;
 	(void)count;
 	return darling_kern_not_supported;
+#endif
 #else
 #if defined(_M_ARM64)
 	if (thread == 0 || state == nullptr || count == nullptr)
@@ -1038,11 +1082,52 @@ extern "C" darling_kern_return_t darling_windows_thread_set_state(
 	std::uint32_t count)
 {
 #ifndef _WIN64
+#if defined(_M_IX86)
+	if (thread == 0 || state == nullptr)
+		return 4;
+	if (flavor != darling_i386_thread_state_flavor)
+		return darling_kern_not_supported;
+	if (count < darling_i386_thread_state_count)
+		return 4;
+	if (thread == darling_windows_mach_thread_self())
+		return darling_kern_not_supported;
+	const HANDLE handle = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT |
+		THREAD_SET_CONTEXT, FALSE, thread);
+	if (handle == nullptr) return 4;
+	if (SuspendThread(handle) == static_cast<DWORD>(-1)) {
+		CloseHandle(handle);
+		return 4;
+	}
+	CONTEXT context{};
+	context.ContextFlags = CONTEXT_FULL;
+	if (!GetThreadContext(handle, &context)) {
+		ResumeThread(handle);
+		CloseHandle(handle);
+		return 4;
+	}
+	const auto* source = static_cast<const darling_i386_thread_state*>(state);
+	context.Eax = source->eax; context.Ebx = source->ebx;
+	context.Ecx = source->ecx; context.Edx = source->edx;
+	context.Edi = source->edi; context.Esi = source->esi;
+	context.Ebp = source->ebp; context.Esp = source->esp;
+	context.EFlags = source->eflags; context.Eip = source->eip;
+	context.SegCs = static_cast<WORD>(source->cs);
+	context.SegSs = static_cast<WORD>(source->ss);
+	context.SegDs = static_cast<WORD>(source->ds);
+	context.SegEs = static_cast<WORD>(source->es);
+	context.SegFs = static_cast<WORD>(source->fs);
+	context.SegGs = static_cast<WORD>(source->gs);
+	const BOOL applied = SetThreadContext(handle, &context);
+	ResumeThread(handle);
+	CloseHandle(handle);
+	return applied ? 0 : 4;
+#else
 	(void)thread;
 	(void)flavor;
 	(void)state;
 	(void)count;
 	return darling_kern_not_supported;
+#endif
 #else
 #if defined(_M_ARM64)
 	if (thread == 0 || state == nullptr)

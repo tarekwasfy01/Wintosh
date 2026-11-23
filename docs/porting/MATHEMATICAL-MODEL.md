@@ -107,6 +107,11 @@ the stage is not demonstrated on that host:
 | arm64 parse, map, relocation subset | 1 | 1 | 0 |
 | arm64 execution | 0 | ? | 0 |
 
+On Windows Win32, the i386 `i386_THREAD_STATE` flavor maps its 16 32-bit
+general and segment registers to the host `CONTEXT` for `thread_get_state` and
+`thread_set_state`. Other i386 state flavors remain unsupported. The field
+order and flavor numbers follow Apple's [XNU i386 thread-state definitions](https://github.com/apple-oss-distributions/xnu/blob/main/osfmk/mach/i386/thread_status.h).
+
 `1*` on x64 is limited to Clang builds with the SysV entry bridge. The ARM64
 source path now admits matching-architecture ARM64 code and includes a
 Darwin-start transfer, but execution remains `?` because this environment has

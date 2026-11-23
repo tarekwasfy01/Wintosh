@@ -1120,8 +1120,10 @@ manual review material.
 The Win32 build now compiles the host library and runner. It includes i386
 exception PC/SP reporting and a MASM Darwin-start trampoline that installs the
 initial argc/argv/envp/apple stack before transferring to guest code. No
-32-bit Mach-O runtime fixture has yet exercised that transfer. CI runs the
-complete suite serially because filesystem, path and ConPTY fixtures share
+32-bit Mach-O runtime fixture has yet exercised that transfer. Win32 also maps
+Mach `i386_THREAD_STATE` get/set calls to the native 16-register `CONTEXT`
+layout; float, debug, and exception state flavors remain unsupported. CI runs
+the complete suite serially because filesystem, path and ConPTY fixtures share
 process-global Windows state.
 
 The first cross-process Mach IPC slice is now implemented as a version-1

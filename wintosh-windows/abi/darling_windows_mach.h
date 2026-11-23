@@ -217,6 +217,27 @@ constexpr std::uint32_t darling_x86_avx_state64_count = 211;
 constexpr std::uint32_t darling_x86_avx512_state64_count = 611;
 constexpr std::uint32_t darling_x86_exception_state64_count = 4;
 constexpr std::uint32_t darling_x86_debug_state64_count = 16;
+constexpr std::uint32_t darling_i386_thread_state_flavor = 1;
+constexpr std::uint32_t darling_i386_float_state_flavor = 2;
+constexpr std::uint32_t darling_i386_exception_state_flavor = 3;
+constexpr std::uint32_t darling_i386_thread_state_count = 16;
+constexpr std::uint32_t darling_i386_exception_state_count = 3;
+struct darling_i386_thread_state final {
+	std::uint32_t eax = 0, ebx = 0, ecx = 0, edx = 0;
+	std::uint32_t edi = 0, esi = 0, ebp = 0, esp = 0;
+	std::uint32_t ss = 0, eflags = 0, eip = 0, cs = 0;
+	std::uint32_t ds = 0, es = 0, fs = 0, gs = 0;
+};
+static_assert(sizeof(darling_i386_thread_state) ==
+	darling_i386_thread_state_count * sizeof(std::uint32_t));
+struct darling_i386_exception_state final {
+	std::uint16_t trapno = 0;
+	std::uint16_t cpu = 0;
+	std::uint32_t error = 0;
+	std::uint32_t faultvaddr = 0;
+};
+static_assert(sizeof(darling_i386_exception_state) ==
+	darling_i386_exception_state_count * sizeof(std::uint32_t));
 // Apple XNU arm/thread_status.h: ARM_THREAD_STATE64. The layout is kept
 // portable so callers can size/copy the ABI on non-ARM hosts; native mapping
 // is enabled only by a Windows ARM64 build.

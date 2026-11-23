@@ -42,6 +42,7 @@ if ($LASTEXITCODE -ne 0) { throw "ARM64 Mach-O import link failed: $LASTEXITCODE
 	-o $objcObject
 if ($LASTEXITCODE -ne 0) { throw "ARM64 Objective-C fixture compile failed: $LASTEXITCODE" }
 & $Linker -arch arm64 -platform_version macos 11.0 14.0 -e _main `
+	-rpath '@executable_path' `
 	-undefined dynamic_lookup -o $objcImage $objcObject
 if ($LASTEXITCODE -ne 0) { throw "ARM64 Objective-C fixture link failed: $LASTEXITCODE" }
 & $clangPath -target arm64-apple-macosx11.0 -fno-stack-protector -O0 `

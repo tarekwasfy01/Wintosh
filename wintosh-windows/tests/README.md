@@ -33,6 +33,8 @@ initialization and reverse termination order. It opens the client twice,
 checks single initialization and shared handle identity, then checks that the
 image remains callable after the first `dlclose` and unregisters its Objective-C
 class after the final close.
+Both guest opens use `@rpath`; the executable carries an `@executable_path`
+runpath, covering runtime `LC_RPATH` lookup at the `dlopen` boundary.
 It also compiles a real Objective-C category into `__objc_catlist` and calls
 its class method through the guest Objective-C dispatch path. `objc_smoke`
 registers category methods/protocols/properties under an image token and checks

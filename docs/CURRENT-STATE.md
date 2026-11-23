@@ -99,7 +99,11 @@ graph only; larger graphs and general application bundles remain unverified.
 Opening that same client dylib twice returns one image handle and keeps its
 initializers and Objective-C registrations alive until the second matching
 `dlclose`; the fixture also verifies that the dynamic class disappears after
-the final close.
+the final close. Guest `dlopen` resolves `@rpath` using the active guest
+executable's `LC_RPATH` entries and sends token paths through the Mach-O
+resolver instead of the Windows PE loader. Caller-image-relative lookup for
+`@loader_path` and runtime `@rpath` stacks from a calling plugin remain future
+work.
 
 ## Mach broker update, 2026-11-23
 

@@ -240,14 +240,16 @@ int main(int argc, char **argv, char **envp)
 	(void)envp;
 	if (argc < 2 || argv[1] == (char *)0)
 		return 5;
-	void *dynamic_image = dlopen(argv[1], 2);
+	void *dynamic_image = dlopen(
+		"@rpath/libarm64-dynamic-import.dylib", 2);
 	if (dynamic_image == (void *)0) {
 		const char *error = dlerror();
 		if (error != (const char *)0)
 			(void)write(2, error, strlen(error));
 		return 6;
 	}
-	void *dynamic_image_second_reference = dlopen(argv[1], 2);
+	void *dynamic_image_second_reference = dlopen(
+		"@rpath/libarm64-dynamic-import.dylib", 2);
 	if (dynamic_image_second_reference != dynamic_image)
 		return 10;
 	WintoshDynamicAnswer dynamic_answer =

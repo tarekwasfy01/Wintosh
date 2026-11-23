@@ -751,6 +751,8 @@ std::unordered_map<void*, std::size_t> dynamic_image_references;
 std::unordered_map<std::wstring, void*> dynamic_image_paths;
 std::unordered_set<void*> dynamic_image_nodelete;
 std::unordered_map<void*, std::size_t> dynamic_image_callback_references;
+std::mutex guest_executable_path_mutex;
+std::wstring current_guest_executable_path;
 constexpr int kDarwinRtldNoLoad = 0x10;
 constexpr int kDarwinRtldNoDelete = 0x80;
 struct DarwinDyldImageEntry final {
@@ -770,6 +772,12 @@ std::mutex guest_dyld_callback_mutex;
 std::vector<DarwinDyldImageCallback> guest_dyld_add_callbacks;
 std::vector<DarwinDyldImageCallback> guest_dyld_remove_callbacks;
 std::vector<DarwinDyldImageEntry> guest_dyld_notified_images;
+
+std::filesystem::path GuestExecutablePath()
+{
+	std::lock_guard lock(guest_executable_path_mutex);
+	return current_guest_executable_path;
+}
 
 void InvokeDyldImageCallbacks(
 	const std::vector<DarwinDyldImageCallback>& callbacks,
@@ -7942,10 +7950,26 @@ extern "C" void* darling_windows_dlopen(const char* path, int mode)
 		dynamic_loader_error = "dlopen: invalid UTF-8 library path";
 		return nullptr;
 	}
+	auto image_path = wide_path;
+	const bool darwin_token_path = path[0] == '@';
+	if (darwin_token_path) {
+		const auto executable_path = GuestExecutablePath();
+		if (executable_path.empty()) {
+			dynamic_loader_error = "dlopen: Darwin token path has no guest executable context";
+			return nullptr;
+		}
+		try {
+			image_path = darling::windows_host::DylibResolver::Resolve(
+				executable_path, path, {}, {}, executable_path);
+		} catch (const std::exception& error) {
+			dynamic_loader_error = std::string("dlopen: ") + error.what();
+			return nullptr;
+		}
+	}
 	std::string dynamic_open_error;
 	const auto release_load_claim = [&]() noexcept {
 		try {
-			const auto key = std::filesystem::absolute(wide_path).lexically_normal().wstring();
+			const auto key = std::filesystem::absolute(image_path).lexically_normal().wstring();
 			std::lock_guard lock(dynamic_image_mutex);
 			const auto loading = dynamic_image_loads.find(key);
 			if (loading != dynamic_image_loads.end()) {
@@ -7958,7 +7982,7 @@ extern "C" void* darling_windows_dlopen(const char* path, int mode)
 		}
 	};
 	try {
-		const auto normalized_path = std::filesystem::absolute(wide_path).lexically_normal();
+		const auto normalized_path = std::filesystem::absolute(image_path).lexically_normal();
 		const auto key = normalized_path.wstring();
 		std::shared_ptr<DynamicImageLoadState> load_state;
 		for (;;) {
@@ -7993,7 +8017,7 @@ extern "C" void* darling_windows_dlopen(const char* path, int mode)
 			dynamic_image_loads.emplace(key, load_state);
 			break;
 		}
-		auto* image = darling::windows_host::OpenDynamicImage(wide_path);
+		auto* image = darling::windows_host::OpenDynamicImage(image_path);
 		std::lock_guard notification_lock(guest_dyld_notification_mutex);
 		darling::windows_host::DarwinDynamicImage* duplicate_image = nullptr;
 		void* duplicate_handle = nullptr;
@@ -8050,6 +8074,10 @@ extern "C" void* darling_windows_dlopen(const char* path, int mode)
 	} catch (...) {
 		dynamic_open_error = "unknown Mach-O loader failure";
 		release_load_claim();
+	}
+	if (darwin_token_path) {
+		dynamic_loader_error = "dlopen: " + dynamic_open_error;
+		return nullptr;
 	}
 	const HMODULE module = LoadLibraryW(wide_path.c_str());
 	if (module == nullptr) {
@@ -9964,11 +9992,6 @@ extern "C" int darling_windows_uname(darling_utsname* result)
 	copy_field(result->version, "Darling native Windows backend");
 	copy_field(result->machine, "x86_64");
 	return 0;
-}
-
-namespace {
-std::mutex guest_executable_path_mutex;
-std::wstring current_guest_executable_path;
 }
 
 extern "C" void darling_windows_set_guest_executable_path(const wchar_t* path)

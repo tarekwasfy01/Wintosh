@@ -21,6 +21,9 @@ registers category methods/protocols/properties under an image token and checks
 that they are removed when that image is unregistered. It also checks that a
 category override becomes active and that unloading restores the original
 method implementation.
+It also loads two overlapping category images, unloads the older image first,
+and verifies that the newer override stays active before the base method is
+restored after the second unload.
 
 `objc_smoke` registers synthetic Mach-O class records with the subclass before
 the superclass and checks that the runtime still links the inheritance chain.

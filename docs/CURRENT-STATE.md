@@ -52,8 +52,10 @@ unload; `objc_smoke` checks that the category stops responding, its property
 disappears, and its image-owned protocol is unregistered. Categories can
 replace existing instance or class methods; unloading restores the captured
 prior implementation, including its type encoding and guest-ABI marker.
-Overlapping replacements from multiple independently unloaded images are not
-yet covered.
+Override layers are relinked when images unload out of order; `objc_smoke`
+verifies that unloading the older of two images leaves the newer override
+active, then unloading the newer image restores the base method for both
+instance and class selectors.
 
 ## Mach broker update, 2026-11-23
 

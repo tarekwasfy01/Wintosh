@@ -231,6 +231,16 @@ id CategoryOverrideClassMethod(id, SEL)
 	return reinterpret_cast<id>(static_cast<std::uintptr_t>(0x6789));
 }
 
+id SecondCategoryOverrideMethod(id, SEL)
+{
+	return reinterpret_cast<id>(static_cast<std::uintptr_t>(0x9877));
+}
+
+id SecondCategoryOverrideClassMethod(id, SEL)
+{
+	return reinterpret_cast<id>(static_cast<std::uintptr_t>(0x6788));
+}
+
 id ApplyBlock(id, SEL, DarlingObjcCallbackBlock* block)
 {
 	return darling_objc_block_invoke1(block, reinterpret_cast<id>(block));
@@ -1198,6 +1208,69 @@ int main()
 		class_conformsToProtocol(objc_getClass("ImageRegisteredClass"),
 			category_protocol_metadata) || objc_getProtocol(category_protocol_name) != nullptr)
 		return 50;
+	RawMethodList first_override_methods{sizeof(RawMethod), 1,
+		{reinterpret_cast<std::uintptr_t>(image_method_name),
+			reinterpret_cast<std::uintptr_t>(image_method_types),
+			reinterpret_cast<std::uintptr_t>(&CategoryOverrideImageMethod)}};
+	RawMethodList first_class_override_methods{sizeof(RawMethod), 1,
+		{reinterpret_cast<std::uintptr_t>("imageClassMethod"),
+			reinterpret_cast<std::uintptr_t>(image_method_types),
+			reinterpret_cast<std::uintptr_t>(&CategoryOverrideClassMethod)}};
+	RawMethodList second_override_methods{sizeof(RawMethod), 1,
+		{reinterpret_cast<std::uintptr_t>(image_method_name),
+			reinterpret_cast<std::uintptr_t>(image_method_types),
+			reinterpret_cast<std::uintptr_t>(&SecondCategoryOverrideMethod)}};
+	RawMethodList second_class_override_methods{sizeof(RawMethod), 1,
+		{reinterpret_cast<std::uintptr_t>("imageClassMethod"),
+			reinterpret_cast<std::uintptr_t>(image_method_types),
+			reinterpret_cast<std::uintptr_t>(&SecondCategoryOverrideClassMethod)}};
+	RawCategory first_override_category{0, raw_class_address,
+		reinterpret_cast<std::uintptr_t>(&first_override_methods),
+		reinterpret_cast<std::uintptr_t>(&first_class_override_methods)};
+	RawCategory second_override_category{0, raw_class_address,
+		reinterpret_cast<std::uintptr_t>(&second_override_methods),
+		reinterpret_cast<std::uintptr_t>(&second_class_override_methods)};
+	const std::uintptr_t first_override_address =
+		reinterpret_cast<std::uintptr_t>(&first_override_category);
+	const std::uintptr_t second_override_address =
+		reinterpret_cast<std::uintptr_t>(&second_override_category);
+	auto* first_override_image = darling_objc_begin_image_registration();
+	if (first_override_image == nullptr ||
+		darling_objc_register_macho_categories(&first_override_address,
+			sizeof(first_override_address)) != 1)
+		return 51;
+	darling_objc_end_image_registration(first_override_image);
+	auto* second_override_image = darling_objc_begin_image_registration();
+	if (second_override_image == nullptr ||
+		darling_objc_register_macho_categories(&second_override_address,
+			sizeof(second_override_address)) != 1)
+		return 52;
+	darling_objc_end_image_registration(second_override_image);
+	if (class_getMethodImplementation(objc_getClass("ImageRegisteredClass"),
+		sel_registerName(image_method_name)) !=
+		reinterpret_cast<IMP>(&SecondCategoryOverrideMethod) ||
+		method_getImplementation(class_getClassMethod(
+			objc_getClass("ImageRegisteredClass"),
+			sel_registerName("imageClassMethod"))) !=
+			reinterpret_cast<IMP>(&SecondCategoryOverrideClassMethod))
+		return 53;
+	darling_objc_unregister_image(first_override_image);
+	if (class_getMethodImplementation(objc_getClass("ImageRegisteredClass"),
+		sel_registerName(image_method_name)) !=
+		reinterpret_cast<IMP>(&SecondCategoryOverrideMethod) ||
+		method_getImplementation(class_getClassMethod(
+			objc_getClass("ImageRegisteredClass"),
+			sel_registerName("imageClassMethod"))) !=
+			reinterpret_cast<IMP>(&SecondCategoryOverrideClassMethod))
+		return 54;
+	darling_objc_unregister_image(second_override_image);
+	if (class_getMethodImplementation(objc_getClass("ImageRegisteredClass"),
+		sel_registerName(image_method_name)) != reinterpret_cast<IMP>(&ImageMethod) ||
+		method_getImplementation(class_getClassMethod(
+			objc_getClass("ImageRegisteredClass"),
+			sel_registerName("imageClassMethod"))) !=
+			reinterpret_cast<IMP>(&ClassIdentity))
+		return 55;
 	const char image_selector_name[] = "imageSelector";
 	const std::uintptr_t image_selector_ref =
 		reinterpret_cast<std::uintptr_t>(image_selector_name);

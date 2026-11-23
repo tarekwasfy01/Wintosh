@@ -2045,6 +2045,26 @@ void MachOImage::ApplyRelocations(const Mapping& mapping,
 		}
 		throw std::logic_error("unsupported x86-64 Mach-O relocation addend width");
 	};
+	const auto got_slot_address = [&](std::uint32_t symbol_index) {
+		std::uintptr_t lazy_slot = 0;
+		for (const auto& slot : IndirectImportSlots()) {
+			if (slot.symbol_index >= m_indirect_symbols.size())
+				throw std::out_of_range("Mach-O indirect symbol table exceeds GOT slots");
+			const auto indirect_symbol = m_indirect_symbols[slot.symbol_index];
+			if ((indirect_symbol & 0xC0000000u) == 0 &&
+				indirect_symbol == symbol_index) {
+				const auto address = static_cast<std::uintptr_t>(
+					static_cast<std::intptr_t>(slot.address) + mapping.Slide());
+				if (!slot.lazy)
+					return address;
+				if (lazy_slot == 0)
+					lazy_slot = address;
+			}
+		}
+		if (lazy_slot != 0)
+			return lazy_slot;
+		throw std::runtime_error("Mach-O GOT relocation has no indirect pointer slot");
+	};
 	for (std::size_t index = 0; index < m_relocations.size(); ++index) {
 		const auto& relocation = m_relocations[index];
 		if (!relocation.external) {
@@ -2089,6 +2109,18 @@ void MachOImage::ApplyRelocations(const Mapping& mapping,
 			try {
 				ApplyRelative32(mapping, static_cast<std::uint32_t>(relocation.address),
 					AddSignedAddress(symbol_addresses[relocation.symbol_index], addend));
+			} catch (const std::overflow_error&) {
+				if (!defer_unreachable_external)
+					throw;
+			}
+		} else if (relocation.pc_relative && relocation.length == 2 &&
+			(relocation.type == 3 || relocation.type == 4)) {
+			const auto addend = relocation_addend(index,
+				static_cast<std::uint32_t>(relocation.address), sizeof(std::int32_t));
+			const auto slot = got_slot_address(relocation.symbol_index);
+			try {
+				ApplyRelative32(mapping, static_cast<std::uint32_t>(relocation.address),
+					AddSignedAddress(slot, addend));
 			} catch (const std::overflow_error&) {
 				if (!defer_unreachable_external)
 					throw;

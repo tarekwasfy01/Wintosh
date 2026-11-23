@@ -2275,3 +2275,16 @@ restore the encoded `high8` byte afterward, as specified by dyld. Offset-based
 formats continue to include `high8` in the encoded target before adding the
 image base/slide. Both Windows targets compile; no tagged-pointer Mach-O fixture
 has exercised the high-byte cases.
+
+### x86_64 implicit relocation addends and GOT slots (2026-11-23)
+
+The x86_64 relocation engine now reads the implicit addend from the original
+field contents and retains it across repeat relocation passes. Absolute and
+SUBTRACTOR forms use the signed 64-bit field; PC-relative, branch, and TLV
+forms use the signed 32-bit field with their existing relocation-specific
+PC bias. `GOT_LOAD` and `GOT` PC-relative forms resolve the symbol's indirect
+pointer slot, preferring a non-lazy slot when one exists. The runtime expression
+is now `S + A` for absolute forms and `S + A - (P + bias)` for PC-relative
+forms; GOT forms substitute the slot address for `S`. The Windows x64 loader
+build succeeds. There is no dedicated Mach-O fixture for implicit addends or
+GOT relocation execution yet.

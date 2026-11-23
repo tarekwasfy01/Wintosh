@@ -8,8 +8,8 @@ Clang erzeugt auf diesem Windows-Host i386-Mach-O-Objekte. Das vorhandene
 `ld64.lld.exe` weist `-arch i386` zurück. `tools/link_i386_macho.py` ist ein
 begrenzter i386-Linker-Prototyp: Er kombiniert `__TEXT,__text` und optionale
 `__DATA,__data`-Sections sowie nullinitialisierte `__bss`/`__common`-Bereiche
-mehrerer `MH_OBJECT`-Dateien, löst externe Text- und Daten-Symbole aus diesen
-Bereichen auf und verarbeitet 32-Bit-
+mehrerer `MH_OBJECT`-Dateien und löst begrenzte `__IMPORT,__pointers`-Slots
+über die indirekte Symboltabelle auf. Es verarbeitet 32-Bit-
 `GENERIC_RELOC_VANILLA`-Relokationen. Absolute interne Adressen erhalten
 `DYLD_INFO_ONLY`-Rebases für den Laufzeit-Slide.
 
@@ -49,14 +49,15 @@ Jedes Objekt muss little-endian i386 `MH_OBJECT` mit genau einer
 zerofill-Section `__bss` oder `__common` sowie `LC_SYMTAB` sein. Die Sections
 werden in Eingabereihenfolge mit ihrer Alignment-Anforderung platziert.
 Externe `N_SECT`-Definitionen müssen in diesen Sections liegen; undefinierte
-externe Symbole müssen durch ein Eingabeobjekt definiert sein. Doppelte
-starke Definitionen werden abgewiesen.
+externe Symbole und indirekte Pointer-Ziele müssen durch ein Eingabeobjekt
+definiert sein. Doppelte starke Definitionen werden abgewiesen.
 
 | i386 Relokation | Behandlung |
 |---|---|
-| local, non-scattered, PC-relative, length 2, Vanilla, Ziel in Text/Daten | Placement- und VM-Adress-Deltas werden angewandt |
-| external, non-scattered, PC-relative, length 2, Vanilla, Zieldefinition in Text/Daten | aufgelöst und gepatcht |
-| local/external, non-scattered, absolute, length 2, Vanilla, Zieldefinition in Text/Daten | Linkzeit-Adresse geschrieben; dyld type-2 absolute32 rebase ausgegeben |
+| local, non-scattered, PC-relative, length 2, Vanilla, Ziel in unterstütztem Bereich | Placement- und VM-Adress-Deltas werden angewandt |
+| external, non-scattered, PC-relative, length 2, Vanilla, Zieldefinition in Eingaben | aufgelöst und gepatcht |
+| local/external, non-scattered, absolute, length 2, Vanilla, Zieldefinition in Eingaben | Linkzeit-Adresse geschrieben; dyld type-2 absolute32 rebase ausgegeben |
+| local text reference to `__IMPORT,__pointers`, indirect target defined in inputs | pointer slot laid out, bound and rebased |
 | andere Relokationstypen oder Ziele außerhalb der verknüpften Sections | explizit abgewiesen |
 
 Für Clangs undefiniertes externes PC-relative Call-Ziel enthält das Feld den
@@ -101,11 +102,16 @@ Rebases ausgegeben. `llvm-objdump` bestätigte die Text- und Datensections sowie
 des globalen Datenbereichs mit Laufzeit-Slide.
 
 Das beweist begrenztes i386-Linken und Ausführen, keine beliebigen macOS-
-Programme. Die Zerofill-Bytes werden derzeit in den prototypischen
+Programme. Ein zweites Objekt referenzierte `_external_global` über einen
+indirekten `__IMPORT,__pointers`-Slot. Der Linker las dessen Ziel über
+`LC_DYSYMTAB`, band den Slot an die Definition in `__common`, und der Win32-
+Runner gab nach Schreiben und Lesen **42** zurück. Das belegt begrenzte
+objektübergreifende Datenauflösung, keine Darwin-Dylib-Bindings.
+
+Die Zerofill-Bytes werden derzeit in den prototypischen
 `__DATA,__data`-Dateibereich zusammengeführt und nicht als separates
-`__bss`-Output-Section-Headerfeld abgebildet. Noch offen sind Clangs
-Cross-File-Datenreferenz über
-`__IMPORT,__pointers`/`SECTDIFF`, weitere Relokationen, Darwin-CRT,
+`__bss`-Output-Section-Headerfeld abgebildet. Noch offen sind weitere
+Relokationen wie `SECTDIFF`, Darwin-CRT,
 Systembibliotheken, Host-Imports und Frameworks.
 
 ## Nächster Ausbau

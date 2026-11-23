@@ -24,6 +24,7 @@ CPU_TYPE_I386 = 7
 LC_SEGMENT = 0x1
 LC_SYMTAB = 0x2
 LC_DYLD_INFO_ONLY = 0x80000022
+LC_DYSYMTAB = 0xB
 LC_MAIN = 0x80000028
 LC_LINKER_OPTION = 0x2D
 MH_DYLDLINK = 0x4
@@ -41,6 +42,7 @@ DATA_VM_BASE = 0x2000
 S_ATTR_PURE_INSTRUCTIONS = 0x80000000
 S_ATTR_SOME_INSTRUCTIONS = 0x00000400
 S_ZEROFILL = 0x1
+S_NON_LAZY_SYMBOL_POINTERS = 0x6
 
 
 class FormatError(ValueError):
@@ -72,6 +74,8 @@ class MachObject:
     text: ObjectSection
     data: ObjectSection | None
     bss: ObjectSection | None
+    pointers: ObjectSection | None
+    pointer_symbols: tuple[str, ...]
     cpu_subtype: int
     definitions: dict[str, tuple[str, int]]
     common_symbols: dict[str, tuple[int, int]]
@@ -106,8 +110,9 @@ def parse_object(path: Path, data: bytes) -> MachObject:
     commands_end = 28 + sizeofcmds
     require_range(data, 28, sizeofcmds, f"{path}: load-command table")
     cursor = 28
-    input_sections: dict[int, tuple[str, int, int, int, int, int, int, bool]] = {}
+    input_sections: dict[int, tuple[str, int, int, int, int, int, int, int, bool]] = {}
     symtab: tuple[int, int, int, int] | None = None
+    dysymtab: tuple[int, int] | None = None
     section_ordinal = 0
 
     for _ in range(ncmds):
@@ -130,7 +135,7 @@ def parse_object(path: Path, data: bytes) -> MachObject:
             for index in range(nsects):
                 section = struct.unpack_from("<16s16sIIIIIIIII", command, 56 + index * 68)
                 sectname, segname = c_name(section[0]), c_name(section[1])
-                addr, size, offset, align_exp, reloff, nreloc, _flags, _r1, _r2 = section[2:]
+                addr, size, offset, align_exp, reloff, nreloc, _flags, reserved1, _r2 = section[2:]
                 section_ordinal += 1
                 kind = None
                 if (sectname, segname) == ("__text", "__TEXT"):
@@ -139,6 +144,8 @@ def parse_object(path: Path, data: bytes) -> MachObject:
                     kind = "data"
                 elif (sectname, segname) in (("__bss", "__DATA"), ("__common", "__DATA")):
                     kind = "bss"
+                elif (sectname, segname) == ("__pointers", "__IMPORT"):
+                    kind = "ptr"
                 if kind is not None:
                     if any(existing[0] == kind for existing in input_sections.values()):
                         raise FormatError(f"{path}: multiple __{kind} sections")
@@ -147,6 +154,8 @@ def parse_object(path: Path, data: bytes) -> MachObject:
                     is_zerofill = (_flags := section[8]) & 0xFF == S_ZEROFILL
                     if kind == "bss" and not is_zerofill:
                         raise FormatError(f"{path}: __bss is not marked S_ZEROFILL")
+                    if kind == "ptr" and (_flags & 0xFF) != S_NON_LAZY_SYMBOL_POINTERS:
+                        raise FormatError(f"{path}: __IMPORT,__pointers has an unsupported section type")
                     if kind != "bss" and is_zerofill:
                         raise FormatError(f"{path}: __{kind} unexpectedly uses S_ZEROFILL")
                     if is_zerofill and nreloc:
@@ -155,7 +164,8 @@ def parse_object(path: Path, data: bytes) -> MachObject:
                         require_range(data, offset, size, f"{path}: __{kind} contents")
                     require_range(data, reloff, nreloc * 8, f"{path}: __{kind} relocations")
                     input_sections[section_ordinal] = (
-                        kind, offset, size, addr, align_exp, reloff, nreloc, is_zerofill
+                        kind, offset, size, addr, align_exp, reloff, nreloc,
+                        reserved1, is_zerofill
                     )
 
         elif cmd == LC_SYMTAB:
@@ -165,6 +175,12 @@ def parse_object(path: Path, data: bytes) -> MachObject:
                 "<IIIIII", command
             )
             symtab = (symoff, nsyms, stroff, strsize)
+
+        elif cmd == LC_DYSYMTAB:
+            if cmdsize != 80:
+                raise FormatError(f"{path}: invalid LC_DYSYMTAB command size")
+            fields = struct.unpack_from("<20I", command)
+            dysymtab = (fields[14], fields[15])
 
         elif cmd == LC_LINKER_OPTION and cmdsize < 12:
             raise FormatError(f"{path}: short LC_LINKER_OPTION command")
@@ -176,6 +192,7 @@ def parse_object(path: Path, data: bytes) -> MachObject:
     text_record = next((record for record in input_sections.values() if record[0] == "text"), None)
     data_record = next((record for record in input_sections.values() if record[0] == "data"), None)
     bss_record = next((record for record in input_sections.values() if record[0] == "bss"), None)
+    pointer_record = next((record for record in input_sections.values() if record[0] == "ptr"), None)
     if text_record is None:
         raise FormatError(f"{path}: missing __TEXT,__text")
     if symtab is None:
@@ -215,7 +232,7 @@ def parse_object(path: Path, data: bytes) -> MachObject:
             section_record = input_sections.get(n_sect)
             if section_record is None:
                 raise FormatError(f"{path}: external definition {name} is outside __text/__data")
-            kind, _offset, size, section_addr, _align, _reloff, _nreloc, _zerofill = section_record
+            kind, _offset, size, section_addr, _align, _reloff, _nreloc, _reserved1, _zerofill = section_record
             symbol_offset = value - section_addr
             if symbol_offset < 0 or symbol_offset > size:
                 raise FormatError(f"{path}: external definition {name} lies outside __{kind}")
@@ -225,7 +242,7 @@ def parse_object(path: Path, data: bytes) -> MachObject:
 
     relocations: list[Relocation] = []
     for source_ordinal, source_record in input_sections.items():
-        source_kind, _source_offset, source_size, _source_addr, _source_align, reloff, nreloc, is_zerofill = source_record
+        source_kind, _source_offset, source_size, _source_addr, _source_align, reloff, nreloc, _reserved1, is_zerofill = source_record
         if is_zerofill and nreloc:
             raise FormatError(f"{path}: relocations in zerofill sections are unsupported")
         relocation_sites: set[int] = set()
@@ -260,8 +277,8 @@ def parse_object(path: Path, data: bytes) -> MachObject:
                     raise FormatError(f"{path}: absolute relocation targets an empty section")
                 relocations.append(Relocation(source_kind, address, None, target_kind, bool(pcrel)))
 
-    def make_section(record: tuple[str, int, int, int, int, int, int]) -> ObjectSection:
-        kind, offset, size, addr, align_exp, _reloff, _nreloc, is_zerofill = record
+    def make_section(record: tuple[str, int, int, int, int, int, int, int, bool]) -> ObjectSection:
+        kind, offset, size, addr, align_exp, _reloff, _nreloc, _reserved1, is_zerofill = record
         ordinal = next(number for number, value in input_sections.items() if value is record)
         contents = b"" if is_zerofill else data[offset : offset + size]
         return ObjectSection(kind, contents, addr, ordinal, 1 << align_exp, size)
@@ -269,12 +286,36 @@ def parse_object(path: Path, data: bytes) -> MachObject:
     text_section = make_section(text_record)
     data_section = make_section(data_record) if data_record is not None else None
     bss_section = make_section(bss_record) if bss_record is not None else None
+    pointer_section = make_section(pointer_record) if pointer_record is not None else None
+    pointer_symbols: tuple[str, ...] = ()
+    if pointer_record is not None:
+        if dysymtab is None:
+            raise FormatError(f"{path}: __IMPORT,__pointers requires LC_DYSYMTAB")
+        indirect_offset, indirect_count = dysymtab
+        indirect_data = require_range(data, indirect_offset, indirect_count * 4,
+                                      f"{path}: indirect symbol table")
+        section_entries = pointer_record[2] // 4
+        if pointer_record[2] % 4 != 0:
+            raise FormatError(f"{path}: pointer section size is not pointer-aligned")
+        if pointer_record[7] + section_entries > indirect_count:
+            raise FormatError(f"{path}: pointer section exceeds indirect symbol table")
+        names = []
+        for slot in range(section_entries):
+            symbol_index = struct.unpack_from("<I", indirect_data, (pointer_record[7] + slot) * 4)[0]
+            if symbol_index & 0xC0000000:
+                raise FormatError(f"{path}: local/absolute indirect pointers are unsupported")
+            if symbol_index >= len(symbols) or not symbols[symbol_index][0]:
+                raise FormatError(f"{path}: invalid indirect pointer symbol index")
+            names.append(symbols[symbol_index][0])
+        pointer_symbols = tuple(names)
 
     return MachObject(
         path=path,
         text=text_section,
         data=data_section,
         bss=bss_section,
+        pointers=pointer_section,
+        pointer_symbols=pointer_symbols,
         cpu_subtype=cpu_subtype,
         definitions=definitions,
         common_symbols=common_symbols,
@@ -299,12 +340,14 @@ def link_objects(
     text_offsets: list[int] = []
     data_offsets: list[int] = []
     bss_offsets: list[int] = []
+    pointer_offsets: list[int] = []
     text_size = 0
     data_size = 0
     bss_size = 0
     text_align_exp = 0
     data_align_exp = 0
     bss_align_exp = 0
+    pointer_align_exp = 0
     for obj in objects:
         text_size = align_up(text_size, obj.text.alignment)
         text_offsets.append(text_size)
@@ -325,6 +368,11 @@ def link_objects(
             bss_size += obj.bss.memory_size
             bss_align_exp = max(bss_align_exp, obj.bss.alignment.bit_length() - 1)
             data_align_exp = max(data_align_exp, obj.bss.alignment.bit_length() - 1)
+        if obj.pointers is None:
+            pointer_offsets.append(0)
+        else:
+            pointer_align_exp = max(pointer_align_exp, obj.pointers.alignment.bit_length() - 1)
+            pointer_offsets.append(0)
     if text_size == 0 or text_size > PAGE_SIZE - TEXT_FILE_OFFSET:
         raise FormatError("combined __text exceeds the one-page prototype image limit")
     bss_start = align_up(data_size, 1 << bss_align_exp) if bss_size else data_size
@@ -351,6 +399,9 @@ def link_objects(
                 continue
             common_sizes[name] = max(common_sizes.get(name, 0), size)
             common_alignments[name] = max(common_alignments.get(name, 1), alignment)
+    for alignment in common_alignments.values():
+        bss_align_exp = max(bss_align_exp, alignment.bit_length() - 1)
+        data_align_exp = max(data_align_exp, alignment.bit_length() - 1)
     for name in sorted(common_sizes):
         bss_size = align_up(bss_size, common_alignments[name])
         common_offsets[name] = bss_size
@@ -358,7 +409,16 @@ def link_objects(
     for name, offset in common_offsets.items():
         definitions[name] = (0, "bss", offset)
     bss_start = align_up(data_size, 1 << max(bss_align_exp, 0)) if bss_size else data_size
-    combined_data_size = bss_start + bss_size
+    pointer_start = align_up(bss_start + bss_size, 1 << pointer_align_exp)
+    data_align_exp = max(data_align_exp, pointer_align_exp)
+    pointer_size = 0
+    for index, obj in enumerate(objects):
+        if obj.pointers is not None:
+            pointer_offsets[index] = pointer_size
+            pointer_size = align_up(pointer_size, obj.pointers.alignment)
+            pointer_offsets[index] = pointer_size
+            pointer_size += obj.pointers.memory_size
+    combined_data_size = pointer_start + pointer_size if pointer_size else bss_start + bss_size
     if combined_data_size > PAGE_SIZE:
         raise FormatError("combined __data and common zero-fill storage exceed one page")
     missing = sorted(undefined - definitions.keys())
@@ -370,8 +430,14 @@ def link_objects(
     text = bytearray(text_size)
     data = bytearray(combined_data_size)
     preferred_vm = {"text": TEXT_VM_BASE, "data": DATA_VM_BASE}
-    section_placements = {"text": text_offsets, "data": data_offsets, "bss": bss_offsets}
-    section_sizes = {"text": text_size, "data": data_size, "bss": bss_size}
+    section_placements = {
+        "text": text_offsets, "data": data_offsets,
+        "bss": bss_offsets, "ptr": pointer_offsets,
+    }
+    section_sizes = {
+        "text": text_size, "data": data_size,
+        "bss": bss_size, "ptr": pointer_size,
+    }
     output_sections = {"text": text, "data": data}
     rebase_sites: set[tuple[int, int]] = set()
 
@@ -381,15 +447,29 @@ def link_objects(
         if obj.data is not None:
             data_base = data_offsets[index]
             data[data_base : data_base + len(obj.data.contents)] = obj.data.contents
+        if obj.pointers is not None:
+            pointer_base = pointer_start + pointer_offsets[index]
+            data[pointer_base : pointer_base + len(obj.pointers.contents)] = obj.pointers.contents
 
         for relocation in obj.relocations:
             source_base = section_placements[relocation.source_kind][index]
-            source_section = obj.text if relocation.source_kind == "text" else obj.data
+            source_section = (
+                obj.text if relocation.source_kind == "text" else
+                obj.pointers if relocation.source_kind == "ptr" else
+                obj.bss if relocation.source_kind == "bss" else obj.data
+            )
             if source_section is None:
                 raise FormatError("relocation source section is missing")
-            source_output_vm = preferred_vm[relocation.source_kind] + source_base
-            source_site = source_base + relocation.offset
-            source_bytes = output_sections[relocation.source_kind]
+            source_file_base = (
+                pointer_start + source_base if relocation.source_kind == "ptr" else
+                bss_start + source_base if relocation.source_kind == "bss" else source_base
+            )
+            source_output_vm = (
+                preferred_vm["data"] + source_file_base if relocation.source_kind in ("ptr", "bss")
+                else preferred_vm[relocation.source_kind] + source_base
+            )
+            source_site = source_file_base + relocation.offset
+            source_bytes = data if relocation.source_kind in ("ptr", "bss") else output_sections[relocation.source_kind]
 
             if relocation.external_symbol is not None:
                 target = definitions.get(relocation.external_symbol)
@@ -398,7 +478,12 @@ def link_objects(
                 target_index, target_kind, target_value = target
                 target_base = section_placements[target_kind][target_index]
                 target_storage_base = bss_start if target_kind == "bss" else 0
-                target_vm = preferred_vm["data"] + target_storage_base + target_base + target_value if target_kind == "bss" else preferred_vm[target_kind] + target_base + target_value
+                if target_kind == "bss":
+                    target_vm = preferred_vm["data"] + bss_start + target_base + target_value
+                elif target_kind == "ptr":
+                    target_vm = preferred_vm["data"] + pointer_start + target_base + target_value
+                else:
+                    target_vm = preferred_vm[target_kind] + target_base + target_value
                 if target_value >= section_sizes[target_kind]:
                     raise FormatError(f"relocation target {relocation.external_symbol} is outside its section")
                 if relocation.pc_relative:
@@ -429,15 +514,18 @@ def link_objects(
                     raise FormatError("local relocation has no target section")
                 target_section = (
                     obj.text if target_kind == "text" else
-                    obj.bss if target_kind == "bss" else obj.data
+                    obj.bss if target_kind == "bss" else
+                    obj.pointers if target_kind == "ptr" else obj.data
                 )
                 if target_section is None:
                     raise FormatError("local relocation targets a missing section")
                 target_base = section_placements[target_kind][index]
-                target_output_vm = (
-                    preferred_vm["data"] + bss_start + target_base
-                    if target_kind == "bss" else preferred_vm[target_kind] + target_base
-                )
+                if target_kind == "bss":
+                    target_output_vm = preferred_vm["data"] + bss_start + target_base
+                elif target_kind == "ptr":
+                    target_output_vm = preferred_vm["data"] + pointer_start + target_base
+                else:
+                    target_output_vm = preferred_vm[target_kind] + target_base
                 if relocation.pc_relative:
                     addend = struct.unpack_from("<i", source_bytes, source_site)[0]
                     target_delta = target_output_vm - target_section.vm_address
@@ -461,6 +549,27 @@ def link_objects(
                         source_site
                     )
                     rebase_sites.add((segment_index, segment_offset))
+
+    for index, obj in enumerate(objects):
+        if obj.pointers is None:
+            continue
+        for slot, name in enumerate(obj.pointer_symbols):
+            target = definitions.get(name)
+            if target is None:
+                raise FormatError(f"unresolved import pointer symbol {name}")
+            target_index, target_kind, target_value = target
+            if target_value >= section_sizes[target_kind]:
+                raise FormatError(f"import pointer target {name} lies outside its section")
+            target_base = section_placements[target_kind][target_index]
+            if target_kind == "bss":
+                target_vm = DATA_VM_BASE + bss_start + target_base + target_value
+            elif target_kind == "ptr":
+                target_vm = DATA_VM_BASE + pointer_start + target_base + target_value
+            else:
+                target_vm = preferred_vm[target_kind] + target_base + target_value
+            slot_offset = pointer_start + pointer_offsets[index] + slot * 4
+            struct.pack_into("<I", data, slot_offset, target_vm)
+            rebase_sites.add((1, slot_offset))
 
     entry_index, entry_kind, entry_value = definitions[entry_name]
     if entry_kind != "text":

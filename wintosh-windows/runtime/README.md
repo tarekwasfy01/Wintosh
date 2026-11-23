@@ -22,7 +22,11 @@ dyld type-2 rebases. The two-object `_main` to `_helper` fixture returned 42
 in either input order. A mutable global initialized to 40 and an uninitialized
 `__common` global were each written, read back, and returned as 42 under the
 Win32 runner. Zerofill is folded into the prototype's zero-initialized data
-segment. Imports, CRT, dylib, and framework linking remain outside it.
+segment. A two-object global fixture also resolved Clang's
+`__IMPORT,__pointers` indirect slot to a definition in the companion object,
+then wrote and read the value and returned 42. This resolves only symbols
+defined by supplied object files; Darwin dylib imports, CRT, and framework
+linking remain outside the prototype.
 Apple's [dyld4 design notes](https://github.com/apple-oss-distributions/dyld/blob/main/doc/dyld4.md)
 describe process startup with argc, argv, envp, and Apple parameters on the
 initial stack. That current description does not establish compatibility with

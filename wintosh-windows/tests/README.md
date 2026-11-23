@@ -35,10 +35,10 @@ image remains callable after the first `dlclose` and unregisters its Objective-C
 class after the final close.
 Both guest opens use `@rpath`; the executable carries an `@executable_path`
 runpath, covering runtime `LC_RPATH` lookup at the `dlopen` boundary.
-While one provider method runs, it also opens a plugin from its own directory
-using `@loader_path`, resolves and calls its export, and closes it. The
-provider and plugin are kept in a subdirectory so the lookup cannot fall back
-to the executable directory.
+While one provider method runs, it opens a plugin in a second subdirectory
+using `@rpath`, resolves and calls its export, and closes it. The executable
+declares the runpath and the provider declares none, so this checks inherited
+runpath context at the runtime `dlopen` boundary.
 It also compiles a real Objective-C category into `__objc_catlist` and calls
 its class method through the guest Objective-C dispatch path. `objc_smoke`
 registers category methods/protocols/properties under an image token and checks

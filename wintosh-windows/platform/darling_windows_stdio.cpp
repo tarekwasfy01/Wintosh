@@ -754,6 +754,7 @@ std::unordered_map<void*, std::size_t> dynamic_image_callback_references;
 std::mutex guest_executable_path_mutex;
 std::wstring current_guest_executable_path;
 thread_local std::wstring current_guest_callsite_image;
+thread_local std::vector<std::filesystem::path> current_guest_callsite_rpaths;
 constexpr int kDarwinRtldNoLoad = 0x10;
 constexpr int kDarwinRtldNoDelete = 0x80;
 struct DarwinDyldImageEntry final {
@@ -784,6 +785,11 @@ std::filesystem::path GuestCallerImagePath()
 {
 	return current_guest_callsite_image.empty() ?
 		GuestExecutablePath() : std::filesystem::path(current_guest_callsite_image);
+}
+
+std::vector<std::filesystem::path> GuestCallerRunPaths()
+{
+	return current_guest_callsite_rpaths;
 }
 
 void InvokeDyldImageCallbacks(
@@ -7972,7 +7978,7 @@ extern "C" void* darling_windows_dlopen(const char* path, int mode)
 		}
 		try {
 			image_path = darling::windows_host::DylibResolver::Resolve(
-				caller_path, path, {}, {}, executable_path);
+			caller_path, path, GuestCallerRunPaths(), {}, executable_path);
 		} catch (const std::exception& error) {
 			dynamic_loader_error = std::string("dlopen: ") + error.what();
 			return nullptr;
@@ -10023,16 +10029,20 @@ extern "C" void darling_windows_set_guest_callsite_pc(std::uintptr_t pc) noexcep
 	try {
 		if (pc == 0) {
 			current_guest_callsite_image.clear();
+			current_guest_callsite_rpaths.clear();
 			return;
 		}
 		const void* address = reinterpret_cast<const void*>(pc);
 		std::filesystem::path caller;
+		std::vector<std::filesystem::path> caller_rpaths;
 		{
 			std::lock_guard lock(dynamic_image_mutex);
 			for (const auto& [handle, image] : dynamic_images) {
 				(void)handle;
 				if (darling::windows_host::DynamicImageContains(*image, address)) {
 					caller = darling::windows_host::DynamicImagePath(*image);
+					caller_rpaths = darling::windows_host::DynamicImageRunPathsForAddress(
+						*image, address);
 					break;
 				}
 				const auto count = darling::windows_host::DynamicImageProviderCount(*image);
@@ -10041,6 +10051,8 @@ extern "C" void darling_windows_set_guest_callsite_pc(std::uintptr_t pc) noexcep
 						*image, index, address)) {
 						caller = darling::windows_host::DynamicImageProviderPath(
 							*image, index);
+						caller_rpaths = darling::windows_host::DynamicImageRunPathsForAddress(
+							*image, address);
 						break;
 					}
 				}
@@ -10050,8 +10062,10 @@ extern "C" void darling_windows_set_guest_callsite_pc(std::uintptr_t pc) noexcep
 		if (caller.empty())
 			caller = GuestExecutablePath();
 		current_guest_callsite_image = caller.wstring();
+		current_guest_callsite_rpaths = std::move(caller_rpaths);
 	} catch (...) {
 		current_guest_callsite_image.clear();
+		current_guest_callsite_rpaths.clear();
 	}
 }
 

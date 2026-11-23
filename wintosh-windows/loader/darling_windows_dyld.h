@@ -29,6 +29,8 @@ public:
 
 struct DylibGraphNode final {
 	std::filesystem::path path;
+	// LC_RPATH entries anchored to their declaring image and the graph executable.
+	std::vector<std::filesystem::path> effective_rpaths;
 	std::vector<std::filesystem::path> dependencies;
 	// Keeps one slot per LC_LOAD_*_DYLIB ordinal, including entries omitted
 	// from the resolved graph because they are weak or provided by Wintosh.
@@ -113,6 +115,8 @@ bool DynamicImageContainsMappedAddress(const DarwinDynamicImage& image,
 	const void* address) noexcept;
 bool DynamicImageProviderContains(const DarwinDynamicImage& image,
 	std::uint32_t index, const void* address) noexcept;
+const std::vector<std::filesystem::path>& DynamicImageRunPathsForAddress(
+	const DarwinDynamicImage& image, const void* address) noexcept;
 void* DynamicImageBase(const DarwinDynamicImage& image) noexcept;
 bool DynamicImageNearestSymbol(const DarwinDynamicImage& image, const void* address,
 	std::string& name, std::uintptr_t& symbol_address) noexcept;

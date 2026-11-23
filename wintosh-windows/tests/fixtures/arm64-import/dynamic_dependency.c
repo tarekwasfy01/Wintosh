@@ -30,7 +30,7 @@ static void (*WintoshDependencyTerminator)(void) = WintoshDependencyModuleTermin
 long wintosh_dynamic_dependency_answer(void)
 {
 	void *plugin = dlopen(
-		"@loader_path/libarm64-dynamic-plugin.dylib", 2);
+		"@rpath/libarm64-dynamic-plugin.dylib", 2);
 	if (plugin == (void *)0)
 		return 0;
 	long (*answer)(void) = (long (*)(void))dlsym(

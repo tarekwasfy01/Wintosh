@@ -174,6 +174,8 @@ void WriteMachO(const std::filesystem::path& path, const char* dependency,
 		(dependency == nullptr ? 0 : dylib_command_bytes) + symtab_bytes +
 		dysymtab_bytes + dyld_info_bytes + 2 * sizeof(LinkeditDataCommand) + rpath_command_bytes;
 	std::vector<std::uint8_t> data(0x600, 0);
+	const std::uintptr_t rebased_pointer = 0x1000;
+	std::memcpy(data.data() + 0x438, &rebased_pointer, sizeof(rebased_pointer));
 	MachHeader64 header{MH_MAGIC_64, CPU_TYPE_X86_64, 3, MH_EXECUTE,
 		static_cast<std::uint32_t>((include_main ? 1 : 0) + (dependency == nullptr ? 7 : 8)),
 		static_cast<std::uint32_t>(command_bytes), 0, 0};
@@ -1022,7 +1024,8 @@ int wmain(int argc, wchar_t** argv)
 			app_image.ApplyRebaseActions(app_mapping);
 			const auto rebase_address = reinterpret_cast<const std::uintptr_t*>(
 				static_cast<std::intptr_t>(0x1238) + app_mapping.Slide());
-			if (*rebase_address != static_cast<std::uintptr_t>(app_mapping.Slide())) {
+			if (*rebase_address != static_cast<std::uintptr_t>(
+				0x1000 + app_mapping.Slide())) {
 				throw std::runtime_error("Mach-O dyld rebase action was not applied");
 			}
 			const auto relative_value = *reinterpret_cast<const std::int32_t*>(relative_site);

@@ -419,11 +419,22 @@ std::vector<DylibGraphNode> DylibGraph::Load(
 	if (preferred_cpu_type == 0)
 		preferred_cpu_type = MachOImage::Open(image_path.wstring()).Header().cpu_type;
 	std::vector<DylibGraphNode> graph;
+	const auto normalized_executable = image_path.lexically_normal();
+	const auto executable_directory = normalized_executable.parent_path();
 	struct PendingImage final {
 		std::filesystem::path path;
 		std::vector<std::filesystem::path> inherited_rpaths;
 	};
-	std::vector<PendingImage> pending{{image_path.lexically_normal(), rpaths}};
+	std::vector<std::filesystem::path> normalized_rpaths;
+	for (const auto& rpath : rpaths) {
+		auto anchored = ExpandRPath(executable_directory, executable_directory, rpath);
+		if (anchored.is_relative())
+			anchored = (executable_directory / anchored).lexically_normal();
+		if (std::find(normalized_rpaths.begin(), normalized_rpaths.end(), anchored) ==
+			normalized_rpaths.end())
+			normalized_rpaths.push_back(std::move(anchored));
+	}
+	std::vector<PendingImage> pending{{normalized_executable, std::move(normalized_rpaths)}};
 	std::set<std::filesystem::path> visited;
 
 	while (!pending.empty()) {
@@ -437,13 +448,17 @@ std::vector<DylibGraphNode> DylibGraph::Load(
 		const auto image = MachOImage::Open(normalized.wstring(), preferred_cpu_type);
 		auto image_rpaths = std::move(work.inherited_rpaths);
 		for (const auto& rpath : image.RPaths()) {
-			const std::filesystem::path candidate(rpath);
+			std::filesystem::path candidate = ExpandRPath(normalized.parent_path(),
+				executable_directory, std::filesystem::path(rpath));
+			if (candidate.is_relative())
+				candidate = (normalized.parent_path() / candidate).lexically_normal();
 			if (std::find(image_rpaths.begin(), image_rpaths.end(), candidate) ==
 				image_rpaths.end())
 				image_rpaths.push_back(candidate);
 		}
 		DylibGraphNode node;
 		node.path = normalized;
+		node.effective_rpaths = image_rpaths;
 		std::vector<PendingImage> children;
 		for (const auto& dependency : image.Dependencies()) {
 			std::filesystem::path ordinal_dependency;
@@ -860,6 +875,7 @@ public:
 		MachOImage::Mapping mapping;
 		std::vector<std::pair<DarwinTLVDescriptor*, std::size_t>> tlv_registrations;
 		std::vector<DyldResolvedBinding> bindings;
+		std::vector<std::filesystem::path> effective_rpaths;
 	};
 	std::filesystem::path path;
 	MachOImage image;
@@ -870,6 +886,7 @@ public:
 	std::vector<darling_objc_image_token*> objc_tokens;
 	std::vector<std::unique_ptr<MachOLazyBindingSession>> lazy_sessions;
 	std::vector<MachOLazyBindingSession::Registration> lazy_registrations;
+	std::vector<std::filesystem::path> effective_rpaths;
 
 	~DarwinDynamicImage() noexcept
 	{
@@ -925,7 +942,12 @@ DarwinDynamicImage* OpenDynamicImage(const std::filesystem::path& path,
 		// Load and initialize every dependency in the graph, including dylibs
 		// that contribute no undefined symbols to this image.
 		for (const auto& node : graph_nodes) {
-			if (node.path != main_path) (void)get_provider(node.path);
+			if (node.path == main_path) {
+				result->effective_rpaths = node.effective_rpaths;
+			} else {
+				auto& provider = get_provider(node.path);
+				provider.effective_rpaths = node.effective_rpaths;
+			}
 		}
 		for (const auto& binding : graph_bindings) {
 			auto append_client_binding = [&](std::uintptr_t address) {
@@ -1416,6 +1438,22 @@ bool DynamicImageProviderContains(const DarwinDynamicImage& image,
 			return true;
 	}
 	return false;
+}
+
+const std::vector<std::filesystem::path>& DynamicImageRunPathsForAddress(
+	const DarwinDynamicImage& image, const void* address) noexcept
+{
+	static const std::vector<std::filesystem::path> empty;
+	if (DynamicImageContains(image, address))
+		return image.effective_rpaths;
+	for (const auto& provider : image.providers) {
+		const auto value = reinterpret_cast<std::uintptr_t>(address);
+		for (const auto& segment : provider.mapping.Segments()) {
+			if (value >= segment.address && value - segment.address < segment.size)
+				return provider.effective_rpaths;
+		}
+	}
+	return empty;
 }
 
 void* DynamicImageBase(const DarwinDynamicImage& image) noexcept

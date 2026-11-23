@@ -31,7 +31,9 @@ $nestedDependencyObject = Join-Path $OutputDirectory 'arm64-dynamic-nested-depen
 $nestedDependencyImage = Join-Path $OutputDirectory 'libarm64-dynamic-nested-dependency.dylib'
 $pluginSource = Join-Path $PSScriptRoot 'fixtures/arm64-import/dynamic_plugin.c'
 $pluginObject = Join-Path $OutputDirectory 'arm64-dynamic-plugin.o'
-$pluginImage = Join-Path $dependencyDirectory 'libarm64-dynamic-plugin.dylib'
+$pluginDirectory = Join-Path $dependencyDirectory 'Plugins'
+New-Item -ItemType Directory -Force -Path $pluginDirectory | Out-Null
+$pluginImage = Join-Path $pluginDirectory 'libarm64-dynamic-plugin.dylib'
 $dynamicObjcSource = Join-Path $PSScriptRoot 'fixtures/arm64-import/dynamic_objc.m'
 $dynamicObjcObject = Join-Path $OutputDirectory 'arm64-dynamic-objc-import.o'
 $dynamicImage = Join-Path $OutputDirectory 'libarm64-dynamic-import.dylib'
@@ -81,6 +83,7 @@ if ($LASTEXITCODE -ne 0) { throw "ARM64 dynamic Objective-C compile failed: $LAS
 & $Linker -arch arm64 -platform_version macos 11.0 14.0 -dylib `
 	-install_name '@rpath/libarm64-dynamic-import.dylib' `
 	-rpath '@loader_path' -rpath '@loader_path/Provider' `
+	-rpath '@loader_path/Provider/Plugins' `
 	-undefined dynamic_lookup -o $dynamicImage $dynamicObject $dynamicObjcObject `
 	$dependencyImage
 if ($LASTEXITCODE -ne 0) { throw "ARM64 dynamic image link failed: $LASTEXITCODE" }

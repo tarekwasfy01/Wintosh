@@ -2127,3 +2127,12 @@ The x86_64 binder trampoline now detects XSAVE and OSXSAVE, reads the enabled
 XCR0 state, allocates an aligned save area, and uses XSAVE/XRSTOR around the
 resolver. Older x64 hosts use FXSAVE/FXRSTOR. The x64 Clang executable builds;
 no runtime fixture exercised either state-save branch.
+
+### Dynamic-image lazy binding (2026-11-23)
+
+Classic x86_64 images loaded through `dlopen` now leave lazy bind actions and
+lazy pointer slots unresolved and register per-image sessions for the lifetime
+of the dynamic image. Registrations are thread-neutral and are removed during
+`dlclose` after terminators run. ARM64, 32-bit, and chained-fixup images remain
+eager. The x64 build succeeds; no runtime `dlopen` lazy-import fixture has
+verified initializer calls, cross-thread first calls, or unload behavior.

@@ -55,7 +55,7 @@ extern "C" DARLING_SYSV std::uintptr_t darling_windows_abi_resolve_lazy_binding(
 
 extern "C" DARLING_SYSV int darling_windows_abi_lazy_binding_session_active()
 {
-	return darling::windows_host::MachOLazyBindingSession::Current() != nullptr ? 1 : 0;
+	return darling::windows_host::MachOLazyBindingSession::HasActiveSessions() ? 1 : 0;
 }
 
 extern "C" DARLING_SYSV void* darling_windows_abi_tlv_get_addr(

@@ -538,6 +538,19 @@ private:
 // binder cannot accidentally apply an action to a different image.
 class MachOLazyBindingSession final {
 public:
+	class Registration final {
+	public:
+		Registration(const Registration&) = delete;
+		Registration& operator=(const Registration&) = delete;
+		Registration(Registration&& other) noexcept;
+		Registration& operator=(Registration&& other) noexcept;
+		~Registration() noexcept;
+	private:
+		friend class MachOLazyBindingSession;
+		explicit Registration(const MachOLazyBindingSession* session);
+		const MachOLazyBindingSession* session_ = nullptr;
+	};
+
 	class Activation final {
 	public:
 		Activation(const Activation&) = delete;
@@ -571,7 +584,9 @@ public:
 	[[nodiscard]] std::optional<std::size_t> FindActionForSlot(
 		std::uintptr_t slot_address) const noexcept;
 	[[nodiscard]] Activation Activate() const noexcept { return Activation(this); }
+	[[nodiscard]] Registration Register() const { return Registration(this); }
 	[[nodiscard]] static const MachOLazyBindingSession* Current() noexcept;
+	[[nodiscard]] static bool HasActiveSessions() noexcept;
 
 private:
 	const MachOImage& m_image;

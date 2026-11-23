@@ -21,9 +21,11 @@ offset, the offset uniquely identifies that session. Invalid or ambiguous
 requests return zero; the assembly path then fails closed. Resolver exceptions
 are caught before returning through the assembly frame.
 
-ARM64, 32-bit, chained-fixup images, and dynamic loading remain eager. The
-MSVC path does not execute this foreign SysV trampoline and remains fail-closed
-for real Darwin guest entry.
+`dlopen` now keeps thread-neutral per-image registrations until `dlclose`, so
+classic x86_64 dynamic images use the same on-demand path during initializers
+and later calls. ARM64, 32-bit, and chained-fixup images remain eager. The MSVC
+path does not execute this foreign SysV trampoline and remains fail-closed for
+real Darwin guest entry.
 
 ## Evidence and limits
 
@@ -49,8 +51,8 @@ and binding tables are destroyed.
 3. Exercise the XSAVE and FXSAVE trampoline branches with an ABI fixture.
 4. Implement the distinct ARM64 stub-helper protocol and assess chained-fixup
    lazy imports before deferring those formats.
-5. Implement lazy resolution for dynamic loading rather than marking all
-   dynamically loaded images eager.
+5. Verify dynamic-image lazy imports during initializers, after `dlopen`, and
+   while another host thread makes the first call before `dlclose`.
 
 ## Contract references
 

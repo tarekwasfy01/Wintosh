@@ -953,3 +953,8 @@ The x86_64 binder trampoline now preserves host-enabled extended processor state
 with XSAVE/XRSTOR when CPUID and OSXSAVE permit it, and falls back to
 FXSAVE/FXRSTOR otherwise. This revision compiled in the local x64 Clang build;
 neither runtime branch has been exercised by a fixture.
+
+Dynamic classic x86_64 images loaded through `dlopen` now retain registered
+lazy-binding sessions until `dlclose`, including image initializers. This
+supersedes the earlier eager-only note for that path. Runtime verification of
+dynamic lazy calls and unload ordering remains open.

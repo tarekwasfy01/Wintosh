@@ -70,6 +70,7 @@ Classic x86_64 images without chained fixups now keep lazy bind actions and
 passes the image-cache address and lazy-stream offset; the host selects the
 session by mapped image range and resolves the import on first call. Sessions
 remain active across initializers, guest entry and terminators, including
-calls from guest-created host threads. ARM64, 32-bit, chained-fixup images
-and dynamic loading remain eager. A real macOS Mach-O fixture has not yet
+calls from guest-created host threads. Dynamic classic x86_64 images keep
+thread-neutral sessions registered until `dlclose`. ARM64, 32-bit and
+chained-fixup images remain eager. A real macOS Mach-O fixture has not yet
 verified the end-to-end stub-helper call and slot update.

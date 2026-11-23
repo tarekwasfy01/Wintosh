@@ -4582,3 +4582,9 @@ runtime smokes and real Mach-O guest behavior remain unverified. See
 The binder trampoline now includes CPUID/OSXSAVE-selected XSAVE/XRSTOR state
 preservation with an FXSAVE/FXRSTOR fallback. Assembly compilation succeeds;
 runtime state preservation still needs a dedicated ABI fixture.
+
+Dynamic-loader update (2026-11-23): classic x86_64 images opened through
+`dlopen` now preserve lazy slots and register their resolver contexts through
+`dlclose`. This replaces the older eager-only behavior recorded earlier.
+Runtime fixture coverage of initialization, cross-thread calls, and teardown
+is still missing.

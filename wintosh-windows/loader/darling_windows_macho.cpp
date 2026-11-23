@@ -2902,6 +2902,38 @@ MachOLazyBindingSession::Activation::Activation(
 	}
 }
 
+MachOLazyBindingSession::Registration::Registration(
+	const MachOLazyBindingSession* session)
+	: session_(session)
+{
+	std::lock_guard lock(active_lazy_binding_sessions_mutex);
+	active_lazy_binding_sessions.push_back(session);
+}
+
+MachOLazyBindingSession::Registration::Registration(Registration&& other) noexcept
+	: session_(other.session_)
+{
+	other.session_ = nullptr;
+}
+
+MachOLazyBindingSession::Registration& MachOLazyBindingSession::Registration::operator=(
+	Registration&& other) noexcept
+{
+	if (this != &other) {
+		if (session_ != nullptr)
+			RemoveActiveLazyBindingSession(session_);
+		session_ = other.session_;
+		other.session_ = nullptr;
+	}
+	return *this;
+}
+
+MachOLazyBindingSession::Registration::~Registration() noexcept
+{
+	if (session_ != nullptr)
+		RemoveActiveLazyBindingSession(session_);
+}
+
 MachOLazyBindingSession::Activation::Activation(Activation&& other) noexcept
 	: previous_(other.previous_), session_(other.session_), active_(other.active_)
 {
@@ -2937,6 +2969,12 @@ MachOLazyBindingSession::Activation::~Activation() noexcept
 const MachOLazyBindingSession* MachOLazyBindingSession::Current() noexcept
 {
 	return active_lazy_binding_session;
+}
+
+bool MachOLazyBindingSession::HasActiveSessions() noexcept
+{
+	std::lock_guard lock(active_lazy_binding_sessions_mutex);
+	return !active_lazy_binding_sessions.empty();
 }
 
 bool MachOLazyBindingSession::OwnsImageCacheAddress(

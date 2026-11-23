@@ -17,6 +17,7 @@
 #include <cstring>
 #include <functional>
 #include <limits>
+#include <memory>
 #include <set>
 #include <stdexcept>
 #include <utility>
@@ -26,6 +27,13 @@
 namespace darling::windows_host {
 
 namespace {
+
+bool BindLazyAtLaunch(const MachOImage& image)
+{
+	return image.IsArm64() || image.Is32Bit() || !image.ChainedFixups().empty() ||
+		std::none_of(image.BindActions().begin(), image.BindActions().end(),
+			[](const DyldBindAction& action) { return action.lazy; });
+}
 
 DWORD DarwinProtectionToWindows(std::int32_t protection)
 {
@@ -798,6 +806,8 @@ public:
 	std::vector<DyldResolvedBinding> bindings;
 	std::vector<std::pair<DarwinTLVDescriptor*, std::size_t>> tlv_registrations;
 	std::vector<darling_objc_image_token*> objc_tokens;
+	std::vector<std::unique_ptr<MachOLazyBindingSession>> lazy_sessions;
+	std::vector<MachOLazyBindingSession::Registration> lazy_registrations;
 
 	~DarwinDynamicImage() noexcept
 	{
@@ -934,11 +944,13 @@ DarwinDynamicImage* OpenDynamicImage(const std::filesystem::path& path)
 				provider.image.ApplyRelocations(provider.mapping, provider_symbols, true);
 			if (!provider.bindings.empty()) {
 				provider.image.ApplyBindActions(provider.mapping, provider.bindings);
-				MachOLazyBindingSession(provider.image, provider.mapping,
-					provider.bindings).ApplyAll();
+				if (BindLazyAtLaunch(provider.image))
+					MachOLazyBindingSession(provider.image, provider.mapping,
+						provider.bindings).ApplyAll();
 				provider.image.ApplyChainedFixups(provider.mapping, provider.bindings);
 			}
-			provider.image.ApplyIndirectImportBindings(provider.mapping, provider.bindings);
+			provider.image.ApplyIndirectImportBindings(provider.mapping,
+				provider.bindings, BindLazyAtLaunch(provider.image));
 		}
 		result->image.ApplyRebaseActions(result->mapping);
 		result->tlv_registrations = InitializeDynamicTLVSections(result->image,
@@ -965,15 +977,17 @@ DarwinDynamicImage* OpenDynamicImage(const std::filesystem::path& path)
 			result->image.ApplyRelocations(result->mapping, symbol_addresses, false);
 		if (!result->bindings.empty()) {
 			result->image.ApplyBindActions(result->mapping, result->bindings);
-			MachOLazyBindingSession(result->image, result->mapping,
-				result->bindings).ApplyAll();
+			if (BindLazyAtLaunch(result->image))
+				MachOLazyBindingSession(result->image, result->mapping,
+					result->bindings).ApplyAll();
 			result->image.ApplyChainedFixups(result->mapping, result->bindings);
 		}
-		result->image.ApplyIndirectImportBindings(result->mapping, result->bindings);
+		result->image.ApplyIndirectImportBindings(result->mapping,
+			result->bindings, BindLazyAtLaunch(result->image));
 		const auto reapply_dynamic_client = [](const MachOImage& target_image,
 			const MachOImage::Mapping& target_mapping,
 			const std::vector<DyldResolvedBinding>& client_bindings,
-			bool defer_unreachable_external) {
+			bool defer_unreachable_external, bool bind_lazy_at_launch) {
 			std::vector<std::uintptr_t> addresses(target_image.Symbols().size());
 			for (std::size_t index = 0; index < target_image.Symbols().size(); ++index) {
 				const auto& symbol = target_image.Symbols()[index];
@@ -998,17 +1012,19 @@ DarwinDynamicImage* OpenDynamicImage(const std::filesystem::path& path)
 				target_image.ApplyRelocations(target_mapping, addresses,
 					defer_unreachable_external);
 			target_image.ApplyBindActions(target_mapping, client_bindings);
-			MachOLazyBindingSession(target_image, target_mapping,
-				client_bindings).ApplyAll();
+			if (bind_lazy_at_launch)
+				MachOLazyBindingSession(target_image, target_mapping,
+					client_bindings).ApplyAll();
 			target_image.ApplyChainedFixups(target_mapping, client_bindings);
-			target_image.ApplyIndirectImportBindings(target_mapping, client_bindings);
+			target_image.ApplyIndirectImportBindings(target_mapping, client_bindings,
+				bind_lazy_at_launch);
 		};
 		auto reapply_all_images = [&]() {
 			for (auto& provider : result->providers)
 				reapply_dynamic_client(provider.image, provider.mapping,
-					provider.bindings, true);
+					provider.bindings, true, BindLazyAtLaunch(provider.image));
 			reapply_dynamic_client(result->image, result->mapping,
-				result->bindings, false);
+				result->bindings, false, BindLazyAtLaunch(result->image));
 		};
 		const auto resolve_export = [&](const DylibExportResolver& resolver) {
 			const MachOImage* owner_image = nullptr;
@@ -1064,6 +1080,20 @@ DarwinDynamicImage* OpenDynamicImage(const std::filesystem::path& path)
 		// initial rebase and bind pass has completed.
 		for (const auto& resolver : DylibGraph::ExportResolverOrder(graph_bindings))
 			resolve_export(resolver);
+		// Keep these image contexts registered until dlclose tears down the
+		// mapping. Unlike a bootstrap activation, registration is thread-neutral
+		// so guest threads may enter lazy stubs concurrently.
+		const auto register_lazy_session = [&](const MachOImage& target_image,
+			const MachOImage::Mapping& target_mapping,
+			const std::vector<DyldResolvedBinding>& client_bindings) {
+			result->lazy_sessions.push_back(std::make_unique<MachOLazyBindingSession>(
+				target_image, target_mapping, client_bindings));
+			result->lazy_registrations.push_back(
+				result->lazy_sessions.back()->Register());
+		};
+		for (const auto& provider : result->providers)
+			register_lazy_session(provider.image, provider.mapping, provider.bindings);
+		register_lazy_session(result->image, result->mapping, result->bindings);
 		for (auto& provider : result->providers) {
 			if (auto* token = RegisterDynamicObjectiveCSections(provider.image,
 				provider.mapping))

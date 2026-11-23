@@ -34,7 +34,8 @@ read/write/execute permissions, and remove page-aligned anonymous subranges
 while retaining the mapping's remaining intervals. File-backed views still
 unmap as complete views. The Objective-C e2e fixture writes and reads a
 three-page anonymous mapping, unmaps its middle page, rejects a repeated
-unmap, and then unmaps both remaining pages. The fixture also
+unmap, and then unmaps both remaining pages. Raw `svc #0x80` syscall 73 and the
+imported `_munmap` bridge both operate on that shared interval state. The fixture also
 exercises guest `open`/`write`/`mmap(MAP_SHARED)`/`munmap`/`lseek`/`read`/`close`
 with a persisted byte change, then modifies a `MAP_PRIVATE` view and verifies
 that the file remains unchanged after unmapping.

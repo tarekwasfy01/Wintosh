@@ -16,7 +16,10 @@ not a general Objective-C or macOS application test.
 The same guest calls imported `_mmap`, `_mprotect`, and `_munmap`: it creates a
 three-page anonymous private mapping, writes and reads it, changes it to
 read-only, unmaps the middle page, verifies that the bridge rejects a repeated
-unmap of the hole, then unmaps the left and right pages. It also makes a page
+unmap of the hole, then unmaps the left and right pages. The first and last
+releases use raw Darwin `svc #0x80` syscall 73; the middle release and repeated
+unmap use the imported `_munmap` bridge, checking that both paths share the
+same ownership intervals. It also makes a page
 inaccessible and checks that `MAP_FIXED` cannot release a guest region while
 ignoring its current protection. This covers partial anonymous mappings owned
 by the ARM64 guest bridge. File-backed views still require a whole-view unmap, and replacing

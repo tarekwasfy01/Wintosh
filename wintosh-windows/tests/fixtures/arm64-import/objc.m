@@ -8,6 +8,18 @@ extern void *malloc(unsigned long bytes);
 extern void *realloc(void *allocation, unsigned long bytes);
 extern void free(void *allocation);
 extern int write(int descriptor, const void *bytes, unsigned long length);
+
+static long WintoshSyscallMunmap(void *address, unsigned long length)
+{
+	register unsigned long x0 __asm__("x0") = (unsigned long)address;
+	register unsigned long x1 __asm__("x1") = length;
+	register unsigned long x16 __asm__("x16") = 73;
+	__asm__ volatile("svc #0x80"
+		: "+r"(x0), "+r"(x1)
+		: "r"(x16)
+		: "memory", "cc");
+	return (long)x0;
+}
 extern int atexit(void (*function)(void));
 extern int __cxa_atexit(void (*function)(void *), void *argument, void *dso);
 extern void *dlopen(const char *path, int mode);
@@ -63,10 +75,10 @@ static long WintoshMappedMemoryRoundTrip(void)
 	memory[0] = 42;
 	const long value = memory[0];
 	const int protected = mprotect((void *)memory, page_size * 3, 1);
-	const int middle_unmap = munmap((void *)(memory + page_size), page_size);
+	const long middle_unmap = WintoshSyscallMunmap((void *)(memory + page_size), page_size);
 	const int repeated_unmap = munmap((void *)(memory + page_size), page_size);
 	const int left_unmap = munmap((void *)memory, page_size);
-	const int right_unmap = munmap((void *)(memory + page_size * 2), page_size);
+	const long right_unmap = WintoshSyscallMunmap((void *)(memory + page_size * 2), page_size);
 	if (value != 42) return 20;
 	if (protected != 0) return 30;
 	if (middle_unmap != 0 || left_unmap != 0 || right_unmap != 0) return 40;

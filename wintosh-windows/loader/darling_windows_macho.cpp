@@ -2028,6 +2028,23 @@ void MachOImage::ApplyRelocations(const Mapping& mapping,
 		return;
 	}
 	RequireNativeExecution(*this);
+	const auto relocation_addend = [&](std::size_t index, std::uint64_t vm_address,
+		std::size_t width) {
+		const auto site = static_cast<std::uintptr_t>(
+			static_cast<std::intptr_t>(vm_address) + mapping.Slide());
+		const auto raw = original_relocation_value(index, site, width);
+		if (width == sizeof(std::int32_t)) {
+			std::int32_t value = 0;
+			std::memcpy(&value, &raw, sizeof(value));
+			return static_cast<std::int64_t>(value);
+		}
+		if (width == sizeof(std::int64_t)) {
+			std::int64_t value = 0;
+			std::memcpy(&value, &raw, sizeof(value));
+			return value;
+		}
+		throw std::logic_error("unsupported x86-64 Mach-O relocation addend width");
+	};
 	for (std::size_t index = 0; index < m_relocations.size(); ++index) {
 		const auto& relocation = m_relocations[index];
 		if (!relocation.external) {
@@ -2047,14 +2064,19 @@ void MachOImage::ApplyRelocations(const Mapping& mapping,
 				pair.symbol_index >= symbol_addresses.size()) {
 				throw std::runtime_error("invalid Mach-O SUBTRACTOR relocation pair");
 			}
-			const auto value = symbol_addresses[relocation.symbol_index] -
-				symbol_addresses[pair.symbol_index];
+			const auto addend = relocation_addend(index,
+				static_cast<std::uint32_t>(relocation.address), sizeof(std::int64_t));
+			const auto value = AddSignedAddress(
+				symbol_addresses[relocation.symbol_index] -
+				symbol_addresses[pair.symbol_index], addend);
 			ApplyAbsolute64(mapping, static_cast<std::uint32_t>(relocation.address), value);
 			++index;
 		} else if (!relocation.pc_relative && relocation.length == 3 &&
 			(relocation.type == 0 || relocation.type == 3 || relocation.type == 4)) {
+			const auto addend = relocation_addend(index,
+				static_cast<std::uint32_t>(relocation.address), sizeof(std::int64_t));
 			ApplyAbsolute64(mapping, static_cast<std::uint32_t>(relocation.address),
-				symbol_addresses[relocation.symbol_index]);
+				AddSignedAddress(symbol_addresses[relocation.symbol_index], addend));
 		} else if (relocation.pc_relative && relocation.length == 2 &&
 			(relocation.type == 1 || relocation.type == 2)) {
 			if (IsOptimizedTLVLEA(mapping,
@@ -2062,9 +2084,11 @@ void MachOImage::ApplyRelocations(const Mapping& mapping,
 				symbol_addresses[relocation.symbol_index]))
 				throw std::runtime_error(
 					"optimized Mach-O TLV LEA requires a per-thread direct-address bridge");
+			const auto addend = relocation_addend(index,
+				static_cast<std::uint32_t>(relocation.address), sizeof(std::int32_t));
 			try {
 				ApplyRelative32(mapping, static_cast<std::uint32_t>(relocation.address),
-					symbol_addresses[relocation.symbol_index]);
+					AddSignedAddress(symbol_addresses[relocation.symbol_index], addend));
 			} catch (const std::overflow_error&) {
 				if (!defer_unreachable_external)
 					throw;
@@ -2073,10 +2097,13 @@ void MachOImage::ApplyRelocations(const Mapping& mapping,
 			(relocation.type == 6 || relocation.type == 7 || relocation.type == 8)) {
 			const auto addend = relocation.type == 6 ? 1 :
 				relocation.type == 7 ? 2 : 4;
+			const auto encoded_addend = relocation_addend(index,
+				static_cast<std::uint32_t>(relocation.address), sizeof(std::int32_t));
 			try {
 				ApplyRelative32WithAddend(mapping,
 					static_cast<std::uint32_t>(relocation.address),
-					symbol_addresses[relocation.symbol_index], addend);
+					AddSignedAddress(symbol_addresses[relocation.symbol_index],
+						encoded_addend), addend);
 			} catch (const std::overflow_error&) {
 				if (!defer_unreachable_external)
 					throw;
@@ -2089,8 +2116,10 @@ void MachOImage::ApplyRelocations(const Mapping& mapping,
 			if (pointer_address == 0 || !relocation.pc_relative || relocation.length != 2)
 				throw std::runtime_error(
 					"Mach-O x86-64 TLV relocation has no local __thread_ptrs slot");
+			const auto addend = relocation_addend(index,
+				static_cast<std::uint32_t>(relocation.address), sizeof(std::int32_t));
 			ApplyRelative32(mapping, static_cast<std::uint32_t>(relocation.address),
-				pointer_address);
+				AddSignedAddress(pointer_address, addend));
 		} else {
 			throw std::runtime_error("unsupported x86-64 Mach-O relocation record");
 		}

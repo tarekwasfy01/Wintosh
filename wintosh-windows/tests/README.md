@@ -23,7 +23,9 @@ category override becomes active and that unloading restores the original
 method implementation.
 It also loads two overlapping category images, unloads the older image first,
 and verifies that the newer override stays active before the base method is
-restored after the second unload.
+restored after the second unload. It also checks shared protocol conformance
+and replacement/restoration of a category property across the same unload
+order.
 
 `objc_smoke` registers synthetic Mach-O class records with the subclass before
 the superclass and checks that the runtime still links the inheritance chain.

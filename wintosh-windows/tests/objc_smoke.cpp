@@ -1271,6 +1271,63 @@ int main()
 			sel_registerName("imageClassMethod"))) !=
 			reinterpret_cast<IMP>(&ClassIdentity))
 		return 55;
+	const char overlap_property_attributes_a[] = "T@,N,V_overlapA";
+	const char overlap_property_attributes_b[] = "T@,N,V_overlapB";
+	RawPropertyList overlap_properties_a{sizeof(RawProperty), 1,
+		{reinterpret_cast<std::uintptr_t>(category_property_name),
+			reinterpret_cast<std::uintptr_t>(overlap_property_attributes_a)}};
+	RawPropertyList overlap_properties_b{sizeof(RawProperty), 1,
+		{reinterpret_cast<std::uintptr_t>(category_property_name),
+			reinterpret_cast<std::uintptr_t>(overlap_property_attributes_b)}};
+	RawCategory overlap_category_a{0, raw_class_address, 0, 0,
+		reinterpret_cast<std::uintptr_t>(&category_protocol_list),
+		reinterpret_cast<std::uintptr_t>(&overlap_properties_a), 0};
+	RawCategory overlap_category_b{0, raw_class_address, 0, 0,
+		reinterpret_cast<std::uintptr_t>(&category_protocol_list),
+		reinterpret_cast<std::uintptr_t>(&overlap_properties_b), 0};
+	const std::uintptr_t overlap_category_address_a =
+		reinterpret_cast<std::uintptr_t>(&overlap_category_a);
+	const std::uintptr_t overlap_category_address_b =
+		reinterpret_cast<std::uintptr_t>(&overlap_category_b);
+	auto* overlap_image_a = darling_objc_begin_image_registration();
+	if (overlap_image_a == nullptr ||
+		darling_objc_register_macho_categories(&overlap_category_address_a,
+			sizeof(overlap_category_address_a)) != 1)
+		return 56;
+	darling_objc_end_image_registration(overlap_image_a);
+	auto* overlap_image_b = darling_objc_begin_image_registration();
+	if (overlap_image_b == nullptr ||
+		darling_objc_register_macho_categories(&overlap_category_address_b,
+			sizeof(overlap_category_address_b)) != 1)
+		return 57;
+	darling_objc_end_image_registration(overlap_image_b);
+	const auto overlap_property = class_getProperty(
+		objc_getClass("ImageRegisteredClass"), category_property_name);
+	const Protocol overlap_protocol = objc_getProtocol(category_protocol_name);
+	if (!overlap_property ||
+		std::string(property_getAttributes(overlap_property)) !=
+			overlap_property_attributes_b ||
+		!objc_getProtocol(category_protocol_name) ||
+		!class_conformsToProtocol(objc_getClass("ImageRegisteredClass"),
+			objc_getProtocol(category_protocol_name)))
+		return 58;
+	darling_objc_unregister_image(overlap_image_a);
+	const auto surviving_overlap_property = class_getProperty(
+		objc_getClass("ImageRegisteredClass"), category_property_name);
+	if (!surviving_overlap_property ||
+		std::string(property_getAttributes(surviving_overlap_property)) !=
+			overlap_property_attributes_b ||
+		!objc_getProtocol(category_protocol_name) ||
+		!class_conformsToProtocol(objc_getClass("ImageRegisteredClass"),
+			objc_getProtocol(category_protocol_name)))
+		return 59;
+	darling_objc_unregister_image(overlap_image_b);
+	if (class_getProperty(objc_getClass("ImageRegisteredClass"),
+			category_property_name) != nullptr ||
+		class_conformsToProtocol(objc_getClass("ImageRegisteredClass"),
+			overlap_protocol) ||
+		objc_getProtocol(category_protocol_name) != nullptr)
+		return 60;
 	const char image_selector_name[] = "imageSelector";
 	const std::uintptr_t image_selector_ref =
 		reinterpret_cast<std::uintptr_t>(image_selector_name);

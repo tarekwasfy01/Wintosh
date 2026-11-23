@@ -15,6 +15,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <functional>
+#include <iterator>
 #include <memory>
 #include <mutex>
 #include <new>
@@ -87,12 +88,22 @@ struct darling_objc_method_mutation final {
 	objc_class::Method installed;
 };
 
+struct darling_objc_property_state final {
+	std::string name;
+	std::string attributes;
+};
+
+struct darling_objc_property_mutation final {
+	std::optional<darling_objc_property_state> previous;
+	darling_objc_property_state installed;
+};
+
 struct darling_objc_category_registration final {
 	Class target{};
 	std::unordered_map<SEL, darling_objc_method_mutation> instance_methods;
 	std::unordered_map<SEL, darling_objc_method_mutation> class_methods;
-	std::vector<Protocol> protocols;
-	std::vector<std::string> properties;
+	std::unordered_map<Protocol, bool> protocols;
+	std::unordered_map<std::string, darling_objc_property_mutation> properties;
 };
 
 struct darling_objc_image_token final {
@@ -1678,7 +1689,7 @@ std::uintptr_t NormalizeImagePointer(std::uintptr_t address,
 void RegisterMethodList(Class cls, std::uintptr_t method_list_address,
 	bool class_method = false, std::intptr_t image_slide = 0,
 	std::uintptr_t image_vm_begin = 0, std::uintptr_t image_vm_end = 0,
-	bool replace_existing = false)
+	bool replace_existing = false, std::vector<SEL>* declared_selectors = nullptr)
 {
 	if (!cls || !method_list_address)
 		return;
@@ -1744,6 +1755,10 @@ void RegisterMethodList(Class cls, std::uintptr_t method_list_address,
 			strnlen_s(types, 1024) == 1024)
 			continue;
 		const SEL selector = sel_registerName(name);
+		if (declared_selectors != nullptr &&
+			std::find(declared_selectors->begin(), declared_selectors->end(), selector) ==
+				declared_selectors->end())
+			declared_selectors->push_back(selector);
 		if (replace_existing) {
 			std::lock_guard lock(RuntimeMutex());
 			auto& methods = class_method ? cls->class_methods : cls->methods;
@@ -1769,7 +1784,8 @@ void RegisterMethodList(Class cls, std::uintptr_t method_list_address,
 	}
 }
 
-void RegisterProtocolList(Class cls, std::uintptr_t protocol_list_address)
+void RegisterProtocolList(Class cls, std::uintptr_t protocol_list_address,
+	std::vector<Protocol>* referenced_protocols = nullptr)
 {
 	if (!cls || !protocol_list_address)
 		return;
@@ -1798,8 +1814,13 @@ void RegisterProtocolList(Class cls, std::uintptr_t protocol_list_address)
 			if (protocol)
 				objc_registerProtocol(protocol);
 		}
-		if (protocol)
+		if (protocol) {
 			class_addProtocol(cls, protocol);
+			if (referenced_protocols != nullptr &&
+				std::find(referenced_protocols->begin(), referenced_protocols->end(),
+					protocol) == referenced_protocols->end())
+				referenced_protocols->push_back(protocol);
+		}
 		if (protocol) {
 			std::uintptr_t protocol_methods[4]{};
 			std::memcpy(protocol_methods,
@@ -1882,7 +1903,8 @@ void RegisterIvarList(Class cls, std::uintptr_t ivar_list_address)
 	}
 }
 
-void RegisterPropertyList(Class cls, std::uintptr_t property_list_address)
+void RegisterPropertyList(Class cls, std::uintptr_t property_list_address,
+	std::vector<std::string>* referenced_properties = nullptr)
 {
 	if (!cls || !property_list_address)
 		return;
@@ -1908,6 +1930,10 @@ void RegisterPropertyList(Class cls, std::uintptr_t property_list_address)
 		if (!name || !attributes || strnlen_s(name, 1024) == 1024 ||
 			strnlen_s(attributes, 4096) == 4096)
 			continue;
+		if (referenced_properties != nullptr &&
+			std::find(referenced_properties->begin(), referenced_properties->end(), name) ==
+				referenced_properties->end())
+			referenced_properties->emplace_back(name);
 		auto property = std::make_unique<objc_property>();
 		property->name = name;
 		property->attributes = attributes;
@@ -2262,55 +2288,60 @@ static std::size_t RegisterMachOCategoriesWithImage(
 		const auto old_instance_methods = cls->methods;
 		const auto old_class_methods = cls->class_methods;
 		const auto old_protocols = cls->protocols;
-		std::unordered_set<std::string> old_properties;
+		std::unordered_map<std::string, darling_objc_property_state> old_properties;
 		for (const auto& [property_name, property] : cls->properties) {
-			(void)property;
-			old_properties.insert(property_name);
+			old_properties.emplace(property_name,
+				darling_objc_property_state{property->name, property->attributes});
 		}
+		std::vector<Protocol> referenced_protocols;
+		std::vector<SEL> declared_instance_methods;
+		std::vector<SEL> declared_class_methods;
+		std::vector<std::string> referenced_properties;
 		RegisterMethodList(cls, instance_methods, false, image_slide,
-			image_vm_begin, image_vm_end, true);
+			image_vm_begin, image_vm_end, true, &declared_instance_methods);
 		RegisterMethodList(cls, class_methods, true, image_slide,
-			image_vm_begin, image_vm_end, true);
-		RegisterProtocolList(cls, protocols);
-		RegisterPropertyList(cls, instance_properties);
-		RegisterPropertyList(cls, class_properties);
+			image_vm_begin, image_vm_end, true, &declared_class_methods);
+		RegisterProtocolList(cls, protocols, &referenced_protocols);
+		RegisterPropertyList(cls, instance_properties, &referenced_properties);
+		RegisterPropertyList(cls, class_properties, &referenced_properties);
 		if (active_image_token != nullptr) {
-			for (const auto& [selector, method] : cls->methods) {
+			for (SEL selector : declared_instance_methods) {
+				const auto method = cls->methods.find(selector);
+				if (method == cls->methods.end()) continue;
 				const auto old = old_instance_methods.find(selector);
-				if (old == old_instance_methods.end() ||
-					old->second.implementation != method.implementation ||
-					old->second.types != method.types ||
-					old->second.guest_abi != method.guest_abi) {
-					darling_objc_method_mutation mutation;
-					if (old != old_instance_methods.end())
-						mutation.previous = old->second;
-					mutation.installed = method;
-					contribution.instance_methods.emplace(selector,
-						std::move(mutation));
-				}
+				darling_objc_method_mutation mutation;
+				if (old != old_instance_methods.end())
+					mutation.previous = old->second;
+				mutation.installed = method->second;
+				contribution.instance_methods.emplace(selector,
+					std::move(mutation));
 			}
-			for (const auto& [selector, method] : cls->class_methods) {
+			for (SEL selector : declared_class_methods) {
+				const auto method = cls->class_methods.find(selector);
+				if (method == cls->class_methods.end()) continue;
 				const auto old = old_class_methods.find(selector);
-				if (old == old_class_methods.end() ||
-					old->second.implementation != method.implementation ||
-					old->second.types != method.types ||
-					old->second.guest_abi != method.guest_abi) {
-					darling_objc_method_mutation mutation;
-					if (old != old_class_methods.end())
-						mutation.previous = old->second;
-					mutation.installed = method;
-					contribution.class_methods.emplace(selector,
-						std::move(mutation));
-				}
+				darling_objc_method_mutation mutation;
+				if (old != old_class_methods.end())
+					mutation.previous = old->second;
+				mutation.installed = method->second;
+				contribution.class_methods.emplace(selector,
+					std::move(mutation));
 			}
-			for (Protocol protocol : cls->protocols) {
-				if (!old_protocols.contains(protocol))
-					contribution.protocols.push_back(protocol);
-			}
-			for (const auto& [property_name, property] : cls->properties) {
-				(void)property;
-				if (!old_properties.contains(property_name))
-					contribution.properties.push_back(property_name);
+			for (Protocol protocol : referenced_protocols)
+				contribution.protocols.emplace(protocol,
+					old_protocols.contains(protocol));
+			for (const auto& property_name : referenced_properties) {
+				const auto property = cls->properties.find(property_name);
+				if (property == cls->properties.end()) continue;
+				const darling_objc_property_state installed{
+					property->second->name, property->second->attributes};
+				const auto old = old_properties.find(property_name);
+				darling_objc_property_mutation mutation;
+				if (old != old_properties.end())
+					mutation.previous = old->second;
+				mutation.installed = installed;
+				contribution.properties.emplace(property_name,
+					std::move(mutation));
 			}
 			active_image_token->categories.push_back(std::move(contribution));
 		}
@@ -2514,40 +2545,85 @@ extern "C" void darling_objc_unregister_image(darling_objc_image_token* token)
 			return false;
 		return !left || same_method(*left, *right);
 	};
+	const auto& registered_tokens = ImageRegistrationTokens();
+	const auto token_position = std::find(registered_tokens.begin(),
+		registered_tokens.end(), token);
+	const auto first_later_token = token_position == registered_tokens.end() ?
+		registered_tokens.end() : std::next(token_position);
+	const auto same_property = [](const darling_objc_property_state& left,
+		const darling_objc_property_state& right) {
+		return left.name == right.name && left.attributes == right.attributes;
+	};
 	const auto restore_or_relink = [&](Class cls, bool class_method, SEL selector,
 		const darling_objc_method_mutation& mutation) {
-		auto& methods = class_method ? cls->class_methods : cls->methods;
-		const auto current = methods.find(selector);
-		if (current != methods.end() && same_method(current->second,
-			mutation.installed)) {
-			if (mutation.previous)
-				methods[selector] = *mutation.previous;
-			else
-				methods.erase(selector);
-			if (class_method && cls->metaclass) {
-				if (mutation.previous)
-					cls->metaclass->methods[selector] = *mutation.previous;
-				else
-					cls->metaclass->methods.erase(selector);
-			}
-			return;
-		}
 		// A later image still owns the active override. Splice this removed
 		// layer out of that image's saved fallback chain.
-		for (darling_objc_image_token* other : ImageRegistrationTokens()) {
-			if (other == token)
-				continue;
+		bool relinked = false;
+		for (auto other_token = first_later_token;
+			other_token != registered_tokens.end(); ++other_token) {
+			darling_objc_image_token* other = *other_token;
 			for (auto& other_category : other->categories) {
 				if (other_category.target != cls)
 					continue;
-			auto& other_methods = class_method ?
-				other_category.class_methods : other_category.instance_methods;
+				auto& other_methods = class_method ?
+					other_category.class_methods : other_category.instance_methods;
 				const auto later = other_methods.find(selector);
 				if (later != other_methods.end() &&
 					same_optional_method(later->second.previous,
-						std::optional<objc_class::Method>(mutation.installed)))
+						std::optional<objc_class::Method>(mutation.installed))) {
 					later->second.previous = mutation.previous;
+					relinked = true;
+				}
 			}
+		}
+		if (relinked) return;
+		auto& methods = class_method ? cls->class_methods : cls->methods;
+		const auto current = methods.find(selector);
+		if (current == methods.end() || !same_method(current->second,
+			mutation.installed))
+			return;
+		if (mutation.previous)
+			methods[selector] = *mutation.previous;
+		else
+			methods.erase(selector);
+		if (class_method && cls->metaclass) {
+			if (mutation.previous)
+				cls->metaclass->methods[selector] = *mutation.previous;
+			else
+				cls->metaclass->methods.erase(selector);
+		}
+	};
+	const auto restore_or_relink_property = [&](Class cls, const std::string& name,
+		const darling_objc_property_mutation& mutation) {
+		bool relinked = false;
+		for (auto other_token = first_later_token;
+			other_token != registered_tokens.end(); ++other_token) {
+			darling_objc_image_token* other = *other_token;
+			for (auto& other_category : other->categories) {
+				if (other_category.target != cls)
+					continue;
+				const auto later = other_category.properties.find(name);
+				if (later != other_category.properties.end() &&
+					same_property(later->second.previous.value_or(
+						darling_objc_property_state{}), mutation.installed)) {
+					later->second.previous = mutation.previous;
+					relinked = true;
+				}
+			}
+		}
+		if (relinked) return;
+		const auto current = cls->properties.find(name);
+		if (current == cls->properties.end() || !same_property(
+			darling_objc_property_state{current->second->name,
+				current->second->attributes}, mutation.installed))
+			return;
+		if (mutation.previous) {
+			auto property = std::make_unique<objc_property>();
+			property->name = mutation.previous->name;
+			property->attributes = mutation.previous->attributes;
+			cls->properties[name] = std::move(property);
+		} else {
+			cls->properties.erase(current);
 		}
 	};
 	for (auto category = token->categories.rbegin();
@@ -2558,10 +2634,25 @@ extern "C" void darling_objc_unregister_image(darling_objc_image_token* token)
 			restore_or_relink(cls, false, selector, mutation);
 		for (const auto& [selector, mutation] : category->class_methods)
 			restore_or_relink(cls, true, selector, mutation);
-		for (Protocol protocol : category->protocols)
-			cls->protocols.erase(protocol);
-		for (const auto& property : category->properties)
-			cls->properties.erase(property);
+		for (const auto& [protocol, previously_present] : category->protocols) {
+			bool has_other_category = false;
+			for (auto other_token = first_later_token;
+				other_token != registered_tokens.end(); ++other_token) {
+				darling_objc_image_token* other = *other_token;
+				for (auto& other_category : other->categories) {
+					if (other_category.target != cls) continue;
+					auto later = other_category.protocols.find(protocol);
+					if (later != other_category.protocols.end()) {
+						later->second = previously_present;
+						has_other_category = true;
+					}
+				}
+			}
+			if (!has_other_category && !previously_present)
+				cls->protocols.erase(protocol);
+		}
+		for (const auto& [name, mutation] : category->properties)
+			restore_or_relink_property(cls, name, mutation);
 	}
 	const std::unordered_set<Class> image_classes(token->classes.begin(),
 		token->classes.end());
@@ -2604,9 +2695,43 @@ extern "C" void darling_objc_unregister_image(darling_objc_image_token* token)
 	}
 	for (Protocol protocol : token->protocols) {
 		if (protocol == nullptr) continue;
-		auto found = Protocols().find(protocol->name);
-		if (found != Protocols().end() && found->second == protocol)
-			Protocols().erase(found);
+		darling_objc_image_token* next_owner = nullptr;
+		for (darling_objc_image_token* other : ImageRegistrationTokens()) {
+			if (other == token) continue;
+			if (std::find(other->protocols.begin(), other->protocols.end(), protocol) !=
+				other->protocols.end()) {
+				next_owner = other;
+				break;
+			}
+			bool referenced = false;
+			for (const auto& category : other->categories) {
+				if (category.protocols.contains(protocol)) {
+					referenced = true;
+					break;
+				}
+			}
+			if (!referenced) {
+				for (Class cls : other->classes) {
+					if (cls && cls->protocols.contains(protocol)) {
+						referenced = true;
+						break;
+					}
+				}
+			}
+			if (referenced) {
+				next_owner = other;
+				break;
+			}
+		}
+		if (next_owner != nullptr) {
+			if (std::find(next_owner->protocols.begin(), next_owner->protocols.end(),
+				protocol) == next_owner->protocols.end())
+				next_owner->protocols.push_back(protocol);
+		} else {
+			auto found = Protocols().find(protocol->name);
+			if (found != Protocols().end() && found->second == protocol)
+				Protocols().erase(found);
+		}
 	}
 	std::erase(ImageRegistrationTokens(), token);
 	delete token;

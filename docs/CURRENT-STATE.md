@@ -55,7 +55,10 @@ prior implementation, including its type encoding and guest-ABI marker.
 Override layers are relinked when images unload out of order; `objc_smoke`
 verifies that unloading the older of two images leaves the newer override
 active, then unloading the newer image restores the base method for both
-instance and class selectors.
+instance and class selectors. The same reverse-order test covers two images
+sharing a protocol conformance and overriding the same property name: the
+newer metadata remains installed until its owner unloads, then the property,
+conformance, and image-owned protocol are removed.
 
 ## Mach broker update, 2026-11-23
 

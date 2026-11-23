@@ -27,7 +27,8 @@ categories, and the ARM64 Mach-O fixture exercises a category-defined class
 method. Dynamic image tokens also remove category-added methods, protocols,
 and properties when the image unloads, restoring a replaced method's previous
 implementation. Override chains remain correct when two images unload out of
-order; the Objective-C smoke test covers both instance and class methods.
+order; the Objective-C smoke test covers instance/class methods, a shared
+protocol conformance, and a property overridden by both images.
 The Win32 target compiles the host library and runner and has launched a
 hand-built i386 `LC_MAIN` Mach-O with no imports; its compatible `main` returned
 42. This confirms the basic mapping and cdecl entry path, not general app

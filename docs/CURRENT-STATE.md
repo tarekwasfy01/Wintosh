@@ -935,3 +935,16 @@ Für den aktuellen Prerelease-Lauf wird zusätzlich nur das vollständig
 verifizierte Clang-Win64-Paket veröffentlicht. Der MSVC-Win64-Job bleibt als
 separater Entwicklungsjob vorgesehen, blockiert aber bis zur Behebung seiner
 Broker-/Host-API-Abweichungen nicht länger den attestierten Clang-Release.
+
+### Lazy-bind implementation boundary (2026-11-23)
+
+The classic x86_64 bootstrap now leaves lazy actions and `__la_symbol_ptr`
+slots unresolved for images without chained fixups. Active image sessions are
+kept through initialization, entry, and termination. The binder uses the
+image-cache pointer to disambiguate matching lazy offsets across images, and
+returns zero for missing or ambiguous context. Exceptions are contained at the
+C ABI boundary so they cannot unwind through the handwritten trampoline.
+ARM64, 32-bit, chained-fixup, and dynamic-loader paths remain eager. Host x64
+and ARM64 builds pass; this revision has not run the existing smoke tests or a
+linker-produced macOS Mach-O fixture. The trampoline also lacks dyld's extended
+XSAVE state preservation.

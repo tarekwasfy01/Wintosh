@@ -2956,13 +2956,21 @@ std::optional<std::uintptr_t> MachOLazyBindingSession::ResolveActiveForImage(
 	std::uintptr_t image_cache, std::uintptr_t lazy_binding_info)
 {
 	std::lock_guard lock(active_lazy_binding_sessions_mutex);
+	const MachOLazyBindingSession* unique_candidate = nullptr;
 	for (auto session = active_lazy_binding_sessions.rbegin();
 		session != active_lazy_binding_sessions.rend(); ++session) {
-		if ((*session)->OwnsImageCacheAddress(image_cache) &&
-			(*session)->FindActionForLazyInfo(lazy_binding_info).has_value())
+		if (!(*session)->FindActionForLazyInfo(lazy_binding_info).has_value())
+			continue;
+		if ((*session)->OwnsImageCacheAddress(image_cache))
 			return (*session)->ResolveForLazyInfo(lazy_binding_info);
+		if (unique_candidate != nullptr && unique_candidate != *session)
+			return std::nullopt;
+		unique_candidate = *session;
 	}
-	return std::nullopt;
+	// The cache pointer disambiguates identical lazy-stream offsets across
+	// images. If only one active image owns the offset, it is sufficient alone.
+	return unique_candidate == nullptr ? std::nullopt :
+		unique_candidate->ResolveForLazyInfo(lazy_binding_info);
 }
 
 } // namespace darling::windows_host

@@ -5,9 +5,9 @@
  *
  * The stack metadata offsets match the documented Darwin dyld binder frame:
  * rbp+8 = image-loader cache, rbp+16 = lazy-binding-info, rbp+24 = return.
- * The exported binder is installed as the active trampoline for the native
- * Clang/System-V runner. It remains fail-closed when no active binding
- * session exists.
+ * The exported binder is installed as the trampoline for the native
+ * Clang/System-V runner. It remains fail-closed when the lazy import cannot
+ * be matched to exactly one active image session.
  */
 .intel_syntax noprefix
 .text

@@ -41,11 +41,16 @@ extern "C" DARLING_SYSV int* darling_windows_abi_error()
 }
 
 extern "C" DARLING_SYSV std::uintptr_t darling_windows_abi_resolve_lazy_binding(
-	std::uintptr_t image_cache, std::uintptr_t lazy_binding_info)
+	std::uintptr_t image_cache, std::uintptr_t lazy_binding_info) noexcept
 {
-	const auto target = darling::windows_host::MachOLazyBindingSession::ResolveActiveForImage(
-		image_cache, lazy_binding_info);
-	return target.value_or(0);
+	try {
+		const auto target = darling::windows_host::MachOLazyBindingSession::ResolveActiveForImage(
+			image_cache, lazy_binding_info);
+		return target.value_or(0);
+	} catch (...) {
+		// Exceptions cannot unwind safely through the hand-written binder frame.
+		return 0;
+	}
 }
 
 extern "C" DARLING_SYSV int darling_windows_abi_lazy_binding_session_active()
@@ -162,7 +167,7 @@ extern "C" DARLING_SYSV int darling_windows_abi_cxa_atexit(
 
 extern "C" [[noreturn]] void darling_windows_abi_dyld_stub_binder_fail_closed()
 {
-	std::fputs("DARLING_RUNNER_ERROR=dyld_stub_binder was invoked; lazy binding is not supported\n",
+	std::fputs("DARLING_RUNNER_ERROR=dyld_stub_binder could not resolve the lazy import\n",
 		stderr);
 	std::fflush(stderr);
 	std::abort();

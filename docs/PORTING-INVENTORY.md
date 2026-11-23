@@ -4570,3 +4570,11 @@ path list.
 The dyld smoke now launches the real `wintosh.exe` with only the temporary
 provider directory in `DYLD_LIBRARY_PATH`; `DYLD_CLI_LIBRARY_PATH=PASS`
 confirms the CLI-to-resolver-to-entry path.
+
+Current lazy-binding note (2026-11-23): the classic x86_64 static bootstrap
+now preserves lazy pointers through startup and resolves an import on first
+call through its image session. This supersedes the earlier eager-only status
+above for that path. ARM64, 32-bit, chained-fixup, and dynamic-loaded images
+still bind eagerly. The host x64/ARM64 builds succeeded, but this revision's
+runtime smokes and real Mach-O guest behavior remain unverified. See
+[LAZY-BINDING-DESIGN.md](LAZY-BINDING-DESIGN.md) for the exact boundary.

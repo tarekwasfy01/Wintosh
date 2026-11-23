@@ -36,7 +36,7 @@ extern "C" DARLING_SYSV int darling_windows_abi_puts(const char* value);
 extern "C" DARLING_SYSV const char* darling_windows_abi_getenv(const char* name);
 extern "C" DARLING_SYSV int* darling_windows_abi_error();
 extern "C" DARLING_SYSV std::uintptr_t darling_windows_abi_resolve_lazy_binding(
-	std::uintptr_t image_cache, std::uintptr_t lazy_binding_info);
+	std::uintptr_t image_cache, std::uintptr_t lazy_binding_info) noexcept;
 extern "C" DARLING_SYSV int darling_windows_abi_lazy_binding_session_active();
 extern "C" DARLING_SYSV void* darling_windows_abi_tlv_get_addr(
 	darling::windows_host::DarwinTLVDescriptor* descriptor);

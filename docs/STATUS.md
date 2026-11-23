@@ -2136,3 +2136,11 @@ of the dynamic image. Registrations are thread-neutral and are removed during
 `dlclose` after terminators run. ARM64, 32-bit, and chained-fixup images remain
 eager. The x64 build succeeds; no runtime `dlopen` lazy-import fixture has
 verified initializer calls, cross-thread first calls, or unload behavior.
+
+### Resolve every action in one lazy-bind sequence (2026-11-23)
+
+`ResolveForLazyInfo` now applies each parsed lazy-bind action associated with
+the selected stream offset and returns the final resolved target. This follows
+dyld's compressed lazy binder, which walks the sequence through `DONE`. The x64
+executable and ARM64 host library compile; no runtime lazy-sequence fixture was
+run.

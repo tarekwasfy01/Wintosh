@@ -73,4 +73,5 @@ remain active across initializers, guest entry and terminators, including
 calls from guest-created host threads. Dynamic classic x86_64 images keep
 thread-neutral sessions registered until `dlclose`. ARM64, 32-bit and
 chained-fixup images remain eager. A real macOS Mach-O fixture has not yet
-verified the end-to-end stub-helper call and slot update.
+verified the end-to-end stub-helper call and slot update. A lazy-info offset
+selects and applies every action in its sequence through the sequence boundary.

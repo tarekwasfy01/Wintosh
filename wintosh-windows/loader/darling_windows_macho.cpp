@@ -2850,25 +2850,30 @@ std::optional<std::size_t> MachOLazyBindingSession::FindActionForLazyInfo(
 std::optional<std::uintptr_t> MachOLazyBindingSession::ResolveForLazyInfo(
 	std::uintptr_t lazy_binding_info) const
 {
-	const auto action_index = FindActionForLazyInfo(lazy_binding_info);
-	if (!action_index.has_value())
-		return std::nullopt;
-	ApplyOne(*action_index);
-	const auto& action = m_image.BindActions()[*action_index];
 	const auto same_binding_symbol = [](const std::string& left,
 		const std::string& right) {
 		return left == right || (left.size() > 1 && left.front() == '_' &&
 			left.substr(1) == right);
 	};
-	const auto found = std::find_if(m_bindings.begin(), m_bindings.end(),
-		[&action, &same_binding_symbol](const DyldResolvedBinding& binding) {
-			return same_binding_symbol(action.symbol, binding.symbol) &&
-				(!binding.has_dylib_ordinal || binding.dylib_ordinal ==
-					action.dylib_ordinal);
-		});
-	if (found == m_bindings.end())
-		return std::nullopt;
-	return found->address;
+	std::optional<std::uintptr_t> resolved_target;
+	for (std::size_t index = 0; index < m_image.BindActions().size(); ++index) {
+		const auto& action = m_image.BindActions()[index];
+		if (!action.lazy || action.stream_offset != lazy_binding_info)
+			continue;
+		ApplyOne(index);
+		const auto found = std::find_if(m_bindings.begin(), m_bindings.end(),
+			[&action, &same_binding_symbol](const DyldResolvedBinding& binding) {
+				return same_binding_symbol(action.symbol, binding.symbol) &&
+					(!binding.has_dylib_ordinal || binding.dylib_ordinal ==
+						action.dylib_ordinal);
+			});
+		if (found != m_bindings.end())
+			resolved_target = static_cast<std::uintptr_t>(
+				static_cast<std::intptr_t>(found->address) + action.addend);
+		else if (action.weak)
+			resolved_target = 0;
+	}
+	return resolved_target;
 }
 
 std::optional<std::size_t> MachOLazyBindingSession::FindActionForSlot(

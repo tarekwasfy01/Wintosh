@@ -21,6 +21,10 @@ offset, the offset uniquely identifies that session. Invalid or ambiguous
 requests return zero; the assembly path then fails closed. Resolver exceptions
 are caught before returning through the assembly frame.
 
+When the selected lazy sequence contains more than one bind action, the
+resolver applies every action carrying that sequence offset and returns the
+last resolved target, matching dyld's walk through the sequence to `DONE`.
+
 `dlopen` now keeps thread-neutral per-image registrations until `dlclose`, so
 classic x86_64 dynamic images use the same on-demand path during initializers
 and later calls. ARM64, 32-bit, and chained-fixup images remain eager. The MSVC
@@ -60,6 +64,9 @@ Apple's historical dyld x86_64 binder documents the metadata words at the
 entry stack (`ImageLoader` cache pointer, lazy-bind offset, return address) and
 preserves guest argument registers around resolution:
 [dyld_stub_binder.s](https://github.com/opensource-apple/dyld/blob/master/src/dyld_stub_binder.s).
+The compressed lazy binder processes bind opcodes through the sequence's
+`DONE` marker:
+[ImageLoaderMachOCompressed.cpp](https://raw.githubusercontent.com/aosm/dyld/master/src/ImageLoaderMachOCompressed.cpp).
 LLVM's Mach-O linker places `__dyld_private` in the image-loader-cache input
 section used by the stub-helper:
 [LLD SyntheticSections.cpp](https://github.com/llvm/llvm-project/blob/main/lld/MachO/SyntheticSections.cpp).

@@ -62,6 +62,23 @@ std::uint32_t MachRightForHeaderDisposition(std::uint32_t disposition)
 	}
 }
 
+bool IsSupportedMachHeaderRemoteDisposition(std::uint32_t disposition)
+{
+	return disposition == 0 || disposition == darling_mach_move_send ||
+		disposition == darling_mach_move_send_once ||
+		disposition == darling_mach_copy_send ||
+		disposition == darling_mach_make_send ||
+		disposition == darling_mach_make_send_once;
+}
+
+std::uint32_t MachRequiredRightForHeaderDisposition(std::uint32_t disposition)
+{
+	if (disposition == darling_mach_make_send ||
+		disposition == darling_mach_make_send_once)
+		return darling_mach_port_type_receive;
+	return MachRightForHeaderDisposition(disposition);
+}
+
 std::uint32_t MachRightForReplyDisposition(std::uint32_t disposition)
 {
 	if (disposition == darling_mach_make_send_once)
@@ -2873,7 +2890,7 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 		const auto remote_disposition = message->msgh_bits & mach_header_remote_mask;
 		const auto local_disposition = (message->msgh_bits & mach_header_local_mask) >> 8;
 		const auto voucher_disposition = (message->msgh_bits & mach_header_voucher_mask) >> 16;
-		if ((remote_disposition != 0 && MachRightForHeaderDisposition(remote_disposition) == 0) ||
+		if (!IsSupportedMachHeaderRemoteDisposition(remote_disposition) ||
 			(message->msgh_local_port == 0 && local_disposition != 0) ||
 			(message->msgh_local_port != 0 && MachRightForReplyDisposition(local_disposition) == 0) ||
 			voucher_disposition != 0)
@@ -2881,7 +2898,8 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 		if (remote_disposition != 0) {
 			std::uint32_t refs = 0;
 			if (darling_windows_mach_port_get_refs(darling_windows_mach_task_self(),
-				message->msgh_remote_port, MachRightForHeaderDisposition(remote_disposition), &refs) != 0 || refs == 0)
+				message->msgh_remote_port,
+				MachRequiredRightForHeaderDisposition(remote_disposition), &refs) != 0 || refs == 0)
 				return 3;
 		}
 		if (message->msgh_local_port != 0 &&
@@ -3020,8 +3038,9 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 			const auto capability = mach_ipc_capabilities.Lookup(message->msgh_remote_port);
 			if (mach_broker_client && capability) {
 				if ((message->msgh_bits &
-					(mach_header_remote_mask | mach_header_local_mask | mach_header_voucher_mask)) != 0)
+					(mach_header_local_mask | mach_header_voucher_mask)) != 0)
 					return darling_kern_not_supported;
+				const auto remote_disposition = message->msgh_bits & mach_header_remote_mask;
 				bool broker_descriptors_available = true;
 				if ((message->msgh_bits & darling_mach_msg_complex) != 0) {
 					const auto* body = reinterpret_cast<const darling_mach_msg_body*>(
@@ -3041,12 +3060,30 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 					}
 				}
 				if (!broker_descriptors_available) return 4;
+				const auto remote_right = remote_disposition == darling_mach_make_send ?
+					darling_mach_port_type_send : remote_disposition == darling_mach_make_send_once ?
+					darling_mach_port_type_send_once : MachRightForHeaderDisposition(remote_disposition);
+				const int local_remote_delta =
+					(remote_disposition == darling_mach_move_send ||
+						remote_disposition == darling_mach_move_send_once) ? -1 :
+					(remote_disposition == darling_mach_make_send ? 1 : 0);
+				if (local_remote_delta != 0 && darling_windows_mach_port_mod_refs(
+					darling_windows_mach_task_self(), message->msgh_remote_port,
+					remote_right, local_remote_delta) != 0)
+					return 3;
+				const auto rollback_local_remote_right = [&] {
+					if (local_remote_delta != 0)
+						(void)darling_windows_mach_port_mod_refs(
+							darling_windows_mach_task_self(), message->msgh_remote_port,
+							remote_right, -local_remote_delta);
+				};
 				try {
 					darling::windows_host::MachIpcEnvelope request;
 					request.operation = darling::windows_host::MachIpcOperation::Send;
 					request.request_id = mach_broker_request.fetch_add(1, std::memory_order_relaxed);
 					request.port_token = capability->broker_token;
 					request.session_token = capability->session_token;
+					request.remote_disposition = remote_disposition;
 					if (copied_ool_address != nullptr) {
 						request.disposition_count = 1;
 						const auto* body = reinterpret_cast<const darling_mach_msg_body*>(
@@ -3068,7 +3105,10 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 							const auto* descriptors = reinterpret_cast<const darling_mach_msg_port_descriptor*>(body + 1);
 							for (std::uint32_t index = 0; index < body->msgh_descriptor_count; ++index) {
 								const auto descriptor = mach_ipc_capabilities.Lookup(descriptors[index].name);
-								if (!descriptor) return 4;
+								if (!descriptor) {
+									rollback_local_remote_right();
+									return 4;
+								}
 								request.port_descriptor_tokens.push_back(descriptor->broker_token);
 								request.port_descriptor_dispositions.push_back(descriptors[index].disposition);
 							}
@@ -3078,10 +3118,13 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 						*mach_broker_client, request);
 					if (response.operation != request.operation ||
 						response.request_id != request.request_id ||
-						response.port_token != request.port_token)
+						response.port_token != request.port_token) {
+						rollback_local_remote_right();
 						return 4;
+					}
 					broker_routed_send = true;
 				} catch (...) {
+					rollback_local_remote_right();
 					return 4;
 				}
 			}
@@ -3108,6 +3151,9 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 		bool header_rights_committed = broker_routed_send;
 		if (!broker_routed_send) {
 			const auto remote_disposition = message->msgh_bits & mach_header_remote_mask;
+			if (remote_disposition == darling_mach_make_send ||
+				remote_disposition == darling_mach_make_send_once)
+				return darling_kern_not_supported;
 			const auto local_disposition = (message->msgh_bits & mach_header_local_mask) >> 8;
 			const auto add_copy = [&](darling_mach_port_name_t name, std::uint32_t right, int delta) {
 				if (name == 0 || right == 0 || delta <= 0) return 0;

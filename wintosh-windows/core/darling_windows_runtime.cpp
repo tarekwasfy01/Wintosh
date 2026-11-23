@@ -19,7 +19,7 @@
 namespace darling::windows_host {
 
 namespace {
-constexpr std::uint16_t mach_ipc_version = 6;
+constexpr std::uint16_t mach_ipc_version = 7;
 constexpr std::size_t mach_ipc_header_size = 32;
 constexpr std::size_t mach_ipc_max_payload = 4 * 1024 * 1024;
 constexpr DWORD rpc_max_frame = 4 * 1024 * 1024;
@@ -98,6 +98,7 @@ std::vector<std::uint8_t> EncodeMachIpcEnvelope(const MachIpcEnvelope& envelope)
 	AppendU32(bytes, static_cast<std::uint32_t>(envelope.inline_payload.size()));
 	bytes.insert(bytes.end(), envelope.inline_payload.begin(), envelope.inline_payload.end());
 	AppendU32(bytes, envelope.mig_routine_id);
+	AppendU32(bytes, envelope.remote_disposition);
 	return bytes;
 }
 
@@ -140,12 +141,13 @@ MachIpcEnvelope DecodeMachIpcEnvelope(const std::vector<std::uint8_t>& bytes)
 		bytes.begin() + static_cast<std::ptrdiff_t>(offset + disposition_count));
 	offset += disposition_count;
 	const auto inline_size = ReadU32(bytes, offset);
-	if (inline_size > mach_ipc_max_payload || offset + inline_size + 4 != bytes.size())
+	if (inline_size > mach_ipc_max_payload || offset + inline_size + 8 != bytes.size())
 		throw std::invalid_argument("invalid Mach IPC inline payload");
 	result.inline_payload.assign(bytes.begin() + static_cast<std::ptrdiff_t>(offset), bytes.end());
 	offset += inline_size;
 	result.inline_payload.resize(inline_size);
 	result.mig_routine_id = ReadU32(bytes, offset);
+	result.remote_disposition = ReadU32(bytes, offset);
 	if ((result.out_of_line_token == 0) != (result.out_of_line_size == 0) ||
 		result.out_of_line_size > mach_ipc_max_payload)
 		throw std::invalid_argument("invalid Mach IPC out-of-line descriptor");

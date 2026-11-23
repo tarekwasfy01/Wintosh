@@ -504,19 +504,39 @@ int wmain(int argc, wchar_t** argv)
 				if (envelope.operation == darling::windows_host::MachIpcOperation::Send) {
 					if (!allocated_ports.contains(envelope.port_token))
 						throw std::invalid_argument("unknown Mach IPC port token");
+					const auto remote_disposition = envelope.remote_disposition;
+					if (remote_disposition != 0 && remote_disposition != 17 &&
+						remote_disposition != 18 && remote_disposition != 19 &&
+						remote_disposition != 20 && remote_disposition != 21)
+						throw std::invalid_argument("unsupported Mach IPC remote disposition");
 					auto owner = port_session_owners.find(envelope.port_token);
-					if (owner != port_session_owners.end() && owner->second != envelope.session_token) {
-						bool has_send_right = false;
-						const auto port_rights_by_session =
-							port_session_send_rights.find(envelope.port_token);
-						if (port_rights_by_session != port_session_send_rights.end()) {
-							const auto sender_rights = port_rights_by_session->second.find(
-								envelope.session_token);
-							has_send_right = sender_rights != port_rights_by_session->second.end() &&
-								sender_rights->second.send != 0;
-						}
-						if (!has_send_right)
+					const bool owns_receive_right = owner != port_session_owners.end() ?
+						owner->second == envelope.session_token : envelope.session_token == 0;
+					const auto destination_rights = port_session_send_rights.find(envelope.port_token);
+					PortSendRights sender_rights{};
+					if (destination_rights != port_session_send_rights.end()) {
+						const auto sender = destination_rights->second.find(envelope.session_token);
+						if (sender != destination_rights->second.end()) sender_rights = sender->second;
+					}
+					switch (remote_disposition) {
+					case 0:
+						if (!owns_receive_right && sender_rights.send == 0)
 							throw std::invalid_argument("Mach IPC send right is not held by this session");
+						break;
+					case 17:
+					case 19:
+						if (sender_rights.send == 0)
+							throw std::invalid_argument("Mach IPC send right is not held by this session");
+						break;
+					case 18:
+						if (sender_rights.send_once == 0)
+							throw std::invalid_argument("Mach IPC send-once right is not held by this session");
+						break;
+					case 20:
+					case 21:
+						if (!owns_receive_right || port_rights.at(envelope.port_token).receive == 0)
+							throw std::invalid_argument("Mach IPC receive right is not held by this session");
+						break;
 					}
 					if (envelope.disposition_count == 0 &&
 						(envelope.out_of_line_token != 0 || envelope.out_of_line_size != 0))
@@ -530,9 +550,11 @@ int wmain(int argc, wchar_t** argv)
 						throw std::invalid_argument("Mach IPC port descriptor metadata mismatch");
 					if (port_queues.at(envelope.port_token).size() >= max_port_queue_depth)
 						throw std::runtime_error("Mach IPC send queue is full");
+					std::vector<std::uint64_t> affected_tokens = envelope.port_descriptor_tokens;
+					affected_tokens.push_back(envelope.port_token);
 					std::vector<std::pair<std::uint64_t, PortRights>> rights_snapshot;
-					for (const auto descriptor_token : envelope.port_descriptor_tokens)
-						rights_snapshot.emplace_back(descriptor_token, port_rights.at(descriptor_token));
+					for (const auto token : affected_tokens)
+						rights_snapshot.emplace_back(token, port_rights.at(token));
 					struct SendRightsSnapshot final {
 						std::uint64_t token;
 						bool existed;
@@ -540,7 +562,7 @@ int wmain(int argc, wchar_t** argv)
 					};
 					std::vector<SendRightsSnapshot> send_rights_snapshot;
 					std::unordered_set<std::uint64_t> snapshotted_tokens;
-					for (const auto token : envelope.port_descriptor_tokens) {
+					for (const auto token : affected_tokens) {
 						if (!snapshotted_tokens.insert(token).second) continue;
 						const auto per_port = port_session_send_rights.find(token);
 						if (per_port == port_session_send_rights.end()) {
@@ -573,6 +595,25 @@ int wmain(int argc, wchar_t** argv)
 							throw std::invalid_argument("unsupported Mach IPC port disposition");
 					}
 					try {
+						auto destination_count = port_rights.find(envelope.port_token);
+						auto& destination_sender =
+							port_session_send_rights[envelope.port_token][envelope.session_token];
+						switch (remote_disposition) {
+						case 17:
+							--destination_count->second.send;
+							--destination_sender.send;
+							break;
+						case 18:
+							--destination_count->second.send_once;
+							--destination_sender.send_once;
+							break;
+						case 20:
+							++destination_count->second.send;
+							++destination_sender.send;
+							break;
+						default:
+							break;
+						}
 						for (std::size_t index = 0; index < envelope.port_descriptor_tokens.size(); ++index) {
 							const auto token = envelope.port_descriptor_tokens[index];
 							auto rights = port_rights.find(token);

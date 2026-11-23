@@ -64,6 +64,8 @@ struct MachIpcEnvelope final {
 	std::vector<std::uint8_t> inline_payload;
 	// MIG routine number carried with a future generated stub dispatch.
 	std::uint32_t mig_routine_id = 0;
+	// MACH_MSG_TYPE_* disposition for the destination port in msgh_remote_port.
+	std::uint32_t remote_disposition = 0;
 };
 
 [[nodiscard]] MachIpcEnvelope EncodeMachMessageForIpc(

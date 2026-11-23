@@ -161,6 +161,22 @@ thread_local id g_current_graphics_context = nullptr;
 thread_local darling_windows_CGContextRef g_current_cg_context = nullptr;
 thread_local COLORREF g_current_text_color = RGB(0, 0, 0);
 thread_local double g_current_text_alpha = 1.0;
+thread_local id g_current_drawing_view = nullptr;
+thread_local DarlingObjcRect g_current_drawing_dirty_rect{};
+struct AppKitDrawingContextScope final {
+	id previous_view{g_current_drawing_view};
+	DarlingObjcRect previous_dirty_rect{g_current_drawing_dirty_rect};
+	AppKitDrawingContextScope(id view, DarlingObjcRect dirty_rect)
+	{
+		g_current_drawing_view = view;
+		g_current_drawing_dirty_rect = dirty_rect;
+	}
+	~AppKitDrawingContextScope()
+	{
+		g_current_drawing_view = previous_view;
+		g_current_drawing_dirty_rect = previous_dirty_rect;
+	}
+};
 const char g_next_responder_key = 0;
 struct AppKitWindowState final {
 	HWND handle{};
@@ -15612,6 +15628,17 @@ void NSViewDrawRect(id, SEL, DarlingObjcRect)
 {
 }
 
+bool NSViewNeedsToDrawRect(id self, SEL, DarlingObjcRect rect)
+{
+	if (self == nullptr || self != g_current_drawing_view ||
+		!std::isfinite(rect.x) || !std::isfinite(rect.y) ||
+		!std::isfinite(rect.width) || !std::isfinite(rect.height) ||
+		rect.width <= 0.0 || rect.height <= 0.0) return false;
+	const DarlingObjcRect dirty = g_current_drawing_dirty_rect;
+	return rect.x < dirty.x + dirty.width && rect.x + rect.width > dirty.x &&
+		rect.y < dirty.y + dirty.height && rect.y + rect.height > dirty.y;
+}
+
 DarlingObjcRect NSViewFrame(id self, SEL)
 {
 	std::lock_guard<std::mutex> lock(g_windows_mutex);
@@ -15877,8 +15904,11 @@ void DrawViewTree(id view, darling_windows_CGContextRef context,
 			CGContextClipToRect(context, {{bounds.x, bounds.y},
 				{bounds.width, bounds.height}});
 		}
-		darling_objc_msgSend_void_rect1(view, sel_registerName("drawRect:"),
-			local_dirty_rect);
+		{
+			const AppKitDrawingContextScope drawing_scope(view, local_dirty_rect);
+			darling_objc_msgSend_void_rect1(view, sel_registerName("drawRect:"),
+				local_dirty_rect);
+		}
 		if (wants_default_clipping) CGContextRestoreGState(context);
 	}
 	if (clips_children) {
@@ -22042,6 +22072,9 @@ void RegisterAppKitClasses()
 		class_addMethod(view, sel_registerName("drawRect:"),
 			reinterpret_cast<IMP>(&NSViewDrawRect),
 			"v@:{CGRect={CGPoint=dd}{CGSize=dd}}");
+		class_addMethod(view, sel_registerName("needsToDrawRect:"),
+			reinterpret_cast<IMP>(&NSViewNeedsToDrawRect),
+			"B@:{CGRect={CGPoint=dd}{CGSize=dd}}");
 		class_addMethod(view, sel_registerName("setNeedsDisplay:"),
 			reinterpret_cast<IMP>(&NSViewSetNeedsDisplay), "v@:B");
 		class_addMethod(view, sel_registerName("setNeedsDisplayInRect:"),

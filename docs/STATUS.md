@@ -39,6 +39,11 @@ semantics. The legacy pre-macOS-14 `clipsToBounds` default is not selected
 dynamically. The x64 executable and ARM64 host library compile; no guest
 drawing fixture has verified out-of-bounds drawing or clipping.
 
+`needsToDrawRect:` now intersects its argument with the dirty rectangle for the
+view whose `drawRect:` is currently running; it returns false outside that
+view's drawing callback. This supports AppKit's usual in-draw culling query
+([Apple documentation](https://developer.apple.com/documentation/appkit/nsview/needstodraw%28_%3A%29)).
+
 ### AppKit NSAffineTransform subset (2026-11-23)
 
 `NSAffineTransform` now creates an identity matrix and supports ordered

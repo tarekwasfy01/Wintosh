@@ -7,7 +7,8 @@ Stand: 2026-11-23
 Clang erzeugt auf diesem Windows-Host echte i386-Mach-O-Objekte. Das
 installierte `ld64.lld.exe` weist `-arch i386` zurück. Der neue
 `tools/pack_i386_macho.py`-Prototyp übernimmt den `__TEXT,__text`-Abschnitt
-eines engen, relocationsfreien Ein-Objekt-Falls in ein `MH_EXECUTE`-Image.
+eines engen Ein-Objekt-Falls in ein `MH_EXECUTE`-Image. Lokale 32-Bit-
+PC-relative Relokationen, deren Ziel derselbe Abschnitt ist, bleiben gültig.
 Damit ist die Kette
 
 \[
@@ -28,7 +29,7 @@ Bewertung je Kriterium: `1` = belegt/erfüllt, `0` = belegt/nicht erfüllt,
 | Apple `ld64` / `ld-classic` | 1 (Apple-Handbuch dokumentiert i386) | 0 (Upstream ist Apples Darwin-Linker) | 1 (voller Linker) | ? | Referenz für Format und Semantik |
 | `tpoechtrager/cctools-port` | 1 (i386 in Zielarchitekturen) | 0 (README listet Linux, BSD, macOS und iOS als Hosts) | 1 (portiert `ld64`) | ? | Quell-/Portierungsreferenz |
 | `LongDirtyAnimAlf/ld64-msys` | ? (geerbter ld64-Code; lokal noch nicht gebaut) | 1 (README nennt MSYS2/Windows) | ? | ? | bester Build-Prototyp, falls MSYS2 bereitsteht |
-| Wintosh `pack_i386_macho.py` | 1 (emittiert i386 `MH_EXECUTE`) | 1 | 0 (packt nur relocationsfreies `__text`) | 0 | Verifizierter Format-/Runner-Prototyp, kein Linker |
+| Wintosh `pack_i386_macho.py` | 1 (emittiert i386 `MH_EXECUTE`) | 1 | begrenzt (nur same-section i386 PC-relative Relokationen) | 0 | Verifizierter Format-/Runner-Prototyp, kein allgemeiner Linker |
 | Eigenständiger minimaler i386-Linker | begrenzt planbar | 1 | ? (noch nicht implementiert) | 0 (außerhalb des ersten Umfangs) | spätere Option mit expliziter Relokationsmenge |
 
 Quellen:
@@ -61,15 +62,18 @@ O = \{\text{Clang-i386-Objekt mit `_main`, ohne undefinierte externe Symbole}\},
 \quad a = \text{i386 Darwin}
 \]
 
-Gemessen wurde ein Clang-Objekt mit drei Sections, keiner `__text`-Relokation,
-einem externen `_main` und ohne undefinierte externe Symbole. Der Packer schrieb
-ein 4096-Byte-Image mit `LC_MAIN.entryoff=0x200`; `llvm-objdump` erkannte
-`MH_EXECUTE/I386`, und der Win32-Runner gab Exitcode 42 zurück. Nicht-Text-
-Sections einschließlich Unwind-Metadaten werden weggelassen. Diese Messung
-beweist Format-Packaging und Ausführung dieses Eingabefalls, nicht Objektlinken.
+Gemessen wurde zunächst ein Clang-Objekt mit drei Sections, ohne `__text`-
+Relokation, einem externen `_main` und ohne undefinierte externe Symbole. Der
+Packer schrieb ein 4096-Byte-Image mit `LC_MAIN.entryoff=0x200`. Danach wurde
+ein Objekt mit `_helper` und `_main` verarbeitet: Clang erzeugte eine lokale,
+32-Bit PC-relative `GENERIC_RELOC_VANILLA`-Relokation auf `__TEXT,__text`.
+Der Packer validierte sie und übernahm den Abschnitt unverändert; der Entry lag
+bei `0x210`. `llvm-objdump` erkannte `MH_EXECUTE/I386`, und der Win32-Runner
+gab Exitcode 42 zurück. Nicht-Text-Sections einschließlich Unwind-Metadaten
+werden weggelassen. Das beweist noch kein objektübergreifendes Linken.
 
 Der nächste Linker-Abnahmeschritt ist eine echte i386-Relokation zwischen zwei
-Objekt-Sections. Danach folgen undefinierte Symbole, Darwin-Startup plus
+Objekt-Sections oder Dateien. Danach folgen undefinierte Symbole, Darwin-Startup plus
 `_exit`, dann ausgewählte Systembibliotheken. Jede Stufe muss ihre Eingabemenge
 und offenen Relokationen benennen; ein erfolgreicher Link allein beweist keine
 ABI- oder Framework-Kompatibilität.

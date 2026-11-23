@@ -38,11 +38,13 @@ corresponding upstream definitions and licenses.
 
 `python tools/pack_i386_macho.py input.o output.macho` accepts one
 little-endian i386 `MH_OBJECT` whose external `_main` is in the first
-`__TEXT,__text` section. It rejects text relocations and undefined external
-symbols, emits a single-segment `MH_EXECUTE`, and discards non-text metadata
-such as unwind sections. This is a bounded packaging experiment, not an object
-linker and not a general application build path. Its verified sample is
-recorded in [LINKER-RESEARCH.md](../docs/porting/LINKER-RESEARCH.md).
+`__TEXT,__text` section. It preserves only local 32-bit PC-relative
+`GENERIC_RELOC_VANILLA` relocations targeting that same section; other text
+relocations and undefined external symbols fail closed. It emits a
+single-segment `MH_EXECUTE` and discards non-text metadata such as unwind
+sections. This is a bounded packaging experiment, not a general object linker
+or application build path. Its verified sample is recorded in
+[LINKER-RESEARCH.md](../docs/porting/LINKER-RESEARCH.md).
 
 The scripts and this documentation are original Wintosh tooling. Upstream
 Darling, WSL, and other referenced projects retain their original licenses;

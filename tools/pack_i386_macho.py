@@ -90,8 +90,25 @@ def parse_object(data: bytes, entry_name: str) -> tuple[bytes, int, int]:
                         raise FormatError("multiple __TEXT,__text sections are unsupported")
                     require_range(data, offset, size, "__text contents")
                     require_range(data, reloff, nreloc * 8, "__text relocation table")
-                    if nreloc:
-                        raise FormatError("__text contains relocations; refusing to discard them")
+                    relocation_sites: set[int] = set()
+                    for reloc_index in range(nreloc):
+                        address, info = struct.unpack_from("<iI", data, reloff + reloc_index * 8)
+                        scattered = (address & 0x80000000) != 0
+                        symbolnum = info & 0x00FFFFFF
+                        pcrel = (info >> 24) & 1
+                        length = (info >> 25) & 3
+                        external = (info >> 27) & 1
+                        reloc_type = (info >> 28) & 0xF
+                        if (scattered or address < 0 or address + 4 > size or
+                                symbolnum != section_ordinal or not pcrel or length != 2 or
+                                external or reloc_type != 0):
+                            raise FormatError(
+                                "__text relocation is not a 32-bit PC-relative reference "
+                                "to the same section"
+                            )
+                        if any(site < address + 4 and address < site + 4 for site in relocation_sites):
+                            raise FormatError("overlapping __text relocation fields")
+                        relocation_sites.add(address)
                     text_section = (offset, size, reloff, nreloc, addr, section_ordinal)
 
         elif cmd == LC_SYMTAB:
@@ -144,10 +161,11 @@ def parse_object(data: bytes, entry_name: str) -> tuple[bytes, int, int]:
     if undefined_external_symbols:
         symbols = ", ".join(undefined_external_symbols)
         raise FormatError(f"external symbols require a full linker: {symbols}")
-    # The emitted image remains a section pack, not a link.
+    # Same-section PC-relative references are translation-invariant:
+    # (S + slide) - (P + 4 + slide) == S - (P + 4). Their encoded fields
+    # therefore remain valid when the complete section moves as one block.
     # This packer emits only the selected text bytes, so its entry symbol must
-    # resolve inside that section. This prototype requires __TEXT,__text to be
-    # the first section; other sections' data is discarded.
+    # resolve inside that section; other sections' data is discarded.
     if entry_section_index != text_ordinal:
         raise FormatError(f"{entry_name} is not in __TEXT,__text")
     entry_offset = entry_value - text_addr

@@ -2352,12 +2352,25 @@ fixup parsing alone are not guest execution evidence.
 
 `tools/pack_i386_macho.py` now parses a narrow little-endian i386 `MH_OBJECT`
 case, requires a defined external `_main` in the first `__TEXT,__text` section,
-and rejects text relocations and undefined external symbols. It emits one
-4096-byte `MH_EXECUTE` segment with `LC_MAIN`; non-text sections, including
-unwind metadata, are discarded. A Visual Studio Clang-produced C object passed
-through the packer, `llvm-objdump` identified the output as `MH_EXECUTE/I386`,
-and the Win32 runner returned 42. This proves one object-to-image packaging
-case, not Mach-O object linking: symbol resolution, relocations, CRT startup,
-dependencies, and frameworks remain unsupported by the prototype. The
-`ld64-msys` source documents MSYS2 as its Windows build environment, but this
-host has neither MSYS2 nor Cygwin and the shell cannot resolve GitHub.
+accepts only local 32-bit PC-relative `GENERIC_RELOC_VANILLA` references to
+that same text section, and rejects other text relocations and undefined
+external symbols. It emits one 4096-byte `MH_EXECUTE` segment with `LC_MAIN`;
+non-text sections, including unwind metadata, are discarded. The first Visual
+Studio Clang-produced C object passed through with no text relocation. This
+proves bounded object-to-image packaging, not general Mach-O linking: external
+symbol resolution, cross-section/file relocations, CRT startup, dependencies,
+and frameworks remain unsupported. The `ld64-msys` source documents MSYS2 as its
+Windows build environment, but this host has neither MSYS2 nor Cygwin and the
+shell cannot resolve GitHub.
+
+### i386 same-section PC-relative relocation preservation (2026-11-23)
+
+A second Clang i386 object contains `_helper` and `_main`, with a local
+`GENERIC_RELOC_VANILLA` at `__text+0x27`: 32-bit, PC-relative, non-external,
+and targeting section ordinal 1 (`__TEXT,__text`). The packer now checks each
+field's bounds, width, type, target section, scattered flag, and overlap. It
+preserves the bytes because translation by a common image slide cancels:
+`(S + δ) - (P + 4 + δ) = S - (P + 4)`. The generated `LC_MAIN.entryoff` was
+`0x210`; `llvm-objdump` identified i386 `MH_EXECUTE`, and the Win32 runner
+returned 42 after `_main` called `_helper`. Cross-section and external
+relocations remain unsupported.

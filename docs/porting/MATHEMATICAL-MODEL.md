@@ -127,15 +127,20 @@ The separate i386 object-to-image experiment is bounded as follows:
 |---|---:|
 | Clang i386 Mach-O `__text` section packaged as `MH_EXECUTE` | 1§ |
 | Mach-O object-symbol resolution | 0 |
-| i386 text-relocation linking | 0 |
+| i386 same-section PC-relative relocation preservation | 1§ |
+| Cross-section/object i386 relocation linking | 0 |
 | Compiler-produced image started by Wintosh | 1§ |
 
-`1§` is one Clang-produced C object with a defined `_main`, no undefined
-external symbols, and no `__text` relocations. The packer emits one executable
-segment, discards other sections, and does not resolve symbols. `llvm-objdump`
-identified the output as i386 `MH_EXECUTE`; Wintosh returned 42. See
+`1§` covers a Clang-produced C object with a defined `_main`, no undefined
+external symbols, and a local `GENERIC_RELOC_VANILLA` 32-bit PC-relative
+reference from `_main` to `_helper` in the same `__text` section. Moving both
+ends by slide `δ` preserves the encoded displacement:
+`(S + δ) - (P + 4 + δ) = S - (P + 4)`. The packer validates and preserves that
+field, emits one executable segment, discards other sections, and does not
+resolve symbols. `llvm-objdump` identified the output as i386 `MH_EXECUTE`;
+Wintosh returned 42. See
 [LINKER-RESEARCH.md](LINKER-RESEARCH.md) for the exact boundary. This does not
-count as object linking or prove compiler CRT, imports, or frameworks.
+prove cross-section linking, compiler CRT, imports, or frameworks.
 
 The ARM64
 source path now admits matching-architecture ARM64 code and includes a

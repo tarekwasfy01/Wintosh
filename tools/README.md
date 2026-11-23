@@ -57,7 +57,9 @@ and returned 42. `__cstring` pointer and direct references returned 65 and 66.
 Host-bound `_puts` and `_printf` calls also ran; the formatted guest returned
 3. A heap guest called `_malloc`/`_free` and returned 42, `_exit(23)` terminated
 with status 23, and `_atexit` ran a cleanup callback that called `_puts` after
-`main` returned 3. These are host exports, not a complete libSystem.
+`main` returned 3. A libc guest also copied `ABC` with `_memcpy`, checked
+string lengths, read `WINTOSH_FIXTURE=42` through `_getenv`, and returned 42.
+These are host exports, not a complete libSystem.
 See
 [LINKER-RESEARCH.md](../docs/porting/LINKER-RESEARCH.md) for the exact contract.
 

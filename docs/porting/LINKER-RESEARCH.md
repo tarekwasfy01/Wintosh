@@ -154,3 +154,10 @@ Danach folgen zusätzliche CRT/libc-Aufrufe und Darwin-Imports. Der Windows-
 Host besitzt weder `C:\msys64` noch `C:\cygwin64`; `ld64-msys` ist hier derzeit
 keine baubare lokale Alternative. Die Datei-für-Datei-Lizenzprüfung bleibt
 Pflicht, bevor Quellcode daraus übernommen wird.
+
+Ein Gast kopierte `ABC` mit `_memcpy`, prüfte das Ergebnis per `_strlen`, las
+`WINTOSH_FIXTURE=42` über `_getenv` und prüfte auch diese Zeichenkette mit
+`_strlen`; der Gast gab **42** zurück. Das Objekt wurde mit `-fno-pic` und
+`-fno-stack-protector` erzeugt, da der Prototyp-Linker die PIC- und
+Stack-Guard-Relocationformen dieses Compileroutputs noch nicht unterstützt.
+Damit sind konkrete Host-Aufrufe belegt, keine allgemeine libc-Kompatibilität.

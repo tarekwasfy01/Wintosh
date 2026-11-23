@@ -148,7 +148,9 @@ values 65 and 66. Host-bound `_puts` printed a line, and `_printf` formatted
 non-writable `__TEXT,__const` section. `_malloc`/`_free` allocated, mutated,
 and released a guest buffer whose sum returned 42; `_exit(23)` terminated with
 status 23; `_atexit` ran a `_puts` callback after normal `main` return 3.
-These are host-backed functions, not a complete Darwin libc.
+A libc fixture also copied `ABC` with `_memcpy`, checked source and environment
+strings with `_strlen`, read `WINTOSH_FIXTURE=42` through `_getenv`, and
+returned 42. These are host-backed functions, not a complete Darwin libc.
 A common slide `δ` preserves a same-section displacement:
 `(S + δ) - (P + 4 + δ) = S - (P + 4)`. For the measured external Clang
 relocation, the linker combines the stored addend with the resolved symbol

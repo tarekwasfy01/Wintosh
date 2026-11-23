@@ -2342,9 +2342,16 @@ void MachOImage::ApplyChainedFixups(const Mapping& mapping,
 					text_segment->address)
 					throw std::overflow_error("Mach-O chained offset target overflows");
 				value = text_segment->address + static_cast<std::uintptr_t>(fixup.target);
+			} else if (fixup.pointer_format == 2) {
+				const auto high8 = fixup.target & 0xff00000000000000ull;
+				const auto unslid_target = static_cast<std::uintptr_t>(
+					fixup.target & ((1ull << 36) - 1));
+				const auto slid_target = AddSignedAddress(unslid_target,
+					mapping.Slide());
+				value = (slid_target & 0x00ffffffffffffffull) | high8;
 			} else {
-				value = static_cast<std::uintptr_t>(
-					static_cast<std::intptr_t>(fixup.target) + mapping.Slide());
+				value = AddSignedAddress(static_cast<std::uintptr_t>(fixup.target),
+					mapping.Slide());
 			}
 		}
 		ApplyAbsolute64(mapping, fixup.vm_address, value);

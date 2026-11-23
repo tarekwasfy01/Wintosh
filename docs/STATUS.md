@@ -2267,3 +2267,11 @@ encoded addend even when a weak symbol is unresolved, applying the relocation
 expression `S + A` with `S = 0`. Signed addends use checked address addition or
 subtraction so malformed values cannot invoke signed-overflow behavior. Both
 Windows targets compile; weak-import addend fixtures have not been run.
+
+### 64-bit chained rebase high-byte semantics (2026-11-23)
+
+`DYLD_CHAINED_PTR_64` rebases now apply the slide to the low 56-bit target and
+restore the encoded `high8` byte afterward, as specified by dyld. Offset-based
+formats continue to include `high8` in the encoded target before adding the
+image base/slide. Both Windows targets compile; no tagged-pointer Mach-O fixture
+has exercised the high-byte cases.

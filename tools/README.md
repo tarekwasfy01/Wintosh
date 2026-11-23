@@ -84,7 +84,12 @@ and adding it to a zero-initialized TLS variable. The reusable check is
 and a Win32 runner. The same check also runs a `pthread_create`/`pthread_join`
 worker: it receives the initial value 40, changes its copy to 77, and leaves
 the main thread's value at 9. This proves one static C TLV image on two threads,
-not TLS destructors, multiple images, or dynamic loading.
+not multiple images or dynamic loading. A separate C++ fixture now exercises
+thread-local construction and destructor registration on a worker; run it with
+`wintosh-windows/tests/i386_cpp_tlv_e2e.ps1` and the same Clang, Python, and
+Win32 runner inputs. It expects guest exit 42 after `pthread_join` observes the
+worker's destructor completion. This remains a single i386 ABI case, not broad
+C++ runtime compatibility.
 See
 [LINKER-RESEARCH.md](../docs/porting/LINKER-RESEARCH.md) for the exact contract.
 

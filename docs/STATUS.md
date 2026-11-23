@@ -11,6 +11,18 @@ map.
 
 Status date: 2026-11-23
 
+### i386 C++ thread-local construction and destruction (2026-11-23)
+
+An i386 Mach-O C++ fixture now verifies lazy construction of a `thread_local`
+object on a worker thread, its per-thread value, `pthread_join`, and execution
+of its registered destructor before the join completes. The runtime exports
+Darwin's `__tlv_atexit` symbol spelling and the linker resolves the fixture's
+TLV descriptors and guards. The repeatable check is
+`wintosh-windows/tests/i386_cpp_tlv_e2e.ps1`; it passed locally with the
+Visual Studio bundled Clang and the Win32 Release runner (`EXIT=42`). This is
+one bounded ABI fixture: exceptions, C++ TLS on other architectures, and broad
+application compatibility are not established by it.
+
 ### NSView affine coordinate transforms and rotation (2026-11-23)
 
 NSView coordinate chains now compose full affine matrices, including bounds

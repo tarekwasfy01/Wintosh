@@ -5270,6 +5270,8 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 		{"___error", reinterpret_cast<std::uintptr_t>(&darling_windows_errno)},
 		{"_tlv_atexit", reinterpret_cast<std::uintptr_t>(
 			&darling::windows_host::darling_windows_tlv_atexit)},
+		{"__tlv_atexit", reinterpret_cast<std::uintptr_t>(
+			&darling::windows_host::darling_windows_tlv_atexit)},
 		{"___tlv_atexit", reinterpret_cast<std::uintptr_t>(
 			&darling::windows_host::darling_windows_tlv_atexit)},
 		{"___cxa_thread_atexit", reinterpret_cast<std::uintptr_t>(

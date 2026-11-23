@@ -135,6 +135,20 @@ std::uint64_t CheckedMultiplyOffset(std::uint64_t left, std::uint64_t right)
 	return left * right;
 }
 
+std::uintptr_t AddSignedAddress(std::uintptr_t address, std::int64_t addend)
+{
+	if (addend >= 0) {
+		const auto positive = static_cast<std::uint64_t>(addend);
+		if (positive > std::numeric_limits<std::uintptr_t>::max() - address)
+			throw std::overflow_error("Mach-O bind target address overflow");
+		return address + static_cast<std::uintptr_t>(positive);
+	}
+	const auto magnitude = static_cast<std::uint64_t>(-(addend + 1)) + 1;
+	if (magnitude > address)
+		throw std::overflow_error("Mach-O bind target address underflow");
+	return address - static_cast<std::uintptr_t>(magnitude);
+}
+
 std::uint64_t ReadULEB(const std::uint8_t* bytes, std::size_t size, std::size_t& cursor)
 {
 	std::uint64_t value = 0;
@@ -2175,20 +2189,15 @@ void MachOImage::ApplyBindActions(const Mapping& mapping,
 							(!binding.has_dylib_ordinal || binding.dylib_ordinal ==
 								target_action.dylib_ordinal);
 					});
-				if (match == bindings.end()) {
-					if (target_action.weak) {
-						ApplyAbsolute64(mapping, vm_address, 0);
-					} else {
-						throw std::runtime_error("unresolved Mach-O threaded bind action: " +
-							target_action.symbol);
-					}
-				} else {
-					const auto pointer_addend = static_cast<std::int8_t>((raw >> 24) & 0xff);
-					const auto target = static_cast<std::uintptr_t>(
-						static_cast<std::intptr_t>(match->address) + target_action.addend +
-						pointer_addend);
-					ApplyAbsolute64(mapping, vm_address, target);
+				if (match == bindings.end() && !target_action.weak) {
+					throw std::runtime_error("unresolved Mach-O threaded bind action: " +
+						target_action.symbol);
 				}
+				const auto pointer_addend = static_cast<std::int8_t>((raw >> 24) & 0xff);
+				auto target = AddSignedAddress(match == bindings.end() ? 0 :
+					match->address, target_action.addend);
+				target = AddSignedAddress(target, pointer_addend);
+				ApplyAbsolute64(mapping, vm_address, target);
 				if (next == 0) {
 					break;
 				}
@@ -2232,8 +2241,8 @@ void MachOImage::ApplyBindActions(const Mapping& mapping,
 			throw std::out_of_range(
 				"Mach-O dyld bind offset is outside its file-backed segment");
 		}
-		const auto target = match == bindings.end() ? 0 : static_cast<std::uintptr_t>(
-			static_cast<std::intptr_t>(match->address) + action.addend);
+		const auto target = AddSignedAddress(match == bindings.end() ? 0 :
+			match->address, action.addend);
 		const auto vm_address = segment.vm_address + action.segment_offset;
 		if (action.type == 1)
 			ApplyAbsolute64(mapping, vm_address, target);
@@ -2280,8 +2289,8 @@ void MachOImage::ApplyLazyBindAction(std::size_t action_index, const Mapping& ma
 		throw std::out_of_range(
 			"Mach-O lazy bind offset is outside its file-backed segment");
 	}
-	const auto target = match == bindings.end() ? 0 : static_cast<std::uintptr_t>(
-		static_cast<std::intptr_t>(match->address) + action.addend);
+	const auto target = AddSignedAddress(match == bindings.end() ? 0 :
+		match->address, action.addend);
 	const auto vm_address = segment.vm_address + action.segment_offset;
 	if (action.type == 1)
 		ApplyAbsolute64(mapping, vm_address, target);
@@ -2319,8 +2328,7 @@ void MachOImage::ApplyChainedFixups(const Mapping& mapping,
 			if (fixup.bind_ordinal >= bind_addresses.size()) {
 				throw std::runtime_error("Mach-O chained bind ordinal is out of range");
 			}
-			value = static_cast<std::uintptr_t>(
-				static_cast<std::intptr_t>(bind_addresses[fixup.bind_ordinal]) + fixup.addend);
+			value = AddSignedAddress(bind_addresses[fixup.bind_ordinal], fixup.addend);
 		} else {
 			if (fixup.pointer_format == 6 || fixup.pointer_format == 7 ||
 				fixup.pointer_format == 9 || fixup.pointer_format == 12) {
@@ -2358,15 +2366,11 @@ void MachOImage::ApplyChainedFixups(const Mapping& mapping,
 					(!binding.has_dylib_ordinal || binding.dylib_ordinal ==
 						import.dylib_ordinal);
 			});
-		if (match == bindings.end()) {
-			if (import.weak) {
-				addresses.push_back(0);
-				continue;
-			}
+		if (match == bindings.end() && !import.weak) {
 			throw std::runtime_error("unresolved chained import: " + import.symbol);
 		}
-		addresses.push_back(static_cast<std::uintptr_t>(
-			static_cast<std::intptr_t>(match->address) + import.addend));
+		addresses.push_back(AddSignedAddress(match == bindings.end() ? 0 :
+			match->address, import.addend));
 	}
 	ApplyChainedFixups(mapping, addresses);
 }

@@ -2259,3 +2259,11 @@ segment is `__PAGEZERO`. Mapping also leaves empty no-access segments reserved
 but uncommitted, avoiding an unnecessary commit of the large `__PAGEZERO`
 range. Both Windows targets compile; no real signed Mach-O app fixture has
 verified the mapping path.
+
+### Weak-bind addends and checked symbol arithmetic (2026-11-23)
+
+Classic regular/lazy/threaded binds and chained imports now preserve the
+encoded addend even when a weak symbol is unresolved, applying the relocation
+expression `S + A` with `S = 0`. Signed addends use checked address addition or
+subtraction so malformed values cannot invoke signed-overflow behavior. Both
+Windows targets compile; weak-import addend fixtures have not been run.

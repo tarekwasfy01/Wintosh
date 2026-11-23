@@ -75,7 +75,14 @@ A no-standard-library C++ guest also constructed a global object before `main`
 and ran its `___cxa_atexit` destructor afterward, printing `cxx destructor`
 while preserving status 42. `___dso_handle` is represented by a guest-local
 zero-fill cell. This is limited C++ object-lifecycle evidence, not a full C++
-runtime.
+runtime. A compiler-generated `_Thread_local` integer used an i386
+`GENERIC_RELOC_TLV`, `__thread_data`, `__thread_vars`, and `__thread_ptrs`;
+Wintosh initialized its Darwin TLV descriptor through an i386 register-to-stack
+bridge and returned 42 after changing the initialized variable from 40 to 42
+and adding it to a zero-initialized TLS variable. The reusable check is
+`wintosh-windows/tests/i386_tlv_e2e.ps1`; it requires Clang, Python,
+and a Win32 runner. This proves one static C TLV access path, not TLS destructors,
+multiple images, dynamic loading, or concurrent threads.
 See
 [LINKER-RESEARCH.md](../docs/porting/LINKER-RESEARCH.md) for the exact contract.
 

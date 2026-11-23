@@ -17,6 +17,7 @@
 #include <cstdint>
 #include <cstring>
 #include <cinttypes>
+#include <cstdlib>
 #include <stdexcept>
 
 
@@ -62,7 +63,16 @@ extern "C" DARLING_SYSV int darling_windows_abi_lazy_binding_session_active()
 extern "C" DARLING_SYSV void* darling_windows_abi_tlv_get_addr(
 	darling::windows_host::DarwinTLVDescriptor* descriptor)
 {
-	return darling::windows_host::ResolveDarwinTLV(descriptor);
+	const auto result = darling::windows_host::ResolveDarwinTLV(descriptor);
+	if (std::getenv("WINTOSH_TRACE_TLV") != nullptr && descriptor != nullptr) {
+		std::fprintf(stderr,
+			"WINTOSH_TLV_CALL descriptor=0x%llx key=0x%llx offset=0x%llx result=0x%llx\n",
+			static_cast<unsigned long long>(reinterpret_cast<std::uintptr_t>(descriptor)),
+			static_cast<unsigned long long>(descriptor->key),
+			static_cast<unsigned long long>(descriptor->offset),
+			static_cast<unsigned long long>(reinterpret_cast<std::uintptr_t>(result)));
+	}
+	return result;
 }
 
 extern "C" std::uintptr_t darling_windows_abi_call_export_resolver(

@@ -7,6 +7,7 @@
 .386
 .model flat
 .code
+EXTERN _darling_windows_abi_tlv_get_addr:PROC
 
 PUBLIC _darling_windows_enter_darwin_start
 _darling_windows_enter_darwin_start PROC
@@ -15,5 +16,15 @@ _darling_windows_enter_darwin_start PROC
 	mov esp, edx
 	jmp eax
 _darling_windows_enter_darwin_start ENDP
+
+; Darwin i386 TLV calls pass the descriptor in EAX, unlike the host C ABI.
+; Adapt that register argument to the stack argument expected by C++.
+PUBLIC _darling_windows_tlv_get_addr_i386
+_darling_windows_tlv_get_addr_i386 PROC
+	push eax
+	call _darling_windows_abi_tlv_get_addr
+	add esp, 4
+	ret
+_darling_windows_tlv_get_addr_i386 ENDP
 
 END

@@ -40,6 +40,7 @@ GENERIC_RELOC_VANILLA = 0
 GENERIC_RELOC_PAIR = 1
 GENERIC_RELOC_SECTDIFF = 2
 GENERIC_RELOC_LOCAL_SECTDIFF = 4
+GENERIC_RELOC_TLV = 5
 PAGE_SIZE = 0x1000
 TEXT_FILE_OFFSET = 0x400
 DATA_FILE_OFFSET = PAGE_SIZE
@@ -52,6 +53,10 @@ S_NON_LAZY_SYMBOL_POINTERS = 0x6
 S_MOD_INIT_FUNC_POINTERS = 0x9
 S_MOD_TERM_FUNC_POINTERS = 0xA
 S_CSTRING_LITERALS = 0x2
+S_THREAD_LOCAL_REGULAR = 0x11
+S_THREAD_LOCAL_ZEROFILL = 0x12
+S_THREAD_LOCAL_VARIABLES = 0x13
+S_THREAD_LOCAL_VARIABLE_POINTERS = 0x14
 
 
 class FormatError(ValueError):
@@ -68,6 +73,7 @@ class Relocation:
     target_offset: int = 0
     minuend_kind: str | None = None
     minuend_offset: int = 0
+    reloc_type: int = GENERIC_RELOC_VANILLA
 
 
 @dataclass(frozen=True)
@@ -92,6 +98,9 @@ class MachObject:
     pointers: ObjectSection | None
     initializers: ObjectSection | None
     terminators: ObjectSection | None
+    tls_data: ObjectSection | None
+    tls_bss: ObjectSection | None
+    tlv_variables: ObjectSection | None
     pointer_symbols: tuple[str, ...]
     cpu_subtype: int
     definitions: dict[str, tuple[str, int]]
@@ -173,21 +182,34 @@ def parse_object(path: Path, data: bytes) -> MachObject:
                     kind = "init"
                 elif (sectname, segname) == ("__mod_term_func", "__DATA"):
                     kind = "term"
+                elif (sectname, segname) == ("__thread_data", "__DATA"):
+                    kind = "tls_data"
+                elif (sectname, segname) == ("__thread_bss", "__DATA"):
+                    kind = "tls_bss"
+                elif (sectname, segname) == ("__thread_vars", "__DATA"):
+                    kind = "tlv_vars"
                 if kind is not None:
                     if any(existing[0] == kind for existing in input_sections.values()):
                         raise FormatError(f"{path}: multiple __{kind} sections")
                     if align_exp > 12:
                         raise FormatError(f"{path}: __{kind} alignment is too large")
-                    is_zerofill = (_flags := section[8]) & 0xFF == S_ZEROFILL
-                    if kind == "bss" and not is_zerofill:
-                        raise FormatError(f"{path}: __bss is not marked S_ZEROFILL")
+                    section_type = (_flags := section[8]) & 0xFF
+                    is_zerofill = section_type in (S_ZEROFILL, S_THREAD_LOCAL_ZEROFILL)
+                    if kind in ("bss", "tls_bss") and not is_zerofill:
+                        raise FormatError(f"{path}: __{kind} is not marked zero-fill")
                     if kind == "ptr" and (_flags & 0xFF) != S_NON_LAZY_SYMBOL_POINTERS:
                         raise FormatError(f"{path}: __IMPORT,__pointers has an unsupported section type")
                     if kind == "init" and (_flags & 0xFF) != S_MOD_INIT_FUNC_POINTERS:
                         raise FormatError(f"{path}: __DATA,__mod_init_func has an unsupported section type")
                     if kind == "term" and (_flags & 0xFF) != S_MOD_TERM_FUNC_POINTERS:
                         raise FormatError(f"{path}: __DATA,__mod_term_func has an unsupported section type")
-                    if kind != "bss" and is_zerofill:
+                    if kind == "tls_data" and (_flags & 0xFF) != S_THREAD_LOCAL_REGULAR:
+                        raise FormatError(f"{path}: __DATA,__thread_data has an unsupported section type")
+                    if kind == "tls_bss" and (_flags & 0xFF) != S_THREAD_LOCAL_ZEROFILL:
+                        raise FormatError(f"{path}: __DATA,__thread_bss has an unsupported section type")
+                    if kind == "tlv_vars" and (_flags & 0xFF) != S_THREAD_LOCAL_VARIABLES:
+                        raise FormatError(f"{path}: __DATA,__thread_vars has an unsupported section type")
+                    if kind not in ("bss", "tls_bss") and is_zerofill:
                         raise FormatError(f"{path}: __{kind} unexpectedly uses S_ZEROFILL")
                     if is_zerofill and nreloc:
                         raise FormatError(f"{path}: relocations in zerofill sections are unsupported")
@@ -229,6 +251,9 @@ def parse_object(path: Path, data: bytes) -> MachObject:
     pointer_record = next((record for record in input_sections.values() if record[0] == "ptr"), None)
     initializer_record = next((record for record in input_sections.values() if record[0] == "init"), None)
     terminator_record = next((record for record in input_sections.values() if record[0] == "term"), None)
+    tls_data_record = next((record for record in input_sections.values() if record[0] == "tls_data"), None)
+    tls_bss_record = next((record for record in input_sections.values() if record[0] == "tls_bss"), None)
+    tlv_variables_record = next((record for record in input_sections.values() if record[0] == "tlv_vars"), None)
     if text_record is None:
         raise FormatError(f"{path}: missing __TEXT,__text")
     if symtab is None:
@@ -330,7 +355,10 @@ def parse_object(path: Path, data: bytes) -> MachObject:
                 ))
                 reloc_index += 2
                 continue
-            if scattered or reloc_type != GENERIC_RELOC_VANILLA:
+            is_tlv_relocation = (
+                external and reloc_type == GENERIC_RELOC_TLV and pcrel and not scattered
+            )
+            if scattered or (reloc_type != GENERIC_RELOC_VANILLA and not is_tlv_relocation):
                 raise FormatError(f"{path}: unsupported __{source_kind} relocation at {address:#x}")
             if any(site < address + 4 and address < site + 4 for site in relocation_sites):
                 raise FormatError(f"{path}: overlapping __{source_kind} relocation fields")
@@ -342,7 +370,10 @@ def parse_object(path: Path, data: bytes) -> MachObject:
                 symbol_name, symbol_type, _symbol_section, _symbol_value = symbols[symbolnum]
                 if not symbol_name or not (symbol_type & N_EXT):
                     raise FormatError(f"{path}: external relocation does not name an external symbol")
-                relocations.append(Relocation(source_kind, address, symbol_name, None, bool(pcrel)))
+                relocations.append(Relocation(
+                    source_kind, address, symbol_name, None, bool(pcrel),
+                    reloc_type=reloc_type,
+                ))
             else:
                 target_record = input_sections.get(symbolnum)
                 if target_record is None:
@@ -368,10 +399,15 @@ def parse_object(path: Path, data: bytes) -> MachObject:
     pointer_section = make_section(pointer_record) if pointer_record is not None else None
     initializer_section = make_section(initializer_record) if initializer_record is not None else None
     terminator_section = make_section(terminator_record) if terminator_record is not None else None
+    tls_data_section = make_section(tls_data_record) if tls_data_record is not None else None
+    tls_bss_section = make_section(tls_bss_record) if tls_bss_record is not None else None
+    tlv_variables_section = make_section(tlv_variables_record) if tlv_variables_record is not None else None
     if initializer_record is not None and initializer_record[2] % 4 != 0:
         raise FormatError(f"{path}: __DATA,__mod_init_func is not a 32-bit pointer array")
     if terminator_record is not None and terminator_record[2] % 4 != 0:
         raise FormatError(f"{path}: __DATA,__mod_term_func is not a 32-bit pointer array")
+    if tlv_variables_record is not None and tlv_variables_record[2] % 12 != 0:
+        raise FormatError(f"{path}: __DATA,__thread_vars is not a descriptor array")
     pointer_symbols: tuple[str, ...] = ()
     if pointer_record is not None:
         if dysymtab is None:
@@ -405,6 +441,9 @@ def parse_object(path: Path, data: bytes) -> MachObject:
         pointers=pointer_section,
         initializers=initializer_section,
         terminators=terminator_section,
+        tls_data=tls_data_section,
+        tls_bss=tls_bss_section,
+        tlv_variables=tlv_variables_section,
         pointer_symbols=pointer_symbols,
         cpu_subtype=cpu_subtype,
         definitions=definitions,
@@ -437,6 +476,10 @@ def link_objects(
     initializer_offsets: list[int] = []
     terminator_offsets: list[int] = []
     static_init_offsets: list[int] = []
+    tls_data_offsets: list[int] = []
+    tls_bss_offsets: list[int] = []
+    tlv_variable_offsets: list[int] = []
+    tlv_pointer_offsets: list[int] = []
     text_size = 0
     data_size = 0
     const_size = 0
@@ -454,6 +497,13 @@ def link_objects(
     terminator_align_exp = 0
     static_init_size = 0
     static_init_align_exp = 0
+    tls_data_size = 0
+    tls_bss_size = 0
+    tlv_variable_size = 0
+    tls_data_align_exp = 0
+    tls_bss_align_exp = 0
+    tlv_variable_align_exp = 0
+    tlv_pointer_count = 0
     for obj in objects:
         text_size = align_up(text_size, obj.text.alignment)
         text_offsets.append(text_size)
@@ -520,6 +570,32 @@ def link_objects(
             terminator_align_exp = max(
                 terminator_align_exp, obj.terminators.alignment.bit_length() - 1
             )
+        if obj.tls_data is None:
+            tls_data_offsets.append(0)
+        else:
+            tls_data_size = align_up(tls_data_size, obj.tls_data.alignment)
+            tls_data_offsets.append(tls_data_size)
+            tls_data_size += len(obj.tls_data.contents)
+            tls_data_align_exp = max(tls_data_align_exp, obj.tls_data.alignment.bit_length() - 1)
+        if obj.tls_bss is None:
+            tls_bss_offsets.append(0)
+        else:
+            tls_bss_size = align_up(tls_bss_size, obj.tls_bss.alignment)
+            tls_bss_offsets.append(tls_bss_size)
+            tls_bss_size += obj.tls_bss.memory_size
+            tls_bss_align_exp = max(tls_bss_align_exp, obj.tls_bss.alignment.bit_length() - 1)
+        if obj.tlv_variables is None:
+            tlv_variable_offsets.append(0)
+            tlv_pointer_offsets.append(tlv_pointer_count * 4)
+        else:
+            tlv_variable_size = align_up(tlv_variable_size, max(4, obj.tlv_variables.alignment))
+            tlv_variable_offsets.append(tlv_variable_size)
+            tlv_pointer_offsets.append(tlv_pointer_count * 4)
+            tlv_variable_size += len(obj.tlv_variables.contents)
+            tlv_pointer_count += len(obj.tlv_variables.contents) // 12
+            tlv_variable_align_exp = max(
+                tlv_variable_align_exp, obj.tlv_variables.alignment.bit_length() - 1
+            )
     if text_size == 0:
         raise FormatError("combined __text exceeds the one-page prototype image limit")
     static_init_start = align_up(text_size, 1 << static_init_align_exp) if static_init_size else text_size
@@ -581,10 +657,16 @@ def link_objects(
     function_import_names = {
         relocation.external_symbol
         for obj in objects for relocation in obj.relocations
-        if relocation.external_symbol is not None and relocation.pc_relative
+        if relocation.external_symbol is not None and relocation.pc_relative and
+        relocation.reloc_type != GENERIC_RELOC_TLV
+    }
+    direct_import_names = {
+        relocation.external_symbol
+        for obj in objects for relocation in obj.relocations
+        if relocation.external_symbol is not None and not relocation.pc_relative
     }
     import_names = (pointer_import_names | function_import_names) - definitions.keys()
-    missing = sorted(undefined - definitions.keys() - import_names)
+    missing = sorted(undefined - definitions.keys() - import_names - direct_import_names)
     if missing:
         raise FormatError("unresolved external symbols: " + ", ".join(missing))
     stub_offsets: dict[str, int] = {}
@@ -627,8 +709,28 @@ def link_objects(
     terminator_start = (
         align_up(after_initializers, max(4, 1 << terminator_align_exp)) if terminator_size else after_initializers
     )
-    data_align_exp = max(data_align_exp, initializer_align_exp, terminator_align_exp)
-    combined_data_size = terminator_start + terminator_size if terminator_size else after_initializers
+    after_terminators = terminator_start + terminator_size if terminator_size else after_initializers
+    tls_data_start = (
+        align_up(after_terminators, 1 << tls_data_align_exp) if tls_data_size else after_terminators
+    )
+    after_tls_data = tls_data_start + tls_data_size if tls_data_size else after_terminators
+    tls_bss_start = (
+        align_up(after_tls_data, 1 << tls_bss_align_exp) if tls_bss_size else after_tls_data
+    )
+    after_tls_bss = tls_bss_start + tls_bss_size if tls_bss_size else after_tls_data
+    tlv_variables_start = (
+        align_up(after_tls_bss, max(4, 1 << tlv_variable_align_exp))
+        if tlv_variable_size else after_tls_bss
+    )
+    after_tlv_variables = tlv_variables_start + tlv_variable_size if tlv_variable_size else after_tls_bss
+    tlv_pointers_start = align_up(after_tlv_variables, 4) if tlv_pointer_count else after_tlv_variables
+    tlv_pointer_size = tlv_pointer_count * 4
+    data_align_exp = max(
+        data_align_exp, initializer_align_exp, terminator_align_exp,
+        tls_data_align_exp, tls_bss_align_exp, tlv_variable_align_exp,
+        2 if tlv_pointer_count else 0,
+    )
+    combined_data_size = tlv_pointers_start + tlv_pointer_size if tlv_pointer_size else after_tlv_variables
     if combined_data_size > PAGE_SIZE:
         raise FormatError("combined __DATA and import pointer storage exceed one page")
     if entry_name not in definitions:
@@ -645,6 +747,8 @@ def link_objects(
         "static_init": static_init_offsets,
         "bss": bss_offsets, "ptr": pointer_offsets, "init": initializer_offsets,
         "term": terminator_offsets,
+        "tls_data": tls_data_offsets, "tls_bss": tls_bss_offsets,
+        "tlv_vars": tlv_variable_offsets, "tlv_ptr": tlv_pointer_offsets,
     }
     section_sizes = {
         "text": text_size, "data": data_size, "const": const_size,
@@ -652,6 +756,8 @@ def link_objects(
         "static_init": static_init_size,
         "bss": bss_size, "ptr": pointer_size, "init": initializer_size,
         "term": terminator_size,
+        "tls_data": tls_data_size, "tls_bss": tls_bss_size,
+        "tlv_vars": tlv_variable_size, "tlv_ptr": tlv_pointer_size,
     }
     output_sections = {"text": text, "data": data}
     rebase_sites: set[tuple[int, int]] = set()
@@ -686,6 +792,12 @@ def link_objects(
         if obj.terminators is not None:
             term_base = terminator_start + terminator_offsets[index]
             data[term_base : term_base + len(obj.terminators.contents)] = obj.terminators.contents
+        if obj.tls_data is not None:
+            tls_base = tls_data_start + tls_data_offsets[index]
+            data[tls_base : tls_base + len(obj.tls_data.contents)] = obj.tls_data.contents
+        if obj.tlv_variables is not None:
+            vars_base = tlv_variables_start + tlv_variable_offsets[index]
+            data[vars_base : vars_base + len(obj.tlv_variables.contents)] = obj.tlv_variables.contents
 
         for relocation in obj.relocations:
             source_base = section_placements[relocation.source_kind][index]
@@ -697,6 +809,9 @@ def link_objects(
                 obj.pointers if relocation.source_kind == "ptr" else
                 obj.initializers if relocation.source_kind == "init" else
                 obj.terminators if relocation.source_kind == "term" else
+                obj.tls_data if relocation.source_kind == "tls_data" else
+                obj.tls_bss if relocation.source_kind == "tls_bss" else
+                obj.tlv_variables if relocation.source_kind == "tlv_vars" else
                 obj.bss if relocation.source_kind == "bss" else obj.data
             )
             if source_section is None:
@@ -705,6 +820,9 @@ def link_objects(
                 pointer_start + source_base if relocation.source_kind == "ptr" else
                 initializer_start + source_base if relocation.source_kind == "init" else
                 terminator_start + source_base if relocation.source_kind == "term" else
+                tls_data_start + source_base if relocation.source_kind == "tls_data" else
+                tls_bss_start + source_base if relocation.source_kind == "tls_bss" else
+                tlv_variables_start + source_base if relocation.source_kind == "tlv_vars" else
                 source_base if relocation.source_kind in ("const", "cstring", "static_init") else
                 bss_start + source_base if relocation.source_kind == "bss" else source_base
             )
@@ -712,14 +830,18 @@ def link_objects(
                 TEXT_VM_BASE + const_start + source_base if relocation.source_kind == "const" else
                 TEXT_VM_BASE + cstring_start + source_base if relocation.source_kind == "cstring" else
                 TEXT_VM_BASE + source_base if relocation.source_kind in ("text", "static_init") else
-                preferred_vm["data"] + source_file_base if relocation.source_kind in ("ptr", "bss", "init", "term")
+                preferred_vm["data"] + source_file_base if relocation.source_kind in (
+                    "ptr", "bss", "init", "term", "tls_data", "tls_bss", "tlv_vars"
+                )
                 else preferred_vm[relocation.source_kind] + source_base
             )
             source_site = source_file_base + relocation.offset
             source_bytes = (
                 const if relocation.source_kind == "const" else
                 cstring if relocation.source_kind == "cstring" else
-                data if relocation.source_kind in ("ptr", "bss", "init", "term") else
+                data if relocation.source_kind in (
+                    "ptr", "bss", "init", "term", "tls_data", "tls_bss", "tlv_vars"
+                ) else
                 text if relocation.source_kind == "static_init" else
                 output_sections[relocation.source_kind]
             )
@@ -732,10 +854,14 @@ def link_objects(
 
                 def output_address(kind: str, offset: int) -> int:
                     base = section_placements[kind][index]
-                    if kind in ("bss", "init", "term"):
+                    if kind in ("bss", "init", "term", "tls_data", "tls_bss", "tlv_vars", "tlv_ptr"):
                         start = (
                             initializer_start if kind == "init" else
-                            terminator_start if kind == "term" else bss_start
+                            terminator_start if kind == "term" else
+                            tls_data_start if kind == "tls_data" else
+                            tls_bss_start if kind == "tls_bss" else
+                            tlv_variables_start if kind == "tlv_vars" else
+                            tlv_pointers_start if kind == "tlv_ptr" else bss_start
                         )
                         return preferred_vm["data"] + start + base + offset
                     if kind == "ptr":
@@ -748,8 +874,10 @@ def link_objects(
                         return TEXT_VM_BASE + base + offset
                     return preferred_vm[kind] + base + offset
 
-                target_section = getattr(obj, target_kind if target_kind != "ptr" else "pointers")
-                minuend_section = getattr(obj, minuend_kind if minuend_kind != "ptr" else "pointers")
+                section_attrs = {"ptr": "pointers", "init": "initializers", "term": "terminators",
+                                 "tls_data": "tls_data", "tls_bss": "tls_bss", "tlv_vars": "tlv_variables"}
+                target_section = getattr(obj, section_attrs.get(target_kind, target_kind))
+                minuend_section = getattr(obj, section_attrs.get(minuend_kind, minuend_kind))
                 if target_section is None or minuend_section is None:
                     raise FormatError("section-difference relocation references a missing section")
                 old_target = target_section.vm_address + relocation.target_offset
@@ -766,31 +894,78 @@ def link_objects(
             elif relocation.external_symbol is not None:
                 target = definitions.get(relocation.external_symbol)
                 if target is None:
-                    if not relocation.pc_relative or relocation.external_symbol not in stub_offsets:
+                    if relocation.reloc_type == GENERIC_RELOC_TLV:
+                        raise FormatError(f"unresolved TLV symbol {relocation.external_symbol}")
+                    if not relocation.pc_relative:
+                        if (
+                            relocation.source_kind == "tlv_vars" and
+                            relocation.offset % 12 == 0 and
+                            relocation.external_symbol in ("__tlv_bootstrap", "___tlv_bootstrap")
+                        ):
+                            # dyld initializes this descriptor's thunk after
+                            # rebasing and binding. Binding the placeholder
+                            # here would overwrite the runtime TLV adapter.
+                            struct.pack_into("<I", source_bytes, source_site, 0)
+                            continue
+                        if relocation.source_kind not in ("init", "term", "tlv_vars", "data", "ptr"):
+                            raise FormatError(
+                                f"unresolved absolute import {relocation.external_symbol} is not in writable data"
+                            )
+                        bind_sites.append((source_site, relocation.external_symbol))
+                        struct.pack_into("<I", source_bytes, source_site, 0)
+                        continue
+                    if relocation.external_symbol not in stub_offsets:
                         raise FormatError(f"unresolved relocation symbol {relocation.external_symbol}")
                     target_vm = TEXT_VM_BASE + stub_offsets[relocation.external_symbol]
                 else:
                     target_index, target_kind, target_value = target
-                    target_base = section_placements[target_kind][target_index]
-                    if target_kind in ("bss", "init", "term"):
-                        start = (
-                            initializer_start if target_kind == "init" else
-                            terminator_start if target_kind == "term" else bss_start
+                    if relocation.reloc_type == GENERIC_RELOC_TLV:
+                        if target_kind != "tlv_vars" or target_value % 12 != 0:
+                            raise FormatError(
+                                f"TLV symbol {relocation.external_symbol} has no aligned descriptor"
+                            )
+                        target_vm = (
+                            preferred_vm["data"] + tlv_pointers_start +
+                            tlv_pointer_offsets[target_index] + (target_value // 12) * 4
                         )
-                        target_vm = preferred_vm["data"] + start + target_base + target_value
-                    elif target_kind in ("text", "static_init"):
-                        target_vm = TEXT_VM_BASE + target_base + target_value
-                    elif target_kind == "ptr":
-                        target_vm = preferred_vm["data"] + pointer_start + target_base + target_value
-                    elif target_kind == "const":
-                        target_vm = TEXT_VM_BASE + const_start + target_base + target_value
-                    elif target_kind == "cstring":
-                        target_vm = TEXT_VM_BASE + cstring_start + target_base + target_value
                     else:
-                        target_vm = preferred_vm[target_kind] + target_base + target_value
-                    if target_value >= section_sizes[target_kind]:
-                        raise FormatError(f"relocation target {relocation.external_symbol} is outside its section")
-                if relocation.pc_relative:
+                        target_base = section_placements[target_kind][target_index]
+                        if target_kind in ("bss", "init", "term", "tls_data", "tls_bss", "tlv_vars", "tlv_ptr"):
+                            start = (
+                                initializer_start if target_kind == "init" else
+                                terminator_start if target_kind == "term" else
+                                tls_data_start if target_kind == "tls_data" else
+                                tls_bss_start if target_kind == "tls_bss" else
+                                tlv_variables_start if target_kind == "tlv_vars" else
+                                tlv_pointers_start if target_kind == "tlv_ptr" else bss_start
+                            )
+                            target_vm = preferred_vm["data"] + start + target_base + target_value
+                        elif target_kind in ("text", "static_init"):
+                            target_vm = TEXT_VM_BASE + target_base + target_value
+                        elif target_kind == "ptr":
+                            target_vm = preferred_vm["data"] + pointer_start + target_base + target_value
+                        elif target_kind == "const":
+                            target_vm = TEXT_VM_BASE + const_start + target_base + target_value
+                        elif target_kind == "cstring":
+                            target_vm = TEXT_VM_BASE + cstring_start + target_base + target_value
+                        else:
+                            target_vm = preferred_vm[target_kind] + target_base + target_value
+                        if target_value >= section_sizes[target_kind]:
+                            raise FormatError(f"relocation target {relocation.external_symbol} is outside its section")
+                if relocation.reloc_type == GENERIC_RELOC_TLV:
+                    # i386 GENERIC_RELOC_TLV records the displacement from
+                    # the PIC base to the fixup, not a normal P-relative
+                    # addend. The relocation address names the instruction
+                    # start. LLVM's i386 TLVP addend includes the four-byte
+                    # relocation-field bias, which recovers the function's
+                    # call/pop PIC base from this instruction address.
+                    encoded_pic_addend = struct.unpack_from("<i", source_bytes, source_site)[0]
+                    pic_base_offset = relocation.offset + 4 - encoded_pic_addend
+                    linked_value = target_vm - (TEXT_VM_BASE + source_base + pic_base_offset)
+                    if not -(1 << 31) <= linked_value < (1 << 31):
+                        raise FormatError("i386 TLV relocation overflows PIC displacement")
+                    struct.pack_into("<i", source_bytes, source_site, linked_value)
+                elif relocation.pc_relative:
                     addend = struct.unpack_from("<i", source_bytes, source_site)[0]
                     # Mach-O's scattered section-relative addend can include
                     # the original source-section VM base. Remove that base
@@ -829,16 +1004,32 @@ def link_objects(
                     obj.cstring if target_kind == "cstring" else
                     obj.initializers if target_kind == "init" else
                     obj.terminators if target_kind == "term" else
+                    obj.tls_data if target_kind == "tls_data" else
+                    obj.tls_bss if target_kind == "tls_bss" else
+                    obj.tlv_variables if target_kind == "tlv_vars" else
                     obj.bss if target_kind == "bss" else
                     obj.pointers if target_kind == "ptr" else obj.data
                 )
                 if target_section is None:
                     raise FormatError("local relocation targets a missing section")
                 target_base = section_placements[target_kind][index]
-                if target_kind in ("bss", "init", "term"):
+                if relocation.source_kind == "tlv_vars" and relocation.offset % 12 == 8 and target_kind in ("tls_data", "tls_bss"):
+                    tls_template_start = tls_data_start if tls_data_size else tls_bss_start
+                    tls_target_start = tls_data_start if target_kind == "tls_data" else tls_bss_start
+                    old_value = struct.unpack_from("<I", source_bytes, source_site)[0]
+                    addend = old_value - target_section.vm_address
+                    if addend >= (1 << 31):
+                        addend -= 1 << 32
+                    struct.pack_into("<I", source_bytes, source_site, tls_target_start + target_base - tls_template_start + addend)
+                    continue
+                if target_kind in ("bss", "init", "term", "tls_data", "tls_bss", "tlv_vars", "tlv_ptr"):
                     start = (
                         initializer_start if target_kind == "init" else
-                        terminator_start if target_kind == "term" else bss_start
+                        terminator_start if target_kind == "term" else
+                        tls_data_start if target_kind == "tls_data" else
+                        tls_bss_start if target_kind == "tls_bss" else
+                        tlv_variables_start if target_kind == "tlv_vars" else
+                        tlv_pointers_start if target_kind == "tlv_ptr" else bss_start
                     )
                     target_output_vm = preferred_vm["data"] + start + target_base
                 elif target_kind in ("text", "static_init"):
@@ -917,6 +1108,8 @@ def link_objects(
         text_offsets[entry_index] + entry_value,
         cpu_subtype, text_align_exp, const_align_exp, cstring_align_exp, data_align_exp,
         sorted(rebase_sites), sorted(set(bind_sites)),
+        tls_data_start, tls_data_size, tls_bss_start, tls_bss_size,
+        tlv_variables_start, tlv_variable_size, tlv_pointers_start, tlv_pointer_size,
     )
 
 
@@ -976,6 +1169,10 @@ def make_executable(
     cstring: bytes, cstring_start: int,
     initializer_start: int, initializer_size: int,
     terminator_start: int, terminator_size: int,
+    tls_data_start: int, tls_data_size: int,
+    tls_bss_start: int, tls_bss_size: int,
+    tlv_variables_start: int, tlv_variable_size: int,
+    tlv_pointers_start: int, tlv_pointer_size: int,
     entry_offset: int, cpu_subtype: int,
     text_align_exp: int, const_align_exp: int, cstring_align_exp: int, data_align_exp: int,
     rebase_sites: list[tuple[int, int]],
@@ -1026,6 +1223,22 @@ def make_executable(
                 terminator_size, DATA_FILE_OFFSET + terminator_start, 2,
                 S_MOD_TERM_FUNC_POINTERS,
             ))
+        if tls_data_size:
+            data_section_size = min(data_section_size, tls_data_start)
+            runtime_sections.append((b"__thread_data", b"__DATA", DATA_VM_BASE + tls_data_start,
+                tls_data_size, DATA_FILE_OFFSET + tls_data_start, 2, S_THREAD_LOCAL_REGULAR))
+        if tls_bss_size:
+            data_section_size = min(data_section_size, tls_bss_start)
+            runtime_sections.append((b"__thread_bss", b"__DATA", DATA_VM_BASE + tls_bss_start,
+                tls_bss_size, 0, 2, S_THREAD_LOCAL_ZEROFILL))
+        if tlv_variable_size:
+            data_section_size = min(data_section_size, tlv_variables_start)
+            runtime_sections.append((b"__thread_vars", b"__DATA", DATA_VM_BASE + tlv_variables_start,
+                tlv_variable_size, DATA_FILE_OFFSET + tlv_variables_start, 2, S_THREAD_LOCAL_VARIABLES))
+        if tlv_pointer_size:
+            data_section_size = min(data_section_size, tlv_pointers_start)
+            runtime_sections.append((b"__thread_ptrs", b"__DATA", DATA_VM_BASE + tlv_pointers_start,
+                tlv_pointer_size, DATA_FILE_OFFSET + tlv_pointers_start, 2, S_THREAD_LOCAL_VARIABLE_POINTERS))
         commands.append(make_segment_command(
             b"__DATA", DATA_VM_BASE, DATA_FILE_OFFSET, PAGE_SIZE, 7, 3,
             b"__data", b"__DATA", DATA_VM_BASE, data_section_size, DATA_FILE_OFFSET,
@@ -1099,11 +1312,14 @@ def main() -> int:
          terminator_start, terminator_size,
          entry_offset, cpu_subtype,
          text_align_exp, const_align_exp, cstring_align_exp, data_align_exp, rebase_sites,
-         bind_sites) = link_objects(objects, args.entry)
+         bind_sites, tls_data_start, tls_data_size, tls_bss_start, tls_bss_size,
+         tlv_variables_start, tlv_variable_size, tlv_pointers_start, tlv_pointer_size) = link_objects(objects, args.entry)
         image = make_executable(
             text, const, const_start, data, cstring, cstring_start,
             initializer_start, initializer_size,
             terminator_start, terminator_size,
+            tls_data_start, tls_data_size, tls_bss_start, tls_bss_size,
+            tlv_variables_start, tlv_variable_size, tlv_pointers_start, tlv_pointer_size,
             entry_offset, cpu_subtype,
             text_align_exp, const_align_exp, cstring_align_exp, data_align_exp, rebase_sites,
             bind_sites,

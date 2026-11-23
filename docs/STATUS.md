@@ -2423,6 +2423,28 @@ fixture referenced `"B"` directly from code and returned 66. Additional
 literal-section combinations, symbol tables, Darwin imports, and CRT startup
 remain open.
 
+### i386 static C thread-local storage (2026-11-23)
+
+The bounded linker now carries the i386 Darwin TLV sections `__thread_data`,
+`__thread_bss`, `__thread_vars`, and the synthesized `__thread_ptrs` table.
+For input object `i`, a descriptor relocation at instruction offset `P` with
+Clang's encoded PIC-base addend `A` has a call/pop base of `P + 4 - A`; the
+linked displacement is `S - (B_i + P + 4 - A)`, where `S` is the final
+pointer-slot VM address and `B_i` is the output VM address of that object's
+`__text` placement. This places the slot at the address computed by the
+generated `mov` instruction after the image slide.
+
+The descriptor's `__tlv_bootstrap` word is intentionally left as a placeholder:
+Wintosh initializes the descriptor after ordinary bindings, so emitting a
+dyld bind there would overwrite the runtime adapter. Darwin i386 passes the
+descriptor in EAX, while the C++ resolver accepts a stack argument; the Win32
+runner now adapts that call in its i386 assembly trampoline. The reusable
+`i386_tlv_e2e.ps1` fixture changed an initialized `_Thread_local` integer
+from 40 to 42, added it to a zero-initialized TLS integer, and exited with
+status 42. This verifies `__thread_data` and `__thread_bss` in one statically
+linked C image on the main thread. Per-thread isolation, C++ TLV destructors,
+multiple TLV images, and dynamic-library loading remain unverified.
+
 ### i386 external call thunks and host binds (2026-11-23)
 
 The linker now converts unresolved external PC-relative calls into local

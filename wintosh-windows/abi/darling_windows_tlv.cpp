@@ -19,6 +19,10 @@
 
 namespace darling::windows_host {
 
+#if defined(_M_IX86)
+extern "C" void* darling_windows_tlv_get_addr_i386(DarwinTLVDescriptor* descriptor);
+#endif
+
 namespace {
 
 constexpr std::size_t MaxTLVObjectBytes = 1024 * 1024;
@@ -131,7 +135,11 @@ void InitializeDarwinTLV(const DarwinTLVDescriptorRange* ranges, std::size_t ran
 	}
 	for (std::size_t r = 0; r < range_count; ++r) {
 		for (std::size_t i = 0; i < ranges[r].count; ++i) {
+#if defined(_M_IX86)
+			ranges[r].descriptors[i].thunk = &darling_windows_tlv_get_addr_i386;
+#else
 			ranges[r].descriptors[i].thunk = &ResolveDarwinTLV;
+#endif
 			ranges[r].descriptors[i].key = key;
 		}
 	}

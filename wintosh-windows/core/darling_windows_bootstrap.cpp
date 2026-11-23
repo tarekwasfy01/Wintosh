@@ -229,12 +229,16 @@ void InitializeTLVSections(const MachOImage& image,
 		if (!descriptor_addresses.empty()) {
 			const auto* descriptor = reinterpret_cast<const DarwinTLVDescriptor*>(
 				descriptor_addresses.front());
+			std::uintptr_t pointer_value = 0;
+			std::memcpy(&pointer_value, reinterpret_cast<const void*>(pointer_slots.front()),
+				sizeof(pointer_value));
 			std::fprintf(stderr,
-				"WINTOSH_TLV_TRACE descriptor=0x%llx thunk=0x%llx key=0x%llx pointer=0x%llx\\n",
+				"WINTOSH_TLV_TRACE descriptor=0x%llx thunk=0x%llx key=0x%llx slot=0x%llx value=0x%llx\n",
 				static_cast<unsigned long long>(descriptor_addresses.front()),
 				static_cast<unsigned long long>(reinterpret_cast<std::uintptr_t>(descriptor->thunk)),
 				static_cast<unsigned long long>(descriptor->key),
-				static_cast<unsigned long long>(pointer_slots.front()));
+				static_cast<unsigned long long>(pointer_slots.front()),
+				static_cast<unsigned long long>(pointer_value));
 		}
 	}
 }

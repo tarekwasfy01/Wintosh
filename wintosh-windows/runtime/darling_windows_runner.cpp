@@ -283,9 +283,23 @@ LONG WINAPI GuestExceptionBoundary(PEXCEPTION_POINTERS pointers)
 	const auto sp = pointers != nullptr && pointers->ContextRecord != nullptr ?
 		static_cast<unsigned long long>(pointers->ContextRecord->Rsp) : 0ull;
 #endif
+	const auto fault_address = code == EXCEPTION_ACCESS_VIOLATION &&
+		pointers != nullptr && pointers->ExceptionRecord != nullptr &&
+		pointers->ExceptionRecord->NumberParameters > 1 ?
+		static_cast<unsigned long long>(pointers->ExceptionRecord->ExceptionInformation[1]) : 0ull;
+	const auto fault_operation = code == EXCEPTION_ACCESS_VIOLATION &&
+		pointers != nullptr && pointers->ExceptionRecord != nullptr &&
+		pointers->ExceptionRecord->NumberParameters > 0 ?
+		static_cast<unsigned long long>(pointers->ExceptionRecord->ExceptionInformation[0]) : 0ull;
+#if defined(_M_IX86)
+	const auto guest_eax = pointers != nullptr && pointers->ContextRecord != nullptr ?
+		static_cast<unsigned long long>(pointers->ContextRecord->Eax) : 0ull;
+#else
+	const auto guest_eax = 0ull;
+#endif
 	const auto length = std::snprintf(message, sizeof(message),
-		"DARLING_GUEST_EXCEPTION=0x%08lX PC=0x%llX SP=0x%llX\r\n",
-		static_cast<unsigned long>(code), pc, sp);
+		"DARLING_GUEST_EXCEPTION=0x%08lX PC=0x%llX SP=0x%llX ADDRESS=0x%llX OP=%llu EAX=0x%llX\r\n",
+		static_cast<unsigned long>(code), pc, sp, fault_address, fault_operation, guest_eax);
 	DWORD written = 0;
 	if (length > 0)
 		WriteFile(GetStdHandle(STD_ERROR_HANDLE), message,

@@ -15,6 +15,10 @@ begrenzter i386-Linker-Prototyp: Er kombiniert `__TEXT,__text` und optionale
 32-Bit-`GENERIC_RELOC_VANILLA`-Relokationen und gepaarte gestreute
 `GENERIC_RELOC_SECTDIFF`/`GENERIC_RELOC_LOCAL_SECTDIFF`-Relokationen. Absolute
 interne Adressen erhalten `DYLD_INFO_ONLY`-Rebases für den Laufzeit-Slide.
+Ein einfacher i386-C-TLV-Pfad verwendet außerdem `__thread_data`,
+`__thread_bss`, `__thread_vars`, `__thread_ptrs` und
+`GENERIC_RELOC_TLV`; C++-TLS-Destruktoren und mehrere dynamisch geladene
+TLV-Images sind damit nicht belegt.
 
 \[
 \text{Mach-O objects} \xrightarrow{\text{resolve + relocate + rebase}}
@@ -32,7 +36,7 @@ implementiert, `?` = offen. Ein positiver Wert ist kein Vollständigkeitsbeleg.
 | Apple `ld64` / `ld-classic` | 1 (Apple-Handbuch dokumentiert i386) | 0 (Upstream Darwin-Host) | 1 (voller Linker) | ? | Semantik-Referenz |
 | `tpoechtrager/cctools-port` | 1 (i386 als Ziel) | 0 (README listet Linux/BSD/macOS/iOS Hosts) | 1 (portiert `ld64`) | ? | Portierungsreferenz |
 | `LongDirtyAnimAlf/ld64-msys` | ? (geerbter ld64-Code) | 1 (README nennt MSYS2/Windows) | ? | ? | Alternative für MSYS2-Prototyp |
-| Wintosh `link_i386_macho.py` | 1 | 1 | begrenzt (Text, Daten, Zerofill, C-String, Vanilla) | 0 | verifiziert für kleine statische C-Gäste |
+| Wintosh `link_i386_macho.py` | 1 | 1 | begrenzt (Text, Daten, Zerofill, C-String, Vanilla, einfache C-TLV) | 0 | verifiziert für kleine statische C-Gäste |
 
 Quellen:
 

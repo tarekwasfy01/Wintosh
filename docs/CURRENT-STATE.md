@@ -32,13 +32,14 @@ updated or removed on resize/free. Imported ARM64 `_mmap`/`_munmap`/`_mprotect`
 calls now register anonymous guest mappings with the CPU backend, apply guest
 read/write/execute permissions, and remove only whole mappings owned by the
 guest bridge. The Objective-C e2e fixture writes and reads an anonymous page,
-changes it to read-only, and verifies one-shot unmapping. File-backed mappings,
-fixed replacement of existing guest regions (overlaps are rejected even for
-`PROT_NONE` memory), partial unmapping, and full syscall error/errno parity
-remain incomplete; file-backed guest imports have not been exercised. Nested
-Darwin syscalls, Mach traps, broader
-import catalog coverage, full framework coverage, and a reproducible Dynarmic
-dependency pin remain open.
+changes it to read-only, and verifies one-shot unmapping. The fixture also
+exercises guest `open`/`write`/`mmap(MAP_SHARED)`/`munmap`/`lseek`/`read`/`close`
+with a persisted byte change. Private file-map copy semantics are unverified.
+Fixed replacement of existing
+guest regions (overlaps are rejected even for `PROT_NONE` memory), partial
+unmapping, and full syscall error/errno parity remain incomplete. Nested Darwin
+syscalls, Mach traps, broader import catalog coverage, full framework coverage,
+and a reproducible Dynarmic dependency pin remain open.
 
 The Objective-C class-list registrar now resolves guest `class_t` records in
 two phases, recursively registering superclass chains before importing method

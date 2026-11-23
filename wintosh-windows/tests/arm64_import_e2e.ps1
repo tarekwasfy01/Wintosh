@@ -21,6 +21,7 @@ $image = Join-Path $OutputDirectory 'arm64-import.macho'
 $objcSource = Join-Path $PSScriptRoot 'fixtures/arm64-import/objc.m'
 $objcObject = Join-Path $OutputDirectory 'arm64-objc-import.o'
 $objcImage = Join-Path $OutputDirectory 'arm64-objc-import.macho'
+$fileMmapPath = Join-Path $OutputDirectory 'arm64-file-mmap.bin'
 $dynamicSource = Join-Path $PSScriptRoot 'fixtures/arm64-import/dynamic.c'
 $dynamicObject = Join-Path $OutputDirectory 'arm64-dynamic-import.o'
 $dependencySource = Join-Path $PSScriptRoot 'fixtures/arm64-import/dynamic_dependency.c'
@@ -89,12 +90,14 @@ if ($LASTEXITCODE -ne 0) { throw "ARM64 dynamic Objective-C compile failed: $LAS
 if ($LASTEXITCODE -ne 0) { throw "ARM64 dynamic image link failed: $LASTEXITCODE" }
 
 $priorEager = [Environment]::GetEnvironmentVariable('WINTOSH_FORCE_EAGER_BIND', 'Process')
+Remove-Item -LiteralPath $fileMmapPath -Force -ErrorAction SilentlyContinue
 try {
 	$env:WINTOSH_FORCE_EAGER_BIND = '1'
 	$output = & $Runner --arch arm64 --startup-abi main $image 2>&1
 	$exitCode = $LASTEXITCODE
 	$text = $output -join "`n"
-	$objcOutput = & $Runner --arch arm64 --startup-abi main $objcImage $dynamicImage 2>&1
+	$objcOutput = & $Runner --arch arm64 --startup-abi main $objcImage `
+		$dynamicImage $fileMmapPath 2>&1
 	$objcExitCode = $LASTEXITCODE
 	$objcText = $objcOutput -join "`n"
 } finally {
@@ -103,6 +106,7 @@ try {
 	} else {
 		$env:WINTOSH_FORCE_EAGER_BIND = $priorEager
 	}
+	Remove-Item -LiteralPath $fileMmapPath -Force -ErrorAction SilentlyContinue
 }
 if ($exitCode -ne 42) {
 	throw "ARM64 strlen import expected exit 42, got $exitCode; output=$text"
@@ -194,4 +198,8 @@ foreach ($marker in @(
 		throw "ARM64 caller-relative plugin load count mismatch for ${marker}: $objcText"
 	}
 }
-Write-Output 'ARM64_HOST_IMPORT_E2E=PASS IMPORT=_strlen EXIT=42 OBJC=objc_msgSend_scalar_pointer_stack_hfa_indirect_nested_heap_svc'
+Write-Output (
+	'ARM64_HOST_IMPORT_E2E=PASS IMPORT=_strlen EXIT=42 ' +
+	'OBJC=objc_msgSend_scalar_pointer_stack_hfa_indirect_nested_heap_svc ' +
+	'MEMORY=anonymous_mmap_mprotect_munmap_MAP_FIXED_overlap ' +
+	'FILE=open_write_shared_mmap_persist_lseek_read_close')

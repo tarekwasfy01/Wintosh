@@ -3674,6 +3674,48 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 			guest_malloc_allocations.erase(found);
 			return register_guest_malloc(resized, requested_bytes, free_target);
 		};
+		const auto open_guest_file = [&](const A64CpuState& state) {
+			const auto& x = state.x;
+			if (!backend.ContainsGuestCString(x[0], 1u << 20) ||
+				x[1] > std::numeric_limits<std::uint32_t>::max() ||
+				x[2] > std::numeric_limits<std::uint32_t>::max()) {
+				darling::windows_host::DarwinErrno::Set(EINVAL);
+				return std::uint64_t{static_cast<std::uint64_t>(-1)};
+			}
+			const auto descriptor = darling_windows_open(
+				reinterpret_cast<const char*>(static_cast<std::uintptr_t>(x[0])),
+				static_cast<int>(static_cast<std::uint32_t>(x[1])),
+				static_cast<int>(static_cast<std::uint32_t>(x[2])));
+			return static_cast<std::uint64_t>(static_cast<std::int64_t>(descriptor));
+		};
+		const auto close_guest_file = [&](const A64CpuState& state) {
+			const auto descriptor = static_cast<std::int32_t>(state.x[0]);
+			return static_cast<std::uint64_t>(static_cast<std::int64_t>(
+				darling_windows_close(descriptor)));
+		};
+		const auto seek_guest_file = [&](const A64CpuState& state) {
+			if (state.x[2] > std::numeric_limits<std::uint32_t>::max()) {
+				darling::windows_host::DarwinErrno::Set(EINVAL);
+				return std::uint64_t{static_cast<std::uint64_t>(-1)};
+			}
+			const auto position = darling_windows_lseek(
+				static_cast<std::int32_t>(state.x[0]),
+				static_cast<std::int64_t>(state.x[1]),
+				static_cast<int>(static_cast<std::uint32_t>(state.x[2])));
+			return static_cast<std::uint64_t>(position);
+		};
+		const auto read_guest_file = [&](const A64CpuState& state) {
+			const auto& x = state.x;
+			if (x[2] > (1u << 20) || x[2] > std::numeric_limits<std::size_t>::max() ||
+				!backend.ContainsGuestRange(x[1], static_cast<std::size_t>(x[2]), true)) {
+				darling::windows_host::DarwinErrno::Set(EFAULT);
+				return std::uint64_t{static_cast<std::uint64_t>(-1)};
+			}
+			const auto result = darling_windows_read(static_cast<std::int32_t>(x[0]),
+				reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[1])),
+				static_cast<std::size_t>(x[2]));
+			return static_cast<std::uint64_t>(static_cast<std::int64_t>(result));
+		};
 		const auto map_guest_memory = [&](const A64CpuState& state) {
 			const auto& x = state.x;
 			if (x[1] == 0 || x[1] > std::numeric_limits<std::size_t>::max() ||
@@ -3841,6 +3883,17 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 				resumed.x[0] = static_cast<std::uint64_t>(
 					reinterpret_cast<int (*)(void*)>(imported->target)(
 						reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0]))));
+			} else if (name == "_open" || name == "open" ||
+				name == "_open_nocancel" || name == "open_nocancel") {
+				resumed.x[0] = open_guest_file(trap.state);
+			} else if (name == "_close" || name == "close" ||
+				name == "_close_nocancel" || name == "close_nocancel") {
+				resumed.x[0] = close_guest_file(trap.state);
+			} else if (name == "_lseek" || name == "lseek") {
+				resumed.x[0] = seek_guest_file(trap.state);
+			} else if (name == "_read" || name == "read" ||
+				name == "_read_nocancel" || name == "read_nocancel") {
+				resumed.x[0] = read_guest_file(trap.state);
 			} else if (name == "_mmap" || name == "mmap") {
 				resumed.x[0] = map_guest_memory(trap.state);
 			} else if (name == "_munmap" || name == "munmap") {
@@ -4126,6 +4179,17 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 						cpu.x[0] = static_cast<std::uint64_t>(
 							reinterpret_cast<int (*)(void*)>(imported->target)(
 								reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0]))));
+					} else if (name == "_open" || name == "open" ||
+						name == "_open_nocancel" || name == "open_nocancel") {
+						cpu.x[0] = open_guest_file(result.state);
+					} else if (name == "_close" || name == "close" ||
+						name == "_close_nocancel" || name == "close_nocancel") {
+						cpu.x[0] = close_guest_file(result.state);
+					} else if (name == "_lseek" || name == "lseek") {
+						cpu.x[0] = seek_guest_file(result.state);
+					} else if (name == "_read" || name == "read" ||
+						name == "_read_nocancel" || name == "read_nocancel") {
+						cpu.x[0] = read_guest_file(result.state);
 					} else if (name == "_mmap" || name == "mmap") {
 						cpu.x[0] = map_guest_memory(result.state);
 					} else if (name == "_munmap" || name == "munmap") {

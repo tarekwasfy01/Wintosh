@@ -18,8 +18,14 @@ anonymous private page, writes and reads it, changes it to read-only, unmaps it,
 and verifies that the bridge rejects a second unmap. It also makes a page
 inaccessible and checks that `MAP_FIXED` cannot release a guest region while
 ignoring its current protection. This covers whole mappings owned by the ARM64
-guest bridge; file-backed maps, partial unmaps, and replacing an already mapped
-guest region with `MAP_FIXED` remain unsupported there.
+guest bridge; partial unmaps and replacing an already mapped guest region with
+`MAP_FIXED` remain unsupported there.
+
+The guest fixture also creates a file with `open`, writes seed bytes, maps it
+with `MAP_SHARED`, changes one byte, unmaps it, seeks back, reads the bytes, and
+closes the descriptor. This covers the shared file-backed guest mapping path;
+private copy-on-write mappings and descriptor inheritance from the runner are
+not covered.
 
 The ARM64 Objective-C fixture also verifies class inheritance by invoking a
 class method implemented on its guest superclass.

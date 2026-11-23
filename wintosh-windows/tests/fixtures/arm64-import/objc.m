@@ -18,6 +18,11 @@ extern void *mmap(void *address, unsigned long length, int protection,
 	int flags, int descriptor, long offset);
 extern int mprotect(void *address, unsigned long length, int protection);
 extern int munmap(void *address, unsigned long length);
+extern int open(const char *path, int flags, int mode);
+extern int close(int descriptor);
+extern long lseek(int descriptor, long offset, int whence);
+extern int read(int descriptor, void *buffer, unsigned long length);
+extern int write(int descriptor, const void *buffer, unsigned long length);
 
 typedef long (*WintoshDynamicAnswer)(void);
 typedef long (*WintoshDynamicObjcSend)(id, SEL);
@@ -64,6 +69,44 @@ static long WintoshMappedMemoryRoundTrip(void)
 	if (unmapped != 0) return 40;
 	if (repeated_unmap != -1) return 50;
 	return 1;
+}
+
+static long WintoshFileMappedRoundTrip(const char *path)
+{
+	const int descriptor = open(path, 0x0602, 0600);
+	if (descriptor < 0)
+		return 60;
+	static const char seed[] = "DATA";
+	if (write(descriptor, seed, sizeof(seed) - 1) != sizeof(seed) - 1) {
+		close(descriptor);
+		return 61;
+	}
+	volatile char *memory = (volatile char *)mmap(
+		(void *)0, 4096, 3, 0x0001, descriptor, 0);
+	if (memory == (volatile char *)-1) {
+		close(descriptor);
+		return 62;
+	}
+	if (memory[0] != 'D' || memory[1] != 'A' ||
+		memory[2] != 'T' || memory[3] != 'A') {
+		munmap((void *)memory, 4096);
+		close(descriptor);
+		return 63;
+	}
+	memory[0] = 'M';
+	if (munmap((void *)memory, 4096) != 0) {
+		close(descriptor);
+		return 64;
+	}
+	if (lseek(descriptor, 0, 0) != 0) {
+		close(descriptor);
+		return 65;
+	}
+	char result[4] = {};
+	const int bytes_read = read(descriptor, result, sizeof(result));
+	const int close_result = close(descriptor);
+	return bytes_read == 4 && close_result == 0 && result[0] == 'M' &&
+		result[1] == 'A' && result[2] == 'T' && result[3] == 'A' ? 1 : 66;
 }
 
 __attribute__((used, section("__DATA,__mod_term_func")))
@@ -368,6 +411,11 @@ int main(int argc, char **argv, char **envp)
 	const long mapped_value = WintoshMappedMemoryRoundTrip();
 	if (mapped_value != 1)
 		return (int)(40 + mapped_value);
+	if (argc < 3 || argv[2] == (char *)0)
+		return 70;
+	const long file_mapped_value = WintoshFileMappedRoundTrip(argv[2]);
+	if (file_mapped_value != 1)
+		return (int)(40 + file_mapped_value);
 	return value == 42 && inherited == 42 &&
 		category == 42 && sum == 42 &&
 		incremented == 42.0 &&

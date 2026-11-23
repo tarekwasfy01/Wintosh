@@ -14,6 +14,7 @@
 #include <atomic>
 #include <cstdlib>
 #include <cstring>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <new>
@@ -83,6 +84,7 @@ struct objc_protocol final {
 
 struct darling_objc_image_token final {
 	std::vector<Class> classes;
+	std::vector<std::uintptr_t> guest_class_addresses;
 	std::vector<Protocol> protocols;
 	std::vector<id> constant_strings;
 };
@@ -1946,6 +1948,14 @@ extern "C" std::size_t darling_objc_register_macho_classlist(
 		return 0;
 	const auto count = bytes / sizeof(std::uintptr_t);
 	std::size_t registered = 0;
+	struct GuestClass final {
+		std::uintptr_t address{};
+		std::uintptr_t data{};
+		std::uintptr_t superclass{};
+		std::string name;
+	};
+	std::vector<GuestClass> guest_classes;
+	std::unordered_map<std::uintptr_t, std::size_t> guest_indices;
 	for (std::size_t index = 0; index < count; ++index) {
 		std::uintptr_t class_address = 0;
 		std::memcpy(&class_address,
@@ -1969,45 +1979,79 @@ extern "C" std::size_t darling_objc_register_macho_classlist(
 		const std::size_t name_length = strnlen_s(name, 1024);
 		if (name_length == 0 || name_length == 1024)
 			continue;
-		const std::string class_name(name, name_length);
-		Class cls = objc_getClass(class_name.c_str());
-		const bool is_new_class = cls == nullptr;
-		if (is_new_class) {
-			std::uintptr_t superclass_address = 0;
-			std::memcpy(&superclass_address,
-				reinterpret_cast<const std::uint8_t*>(class_address) +
-					sizeof(std::uintptr_t), sizeof(superclass_address));
-			Class superclass = nullptr;
-			if (superclass_address != 0) {
-				const auto guest_superclass = MachOClasses().find(superclass_address);
-				if (guest_superclass != MachOClasses().end())
-					superclass = guest_superclass->second;
+		GuestClass guest_class;
+		guest_class.address = class_address;
+		guest_class.data = data_address;
+		guest_class.name.assign(name, name_length);
+		std::memcpy(&guest_class.superclass,
+			reinterpret_cast<const std::uint8_t*>(class_address) +
+				sizeof(std::uintptr_t), sizeof(guest_class.superclass));
+		guest_indices[class_address] = guest_classes.size();
+		guest_classes.push_back(std::move(guest_class));
+	}
+	std::vector<std::uint8_t> class_state(guest_classes.size());
+	std::function<Class(std::size_t)> ensure_guest_class = [&](std::size_t index) -> Class {
+		auto& guest_class = guest_classes[index];
+		if (const auto found = MachOClasses().find(guest_class.address);
+			found != MachOClasses().end())
+			return found->second;
+		if (class_state[index] == 1 || class_state[index] == 3)
+			return nullptr;
+		if (class_state[index] == 2)
+			return objc_getClass(guest_class.name.c_str());
+		class_state[index] = 1;
+		Class superclass = nullptr;
+		if (guest_class.superclass != 0) {
+			const auto local_parent = guest_indices.find(guest_class.superclass);
+			if (local_parent != guest_indices.end())
+				superclass = ensure_guest_class(local_parent->second);
+			else {
+				const auto registered_parent = MachOClasses().find(guest_class.superclass);
+				if (registered_parent != MachOClasses().end())
+					superclass = registered_parent->second;
 				else {
-					std::uintptr_t superclass_data = 0;
-					std::memcpy(&superclass_data,
-						reinterpret_cast<const std::uint8_t*>(superclass_address) +
-							sizeof(std::uintptr_t) * 4, sizeof(superclass_data));
-					superclass_data &= ClassDataPointerMask;
-					const char* superclass_name = nullptr;
-					if (superclass_data != 0)
-						std::memcpy(&superclass_name,
-							reinterpret_cast<const std::uint8_t*>(superclass_data) +
-								ClassDataNameOffset, sizeof(superclass_name));
-					if (superclass_name != nullptr &&
-						strnlen_s(superclass_name, 1024) < 1024)
-						superclass = objc_getClass(superclass_name);
+					std::uintptr_t parent_data = 0;
+					std::memcpy(&parent_data,
+						reinterpret_cast<const std::uint8_t*>(guest_class.superclass) +
+							sizeof(std::uintptr_t) * 4, sizeof(parent_data));
+					parent_data &= ClassDataPointerMask;
+					const char* parent_name = nullptr;
+					if (parent_data != 0)
+						std::memcpy(&parent_name,
+							reinterpret_cast<const std::uint8_t*>(parent_data) +
+								ClassDataNameOffset, sizeof(parent_name));
+					if (parent_name != nullptr && strnlen_s(parent_name, 1024) < 1024)
+						superclass = objc_getClass(parent_name);
 				}
 			}
-			cls = objc_allocateClassPair(superclass, class_name.c_str(), 0);
 		}
-		if (cls) {
-			MachOClasses()[class_address] = cls;
-			if (is_new_class) {
-				objc_registerClassPair(cls);
-				if (active_image_token)
-					active_image_token->classes.push_back(cls);
-				++registered;
-			}
+		Class cls = objc_getClass(guest_class.name.c_str());
+		if (cls == nullptr)
+			cls = objc_allocateClassPair(superclass, guest_class.name.c_str(), 0);
+		if (cls == nullptr) {
+			class_state[index] = 3;
+			return nullptr;
+		}
+		if (objc_getClass(guest_class.name.c_str()) == nullptr) {
+			objc_registerClassPair(cls);
+			if (active_image_token)
+				active_image_token->classes.push_back(cls);
+			++registered;
+		}
+		MachOClasses()[guest_class.address] = cls;
+		if (active_image_token)
+			active_image_token->guest_class_addresses.push_back(guest_class.address);
+		class_state[index] = 2;
+		return cls;
+	};
+	for (std::size_t index = 0; index < guest_classes.size(); ++index)
+		(void)ensure_guest_class(index);
+
+	for (const auto& guest_class : guest_classes) {
+		const auto class_address = guest_class.address;
+		const auto data_address = guest_class.data;
+		Class cls = objc_getClass(guest_class.name.c_str());
+		if (cls != nullptr) {
 			std::uintptr_t method_list_address = 0;
 			std::memcpy(&method_list_address,
 					reinterpret_cast<const std::uint8_t*>(data_address) +
@@ -2373,6 +2417,14 @@ extern "C" void darling_objc_unregister_image(darling_objc_image_token* token)
 			if (found != Classes().end() && found->second == cls)
 				Classes().erase(found);
 		}
+	}
+	for (const auto address : token->guest_class_addresses) {
+		const auto mapping = MachOClasses().find(address);
+		if (mapping == MachOClasses().end())
+			continue;
+		const auto registered = Classes().find(mapping->second->name);
+		if (registered == Classes().end() || registered->second != mapping->second)
+			MachOClasses().erase(mapping);
 	}
 	for (Protocol protocol : token->protocols) {
 		if (protocol == nullptr) continue;

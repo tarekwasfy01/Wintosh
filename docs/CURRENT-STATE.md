@@ -32,11 +32,15 @@ updated or removed on resize/free. Nested Darwin syscalls, Mach traps, broader
 import catalog coverage, full framework coverage, and a reproducible Dynarmic
 dependency pin remain open.
 
-The Objective-C class-list registrar now reads each guest `class_t` superclass
-pointer and links it to a previously registered guest class or an existing
-runtime class. The ARM64 fixture verifies inherited class-method lookup from
-`WintoshBase` through `WintoshProbe`. Guest class-list ordering where a
-subclass precedes an unregistered superclass is not yet handled.
+The Objective-C class-list registrar now resolves guest `class_t` records in
+two phases, recursively registering superclass chains before importing method
+and ivar metadata. The ARM64 fixture verifies inherited class-method lookup
+from `WintoshBase` through `WintoshProbe`. Image tokens track guest class
+addresses so unload removes stale mappings while preserving mappings for
+runtime classes that remain referenced by another class. Cyclic or malformed
+class metadata still cannot be recovered. `objc_smoke` also registers
+synthetic Mach-O records with the subclass before the superclass and verifies
+the resulting runtime inheritance chain.
 
 ## Mach broker update, 2026-11-23
 

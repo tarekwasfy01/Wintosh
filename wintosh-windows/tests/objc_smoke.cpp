@@ -934,6 +934,24 @@ int main()
 		std::string(class_getMethodTypeEncoding(objc_getClass("ImageRegisteredClass"),
 			sel_registerName(image_method_name))) != "@@:")
 		return 24;
+	RawClassData reverse_parent_data{};
+	RawClassData reverse_child_data{};
+	reverse_parent_data.name = "ReverseOrderGuestParent";
+	reverse_child_data.name = "ReverseOrderGuestChild";
+	RawClass reverse_parent{};
+	RawClass reverse_child{};
+	reverse_parent.data = reinterpret_cast<std::uintptr_t>(&reverse_parent_data);
+	reverse_child.data = reinterpret_cast<std::uintptr_t>(&reverse_child_data);
+	reverse_child.superclass = reinterpret_cast<std::uintptr_t>(&reverse_parent);
+	const std::uintptr_t reverse_classlist[]{
+		reinterpret_cast<std::uintptr_t>(&reverse_child),
+		reinterpret_cast<std::uintptr_t>(&reverse_parent)};
+	if (darling_objc_register_macho_classlist(reverse_classlist,
+		sizeof(reverse_classlist)) != 2 ||
+		objc_getClass("ReverseOrderGuestParent") == nullptr ||
+		class_getSuperclass(objc_getClass("ReverseOrderGuestChild")) !=
+			objc_getClass("ReverseOrderGuestParent"))
+		return 47;
 	Method image_method_metadata = class_getInstanceMethod(
 		objc_getClass("ImageRegisteredClass"), sel_registerName(image_method_name));
 	if (!image_method_metadata ||

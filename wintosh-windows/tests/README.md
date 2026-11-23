@@ -15,3 +15,6 @@ not a general Objective-C or macOS application test.
 
 The ARM64 Objective-C fixture also verifies class inheritance by invoking a
 class method implemented on its guest superclass.
+
+`objc_smoke` registers synthetic Mach-O class records with the subclass before
+the superclass and checks that the runtime still links the inheritance chain.

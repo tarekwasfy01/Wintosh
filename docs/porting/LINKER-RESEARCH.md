@@ -10,8 +10,9 @@ begrenzter i386-Linker-Prototyp: Er kombiniert `__TEXT,__text` und optionale
 `__TEXT,__cstring` oder `__const`, `__DATA,__data` sowie nullinitialisierte
 `__bss`/`__common`-Bereiche mehrerer `MH_OBJECT`-Dateien und löst begrenzte
 `__IMPORT,__pointers`-Slots über die indirekte Symboltabelle auf. Es verarbeitet
-32-Bit-`GENERIC_RELOC_VANILLA`-Relokationen. Absolute interne Adressen erhalten
-`DYLD_INFO_ONLY`-Rebases für den Laufzeit-Slide.
+32-Bit-`GENERIC_RELOC_VANILLA`-Relokationen und gepaarte gestreute
+`GENERIC_RELOC_SECTDIFF`/`GENERIC_RELOC_LOCAL_SECTDIFF`-Relokationen. Absolute
+interne Adressen erhalten `DYLD_INFO_ONLY`-Rebases für den Laufzeit-Slide.
 
 \[
 \text{Mach-O objects} \xrightarrow{\text{resolve + relocate + rebase}}
@@ -113,8 +114,7 @@ objektübergreifende Datenauflösung, keine Darwin-Dylib-Bindings.
 Die Zerofill-Bytes werden derzeit in den prototypischen
 `__DATA,__data`-Dateibereich zusammengeführt und nicht als separates
 `__bss`-Output-Section-Headerfeld abgebildet. Noch offen sind weitere
-Relokationen wie `SECTDIFF`, Darwin-CRT,
-Systembibliotheken, Host-Imports und Frameworks.
+weitere Relokationen, Darwin-CRT, Systembibliotheken und Frameworks.
 
 ## Nächster Ausbau
 
@@ -157,7 +157,16 @@ Pflicht, bevor Quellcode daraus übernommen wird.
 
 Ein Gast kopierte `ABC` mit `_memcpy`, prüfte das Ergebnis per `_strlen`, las
 `WINTOSH_FIXTURE=42` über `_getenv` und prüfte auch diese Zeichenkette mit
-`_strlen`; der Gast gab **42** zurück. Das Objekt wurde mit `-fno-pic` und
-`-fno-stack-protector` erzeugt, da der Prototyp-Linker die PIC- und
-Stack-Guard-Relocationformen dieses Compileroutputs noch nicht unterstützt.
+`_strlen`; der Gast gab **42** zurück. Die erste Messung nutzte `-fno-pic` und
+`-fno-stack-protector`, weil die damals vorhandene Implementierung die
+Relocationformen dieser Compileroptionen noch nicht unterstützte. Die unten
+dokumentierte spätere PIC-Messung verwendet die erweiterten Relocations.
 Damit sind konkrete Host-Aufrufe belegt, keine allgemeine libc-Kompatibilität.
+
+Die PIC-Variante derselben Probe lief nach Unterstützung gepaarter gestreuter
+`SECTDIFF`- und `LOCAL_SECTDIFF`-Relokationen ebenfalls mit Status **42**. Für
+Targetadresse `A`, Minuendadresse `B` und den im Feld gespeicherten Wert `V`
+bestimmt der Linker den zusätzlichen Addend `C = V - (A - B)` und schreibt
+`A' - B' + C` für die neu platzierten Adressen. Gemeinsamer Slide `δ` kürzt
+sich aus `A' - B'` heraus. LLVM RuntimeDyld verwendet dieselbe Zerlegung in
+[seiner i386 Mach-O-Implementierung](https://llvm.org/docs/doxygen/RuntimeDyldMachOI386_8h_source.html).

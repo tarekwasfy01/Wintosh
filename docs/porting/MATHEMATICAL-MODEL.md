@@ -128,6 +128,7 @@ The separate i386 object-to-image experiment is bounded as follows:
 | Clang i386 objects linked into `MH_EXECUTE` | 1§ |
 | Mach-O object-symbol resolution in supported sections | 1§ |
 | i386 same-section PC-relative relocation preservation | 1§ |
+| i386 paired scattered `SECTDIFF` / `LOCAL_SECTDIFF` relocation | 1§ |
 | Cross-object i386 PC-relative external call | 1§ |
 | i386 `__DATA` global read/write with dyld slide rebase | 1§ |
 | i386 zero-initialized `__common` global read/write | 1§ |
@@ -151,6 +152,10 @@ status 23; `_atexit` ran a `_puts` callback after normal `main` return 3.
 A libc fixture also copied `ABC` with `_memcpy`, checked source and environment
 strings with `_strlen`, read `WINTOSH_FIXTURE=42` through `_getenv`, and
 returned 42. These are host-backed functions, not a complete Darwin libc.
+The same libc guest compiled as PIC also returned 42 after applying paired
+scattered section-difference relocations. For object target `A`, minuend `B`,
+and stored field value `V`, the linker computes `C = V - (A - B)` and writes
+`A' - B' + C` at final placement; a common slide cancels from the difference.
 A common slide `δ` preserves a same-section displacement:
 `(S + δ) - (P + 4 + δ) = S - (P + 4)`. For the measured external Clang
 relocation, the linker combines the stored addend with the resolved symbol

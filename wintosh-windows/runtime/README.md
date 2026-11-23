@@ -37,6 +37,8 @@ loading or missing host APIs. Additional i386 fixtures bound `_malloc`,
 `_exit(23)` terminated with status 23, and a normal-return cleanup callback
 called `_puts` after `main` returned 3. A further i386 guest exercised
 `_memcpy`, `_strlen`, and `_getenv` with `WINTOSH_FIXTURE=42` and returned 42.
+The libc guest also ran when compiled as PIC, using the linker's paired
+scattered i386 section-difference relocation support.
 Apple's [dyld4 design notes](https://github.com/apple-oss-distributions/dyld/blob/main/doc/dyld4.md)
 describe process startup with argc, argv, envp, and Apple parameters on the
 initial stack. That current description does not establish compatibility with

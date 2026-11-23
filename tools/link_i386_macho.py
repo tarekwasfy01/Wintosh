@@ -4,8 +4,9 @@
 This bring-up linker handles one __TEXT,__text, optional __TEXT,__cstring or
 __const, initialized/zero-fill __DATA, and indirect pointer section per object.
 Const bytes are emitted in a read-only __TEXT,__const output section. It
-supports bounded 32-bit GENERIC_RELOC_VANILLA relocations and dyld rebases.
-It does not link a Darwin CRT, dylibs, unwind tables, or other relocation kinds.
+supports bounded 32-bit GENERIC_RELOC_VANILLA and paired scattered
+GENERIC_RELOC_SECTDIFF/LOCAL_SECTDIFF relocations, plus dyld rebases. It does
+not link a Darwin CRT, dylibs, unwind tables, or other relocation kinds.
 """
 
 from __future__ import annotations
@@ -34,6 +35,9 @@ N_UNDF = 0x00
 N_SECT = 0x0E
 N_EXT = 0x01
 GENERIC_RELOC_VANILLA = 0
+GENERIC_RELOC_PAIR = 1
+GENERIC_RELOC_SECTDIFF = 2
+GENERIC_RELOC_LOCAL_SECTDIFF = 4
 PAGE_SIZE = 0x1000
 TEXT_FILE_OFFSET = 0x200
 DATA_FILE_OFFSET = PAGE_SIZE
@@ -56,6 +60,9 @@ class Relocation:
     external_symbol: str | None
     target_kind: str | None
     pc_relative: bool
+    target_offset: int = 0
+    minuend_kind: str | None = None
+    minuend_offset: int = 0
 
 
 @dataclass(frozen=True)
@@ -250,16 +257,55 @@ def parse_object(path: Path, data: bytes) -> MachObject:
         if is_zerofill and nreloc:
             raise FormatError(f"{path}: relocations in zerofill sections are unsupported")
         relocation_sites: set[int] = set()
-        for reloc_index in range(nreloc):
-            address, info = struct.unpack_from("<iI", data, reloff + reloc_index * 8)
-            scattered = (address & 0x80000000) != 0
+        reloc_index = 0
+        while reloc_index < nreloc:
+            word0, word1 = struct.unpack_from("<II", data, reloff + reloc_index * 8)
+            scattered = (word0 & 0x80000000) != 0
+            if scattered:
+                address = word0 & 0x00FFFFFF
+                pcrel = (word0 >> 30) & 1
+                length = (word0 >> 28) & 3
+                reloc_type = (word0 >> 24) & 0xF
+                info = 0
+            else:
+                address = struct.unpack_from("<i", data, reloff + reloc_index * 8)[0]
+                info = word1
+                pcrel = (info >> 24) & 1
+                length = (info >> 25) & 3
+                reloc_type = (info >> 28) & 0xF
             symbolnum = info & 0x00FFFFFF
-            pcrel = (info >> 24) & 1
-            length = (info >> 25) & 3
             external = (info >> 27) & 1
-            reloc_type = (info >> 28) & 0xF
-            if (scattered or address < 0 or address + 4 > source_size or
-                    length != 2 or reloc_type != GENERIC_RELOC_VANILLA):
+            if address + 4 > source_size or length != 2:
+                raise FormatError(f"{path}: unsupported __{source_kind} relocation at {address:#x}")
+            if scattered and reloc_type in (GENERIC_RELOC_SECTDIFF, GENERIC_RELOC_LOCAL_SECTDIFF):
+                if reloc_index + 1 >= nreloc:
+                    raise FormatError(f"{path}: section-difference relocation is missing its pair")
+                pair_word0, pair_value = struct.unpack_from("<II", data, reloff + (reloc_index + 1) * 8)
+                pair_scattered = (pair_word0 & 0x80000000) != 0
+                pair_type = (pair_word0 >> 24) & 0xF
+                pair_length = (pair_word0 >> 28) & 3
+                if not pair_scattered or pair_type != GENERIC_RELOC_PAIR or pair_length != 2:
+                    raise FormatError(f"{path}: malformed section-difference relocation pair")
+
+                def section_address(value: int) -> tuple[str, int]:
+                    for _ordinal, record in input_sections.items():
+                        kind, _off, size, vm_address, _align, _ro, _nr, _reserved, _zero = record
+                        if vm_address <= value < vm_address + size:
+                            return kind, value - vm_address
+                    raise FormatError(f"{path}: scattered relocation address {value:#x} is outside supported sections")
+
+                target_kind, target_offset = section_address(word1)
+                minuend_kind, minuend_offset = section_address(pair_value)
+                if any(site < address + 4 and address < site + 4 for site in relocation_sites):
+                    raise FormatError(f"{path}: overlapping __{source_kind} relocation fields")
+                relocation_sites.add(address)
+                relocations.append(Relocation(
+                    source_kind, address, None, target_kind, False,
+                    target_offset, minuend_kind, minuend_offset,
+                ))
+                reloc_index += 2
+                continue
+            if scattered or reloc_type != GENERIC_RELOC_VANILLA:
                 raise FormatError(f"{path}: unsupported __{source_kind} relocation at {address:#x}")
             if any(site < address + 4 and address < site + 4 for site in relocation_sites):
                 raise FormatError(f"{path}: overlapping __{source_kind} relocation fields")
@@ -280,6 +326,7 @@ def parse_object(path: Path, data: bytes) -> MachObject:
                 if not pcrel and (target_record[2] == 0):
                     raise FormatError(f"{path}: absolute relocation targets an empty section")
                 relocations.append(Relocation(source_kind, address, None, target_kind, bool(pcrel)))
+            reloc_index += 1
 
     def make_section(record: tuple[str, int, int, int, int, int, int, int, bool]) -> ObjectSection:
         kind, offset, size, addr, align_exp, _reloff, _nreloc, _reserved1, is_zerofill = record
@@ -536,7 +583,38 @@ def link_objects(
             source_site = source_file_base + relocation.offset
             source_bytes = const if relocation.source_kind == "const" else data if relocation.source_kind in ("ptr", "bss") else output_sections[relocation.source_kind]
 
-            if relocation.external_symbol is not None:
+            if relocation.minuend_kind is not None:
+                target_kind = relocation.target_kind
+                minuend_kind = relocation.minuend_kind
+                if target_kind is None:
+                    raise FormatError("section-difference relocation has no target section")
+
+                def output_address(kind: str, offset: int) -> int:
+                    base = section_placements[kind][index]
+                    if kind == "bss":
+                        return preferred_vm["data"] + bss_start + base + offset
+                    if kind == "ptr":
+                        return preferred_vm["data"] + pointer_start + base + offset
+                    if kind == "const":
+                        return TEXT_VM_BASE + const_start + base + offset
+                    return preferred_vm[kind] + base + offset
+
+                target_section = getattr(obj, target_kind if target_kind != "ptr" else "pointers")
+                minuend_section = getattr(obj, minuend_kind if minuend_kind != "ptr" else "pointers")
+                if target_section is None or minuend_section is None:
+                    raise FormatError("section-difference relocation references a missing section")
+                old_target = target_section.vm_address + relocation.target_offset
+                old_minuend = minuend_section.vm_address + relocation.minuend_offset
+                field_value = struct.unpack_from("<I", source_bytes, source_site)[0]
+                addend = field_value - (old_target - old_minuend)
+                linked_value = (
+                    output_address(target_kind, relocation.target_offset) -
+                    output_address(minuend_kind, relocation.minuend_offset) + addend
+                )
+                if not -(1 << 31) <= linked_value <= 0xFFFFFFFF:
+                    raise FormatError("section-difference relocation overflows i386")
+                struct.pack_into("<I", source_bytes, source_site, linked_value & 0xFFFFFFFF)
+            elif relocation.external_symbol is not None:
                 target = definitions.get(relocation.external_symbol)
                 if target is None:
                     if not relocation.pc_relative or relocation.external_symbol not in stub_offsets:

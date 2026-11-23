@@ -2450,7 +2450,8 @@ path, not general CRT constructor/terminator behavior.
 
 A further i386 guest copied `ABC` with `_memcpy`, checked the copied string with
 `_strlen`, read `WINTOSH_FIXTURE=42` through `_getenv`, and checked that value
-with `_strlen`; it returned **42**. The fixture was compiled with `-fno-pic`
-and `-fno-stack-protector` because the prototype linker does not yet support
-the emitted PIC and stack-guard relocation forms. This verifies those host-bound
-libc calls for one guest, not complete libc semantics.
+with `_strlen`; it returned **42**. The first measurement used `-fno-pic` and
+`-fno-stack-protector` while the linker lacked paired scattered section-
+difference relocations. After those relocation forms were implemented, the PIC
+build of the guest also linked and returned **42**. This verifies these
+host-bound libc calls for one guest, not complete libc semantics.

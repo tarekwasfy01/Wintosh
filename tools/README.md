@@ -41,7 +41,9 @@ little-endian i386 `MH_OBJECT` files. It combines each input's `__TEXT,__text`,
 one optional `__TEXT,__cstring` or `__const`, and optional `__DATA,__data` and
 zerofill sections, resolves external
 definitions between those sections, and supports 32-bit
-`GENERIC_RELOC_VANILLA` PC-relative and absolute references. Zerofill and
+`GENERIC_RELOC_VANILLA` PC-relative and absolute references plus paired
+scattered `GENERIC_RELOC_SECTDIFF` and `GENERIC_RELOC_LOCAL_SECTDIFF` fields
+used by PIC code. Zerofill and
 `__common` storage are placed in the zero-initialized data segment; absolute
 pointers receive dyld type-2 rebases for the image slide. It resolves bounded
 `__IMPORT,__pointers` slots against supplied objects and emits local function
@@ -59,7 +61,8 @@ Host-bound `_puts` and `_printf` calls also ran; the formatted guest returned
 with status 23, and `_atexit` ran a cleanup callback that called `_puts` after
 `main` returned 3. A libc guest also copied `ABC` with `_memcpy`, checked
 string lengths, read `WINTOSH_FIXTURE=42` through `_getenv`, and returned 42.
-These are host exports, not a complete libSystem.
+The same fixture compiled as PIC returned 42 as well. These are host exports,
+not a complete libSystem.
 See
 [LINKER-RESEARCH.md](../docs/porting/LINKER-RESEARCH.md) for the exact contract.
 

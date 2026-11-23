@@ -120,6 +120,23 @@ applications, dynamic imports, chained fixups, Darwin-start, or frameworks.
 `1‡` records a separate hand-built i386 image that entered through the Darwin
 initial stack, resolved one `_exit` bind, and exited with code 42. It does not
 cover compiler CRT startup or app dependencies.
+
+The separate i386 object-to-image experiment is bounded as follows:
+
+| Build transition | Windows Win32 |
+|---|---:|
+| Clang i386 Mach-O `__text` section packaged as `MH_EXECUTE` | 1§ |
+| Mach-O object-symbol resolution | 0 |
+| i386 text-relocation linking | 0 |
+| Compiler-produced image started by Wintosh | 1§ |
+
+`1§` is one Clang-produced C object with a defined `_main`, no undefined
+external symbols, and no `__text` relocations. The packer emits one executable
+segment, discards other sections, and does not resolve symbols. `llvm-objdump`
+identified the output as i386 `MH_EXECUTE`; Wintosh returned 42. See
+[LINKER-RESEARCH.md](LINKER-RESEARCH.md) for the exact boundary. This does not
+count as object linking or prove compiler CRT, imports, or frameworks.
+
 The ARM64
 source path now admits matching-architecture ARM64 code and includes a
 Darwin-start transfer, but execution remains `?` because this environment has

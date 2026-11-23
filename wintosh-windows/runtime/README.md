@@ -15,6 +15,10 @@ compatibility. A separate hand-built i386 image has also entered through the
 Darwin-start stack, resolved `_exit` through `LC_DYLD_INFO_ONLY`, and exited
 with code 42. Compiler-generated CRT startup, app dependencies, and framework
 behavior remain unverified.
+The `tools/pack_i386_macho.py` prototype can package one Clang-produced,
+relocation-free i386 `__text` section as `MH_EXECUTE`; that output ran through
+the Win32 runner and returned 42. It drops non-text sections and performs no
+symbol resolution, so it is not evidence of general compiler-output linking.
 Apple's [dyld4 design notes](https://github.com/apple-oss-distributions/dyld/blob/main/doc/dyld4.md)
 describe process startup with argc, argv, envp, and Apple parameters on the
 initial stack. That current description does not establish compatibility with

@@ -761,6 +761,18 @@ Windows ARM64 reads the CGRect and view from the Darwin variadic stack and
 returns the four-double rectangle through the HFA result registers. Both local
 Release builds compile and link; a guest fixture has not exercised this ABI.
 
+### NSView size conversion (2026-11-23)
+
+`convertSize:toView:` and `convertSize:fromView:` now convert the size vector
+through the composed axis scales and flipped-axis signs, omit translations, and
+return positive width and height. Nil endpoints use the window coordinate
+system. x86_64 dispatch reads the `CGSize` doubles from XMM registers and the
+other view from a GP register; Windows ARM64 reads both arguments from its
+Darwin variadic stack and returns the two-double HFA. Apple documents these
+selectors as same-window conversions with nil mapping to window coordinates.
+The local Clang x64 Release runner and Windows ARM64 host archive builds both
+succeed; no guest fixture verifies the calls.
+
 `NSView.autoresizingMask` and `setAutoresizingMask:` now store the six flexible
 margin/size bits and keyed view decoding restores `NSAutoresizingMask`. Changes
 to a parent bounds size distribute the delta proportionally among a child's

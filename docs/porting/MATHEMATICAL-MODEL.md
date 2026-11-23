@@ -255,6 +255,17 @@ map all four corners with the point transform and form their axis-aligned
 envelope; this preserves the represented region under axis-aligned scales and
 flips. Rotated transforms are outside this model.
 
+`convertSize:toView:` and `convertSize:fromView:` apply only the linear part:
+`qₜ = |Aₜ⁻¹Aₛqₛ|` componentwise. Translation cancels for a vector, and the
+absolute value enforces Cocoa's positive-width/positive-height result even
+when a flipped axis reverses direction. A nil endpoint again uses the window
+identity transform. The value ABI is `CGSize (CGSize, NSView*)`; x86_64 reads
+the two size doubles from XMM registers and the view from a GP register, while
+Windows ARM64 reads the aggregate and object from the Darwin variadic stack and
+returns a two-double HFA. Apple requires both views to belong to the same
+non-nil window and documents the nil endpoint as window coordinates; Wintosh
+returns the input unchanged when its view mapping is invalid.
+
 The Objective-C selector signature has return and argument shape
 `CGRect (CGRect, NSView*)`. On x86_64 Darwin the selected `objc_msgSend_stret`
 path routes the hidden return storage, stack CGRect, and GP-register view

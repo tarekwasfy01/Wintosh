@@ -868,6 +868,17 @@ std::uintptr_t DispatchSysVObjcCall(DarlingSysVObjcCallFrame* input,
 		std::memcpy(frame->xmm_return, &result, sizeof(result));
 		return 0;
 	}
+	if (types == "{CGSize=dd}@:{CGSize=dd}@") {
+		DarlingObjcPoint size{};
+		std::memcpy(&size.x, frame->xmm[0], sizeof(size.x));
+		std::memcpy(&size.y, frame->xmm[1], sizeof(size.y));
+		const id other_view = reinterpret_cast<id>(frame->gp[argument_index]);
+		const DarlingObjcPoint result =
+			InvokeObjcImplementation<DarlingObjcPoint, DarlingObjcPoint, id>(imp,
+				method.guest_abi, receiver, selector, size, other_view);
+		std::memcpy(frame->xmm_return, &result, sizeof(result));
+		return 0;
+	}
 	if (types == "v@:{CGPoint=dd}@") {
 		DarlingObjcPoint point{};
 		std::memcpy(&point.x, frame->xmm[0], sizeof(point.x));
@@ -3941,6 +3952,15 @@ bool DispatchArm64NonIntegerReturn(id receiver, SEL selector, IMP implementation
 		const auto other_view = arguments.template Next<id>();
 		const auto value = reinterpret_cast<DarlingObjcRect (*)(id, SEL,
 			DarlingObjcRect, id)>(implementation)(receiver, selector, rect,
+			other_view);
+		std::memcpy(result.fp, &value, sizeof(value));
+		return true;
+	}
+	if (encoding == "{CGSize=dd}@:{CGSize=dd}@") {
+		const auto size = arguments.template Next<DarlingObjcPoint>();
+		const auto other_view = arguments.template Next<id>();
+		const auto value = reinterpret_cast<DarlingObjcPoint (*)(id, SEL,
+			DarlingObjcPoint, id)>(implementation)(receiver, selector, size,
 			other_view);
 		std::memcpy(result.fp, &value, sizeof(value));
 		return true;

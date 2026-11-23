@@ -15808,6 +15808,38 @@ DarlingObjcPoint NSViewConvertPointFromView(id self, SEL,
 	return point;
 }
 
+DarlingObjcPoint NSViewConvertSizeToView(id self, SEL,
+	DarlingObjcPoint size, id target_view)
+{
+	const ViewCoordinateOrigin source = NSViewOriginInWindow(self);
+	if (!source.valid) return size;
+	const ViewCoordinateOrigin target = target_view == nullptr ?
+		ViewCoordinateOrigin{source.window, 1.0, 1.0, 0.0, 0.0, true} :
+		NSViewOriginInWindow(target_view);
+	if (!target.valid || target.window != source.window ||
+		target.scale_x == 0.0 || target.scale_y == 0.0) return size;
+	size.x = std::abs(source.scale_x * size.x / target.scale_x);
+	size.y = std::abs(source.scale_y * size.y / target.scale_y);
+	if (!std::isfinite(size.x) || !std::isfinite(size.y)) return {};
+	return size;
+}
+
+DarlingObjcPoint NSViewConvertSizeFromView(id self, SEL,
+	DarlingObjcPoint size, id source_view)
+{
+	const ViewCoordinateOrigin target = NSViewOriginInWindow(self);
+	if (!target.valid) return size;
+	const ViewCoordinateOrigin source = source_view == nullptr ?
+		ViewCoordinateOrigin{target.window, 1.0, 1.0, 0.0, 0.0, true} :
+		NSViewOriginInWindow(source_view);
+	if (!source.valid || source.window != target.window ||
+		target.scale_x == 0.0 || target.scale_y == 0.0) return size;
+	size.x = std::abs(source.scale_x * size.x / target.scale_x);
+	size.y = std::abs(source.scale_y * size.y / target.scale_y);
+	if (!std::isfinite(size.x) || !std::isfinite(size.y)) return {};
+	return size;
+}
+
 DarlingObjcRect NSViewConvertRectToView(id self, SEL,
 	DarlingObjcRect rect, id target_view)
 {
@@ -21945,6 +21977,12 @@ void RegisterAppKitClasses()
 		class_addMethod(view, sel_registerName("convertPoint:fromView:"),
 			reinterpret_cast<IMP>(&NSViewConvertPointFromView),
 			"{CGPoint=dd}@:{CGPoint=dd}@");
+		class_addMethod(view, sel_registerName("convertSize:toView:"),
+			reinterpret_cast<IMP>(&NSViewConvertSizeToView),
+			"{CGSize=dd}@:{CGSize=dd}@");
+		class_addMethod(view, sel_registerName("convertSize:fromView:"),
+			reinterpret_cast<IMP>(&NSViewConvertSizeFromView),
+			"{CGSize=dd}@:{CGSize=dd}@");
 		class_addMethod(view, sel_registerName("convertRect:toView:"),
 			reinterpret_cast<IMP>(&NSViewConvertRectToView),
 			"{CGRect={CGPoint=dd}{CGSize=dd}}@:{CGRect={CGPoint=dd}{CGSize=dd}}@");

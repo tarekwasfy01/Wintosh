@@ -490,14 +490,19 @@ supports `-initWithFrame:`, `-frame`, `-setFrame:`, `-frameOrigin`, `-frameSize`
 `-window`, `-superview`, `-subviews`, `-nextResponder`, `-isDescendantOf:`,
 `-isHidden`, `-setHidden:`, and `-isHiddenOrHasHiddenAncestor`,
 `-convertPoint:toView:`, `-convertPoint:fromView:`, `-convertRect:toView:`,
-`-convertRect:fromView:`, `-addSubview:`, and
+`-convertRect:fromView:`, `-convertSize:toView:`, `-convertSize:fromView:`,
+`-addSubview:`, and
 `-removeFromSuperview`. Point conversion composes frame origins and subtracts
 bounds origins, and applies axis-aligned frame-to-bounds scaling for views
-attached to the same window; rectangle conversion maps all four corners and
-returns their axis-aligned bounding rectangle. A nil source or target uses
-window coordinates. The guest ABI dispatches the combined CGRect return,
-CGRect argument, and view-object signature for both rectangle selectors on
-x86_64 and Windows ARM64; no Mach-O guest fixture has verified these calls.
+attached to the same window; size conversion applies its linear scale/flip
+transform and forces positive dimensions, while rectangle conversion maps all
+four corners and returns their axis-aligned bounding rectangle. A nil source or
+target uses window coordinates. The guest ABI dispatches the size-plus-view
+selectors and the combined CGRect return, CGRect argument, and view-object
+signature on x86_64 and Windows ARM64; no Mach-O guest fixture has verified
+these calls. Apple's same-window and nil-to-window contracts are documented
+for [`convertSize:toView:`](https://developer.apple.com/documentation/appkit/nsview/convert%28_%3Ato%3A%29-5nptx?language=objc)
+and [`convertSize:fromView:`](https://developer.apple.com/documentation/appkit/nsview/convert%28_%3Afrom%3A%29-40x0w?language=objc).
 For view `v`, let `S_v = (frame.width/bounds.width,
 frame.height/bounds.height)` and let `F_v` be `isFlipped`; the window coordinate
 system is treated as non-flipped. The x map is

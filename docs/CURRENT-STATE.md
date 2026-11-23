@@ -100,10 +100,11 @@ Opening that same client dylib twice returns one image handle and keeps its
 initializers and Objective-C registrations alive until the second matching
 `dlclose`; the fixture also verifies that the dynamic class disappears after
 the final close. Guest `dlopen` resolves `@rpath` using the active guest
-executable's `LC_RPATH` entries and sends token paths through the Mach-O
-resolver instead of the Windows PE loader. Caller-image-relative lookup for
-`@loader_path` and runtime `@rpath` stacks from a calling plugin remain future
-work.
+executable's `LC_RPATH` entries. ARM64 guest imports also report their guest
+callsite PC to the loader: a provider dylib in a separate directory can load
+and call a plugin with `@loader_path`, then close it. Plugin-local `@rpath`
+context inherited from an ancestor and images whose own initializers call
+`dlopen` before publication remain future work.
 
 ## Mach broker update, 2026-11-23
 

@@ -3722,9 +3722,11 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 			} else if (name == "_dlopen") {
 				if (x[0] != 0 && !backend.ContainsGuestCString(x[0], 1u << 20))
 					throw std::runtime_error("ARM64 nested dlopen import received an invalid path");
+				darling_windows_set_guest_callsite_pc(trap.state.pc);
 				resumed.x[0] = reinterpret_cast<std::uintptr_t (*)(const char*, int)>(
 					imported->target)(reinterpret_cast<const char*>(
 						static_cast<std::uintptr_t>(x[0])), static_cast<int>(x[1]));
+				darling_windows_set_guest_callsite_pc(trap.state.x[30]);
 			} else if (name == "_dlsym") {
 				if (!backend.ContainsGuestCString(x[1], 4096))
 					throw std::runtime_error("ARM64 nested dlsym import received an invalid symbol name");
@@ -3998,9 +4000,11 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 					} else if (name == "_dlopen") {
 						if (x[0] != 0 && !backend.ContainsGuestCString(x[0], 1u << 20))
 							throw std::runtime_error("ARM64 dlopen import received an invalid path");
+						darling_windows_set_guest_callsite_pc(result.state.pc);
 						cpu.x[0] = reinterpret_cast<std::uintptr_t (*)(const char*, int)>(
 							imported->target)(reinterpret_cast<const char*>(
 								static_cast<std::uintptr_t>(x[0])), static_cast<int>(x[1]));
+						darling_windows_set_guest_callsite_pc(result.state.x[30]);
 					} else if (name == "_dlsym") {
 						if (!backend.ContainsGuestCString(x[1], 4096))
 							throw std::runtime_error("ARM64 dlsym import received an invalid symbol name");

@@ -753,6 +753,7 @@ std::unordered_set<void*> dynamic_image_nodelete;
 std::unordered_map<void*, std::size_t> dynamic_image_callback_references;
 std::mutex guest_executable_path_mutex;
 std::wstring current_guest_executable_path;
+thread_local std::wstring current_guest_callsite_image;
 constexpr int kDarwinRtldNoLoad = 0x10;
 constexpr int kDarwinRtldNoDelete = 0x80;
 struct DarwinDyldImageEntry final {
@@ -777,6 +778,12 @@ std::filesystem::path GuestExecutablePath()
 {
 	std::lock_guard lock(guest_executable_path_mutex);
 	return current_guest_executable_path;
+}
+
+std::filesystem::path GuestCallerImagePath()
+{
+	return current_guest_callsite_image.empty() ?
+		GuestExecutablePath() : std::filesystem::path(current_guest_callsite_image);
 }
 
 void InvokeDyldImageCallbacks(
@@ -7954,13 +7961,18 @@ extern "C" void* darling_windows_dlopen(const char* path, int mode)
 	const bool darwin_token_path = path[0] == '@';
 	if (darwin_token_path) {
 		const auto executable_path = GuestExecutablePath();
+		const auto caller_path = GuestCallerImagePath();
 		if (executable_path.empty()) {
 			dynamic_loader_error = "dlopen: Darwin token path has no guest executable context";
 			return nullptr;
 		}
+		if (caller_path.empty()) {
+			dynamic_loader_error = "dlopen: Darwin token path has no guest caller context";
+			return nullptr;
+		}
 		try {
 			image_path = darling::windows_host::DylibResolver::Resolve(
-				executable_path, path, {}, {}, executable_path);
+				caller_path, path, {}, {}, executable_path);
 		} catch (const std::exception& error) {
 			dynamic_loader_error = std::string("dlopen: ") + error.what();
 			return nullptr;
@@ -10003,6 +10015,43 @@ extern "C" void darling_windows_set_guest_executable_path(const wchar_t* path)
 			current_guest_executable_path.end(), L'\\', L'/');
 	} catch (...) {
 		current_guest_executable_path.clear();
+	}
+}
+
+extern "C" void darling_windows_set_guest_callsite_pc(std::uintptr_t pc) noexcept
+{
+	try {
+		if (pc == 0) {
+			current_guest_callsite_image.clear();
+			return;
+		}
+		const void* address = reinterpret_cast<const void*>(pc);
+		std::filesystem::path caller;
+		{
+			std::lock_guard lock(dynamic_image_mutex);
+			for (const auto& [handle, image] : dynamic_images) {
+				(void)handle;
+				if (darling::windows_host::DynamicImageContains(*image, address)) {
+					caller = darling::windows_host::DynamicImagePath(*image);
+					break;
+				}
+				const auto count = darling::windows_host::DynamicImageProviderCount(*image);
+				for (std::uint32_t index = 0; index < count; ++index) {
+					if (darling::windows_host::DynamicImageProviderContains(
+						*image, index, address)) {
+						caller = darling::windows_host::DynamicImageProviderPath(
+							*image, index);
+						break;
+					}
+				}
+				if (!caller.empty()) break;
+			}
+		}
+		if (caller.empty())
+			caller = GuestExecutablePath();
+		current_guest_callsite_image = caller.wstring();
+	} catch (...) {
+		current_guest_callsite_image.clear();
 	}
 }
 

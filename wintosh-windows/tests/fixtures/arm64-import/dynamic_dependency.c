@@ -2,6 +2,9 @@
 
 extern int write(int descriptor, const void *bytes, unsigned long length);
 extern long wintosh_dynamic_nested_dependency_answer(void);
+extern void *dlopen(const char *path, int mode);
+extern void *dlsym(void *handle, const char *symbol);
+extern int dlclose(void *handle);
 
 __attribute__((constructor)) static void WintoshDependencyConstructor(void)
 {
@@ -26,5 +29,13 @@ static void (*WintoshDependencyTerminator)(void) = WintoshDependencyModuleTermin
 
 long wintosh_dynamic_dependency_answer(void)
 {
+	void *plugin = dlopen(
+		"@loader_path/libarm64-dynamic-plugin.dylib", 2);
+	if (plugin == (void *)0)
+		return 0;
+	long (*answer)(void) = (long (*)(void))dlsym(
+		plugin, "wintosh_dynamic_plugin_answer");
+	if (answer == (long (*)(void))0 || answer() != 15 || dlclose(plugin) != 0)
+		return 0;
 	return wintosh_dynamic_nested_dependency_answer() + 15;
 }

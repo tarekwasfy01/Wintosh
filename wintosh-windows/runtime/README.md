@@ -53,8 +53,11 @@ shutdown. This is one small graph, not broad bundle coverage.
 Repeated `dlopen` of the same client returns the existing image handle; its
 initializers run once and its mappings and Objective-C registrations remain
 until the last matching `dlclose`. Guest `dlopen` resolves `@rpath` against
-the active guest executable's `LC_RPATH` entries. Caller-image-relative
-`@loader_path` and plugin-local runpath stacks remain unsupported.
+the active guest executable's `LC_RPATH` entries. ARM64 guest callsites also
+resolve `@loader_path` relative to a loaded provider dylib; the fixture's
+provider lives in a separate directory and loads a plugin from beside itself.
+Plugin-local inherited runpath stacks and `dlopen` from an image initializer
+before image publication remain unsupported.
 
 The Objective-C message dispatcher calls `+initialize` once per class, after
 its superclass has initialized. Reentrant messages from the initializing

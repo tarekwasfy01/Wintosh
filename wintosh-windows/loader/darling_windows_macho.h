@@ -22,7 +22,8 @@ enum class DarwinEntryAbi {
 	// Explicitly synthetic test-fixture ABI: never use for an untrusted real
 	// Mach-O image because MSVC cannot express the System-V calling convention.
 	SyntheticCompatibleMain,
-	// Real x86_64 Darwin main ABI; requires a Clang build with sysv_abi.
+	// Real compatible int(argc, argv, envp) entry. x86_64 requires Clang
+	// sysv_abi; Win32 i386 uses the shared stack-based cdecl convention.
 	CompatibleMain,
 	DarwinStart
 };

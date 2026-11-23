@@ -8,9 +8,11 @@ current parser, dyld graph, relocations, bindings, initializers, and Windows
 page protections have been applied. On an x86_64 Windows build this execution
 path is limited to x86_64 Mach-O images whose entry ABI and imported symbols
 are compatible with the Wintosh bridge.
-The Win32 target now compiles the host library and runner, and supports a
-native i386 startup/entry path at source level. Guest execution has not yet
-been verified with a real i386 Mach-O fixture.
+The Win32 target compiles the host library and runner and has launched a
+hand-built i386 `LC_MAIN` Mach-O with no imports; its compatible `main` returned
+42. This confirms the basic mapping and cdecl entry path, not general app
+compatibility. The i386 Darwin-start path and compiler-produced app execution
+remain unverified.
 Apple's [dyld4 design notes](https://github.com/apple-oss-distributions/dyld/blob/main/doc/dyld4.md)
 describe process startup with argc, argv, envp, and Apple parameters on the
 initial stack. That current description does not establish compatibility with
@@ -73,8 +75,8 @@ licensed runtime component.
 for a matching-architecture Mach-O whose entrypoint is a Darwin `crt1`/`dyld`
 start routine. The Win32 i386 library and runner build successfully and use a
 MASM trampoline to install argc, argv, envp, and Apple parameters on the guest
-initial stack. A real i386 guest launch remains unverified. The ARM64 path
-requires Clang and remains source/build verified only; an ARM64 runner
+initial stack. The i386 Darwin-start transfer remains unverified. The ARM64
+path requires Clang and remains source/build verified only; an ARM64 runner
 executable and guest runtime have not yet been verified.
 `--startup-abi main` is the real compatible `int(argc, argv, envp)` path and
 requires Clang's System-V ABI support on x86_64. On Win32, Darwin i386 and

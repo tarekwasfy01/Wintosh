@@ -11248,7 +11248,17 @@ std::int64_t NSAlertRunModal(id self, SEL)
 		config.nDefaultButton = buttons.front().nButtonID;
 		config.pszMainIcon = style == 2 ? TD_ERROR_ICON :
 			(style == 0 ? TD_WARNING_ICON : TD_INFORMATION_ICON);
-		result = TaskDialogIndirect(&config, &selected, nullptr, nullptr);
+		// TaskDialogIndirect is not exported by older comctl32 versions. Resolve
+		// it by name so the runtime can load and retain the MessageBox fallback
+		// instead of acquiring a hard import by a version-specific ordinal.
+		using TaskDialogIndirectFunction = HRESULT (WINAPI*)(
+			const TASKDIALOGCONFIG*, int*, BOOL*, BOOL*);
+		const HMODULE common_controls = GetModuleHandleW(L"comctl32.dll");
+		const auto task_dialog = common_controls == nullptr ? nullptr :
+			reinterpret_cast<TaskDialogIndirectFunction>(GetProcAddress(
+				common_controls, "TaskDialogIndirect"));
+		result = task_dialog == nullptr ? E_NOTIMPL :
+			task_dialog(&config, &selected, nullptr, nullptr);
 	}
 	if (FAILED(result)) {
 		UINT flags = MB_OK;

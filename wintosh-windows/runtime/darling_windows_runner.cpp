@@ -473,7 +473,7 @@ int wmain(int argc, wchar_t** argv)
 			}
 			return 0;
 		}
-		#if !defined(__clang__)
+		#if !defined(__clang__) && !defined(_M_IX86)
 		if (options.entry_abi != darling::windows_host::DarwinEntryAbi::SyntheticCompatibleMain) {
 			std::cerr << "DARLING_RUNNER_ERROR=real Mach-O execution requires a Clang build with the native guest ABI bridge\n";
 			return 1;

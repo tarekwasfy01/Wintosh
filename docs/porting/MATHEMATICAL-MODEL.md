@@ -103,7 +103,7 @@ the stage is not demonstrated on that host:
 | x86_64 real entry execution | 1* | 0 | 0 |
 | i386 parse, map, relocation subset | 1 | 1 | 1 |
 | i386 entry path (source + host build) | 0 | 0 | 1 |
-| i386 guest execution verified at runtime | 0 | 0 | ? |
+| i386 guest execution verified at runtime | 0 | 0 | 1† |
 | arm64 parse, map, relocation subset | 1 | 1 | 0 |
 | arm64 execution | 0 | ? | 0 |
 
@@ -112,7 +112,11 @@ general and segment registers to the host `CONTEXT` for `thread_get_state` and
 `thread_set_state`. Other i386 state flavors remain unsupported. The field
 order and flavor numbers follow Apple's [XNU i386 thread-state definitions](https://github.com/apple-oss-distributions/xnu/blob/main/osfmk/mach/i386/thread_status.h).
 
-`1*` on x64 is limited to Clang builds with the SysV entry bridge. The ARM64
+`1*` on x64 is limited to Clang builds with the SysV entry bridge. `1†` on
+Win32 records a hand-built 32-bit `LC_MAIN` Mach-O with no imports; its entry
+returned 42 through the cdecl path. It does not cover compiler-produced
+applications, dynamic imports, chained fixups, Darwin-start, or frameworks.
+The ARM64
 source path now admits matching-architecture ARM64 code and includes a
 Darwin-start transfer, but execution remains `?` because this environment has
 not produced an ARM64 runner or executed an ARM64 guest. The Win32 target now

@@ -946,12 +946,24 @@ int main()
 	const std::uintptr_t reverse_classlist[]{
 		reinterpret_cast<std::uintptr_t>(&reverse_child),
 		reinterpret_cast<std::uintptr_t>(&reverse_parent)};
-	if (darling_objc_register_macho_classlist(reverse_classlist,
-		sizeof(reverse_classlist)) != 2 ||
-		objc_getClass("ReverseOrderGuestParent") == nullptr ||
-		class_getSuperclass(objc_getClass("ReverseOrderGuestChild")) !=
-			objc_getClass("ReverseOrderGuestParent"))
+	auto* reverse_image = darling_objc_begin_image_registration();
+	if (reverse_image == nullptr)
 		return 47;
+	const auto reverse_registered = darling_objc_register_macho_classlist(
+		reverse_classlist, sizeof(reverse_classlist));
+	const Class reverse_parent_class = objc_getClass("ReverseOrderGuestParent");
+	const Class reverse_child_class = objc_getClass("ReverseOrderGuestChild");
+	darling_objc_end_image_registration(reverse_image);
+	if (reverse_registered != 2 || reverse_parent_class == nullptr ||
+		reverse_child_class == nullptr ||
+		class_getSuperclass(reverse_child_class) != reverse_parent_class) {
+		darling_objc_unregister_image(reverse_image);
+		return 47;
+	}
+	darling_objc_unregister_image(reverse_image);
+	if (objc_getClass("ReverseOrderGuestParent") != nullptr ||
+		objc_getClass("ReverseOrderGuestChild") != nullptr)
+		return 48;
 	Method image_method_metadata = class_getInstanceMethod(
 		objc_getClass("ImageRegisteredClass"), sel_registerName(image_method_name));
 	if (!image_method_metadata ||

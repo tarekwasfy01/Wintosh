@@ -36,11 +36,13 @@ The Objective-C class-list registrar now resolves guest `class_t` records in
 two phases, recursively registering superclass chains before importing method
 and ivar metadata. The ARM64 fixture verifies inherited class-method lookup
 from `WintoshBase` through `WintoshProbe`. Image tokens track guest class
-addresses so unload removes stale mappings while preserving mappings for
-runtime classes that remain referenced by another class. Cyclic or malformed
-class metadata still cannot be recovered. `objc_smoke` also registers
-synthetic Mach-O records with the subclass before the superclass and verifies
-the resulting runtime inheritance chain.
+addresses so unload removes stale mappings. Unregistration computes the full
+superclass closure for classes retained by external subclasses, and removes an
+image's otherwise unreferenced parent and child classes together. `objc_smoke`
+registers synthetic Mach-O records with the subclass before the superclass,
+verifies the inheritance chain, then unloads the image and checks that both
+registrations disappear. Cyclic or malformed class metadata still cannot be
+recovered.
 
 ## Mach broker update, 2026-11-23
 

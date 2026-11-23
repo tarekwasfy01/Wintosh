@@ -2403,20 +2403,36 @@ extern "C" void darling_objc_unregister_image(darling_objc_image_token* token)
 	std::lock_guard lock(RuntimeMutex());
 	for (id object : token->constant_strings)
 		ConstantStrings().erase(object);
+	const std::unordered_set<Class> image_classes(token->classes.begin(),
+		token->classes.end());
+	std::unordered_set<Class> retained_classes;
 	for (Class cls : token->classes) {
 		if (cls == nullptr) continue;
-		bool referenced = false;
 		for (const auto& entry : Classes()) {
-			if (entry.second != cls && entry.second->superclass == cls) {
-				referenced = true;
+			if (!image_classes.contains(entry.second) &&
+				entry.second->superclass == cls) {
+				retained_classes.insert(cls);
 				break;
 			}
 		}
-		if (!referenced) {
-			auto found = Classes().find(cls->name);
-			if (found != Classes().end() && found->second == cls)
-				Classes().erase(found);
+	}
+	// A retained subclass still needs every superclass it inherited from in
+	// this image. Compute that transitive closure before removing registrations.
+	bool added_superclass = true;
+	while (added_superclass) {
+		added_superclass = false;
+		for (Class cls : std::vector<Class>(retained_classes.begin(),
+			retained_classes.end())) {
+			if (cls->superclass && image_classes.contains(cls->superclass) &&
+				retained_classes.insert(cls->superclass).second)
+				added_superclass = true;
 		}
+	}
+	for (Class cls : token->classes) {
+		if (cls == nullptr || retained_classes.contains(cls)) continue;
+		auto found = Classes().find(cls->name);
+		if (found != Classes().end() && found->second == cls)
+			Classes().erase(found);
 	}
 	for (const auto address : token->guest_class_addresses) {
 		const auto mapping = MachOClasses().find(address);

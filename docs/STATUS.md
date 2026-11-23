@@ -2202,3 +2202,13 @@ overflow before storing actions. The existing per-action VM/file segment
 bounds checks still validate the resulting addresses when fixups are applied.
 The x64 executable and ARM64 host library compile; no malformed Mach-O fixture
 has exercised the new overflow rejection paths.
+
+### Classic 32-bit absolute text rebases (2026-11-23)
+
+The classic rebase applier now supports `REBASE_TYPE_TEXT_ABSOLUTE32`: it reads
+and writes a 32-bit target, adds the image slide with explicit range checks,
+and temporarily changes protection while restoring the segment's original
+protection afterward. `REBASE_TYPE_TEXT_PCREL32` remains rejected because the
+classic dyld implementation does not define an apply operation for it. The x64
+executable and ARM64 host library compile; no Mach-O fixture exercised this
+fixup path.

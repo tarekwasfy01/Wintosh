@@ -2300,21 +2300,42 @@ void MachOImage::ApplyRebaseActions(const Mapping& mapping) const
 {
 	RequireNativeExecution(*this);
 	for (const auto& action : m_rebase_actions) {
-		if (action.type != 1 || action.segment_index >= m_segments.size()) {
+		if ((action.type != 1 && action.type != 2) ||
+			action.segment_index >= m_segments.size()) {
 			throw std::runtime_error("unsupported Mach-O dyld rebase action");
 		}
 		const auto& segment = m_segments[action.segment_index];
+		const auto width = action.type == 2 ? sizeof(std::uint32_t) :
+			sizeof(std::uintptr_t);
 		if (action.segment_offset > segment.vm_size ||
-			segment.vm_size - action.segment_offset < sizeof(std::uintptr_t)) {
+			segment.vm_size - action.segment_offset < width) {
 			throw std::out_of_range("Mach-O dyld rebase offset is outside its segment");
 		}
 		const auto vm_address = segment.vm_address + action.segment_offset;
 		const auto host_address = static_cast<std::uintptr_t>(
 			static_cast<std::intptr_t>(vm_address) + mapping.Slide());
-		const auto old_value = *reinterpret_cast<const std::uintptr_t*>(host_address);
-		const auto rebased_value = static_cast<std::uintptr_t>(
-			static_cast<std::intptr_t>(old_value) + mapping.Slide());
-		ApplyAbsolute64(mapping, vm_address, rebased_value);
+		if (action.type == 2) {
+			std::uint32_t old_value = 0;
+			std::memcpy(&old_value, reinterpret_cast<const void*>(host_address),
+				sizeof(old_value));
+			const auto slide = mapping.Slide();
+			if (slide < -static_cast<std::intptr_t>(old_value) ||
+				slide > static_cast<std::intptr_t>(
+					std::numeric_limits<std::uint32_t>::max() - old_value)) {
+				throw std::overflow_error("Mach-O 32-bit absolute rebase is out of range");
+			}
+			const auto rebased_value = static_cast<std::uint32_t>(
+				static_cast<std::intptr_t>(old_value) + slide);
+			ApplyAbsolute32(mapping, vm_address,
+				static_cast<std::uintptr_t>(rebased_value));
+		} else {
+			std::uintptr_t old_value = 0;
+			std::memcpy(&old_value, reinterpret_cast<const void*>(host_address),
+				sizeof(old_value));
+			const auto rebased_value = static_cast<std::uintptr_t>(
+				static_cast<std::intptr_t>(old_value) + mapping.Slide());
+			ApplyAbsolute64(mapping, vm_address, rebased_value);
+		}
 	}
 }
 

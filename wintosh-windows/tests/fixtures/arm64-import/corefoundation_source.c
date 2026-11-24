@@ -63,6 +63,10 @@ extern CFTypeRef CFNumberCreate(const void *, CFNumberType, const void *);
 extern unsigned char CFNumberGetValue(CFTypeRef, CFNumberType, void *);
 extern unsigned char CFNumberIsFloatType(CFTypeRef);
 extern long CFNumberCompare(CFTypeRef, CFTypeRef, const void *);
+extern CFTypeRef CFDateCreate(const void *, double);
+extern double CFDateGetAbsoluteTime(CFTypeRef);
+extern long CFDateCompare(CFTypeRef, CFTypeRef, const void *);
+extern double CFDateGetTimeIntervalSinceDate(CFTypeRef, CFTypeRef);
 extern CFTypeRef CFArrayCreate(const void *, const void *const *, CFIndex,
 	const CFArrayCallBacks *);
 extern CFTypeRef CFArrayCreateMutable(const void *, CFIndex,
@@ -297,6 +301,15 @@ static void source_perform(void *info)
 
 int main(void)
 {
+	CFTypeRef laterDate = CFDateCreate(0, 123.25);
+	CFTypeRef earlierDate = CFDateCreate(0, 120.0);
+	const double dateDelta = CFDateGetTimeIntervalSinceDate(laterDate, earlierDate);
+	if (laterDate == 0 || earlierDate == 0 ||
+		CFDateGetAbsoluteTime(laterDate) != 123.25 ||
+		CFDateCompare(laterDate, earlierDate, 0) <= 0 ||
+		dateDelta < 3.249 || dateDelta > 3.251) return 60;
+	CFRelease(laterDate);
+	CFRelease(earlierDate);
 	int integerValue = 40;
 	double realValue = 40.5;
 	CFTypeRef integerNumber = CFNumberCreate(0, 9, &integerValue);

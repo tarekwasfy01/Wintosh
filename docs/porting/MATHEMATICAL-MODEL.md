@@ -970,6 +970,13 @@ checks signed-integer-to-64-bit extraction, integer/real classification, and
 cross-representation ordering. Numeric values remain canonicalized to signed
 64-bit integers or doubles in the host object model.
 
+The ARM64 `CFDate` bridge reads `CFDateCreate`'s `double` argument from `v0`
+and returns absolute-time and interval results through `v0`; object handles and
+comparison results use `x0`. Dates are scalar points `t∈ℝ` on Darwin's
+reference-time axis. `compare(t₁,t₂)=sign(t₁-t₂)` and
+`interval(t₁,t₂)=t₁-t₂`; the ARM64 fixture checks both identities with distinct
+fractional values so accidental integer-register transport is observable.
+
 For dictionary collection semantics the supported callback matrix is explicit:
 
 | Key callbacks | Value callbacks | Wintosh behavior |

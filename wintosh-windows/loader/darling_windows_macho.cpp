@@ -164,6 +164,39 @@ bool DispatchArm64CoreFoundationRunLoopImport(const std::string& name,
 			reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[2]))));
 		return true;
 	}
+	if (name == "_CFDateCreate") {
+		double absolute_time{};
+		std::memcpy(&absolute_time, &state.v[0], sizeof(absolute_time));
+		using Call = darling_windows_CFDateRef (DARLING_CF_GUEST_ABI *)(
+			const void*, double);
+		resumed_state.x[0] = reinterpret_cast<std::uintptr_t>(reinterpret_cast<Call>(target)(
+			reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[0])),
+			absolute_time));
+		return true;
+	}
+	if (name == "_CFDateGetAbsoluteTime") {
+		using Call = double (DARLING_CF_GUEST_ABI *)(darling_windows_CFDateRef);
+		set_double_return(reinterpret_cast<Call>(target)(reinterpret_cast<void*>(
+			static_cast<std::uintptr_t>(x[0]))));
+		return true;
+	}
+	if (name == "_CFDateCompare") {
+		using Call = std::intptr_t (DARLING_CF_GUEST_ABI *)(darling_windows_CFDateRef,
+			darling_windows_CFDateRef, const void*);
+		resumed_state.x[0] = static_cast<std::uint64_t>(reinterpret_cast<Call>(target)(
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0])),
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[1])),
+			reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[2]))));
+		return true;
+	}
+	if (name == "_CFDateGetTimeIntervalSinceDate") {
+		using Call = double (DARLING_CF_GUEST_ABI *)(darling_windows_CFDateRef,
+			darling_windows_CFDateRef);
+		set_double_return(reinterpret_cast<Call>(target)(
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0])),
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[1]))));
+		return true;
+	}
 	if (name == "_CFRunLoopGetCurrent" || name == "_CFRunLoopGetMain") {
 		using Call = darling_windows_CFRunLoopRef (DARLING_CF_GUEST_ABI *)();
 		resumed_state.x[0] = reinterpret_cast<std::uintptr_t>(

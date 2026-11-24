@@ -1067,3 +1067,8 @@ double in `v0`. The fixture writes distinct fractional values and reads them
 back, so the test checks the FP argument and result paths instead of only the
 integer register bridge. Timer creation continues to map `fireDate`/`interval`
 to `v0`/`v1` while `flags`, `order`, `callout`, and `context` use `x1`–`x4`.
+
+Timer and observer scalar accessors use `x0` for their object and return
+validity/repeat bytes, activity masks, or signed order through `x0`. Guest
+fixtures verify initial properties and the one-shot lifecycle transition:
+both timer and non-repeating observer become invalid after their callback.

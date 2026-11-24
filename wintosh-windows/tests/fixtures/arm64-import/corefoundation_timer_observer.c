@@ -28,10 +28,17 @@ extern void CFRunLoopTimerSetNextFireDate(CFRunLoopTimerRef, double);
 extern double CFRunLoopTimerGetTolerance(CFRunLoopTimerRef);
 extern void CFRunLoopTimerSetTolerance(CFRunLoopTimerRef, double);
 extern double CFRunLoopTimerGetInterval(CFRunLoopTimerRef);
+extern unsigned char CFRunLoopTimerDoesRepeat(CFRunLoopTimerRef);
+extern CFIndex CFRunLoopTimerGetOrder(CFRunLoopTimerRef);
+extern unsigned char CFRunLoopTimerIsValid(CFRunLoopTimerRef);
 extern double CFRunLoopGetNextTimerFireDate(CFRunLoopRef, CFStringRef);
 extern CFRunLoopObserverRef CFRunLoopObserverCreate(const void *, CFOptionFlags,
 	unsigned char, CFIndex, void (*)(CFRunLoopObserverRef, CFOptionFlags, void *),
 	const Context *);
+extern CFOptionFlags CFRunLoopObserverGetActivities(CFRunLoopObserverRef);
+extern unsigned char CFRunLoopObserverDoesRepeat(CFRunLoopObserverRef);
+extern CFIndex CFRunLoopObserverGetOrder(CFRunLoopObserverRef);
+extern unsigned char CFRunLoopObserverIsValid(CFRunLoopObserverRef);
 extern void CFRunLoopAddObserver(CFRunLoopRef, CFRunLoopObserverRef, CFStringRef);
 extern void CFRunLoopRemoveObserver(CFRunLoopRef, CFRunLoopObserverRef, CFStringRef);
 extern unsigned char CFRunLoopContainsObserver(CFRunLoopRef,
@@ -102,7 +109,13 @@ int main(void)
 	CFRunLoopTimerSetTolerance(timer, 0.125);
 	if (CFRunLoopTimerGetNextFireDate(timer) != 0.25 ||
 		CFRunLoopTimerGetTolerance(timer) != 0.125 ||
-		CFRunLoopTimerGetInterval(timer) != 0.0) return 26;
+		CFRunLoopTimerGetInterval(timer) != 0.0 ||
+		CFRunLoopTimerDoesRepeat(timer) || CFRunLoopTimerGetOrder(timer) != 0 ||
+		!CFRunLoopTimerIsValid(timer)) return 26;
+	if (CFRunLoopObserverGetActivities(observer) != 1 ||
+		CFRunLoopObserverDoesRepeat(observer) ||
+		CFRunLoopObserverGetOrder(observer) != 0 ||
+		!CFRunLoopObserverIsValid(observer)) return 28;
 	CFRunLoopAddTimer(loop, timer, mode);
 	CFRunLoopAddObserver(loop, observer, mode);
 	if (!CFRunLoopContainsTimer(loop, timer, mode) ||
@@ -112,6 +125,7 @@ int main(void)
 	CFRunLoopPerformBlock(loop, mode, &runLoopBlock);
 	const int result = CFRunLoopRunInMode(mode, 0.01, 0);
 	if (result < 1 || timerCalls != 1 || observerCalls != 1 || blockCalls != 1) return 11;
+	if (CFRunLoopTimerIsValid(timer) || CFRunLoopObserverIsValid(observer)) return 29;
 	CFRunLoopRemoveTimer(loop, timer, mode);
 	CFRunLoopRemoveObserver(loop, observer, mode);
 	if (CFRunLoopContainsTimer(loop, timer, mode) ||

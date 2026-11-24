@@ -17,8 +17,9 @@ then registers a version-0 source, signals it twice, and confirms one guest
 perform callback with the original guest context. It also checks the
 `kCFRunLoopRunHandledSource` result with `returnAfterSource` enabled, plus a
 source order query. A second source checks its context retain/release callbacks
-and `GetContext` pointer round trip. Guest schedule/cancel callbacks, arbitrary
-framework startup, and AppKit events remain uncovered.
+and `GetContext` pointer round trip. The host CoreFoundation smoke covers native
+schedule/cancel callbacks; equivalent callbacks into the guest image remain
+unverified. Arbitrary framework startup and AppKit events remain uncovered.
 
 `arm64_import_e2e.ps1` builds two ARM64 Mach-O guests with Clang/ld64.lld and
 runs them through the optional Dynarmic backend. It covers `_strlen` and

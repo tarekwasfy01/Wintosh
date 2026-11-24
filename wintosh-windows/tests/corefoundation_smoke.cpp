@@ -45,6 +45,41 @@ void DARLING_CF_GUEST_ABI RunLoopObserverCallback(
 	state->activities.push_back(activity);
 	++state->calls;
 }
+struct RunLoopSourceState {
+	int retains{};
+	int releases{};
+	int schedules{};
+	int cancels{};
+	int performs{};
+};
+const void* DARLING_CF_GUEST_ABI RunLoopSourceRetain(const void* info)
+{
+	auto* state = const_cast<RunLoopSourceState*>(
+		static_cast<const RunLoopSourceState*>(info));
+	++state->retains;
+	return info;
+}
+void DARLING_CF_GUEST_ABI RunLoopSourceRelease(const void* info)
+{
+	++const_cast<RunLoopSourceState*>(
+		static_cast<const RunLoopSourceState*>(info))->releases;
+}
+void DARLING_CF_GUEST_ABI RunLoopSourceSchedule(void* info,
+	darling_windows_CFRunLoopRef loop, darling_windows_CFStringRef mode)
+{
+	if (loop != nullptr && mode != nullptr)
+		++static_cast<RunLoopSourceState*>(info)->schedules;
+}
+void DARLING_CF_GUEST_ABI RunLoopSourceCancel(void* info,
+	darling_windows_CFRunLoopRef loop, darling_windows_CFStringRef mode)
+{
+	if (loop != nullptr && mode != nullptr)
+		++static_cast<RunLoopSourceState*>(info)->cancels;
+}
+void DARLING_CF_GUEST_ABI RunLoopSourcePerform(void* info)
+{
+	++static_cast<RunLoopSourceState*>(info)->performs;
+}
 void ArrayApplyCallback(const void* value, void* context)
 {
 	if (value != nullptr) ++*static_cast<int*>(context);
@@ -752,6 +787,26 @@ int main()
 		CFRunLoopTimerInvalidate(cf_timer);
 		darling_windows_CFRelease(cf_timer);
 	}
+	RunLoopSourceState source_callback_state;
+	DarlingCFRunLoopSourceContext source_context{
+		0, &source_callback_state, RunLoopSourceRetain, RunLoopSourceRelease,
+		nullptr, nullptr, nullptr, RunLoopSourceSchedule, RunLoopSourceCancel,
+		RunLoopSourcePerform};
+	auto* callback_source = CFRunLoopSourceCreate(nullptr, 0, &source_context);
+	bool source_callbacks_ok = callback_source != nullptr && timer_mode != nullptr &&
+		source_callback_state.retains == 1;
+	if (source_callbacks_ok) {
+		CFRunLoopAddSource(CFRunLoopGetCurrent(), callback_source, timer_mode);
+		source_callbacks_ok = source_callback_state.schedules == 1 &&
+			CFRunLoopContainsSource(CFRunLoopGetCurrent(), callback_source, timer_mode);
+		CFRunLoopRemoveSource(CFRunLoopGetCurrent(), callback_source, timer_mode);
+		source_callbacks_ok = source_callbacks_ok && source_callback_state.cancels == 1 &&
+			!CFRunLoopContainsSource(CFRunLoopGetCurrent(), callback_source, timer_mode);
+		CFRunLoopSourceInvalidate(callback_source);
+		darling_windows_CFRelease(callback_source);
+		source_callbacks_ok = source_callbacks_ok &&
+			source_callback_state.releases == 1;
+	}
 	constexpr std::uint64_t observer_entry = 1ull << 0;
 	constexpr std::uint64_t observer_before_timers = 1ull << 1;
 	constexpr std::uint64_t observer_before_sources = 1ull << 2;
@@ -839,7 +894,7 @@ int main()
 	if (observer_wait_timer != nullptr) darling_windows_CFRelease(observer_wait_timer);
 	if (timer_mode != nullptr) darling_windows_CFRelease(timer_mode);
 	const bool cf_timer_ok = cf_timer_tolerance_ok && cf_timer_symbols_ok &&
-		cf_timer_fired && cf_observer_ok;
+		cf_timer_fired && cf_observer_ok && source_callbacks_ok;
 	const auto center = darling_windows_CFNotificationCenterGetLocal();
 	const int notification_object = 1;
 	const bool notification_ok = darling_windows_CFNotificationCenterAddObserver(

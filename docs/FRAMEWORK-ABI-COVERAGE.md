@@ -77,7 +77,9 @@ integration remains unverified. It also creates and registers a version-0
 with exact context identity. It requests return-after-source and checks the
 `kCFRunLoopRunHandledSource` result and source order query. A second source
 verifies its context retain/release pair and `GetContext` info/callback-pointer
-round trip. Guest schedule/cancel callback execution remains unverified.
+round trip. The host CoreFoundation smoke checks schedule/cancel callbacks with
+native host function pointers; this does not verify callbacks into a loaded
+Mach-O.
 
 `CFMachPort` exports the type ID, create/create-with-port, run-loop source,
 port/context/validity queries, invalidation, and invalidation-callback accessors.

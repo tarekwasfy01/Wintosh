@@ -186,6 +186,18 @@ void RegisterOwnedAnonymousMapping(void* address, std::size_t length)
 	anonymous_mappings.emplace(start, AnonymousMappingSegment{length, address, length});
 }
 
+bool RegisterOwnedAnonymousMappingChecked(void* address, std::size_t length) noexcept
+{
+	try {
+		std::lock_guard lock(anonymous_mapping_mutex);
+		const auto start = reinterpret_cast<std::uintptr_t>(address);
+		return anonymous_mappings.emplace(start,
+			AnonymousMappingSegment{length, address, length}).second;
+	} catch (...) {
+		return false;
+	}
+}
+
 void* DarwinMemory::Mmap(std::size_t bytes, DarwinMemoryProtection protection)
 {
 	if (bytes == 0 || bytes > std::numeric_limits<SIZE_T>::max()) {
@@ -260,6 +272,12 @@ extern "C" void* darling_windows_mmap_anonymous(void* address, std::size_t lengt
 		}
 		if (replaced_owned_mapping)
 			return address;
+		void* replaced_file_mapping = darling_windows_replace_file_mapping_with_anonymous(
+			address, allocation_length, page_protection);
+		if (replaced_file_mapping == reinterpret_cast<void*>(-1))
+			return replaced_file_mapping;
+		if (replaced_file_mapping != nullptr)
+			return replaced_file_mapping;
 	}
 	void* mapped = VirtualAlloc((flags & map_fixed) != 0 ? address : nullptr,
 		allocation_length, MEM_RESERVE | MEM_COMMIT, page_protection);

@@ -203,8 +203,14 @@ partial `munmap`; this leaves the target interval as an exact placeholder.
 The current implementation only admits a target contained in one tracked,
 placeholder-backed file view. Host and ARM64 guest regression fixtures replace
 the middle page of a three-page view with a different file offset and verify
-both retained neighbors. Cross-allocation, image, anonymous-to-file, and
-multi-view replacements still need separate ownership transactions.
+both retained neighbors. A file-to-anonymous replacement uses the same
+placeholder-preserving split, then replaces the target placeholder with a
+zero-filled private allocation via `VirtualAlloc2(MEM_REPLACE_PLACEHOLDER)`.
+The anonymous allocation is entered into its own host ownership index before
+the guest mapping transaction commits. The host and ARM64 fixtures verify the
+initial zero bytes and retained file neighbors. Anonymous-to-file,
+cross-allocation, image, and multi-view replacements still need separate
+ownership transactions.
 
 Mit Seitengröße `p` und Seitenzahlen `a = ℓ/p`, `m = k/p` und
 `c = (n-ℓ-k)/p` entspricht die Erhaltung der beiden Restbereiche auf dem

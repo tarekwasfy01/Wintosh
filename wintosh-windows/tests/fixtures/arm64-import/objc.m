@@ -153,6 +153,14 @@ static long WintoshFileMappedRoundTrip(const char *path)
 		close(descriptor);
 		return 73;
 	}
+	void *anonymous_replacement = mmap((void *)(memory + 4096), 4096, 3,
+		0x1000 | 0x0002 | 0x0010, -1, 0);
+	if (anonymous_replacement != (void *)(memory + 4096) ||
+		memory[0] != 'M' || memory[4096] != 0 || memory[8192] != 'L') {
+		close(descriptor);
+		return 74;
+	}
+	memory[4096] = 'N';
 	if (munmap((void *)(memory + 4096), 4096) != 0 ||
 		memory[0] != 'M' || memory[8192] != 'L' ||
 		munmap((void *)(memory + 4096), 4096) == 0 ||

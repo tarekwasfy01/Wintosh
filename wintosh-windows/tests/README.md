@@ -35,8 +35,9 @@ subrange of one tracked placeholder-backed file view through partial unmap and
 placeholder replacement. The host smoke replaces the middle page of a
 three-page view with a different file offset and checks both retained neighbors;
 the ARM64 guest fixture repeats the same replacement through its Darwin mmap
-bridge. Cross-allocation, image, and anonymous/file-kind replacements remain
-unsupported.
+bridge. Both paths also replace that file-backed page with zero-filled anonymous
+memory and then unmap it. Anonymous-to-file, cross-allocation, and image
+replacements remain unsupported.
 
 The guest fixture also creates a file with `open`, writes seed bytes, maps it
 with `MAP_SHARED`, changes bytes on both sides of a removed middle page, and

@@ -235,8 +235,20 @@ int main()
 			4096, 3, 0x0001 | 0x0010, split_descriptor, 0);
 		if (fixed_file_middle != shared_split_bytes + 4096 ||
 			shared_split_bytes[0] != 'A' || shared_split_bytes[4096] != 'A' ||
-			shared_split_bytes[8192] != 'C' ||
-			darling_windows_msync(shared_split, split_view_bytes, 16) != 0 ||
+			shared_split_bytes[8192] != 'C') {
+			darling_windows_close(split_descriptor);
+			throw std::runtime_error("fixed file-to-file replacement failed");
+		}
+		void* anonymous_file_middle = darling_windows_mmap(shared_split_bytes + 4096,
+			4096, 3, 0x1000 | 0x0002 | 0x0010, -1, 0);
+		if (anonymous_file_middle != shared_split_bytes + 4096 ||
+			shared_split_bytes[0] != 'A' || shared_split_bytes[4096] != '\0' ||
+			shared_split_bytes[8192] != 'C') {
+			darling_windows_close(split_descriptor);
+			throw std::runtime_error("fixed file-to-anonymous replacement failed");
+		}
+		shared_split_bytes[4096] = 'N';
+		if (darling_windows_msync(shared_split, split_view_bytes, 16) != 0 ||
 			darling_windows_munmap(shared_split_bytes + 4096, 4096) != 0 ||
 			shared_split_bytes[0] != 'A' || shared_split_bytes[8192] != 'C' ||
 			darling_windows_munmap(shared_split_bytes + 4096, 4096) == 0 ||

@@ -34,6 +34,12 @@ public:
 
 extern "C" void* darling_windows_mmap_anonymous(void* address, std::size_t length,
 	int protection, int flags, int descriptor, std::int64_t offset);
+extern "C" void* darling_windows_replace_file_mapping_with_anonymous(
+	void* address, std::size_t length, std::uint32_t protection);
 extern "C" int darling_windows_mprotect(void* address, std::size_t length,
 	int protection);
 extern "C" int darling_windows_munmap_anonymous(void* address, std::size_t length);
+
+namespace darling::windows_host {
+bool RegisterOwnedAnonymousMappingChecked(void* address, std::size_t length) noexcept;
+}

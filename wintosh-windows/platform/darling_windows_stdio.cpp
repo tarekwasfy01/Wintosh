@@ -333,7 +333,7 @@ void* MapFixedPlaceholderFileView(const WindowsPlaceholderApis& apis,
 	return view;
 }
 
-bool CanPartiallyReplaceOwnedPlaceholderFileMapping(void* user_address,
+bool IsOwnedPlaceholderFileMappingRange(void* user_address,
 	std::size_t bytes)
 {
 	const auto requested_start = reinterpret_cast<std::uintptr_t>(user_address);
@@ -348,8 +348,7 @@ bool CanPartiallyReplaceOwnedPlaceholderFileMapping(void* user_address,
 			mapping.bytes > (std::numeric_limits<std::uintptr_t>::max)() - user_start)
 			continue;
 		const auto user_end = user_start + mapping.bytes;
-		if (requested_start >= user_start && requested_end <= user_end &&
-			(requested_start != user_start || requested_end != user_end))
+		if (requested_start >= user_start && requested_end <= user_end)
 			return true;
 	}
 	return false;
@@ -5186,7 +5185,7 @@ extern "C" void* darling_windows_mmap(void* address, std::size_t length,
 	}
 	if (base == nullptr) {
 		if ((flags & map_fixed) != 0 &&
-			CanPartiallyReplaceOwnedPlaceholderFileMapping(address,
+			IsOwnedPlaceholderFileMappingRange(address,
 				placeholder_view_bytes) &&
 			DarlingWindowsMunmapInternal(address, placeholder_view_bytes, true) == 0) {
 			constexpr ULONG mem_replace_placeholder = 0x00004000;
@@ -5325,8 +5324,10 @@ static int DarlingWindowsMunmapInternal(void* address, std::size_t length,
 
 	const auto& apis = PlaceholderApis();
 	if (whole_view) {
+		constexpr ULONG mem_preserve_placeholder = 0x00000002;
 		const bool unmapped = owner->placeholder_backed && apis.unmap_view_of_file2 != nullptr ?
-			apis.unmap_view_of_file2(GetCurrentProcess(), mapping.base, 0) != FALSE :
+			apis.unmap_view_of_file2(GetCurrentProcess(), mapping.base,
+				preserve_placeholder_hole ? mem_preserve_placeholder : 0) != FALSE :
 			UnmapViewOfFile(mapping.base) != FALSE;
 		if (!unmapped) {
 			darling::windows_host::DarwinErrno::SetFromWin32(GetLastError());
@@ -5466,6 +5467,45 @@ static int DarlingWindowsMunmapInternal(void* address, std::size_t length,
 		(right_bytes != 0 ? 1u : 0u);
 	owner->active_views = owner->active_views - 1 + retained_views;
 	return 0;
+}
+
+extern "C" void* darling_windows_replace_file_mapping_with_anonymous(
+	void* address, std::size_t length, std::uint32_t protection)
+{
+	if (address == nullptr || address == reinterpret_cast<void*>(-1) || length == 0) {
+		darling::windows_host::DarwinErrno::Set(22);
+		return reinterpret_cast<void*>(-1);
+	}
+	if (!IsOwnedPlaceholderFileMappingRange(address, length))
+		return nullptr;
+	if (DarlingWindowsMunmapInternal(address, length, true) != 0)
+		return reinterpret_cast<void*>(-1);
+	const auto& apis = PlaceholderApis();
+	if (apis.virtual_alloc2 == nullptr) {
+		(void)VirtualFree(address, 0, MEM_RELEASE);
+		darling::windows_host::DarwinErrno::Set(95);
+		return reinterpret_cast<void*>(-1);
+	}
+	constexpr ULONG mem_commit = 0x00001000;
+	constexpr ULONG mem_reserve = 0x00002000;
+	constexpr ULONG mem_replace_placeholder = 0x00004000;
+	void* mapped = apis.virtual_alloc2(GetCurrentProcess(), address, length,
+		mem_commit | mem_reserve | mem_replace_placeholder,
+		static_cast<ULONG>(protection), nullptr, 0);
+	if (mapped != address) {
+		const DWORD error = GetLastError();
+		if (mapped != nullptr)
+			(void)VirtualFree(mapped, 0, MEM_RELEASE);
+		(void)VirtualFree(address, 0, MEM_RELEASE);
+		darling::windows_host::DarwinErrno::SetFromWin32(error);
+		return reinterpret_cast<void*>(-1);
+	}
+	if (!darling::windows_host::RegisterOwnedAnonymousMappingChecked(mapped, length)) {
+		(void)VirtualFree(mapped, 0, MEM_RELEASE);
+		darling::windows_host::DarwinErrno::Set(12);
+		return reinterpret_cast<void*>(-1);
+	}
+	return mapped;
 }
 
 extern "C" int darling_windows_munmap(void* address, std::size_t length)

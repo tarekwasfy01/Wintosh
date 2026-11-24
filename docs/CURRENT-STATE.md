@@ -56,15 +56,17 @@ one tracked placeholder-backed file view and replace the resulting placeholder
 with a new file view; the retained left/right views are reconstructed by the
 shared partial-`munmap` path. Host `wintosh_memory_smoke` and the ARM64 guest
 `wintosh_arm64_host_import_e2e` now verify occupied middle-page replacement,
-content from the new file offset, retained neighbors, and cleanup. Full syscall
-error/errno parity remains open. This is a memory primitive, not a claim that
-arbitrary macOS apps run.
+content from the new file offset, retained neighbors, file-to-anonymous
+replacement with zero-filled private pages, and cleanup. Anonymous-to-file,
+cross-allocation, and image replacements remain open. Full syscall error/errno
+parity remains open. This is a memory primitive, not a claim that arbitrary
+macOS apps run.
 Raw `SYS_mmap` 197 and imported `_mmap` can replace page-aligned subranges fully
 covered by one guest-owned anonymous reservation, including pages previously
 set to `PROT_NONE`; raw `SYS_mmap` also recommits a previously unmapped hole,
 which imported `_munmap` then frees again. The fixture writes through all
-replacement pages. Cross-allocation, image, and anonymous/file-kind
-replacements remain unsupported. Legacy
+replacement pages. Anonymous-to-file, cross-allocation, and image replacements
+remain unsupported. Legacy
 file-view partial unmapping and full syscall error/errno parity remain
 incomplete. Nested Darwin
 syscalls, Mach traps, broader import catalog coverage, full framework coverage,

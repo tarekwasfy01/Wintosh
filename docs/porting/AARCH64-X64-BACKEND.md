@@ -223,14 +223,19 @@ können Darwin-seitige, seitenorientierte Datei-Offsets auch dann abgebildet
 werden, wenn sie nicht an Windows' 64-KiB-Allokationsgranularität ausgerichtet
 sind. Auf älteren Versionen bleibt der Granularitäts-Offset-und-Delta-Fallback
 aktiv; dort ist `munmap` für Datei-Views weiterhin nur als Ganzes möglich.
-Datei-View-Ersetzungen mit `MAP_FIXED` bleiben nicht unterstützt. Feste
-Ersetzungen sind auf `MAP_FIXED`-Teilbereiche beschränkt, die vollständig von
-derselben besessenen anonymen Reservierung abgedeckt sind; dazu zählt auch eine
-decommittete Lücke, solange die Windows-Reservierung noch durch aktive
-Nachbarintervalle gehalten wird. Der Host recommittet die Windows-Seiten. Bei
-einer aktiven Teilersetzung gilt `M′ = (M \\ U) ∪ U′`; beim Belegen einer
-Reservierungslücke gilt `M′ = M ∪ U′`. Überlappungen mit Images, Datei-Views,
-fremden Reservierungen oder Adressen außerhalb der Reservierung schlagen
+Auf placeholder-fähigem Windows kann `MAP_FIXED` ein Intervall innerhalb einer
+einzelnen besessenen Datei-View durch eine andere Datei-View oder durch
+zero-initialisierten anonymen Speicher ersetzen. Beim Datei-zu-Datei-Pfad
+bleiben die alten linken/rechten Views erhalten; beim Datei-zu-anonym-Pfad
+wechselt das Zielintervall in den separaten anonymen Ownership-Index. Feste
+Ersetzungen anonymer Views sind weiterhin auf `MAP_FIXED`-Teilbereiche
+beschränkt, die vollständig von derselben besessenen anonymen Reservierung
+abgedeckt sind; dazu zählt auch eine decommittete Lücke, solange die
+Windows-Reservierung noch durch aktive Nachbarintervalle gehalten wird. Der
+Host recommittet die Windows-Seiten. Bei einer aktiven Teilersetzung gilt
+`M′ = (M \\ U) ∪ U′`; beim Belegen einer Reservierungslücke gilt
+`M′ = M ∪ U′`. Überlappungen mit Images, nicht besessenen Datei-Views, fremden
+Reservierungen oder Adressen außerhalb der jeweiligen Reservierung schlagen
 geschlossen fehl. Dadurch bleibt die Backend-Tabelle mit dem tatsächlich
 besessenen Hostspeicher synchron. Formal ist eine Reservierung
 `R = [b, b + n)` und ihre aktive Gastabbildung die Intervallmenge

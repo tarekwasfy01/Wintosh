@@ -309,7 +309,7 @@ struct darling_dirent final {
 	std::uint16_t d_reclen = 0;
 	std::uint16_t d_namlen = 0;
 	std::uint8_t d_type = 0;
-	char d_name[256]{};
+	char d_name[1024]{};
 };
 extern "C" std::int64_t darling_windows_getdirentries(int descriptor, char* buffer,
 	std::size_t buffer_size, std::int64_t* base);

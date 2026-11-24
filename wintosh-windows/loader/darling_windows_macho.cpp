@@ -7739,6 +7739,39 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 					syscall_result = darling_windows_fdatasync(
 						static_cast<int>(arguments[0]));
 					break;
+				case 196: { // SYS_getdirentries
+					constexpr std::uint64_t maximum_directory_buffer = 16 * 1024 * 1024;
+					static_assert(offsetof(darling_dirent, d_name) == 21);
+					static_assert(sizeof(darling_dirent) == 1048);
+					if (arguments[2] > maximum_directory_buffer) {
+						error_number = EINVAL;
+						break;
+					}
+					if (arguments[0] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max())) {
+						error_number = EBADF;
+						break;
+					}
+					const auto bytes = static_cast<std::size_t>(arguments[2]);
+					if (arguments[3] == 0 ||
+						(bytes != 0 && (arguments[1] == 0 ||
+							!backend.ContainsGuestRange(arguments[1], bytes, true))) ||
+						!backend.ContainsGuestRange(arguments[3], sizeof(std::int64_t), false) ||
+						!backend.ContainsGuestRange(arguments[3], sizeof(std::int64_t), true)) {
+						error_number = EFAULT;
+						break;
+					}
+					std::int64_t base = 0;
+					std::memcpy(&base, reinterpret_cast<const void*>(
+						static_cast<std::uintptr_t>(arguments[3])), sizeof(base));
+					syscall_result = darling_windows_getdirentries(
+						static_cast<int>(arguments[0]), reinterpret_cast<char*>(
+							static_cast<std::uintptr_t>(arguments[1])), bytes, &base);
+					if (syscall_result >= 0)
+						std::memcpy(reinterpret_cast<void*>(static_cast<std::uintptr_t>(
+							arguments[3])), &base, sizeof(base));
+					break;
+				}
 				case 157: // SYS_statfs
 				case 158: { // SYS_fstatfs
 					if (!backend.ContainsGuestRange(arguments[1],

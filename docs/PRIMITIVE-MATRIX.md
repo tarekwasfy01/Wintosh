@@ -27,7 +27,8 @@ the `wintosh_arm64_host_import_e2e` guest fixture verifies descriptor changes,
 resource-limit copies, `FIONREAD` output from a guest pipe, Darwin error
 returns, the carry bit, login and UID/GID/group identity calls, selected
 `poll`/`select` write readiness, `select` timeout copy-back,
-`statfs`/`fstatfs` metadata copies, `setsockopt`/`getsockopt`,
+Darwin `getdirentries` records and base offset, `statfs`/`fstatfs` metadata
+copies, `setsockopt`/`getsockopt`,
 process-group/session calls, and nonblocking file-lock acquire/release;
 terminal winsize requests remain unverified. The
 separate transformation-capability matrix and its Boolean

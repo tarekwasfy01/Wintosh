@@ -4,6 +4,7 @@ typedef int CFNumberType;
 typedef struct CFRange { CFIndex location; CFIndex length; } CFRange;
 typedef void *CFTypeRef;
 typedef void *CFStringRef;
+typedef void *CFURLRef;
 typedef void *CFRunLoopRef;
 typedef void *CFRunLoopSourceRef;
 typedef struct CFArrayCallBacks {
@@ -61,6 +62,20 @@ extern unsigned char CFStringGetCharacters(CFStringRef, CFRange, unsigned short 
 extern CFIndex CFStringGetMaximumSizeForEncoding(CFIndex, unsigned int);
 extern CFIndex CFStringGetMaximumSizeOfFileSystemRepresentation(CFStringRef);
 extern unsigned char CFStringGetFileSystemRepresentation(CFStringRef, char *, CFIndex);
+extern CFURLRef CFURLCreateWithFileSystemPath(const void *, CFStringRef, int,
+	unsigned char);
+extern CFURLRef CFURLCreateWithString(const void *, CFStringRef, CFURLRef);
+extern CFURLRef CFURLCreateFromFileSystemRepresentation(const void *,
+	const unsigned char *, CFIndex, unsigned char);
+extern CFURLRef CFURLCreateCopyAppendingPathComponent(const void *, CFURLRef,
+	CFStringRef, unsigned char);
+extern CFURLRef CFURLCopyAbsoluteURL(CFURLRef);
+extern CFStringRef CFURLGetString(CFURLRef);
+extern CFStringRef CFURLCopyFileSystemPath(CFURLRef, int);
+extern CFStringRef CFURLCopyScheme(CFURLRef);
+extern CFIndex CFURLGetBytes(CFURLRef, unsigned char *, CFIndex);
+extern unsigned char CFURLGetFileSystemRepresentation(CFURLRef, unsigned char,
+	unsigned char *, CFIndex);
 extern CFRunLoopRef CFRunLoopGetCurrent(void);
 extern CFRunLoopSourceRef CFRunLoopSourceCreate(const void *, CFIndex,
 	const CFRunLoopSourceContext *);
@@ -358,6 +373,52 @@ int main(void)
 	CFRelease(mutableData);
 	CFRelease(data);
 	const unsigned int utf8Encoding = 0x08000100u;
+	CFStringRef basePath = CFStringCreateWithCString(0, "/tmp/Wintosh.app",
+		utf8Encoding);
+	CFStringRef childName = CFStringCreateWithCString(0, "Contents", utf8Encoding);
+	CFURLRef baseURL = CFURLCreateWithFileSystemPath(0, basePath, 0, 1);
+	CFURLRef childURL = CFURLCreateCopyAppendingPathComponent(0, baseURL,
+		childName, 1);
+	CFURLRef absoluteURL = CFURLCopyAbsoluteURL(childURL);
+	unsigned char urlPathBytes[64] = { 0 };
+	unsigned char urlFileSystemBytes[64] = { 0 };
+	unsigned char urlStringBytes[64] = { 0 };
+	CFStringRef copiedURLPath = CFURLCopyFileSystemPath(childURL, 0);
+	if (basePath == 0 || childName == 0 || baseURL == 0 || childURL == 0 ||
+		absoluteURL == 0 || copiedURLPath == 0 ||
+		!CFURLGetFileSystemRepresentation(childURL, 0, urlFileSystemBytes,
+			sizeof(urlFileSystemBytes)) ||
+		urlFileSystemBytes[0] != '/' || urlFileSystemBytes[16] != '/' ||
+		urlFileSystemBytes[25] != '/' || urlFileSystemBytes[26] != 0 ||
+		CFURLGetBytes(childURL, urlPathBytes, sizeof(urlPathBytes)) != 26 ||
+		urlPathBytes[16] != '/' || urlPathBytes[25] != '/') return 76;
+	if (!CFStringGetCString(CFURLGetString(childURL), (char *)urlStringBytes,
+		sizeof(urlStringBytes), utf8Encoding) || urlStringBytes[25] != '/') return 77;
+	if (!CFStringGetCString(copiedURLPath, (char *)urlStringBytes,
+		sizeof(urlStringBytes), utf8Encoding) || urlStringBytes[25] != '/') return 78;
+	CFURLRef fromBytesURL = CFURLCreateFromFileSystemRepresentation(0,
+		(const unsigned char *)"/tmp/ByteURL", 12, 0);
+	if (fromBytesURL == 0 || !CFURLGetFileSystemRepresentation(fromBytesURL, 0,
+		urlFileSystemBytes, sizeof(urlFileSystemBytes)) ||
+		urlFileSystemBytes[11] != 'L' || urlFileSystemBytes[12] != 0) return 79;
+	CFRelease(fromBytesURL);
+	CFRelease(copiedURLPath);
+	CFRelease(absoluteURL);
+	CFRelease(childURL);
+	CFRelease(baseURL);
+	CFRelease(childName);
+	CFRelease(basePath);
+	CFStringRef networkURLString = CFStringCreateWithCString(0,
+		"https://example.test/path", utf8Encoding);
+	CFURLRef networkURL = CFURLCreateWithString(0, networkURLString, 0);
+	CFStringRef networkScheme = CFURLCopyScheme(networkURL);
+	if (networkURLString == 0 || networkURL == 0 || networkScheme == 0 ||
+		!CFStringGetCString(networkScheme, (char *)urlStringBytes,
+			sizeof(urlStringBytes), utf8Encoding) || urlStringBytes[0] != 'h' ||
+		urlStringBytes[4] != 's') return 80;
+	CFRelease(networkScheme);
+	CFRelease(networkURL);
+	CFRelease(networkURLString);
 	CFStringRef sourceString = CFStringCreateWithCString(0, "Darwin", utf8Encoding);
 	char stringBuffer[16] = { 0 };
 	unsigned short characters[6] = { 0 };

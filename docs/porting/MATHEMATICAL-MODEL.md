@@ -1092,3 +1092,9 @@ validity/order, signals it, runs the selected mode until the perform callback
 has executed, removes it, and invalidates it. This follows the lifecycle
 `valid ∧ registered ∧ signaled → perform → ¬registered → invalid` and checks
 the bridge across multiple imports, not only one isolated call.
+
+Source creation, context retrieval, and add/remove now use the same ARM64
+CoreFoundation import dispatcher as timer and observer operations. Context
+input/output ranges are checked there before host code reads or writes guest
+memory, so nested guest callbacks and top-level imports follow one signature
+mapping.

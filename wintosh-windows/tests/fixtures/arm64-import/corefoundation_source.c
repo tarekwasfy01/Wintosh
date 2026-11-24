@@ -27,10 +27,16 @@ extern void CFRunLoopAddSource(CFRunLoopRef, CFRunLoopSourceRef, CFStringRef);
 extern void CFRunLoopRemoveSource(CFRunLoopRef, CFRunLoopSourceRef, CFStringRef);
 extern unsigned char CFRunLoopContainsSource(CFRunLoopRef, CFRunLoopSourceRef,
 	CFStringRef);
+extern long CFRunLoopSourceGetOrder(CFRunLoopSourceRef);
+extern unsigned char CFRunLoopSourceIsValid(CFRunLoopSourceRef);
+extern void CFRunLoopSourceSignal(CFRunLoopSourceRef);
+extern void CFRunLoopSourceInvalidate(CFRunLoopSourceRef);
+extern int CFRunLoopRunInMode(CFStringRef, double, unsigned char);
 extern void CFRelease(CFTypeRef);
 
 static int scheduleCalls;
 static int cancelCalls;
+static int performCalls;
 static int contextInfo;
 
 static void source_schedule(void *info, CFRunLoopRef loop, const void *mode)
@@ -47,7 +53,7 @@ static void source_cancel(void *info, CFRunLoopRef loop, const void *mode)
 
 static void source_perform(void *info)
 {
-	(void)info;
+	if (info == &contextInfo) ++performCalls;
 }
 
 int main(void)
@@ -73,12 +79,18 @@ int main(void)
 	if (returnedContext.info != &contextInfo ||
 		returnedContext.schedule != source_schedule ||
 		returnedContext.cancel != source_cancel) return 11;
+	if (!CFRunLoopSourceIsValid(source) || CFRunLoopSourceGetOrder(source) != 0)
+		return 14;
 	CFRunLoopAddSource(loop, source, mode);
 	if (scheduleCalls != 1 || cancelCalls != 0 ||
 		!CFRunLoopContainsSource(loop, source, mode)) return 12;
+	CFRunLoopSourceSignal(source);
+	if (CFRunLoopRunInMode(mode, 0.01, 1) < 1 || performCalls != 1) return 15;
 	CFRunLoopRemoveSource(loop, source, mode);
 	if (scheduleCalls != 1 || cancelCalls != 1 ||
 		CFRunLoopContainsSource(loop, source, mode)) return 13;
+	CFRunLoopSourceInvalidate(source);
+	if (CFRunLoopSourceIsValid(source)) return 16;
 	CFRelease(source);
 	CFRelease(mode);
 	return 42;

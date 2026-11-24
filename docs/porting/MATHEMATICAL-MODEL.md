@@ -1085,3 +1085,10 @@ Timer and observer context getters take the object in `x0` and a writable
 Darwin context record in `x1`. The adapter checks the complete 40-byte guest
 range before writing it; the fixture verifies the returned version and info
 pointer for both records, complementing the existing source-context coverage.
+
+Source signal/invalidate operations take the source in `x0`; source validity
+and order return in `x0`. The ARM64 source fixture now checks the source's
+validity/order, signals it, runs the selected mode until the perform callback
+has executed, removes it, and invalidates it. This follows the lifecycle
+`valid ∧ registered ∧ signaled → perform → ¬registered → invalid` and checks
+the bridge across multiple imports, not only one isolated call.

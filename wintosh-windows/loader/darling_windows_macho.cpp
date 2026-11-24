@@ -169,6 +169,38 @@ bool DispatchArm64CoreFoundationRunLoopImport(const std::string& name,
 			static_cast<std::uintptr_t>(x[0])));
 		return true;
 	}
+	if (name == "_CFRunLoopSourceSignal" ||
+		name == "_CFRunLoopSourceInvalidate") {
+		using Call = void (DARLING_CF_GUEST_ABI *)(darling_windows_CFTypeRef);
+		reinterpret_cast<Call>(target)(reinterpret_cast<void*>(
+			static_cast<std::uintptr_t>(x[0])));
+		return true;
+	}
+	if (name == "_CFRunLoopSourceIsValid") {
+		using Call = std::uint8_t (DARLING_CF_GUEST_ABI *)(darling_windows_CFTypeRef);
+		resumed_state.x[0] = reinterpret_cast<Call>(target)(
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0])));
+		return true;
+	}
+	if (name == "_CFRunLoopSourceGetOrder") {
+		using Call = darling_windows_CFIndex (DARLING_CF_GUEST_ABI *)(
+			darling_windows_CFTypeRef);
+		resumed_state.x[0] = static_cast<std::uint64_t>(reinterpret_cast<Call>(target)(
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0]))));
+		return true;
+	}
+	if (name == "_CFRunLoopSourceGetContext") {
+		if (x[1] == 0 || !backend.ContainsGuestRange(x[1],
+			sizeof(DarlingCFRunLoopSourceContext), true))
+			throw std::runtime_error("ARM64 CoreFoundation source context import received an invalid output range");
+		using Call = void (DARLING_CF_GUEST_ABI *)(darling_windows_CFTypeRef,
+			DarlingCFRunLoopSourceContext*);
+		reinterpret_cast<Call>(target)(reinterpret_cast<void*>(
+			static_cast<std::uintptr_t>(x[0])),
+			reinterpret_cast<DarlingCFRunLoopSourceContext*>(
+				static_cast<std::uintptr_t>(x[1])));
+		return true;
+	}
 	if (name == "_CFRunLoopTimerGetContext" ||
 		name == "_CFRunLoopObserverGetContext") {
 		const auto context_size = name == "_CFRunLoopTimerGetContext" ?

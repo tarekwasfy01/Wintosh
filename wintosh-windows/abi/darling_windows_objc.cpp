@@ -279,6 +279,8 @@ void* CopyExternalAppleByref(void* raw_byref)
 	auto* source = static_cast<AppleByrefHeader*>(raw_byref);
 	AppleByrefHeader* forwarding = source->forwarding != nullptr ?
 		source->forwarding : source;
+	if (darling_objc_has_guest_method_invoker())
+		return raw_byref;
 	{
 		std::lock_guard lock(AppleBlockRuntimeMutex());
 		const auto found = ExternalAppleByrefs().find(forwarding);
@@ -379,6 +381,11 @@ void* CopyExternalAppleBlock(void* raw_block)
 	const auto& block = *static_cast<const AppleBlockHeader*>(raw_block);
 	if ((block.flags & AppleBlockIsGlobal) != 0)
 		return raw_block;
+	// A copied block would live in host heap memory that the bounded ARM64
+	// guest address map does not expose.  Fail explicitly until block storage
+	// has a guest-visible allocator instead of returning an unusable pointer.
+	if (darling_objc_has_guest_method_invoker())
+		return nullptr;
 	// An already heap-owned block from an unknown runtime is not safe to free
 	// without owning its allocator metadata.  Retain-only is fail-safe here;
 	// blocks copied by this bridge are tracked below.
@@ -5992,6 +5999,12 @@ extern "C" void darling_objc_apple_block_invoke0(void* raw_block)
 	}
 	auto* block = static_cast<AppleBlockHeader*>(raw_block);
 	if (block->invoke == nullptr) return;
+	if (darling_objc_has_guest_method_invoker()) {
+		darling_objc_queue_guest_callback(
+			reinterpret_cast<IMP>(block->invoke), reinterpret_cast<id>(raw_block),
+			nullptr);
+		return;
+	}
 #if defined(__clang__) && defined(_WIN64) && !defined(_M_ARM64) && !defined(__aarch64__)
 	using Invoke = void (__attribute__((sysv_abi)) *)(void*);
 #else

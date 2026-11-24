@@ -637,11 +637,12 @@ records. The fixture resolves and exercises these aliases on both targets.
 Captured-variable copy/dispose helpers and full libclosure-compatible stack,
 global, and descriptor semantics remain unimplemented.
 
-The bridge now handles the basic standard stack-block literal path: descriptor
-size is honored, copy/dispose helpers run, heap copies are reference-counted,
-and global blocks are returned unchanged. The fixture verifies this on both
-architectures. Byref cells, nested descriptors, compiler-specific layout
-variants, and complete libclosure behavior remain future work.
+The native host-side bridge handles the basic standard stack-block literal
+path: descriptor size is honored, copy/dispose helpers run, heap copies are
+reference-counted, and global blocks are returned unchanged. Native smoke tests
+cover this host adapter behavior; they do not establish guest ARM64 block
+copying. Byref cells, nested descriptors, compiler-specific layout variants,
+and complete libclosure behavior remain future work.
 
 `POSIX_SPAWN_SETPGROUP` is now accepted for the Darwin `pgroup == 0` form and
 is emulated with a Windows process group on both supported architectures.
@@ -658,6 +659,12 @@ unimplemented and continue to fail closed.
 Weak block-field flags are explicitly non-retaining now. The remaining weak
 slot registration and weak-Byref teardown semantics still require the native
 Objective-C weak ABI.
+
+Current ARM64 boundary: the Dynarmic fixture compiles and invokes one global
+Clang block literal after binding `__NSConcreteGlobalBlock`. Non-global guest
+block copies now fail closed while their host-heap storage is outside the
+bounded guest address map. The host-side block copy/dispose tests above do not
+prove guest copy-helper execution or escaping stack-block support.
 
 Cross-process Darwin `SIGKILL` is now emulated with `TerminateProcess` and is
 covered by the process fixture on both targets. Graceful cross-process signal

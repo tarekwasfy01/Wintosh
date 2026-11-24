@@ -1,5 +1,16 @@
 # Complete current workspace state
 
+## ARM64 Objective-C global block literal, 2026-11-24
+
+The ARM64 Objective-C end-to-end fixture now compiles and invokes a real
+Clang-generated global block literal under the Dynarmic backend. The host
+resolver supplies stable identities for the `NSConcrete` block data symbols,
+and the guest code executes the literal's `invoke` function directly. The
+guest Blocks ABI remains partial: copying non-global blocks returns `nil`
+because host-heap copies are not registered in the bounded ARM64 guest address
+space; captured-object copy/dispose callbacks and escaping stack blocks are
+not supported by this step.
+
 ## ARM64 guest imports on x64 Windows, 2026-11-23
 
 The optional Dynarmic backend now has an ARM64 host-import trampoline path.

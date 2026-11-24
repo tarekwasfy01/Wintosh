@@ -46,7 +46,7 @@ if ($LASTEXITCODE -ne 0) { throw "ARM64 Mach-O import compile failed: $LASTEXITC
 	-undefined dynamic_lookup -o $image $object
 if ($LASTEXITCODE -ne 0) { throw "ARM64 Mach-O import link failed: $LASTEXITCODE" }
 & $clangPath -target arm64-apple-macosx11.0 '-fobjc-runtime=macosx-11.0' `
-	-fno-objc-arc -fno-stack-protector -O2 -c -x objective-c $objcSource `
+	-fno-objc-arc -fblocks -fno-stack-protector -O2 -c -x objective-c $objcSource `
 	-o $objcObject
 if ($LASTEXITCODE -ne 0) { throw "ARM64 Objective-C fixture compile failed: $LASTEXITCODE" }
 & $Linker -arch arm64 -platform_version macos 11.0 14.0 -e _main `

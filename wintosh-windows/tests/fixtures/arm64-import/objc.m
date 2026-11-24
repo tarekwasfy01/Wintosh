@@ -8,6 +8,10 @@ extern void *malloc(unsigned long bytes);
 extern void *realloc(void *allocation, unsigned long bytes);
 extern void free(void *allocation);
 extern int write(int descriptor, const void *bytes, unsigned long length);
+static volatile long wintosh_block_marker;
+static void (^wintosh_global_block)(void) = ^{
+	wintosh_block_marker = 42;
+};
 
 static long WintoshSyscallMunmap(void *address, unsigned long length)
 {
@@ -489,6 +493,10 @@ int main(int argc, char **argv, char **envp)
 		objc_getClass("WintoshDynamicLoadProbe") != (Class)0)
 		return 11;
 	Class probe = objc_getClass("WintoshProbe");
+	/* Execute a compiler-generated global block through the ARM64 backend. */
+	wintosh_global_block();
+	if (wintosh_block_marker != 42)
+		return 13;
 	SEL answer = sel_registerName("answer");
 	SEL inherited_answer = sel_registerName("inheritedAnswer");
 	SEL category_answer = sel_registerName("categoryAnswer");

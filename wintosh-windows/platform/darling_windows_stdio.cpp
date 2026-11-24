@@ -5658,6 +5658,21 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 	if (name == nullptr) {
 		return 0;
 	}
+	// Mach-O block literals store the address of these runtime class objects
+	// in their isa field.  The bridge only needs stable, distinct identities;
+	// the literal's flags and descriptor carry its ABI behavior.
+	alignas(16) static unsigned char ns_concrete_stack_block[16]{};
+	alignas(16) static unsigned char ns_concrete_global_block[16]{};
+	alignas(16) static unsigned char ns_concrete_malloc_block[16]{};
+	if (std::strcmp(name, "_NSConcreteStackBlock") == 0 ||
+		std::strcmp(name, "__NSConcreteStackBlock") == 0)
+		return reinterpret_cast<std::uintptr_t>(ns_concrete_stack_block);
+	if (std::strcmp(name, "_NSConcreteGlobalBlock") == 0 ||
+		std::strcmp(name, "__NSConcreteGlobalBlock") == 0)
+		return reinterpret_cast<std::uintptr_t>(ns_concrete_global_block);
+	if (std::strcmp(name, "_NSConcreteMallocBlock") == 0 ||
+		std::strcmp(name, "__NSConcreteMallocBlock") == 0)
+		return reinterpret_cast<std::uintptr_t>(ns_concrete_malloc_block);
 	if (std::strcmp(name, "__objc_empty_cache") == 0 ||
 		std::strcmp(name, "_objc_empty_cache") == 0) {
 		alignas(16) static std::uintptr_t empty_cache[4]{};
@@ -6241,11 +6256,13 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 		return reinterpret_cast<std::uintptr_t>(&objc_release);
 	}
 	if (std::strcmp(name, "_objc_retainBlock") == 0 ||
-		std::strcmp(name, "_Block_copy") == 0) {
+		std::strcmp(name, "_Block_copy") == 0 ||
+		std::strcmp(name, "__Block_copy") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&objc_retainBlock);
 	}
 	if (std::strcmp(name, "_objc_releaseBlock") == 0 ||
-		std::strcmp(name, "_Block_release") == 0) {
+		std::strcmp(name, "_Block_release") == 0 ||
+		std::strcmp(name, "__Block_release") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&objc_releaseBlock);
 	}
 	if (std::strcmp(name, "dispatch_get_main_queue") == 0 ||
@@ -6404,10 +6421,12 @@ extern "C" std::uintptr_t darling_windows_host_symbol(const char* name)
 	if (std::strcmp(name, "dispatch_activate") == 0 ||
 		std::strcmp(name, "_dispatch_activate") == 0)
 		return reinterpret_cast<std::uintptr_t>(&darling_windows_dispatch_activate);
-	if (std::strcmp(name, "_Block_object_assign") == 0) {
+	if (std::strcmp(name, "_Block_object_assign") == 0 ||
+		std::strcmp(name, "__Block_object_assign") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&_Block_object_assign);
 	}
-	if (std::strcmp(name, "_Block_object_dispose") == 0) {
+	if (std::strcmp(name, "_Block_object_dispose") == 0 ||
+		std::strcmp(name, "__Block_object_dispose") == 0) {
 		return reinterpret_cast<std::uintptr_t>(&_Block_object_dispose);
 	}
 	if (std::strcmp(name, "_sigaction") == 0 || std::strcmp(name, "sigaction") == 0) {

@@ -4029,6 +4029,27 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 					reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0])),
 					reinterpret_cast<DarlingHostFreeImport>(imported->target));
 				resumed.x[0] = 0;
+			} else if (name == "__Block_copy" || name == "_Block_copy") {
+				resumed.x[0] = reinterpret_cast<std::uintptr_t (*)(const void*)>(
+					imported->target)(reinterpret_cast<const void*>(
+						static_cast<std::uintptr_t>(x[0])));
+			} else if (name == "__Block_release" || name == "_Block_release") {
+				reinterpret_cast<void (*)(const void*)>(imported->target)(
+					reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[0])));
+				resumed.x[0] = 0;
+			} else if (name == "__Block_object_assign" ||
+				name == "_Block_object_assign") {
+				reinterpret_cast<void (*)(void*, const void*, int)>(imported->target)(
+					reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0])),
+					reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[1])),
+					static_cast<int>(x[2]));
+				resumed.x[0] = 0;
+			} else if (name == "__Block_object_dispose" ||
+				name == "_Block_object_dispose") {
+				reinterpret_cast<void (*)(const void*, int)>(imported->target)(
+					reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[0])),
+					static_cast<int>(x[1]));
+				resumed.x[0] = 0;
 			} else if (name == "_objc_release" || name == "_CFRelease") {
 				reinterpret_cast<DarlingObjcReleaseImport>(imported->target)(
 					reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0])));
@@ -4323,6 +4344,27 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 						release_guest_malloc(
 							reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0])),
 							reinterpret_cast<DarlingHostFreeImport>(imported->target));
+						cpu.x[0] = 0;
+					} else if (name == "__Block_copy" || name == "_Block_copy") {
+						cpu.x[0] = reinterpret_cast<std::uintptr_t (*)(const void*)>(
+							imported->target)(reinterpret_cast<const void*>(
+								static_cast<std::uintptr_t>(x[0])));
+					} else if (name == "__Block_release" || name == "_Block_release") {
+						reinterpret_cast<void (*)(const void*)>(imported->target)(
+							reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[0])));
+						cpu.x[0] = 0;
+					} else if (name == "__Block_object_assign" ||
+						name == "_Block_object_assign") {
+						reinterpret_cast<void (*)(void*, const void*, int)>(imported->target)(
+							reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0])),
+							reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[1])),
+							static_cast<int>(x[2]));
+						cpu.x[0] = 0;
+					} else if (name == "__Block_object_dispose" ||
+						name == "_Block_object_dispose") {
+						reinterpret_cast<void (*)(const void*, int)>(imported->target)(
+							reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[0])),
+							static_cast<int>(x[1]));
 						cpu.x[0] = 0;
 					} else if (name == "_objc_release" || name == "_CFRelease") {
 						reinterpret_cast<DarlingObjcReleaseImport>(imported->target)(

@@ -103,15 +103,18 @@ extern CFStringRef CFStringCreateWithCString(const void *, const char *,
 	unsigned int);
 extern CFStringRef CFCopyDescription(const void *);
 extern CFTypeRef CFNumberCreate(const void *, CFNumberType, const void *);
+extern unsigned long CFNumberGetTypeID(void);
 extern unsigned char CFNumberGetValue(CFTypeRef, CFNumberType, void *);
 extern unsigned char CFNumberIsFloatType(CFTypeRef);
 extern long CFNumberCompare(CFTypeRef, CFTypeRef, const void *);
 extern CFTypeRef CFDateCreate(const void *, double);
+extern unsigned long CFDateGetTypeID(void);
 extern double CFDateGetAbsoluteTime(CFTypeRef);
 extern long CFDateCompare(CFTypeRef, CFTypeRef, const void *);
 extern double CFDateGetTimeIntervalSinceDate(CFTypeRef, CFTypeRef);
 extern CFTypeRef CFArrayCreate(const void *, const void *const *, CFIndex,
 	const CFArrayCallBacks *);
+extern unsigned long CFArrayGetTypeID(void);
 extern CFTypeRef CFArrayCreateMutable(const void *, CFIndex,
 	const CFArrayCallBacks *);
 extern void CFArrayAppendValue(CFTypeRef, CFTypeRef);
@@ -134,9 +137,11 @@ extern void CFArraySortValues(CFTypeRef, CFRange,
 extern CFIndex CFArrayBSearchValues(CFTypeRef, CFRange, CFTypeRef,
 	int (*)(const void *, const void *, void *), void *);
 extern CFIndex CFArrayGetCount(CFTypeRef);
+extern void CFArrayExchangeValuesAtIndices(CFTypeRef, CFIndex, CFIndex);
 extern CFTypeRef CFDictionaryCreate(const void *, const void *const *,
 	const void *const *, CFIndex, const CFDictionaryKeyCallBacks *,
 	const CFDictionaryValueCallBacks *);
+extern unsigned long CFDictionaryGetTypeID(void);
 extern CFIndex CFDictionaryGetCount(CFTypeRef);
 extern CFTypeRef CFDictionaryCreateMutable(const void *, CFIndex,
 	const CFDictionaryKeyCallBacks *, const CFDictionaryValueCallBacks *);
@@ -500,6 +505,7 @@ int main(void)
 	CFTypeRef earlierDate = CFDateCreate(0, 120.0);
 	const double dateDelta = CFDateGetTimeIntervalSinceDate(laterDate, earlierDate);
 	if (laterDate == 0 || earlierDate == 0 ||
+		CFDateGetTypeID() == 0 ||
 		CFDateGetAbsoluteTime(laterDate) != 123.25 ||
 		CFDateCompare(laterDate, earlierDate, 0) <= 0 ||
 		dateDelta < 3.249 || dateDelta > 3.251) return 60;
@@ -510,7 +516,7 @@ int main(void)
 	CFTypeRef integerNumber = CFNumberCreate(0, 9, &integerValue);
 	CFTypeRef realNumber = CFNumberCreate(0, 6, &realValue);
 	long long convertedInteger = 0;
-	if (integerNumber == 0 || realNumber == 0 ||
+	if (integerNumber == 0 || realNumber == 0 || CFNumberGetTypeID() == 0 ||
 		!CFNumberGetValue(integerNumber, 4, &convertedInteger) ||
 		convertedInteger != 40 || CFNumberIsFloatType(integerNumber) ||
 		!CFNumberIsFloatType(realNumber) ||
@@ -529,7 +535,7 @@ int main(void)
 	CFArrayCallBacks arrayCallbacks = { 0, array_retain, array_release,
 		array_copy_description, 0 };
 	CFTypeRef array = CFArrayCreate(0, arrayValues, 2, &arrayCallbacks);
-	if (array == 0 || CFArrayGetCount(array) != 2 || arrayRetainCalls != 2)
+	if (array == 0 || CFArrayGetTypeID() == 0 || CFArrayGetCount(array) != 2 || arrayRetainCalls != 2)
 		return 17;
 	CFTypeRef arrayDescription = CFCopyDescription(array);
 	if (arrayDescription == 0 || arrayDescriptionCalls != 2) return 23;
@@ -569,6 +575,10 @@ int main(void)
 		arrayCompareCalls == 0) return 54;
 	if (CFArrayBSearchValues(mutableArray, (CFRange){ 0, 3 }, &arrayValueA,
 		array_compare, 0) != 2) return 55;
+	CFArrayExchangeValuesAtIndices(mutableArray, 0, 2);
+	if (CFArrayGetValueAtIndex(mutableArray, 0) != &arrayValueA ||
+		CFArrayGetValueAtIndex(mutableArray, 2) != &arrayValueB) return 87;
+	CFArrayExchangeValuesAtIndices(mutableArray, 0, 2);
 	int appliedSum = 0;
 	CFArrayApplyFunction(mutableArray, (CFRange){ 0, 3 }, array_apply, &appliedSum);
 	if (arrayApplyCalls != 3 || appliedSum != 4 || arrayApplySum != 4) return 56;
@@ -587,7 +597,7 @@ int main(void)
 		dictionary_value_release, dictionary_value_description };
 	CFTypeRef dictionary = CFDictionaryCreate(0, dictionaryKeys, dictionaryValues,
 		2, &keyCallbacks, &valueCallbacks);
-	if (dictionary == 0 || CFDictionaryGetCount(dictionary) != 2 ||
+	if (dictionary == 0 || CFDictionaryGetTypeID() == 0 || CFDictionaryGetCount(dictionary) != 2 ||
 		dictionaryKeyRetainCalls != 2 || dictionaryValueRetainCalls != 2 ||
 		dictionaryEqualCalls != 1) return 19;
 	CFTypeRef dictionaryDescription = CFCopyDescription(dictionary);

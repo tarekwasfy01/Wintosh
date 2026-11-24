@@ -110,6 +110,22 @@ bool DispatchArm64CoreFoundationRunLoopImport(const std::string& name,
 		resumed_state.x[0] = static_cast<std::uint64_t>(reinterpret_cast<Call>(target)());
 		return true;
 	}
+	if (name == "_CFArrayGetTypeID" || name == "_CFDictionaryGetTypeID" ||
+		name == "_CFNumberGetTypeID" || name == "_CFDateGetTypeID" ||
+		name == "_CFBooleanGetTypeID" || name == "_CFRunLoopGetTypeID" ||
+		name == "_CFRunLoopSourceGetTypeID" ||
+		name == "_CFRunLoopTimerGetTypeID" ||
+		name == "_CFRunLoopObserverGetTypeID") {
+		using Call = darling_windows_CFTypeID (DARLING_CF_GUEST_ABI *)();
+		resumed_state.x[0] = static_cast<std::uint64_t>(reinterpret_cast<Call>(target)());
+		return true;
+	}
+	if (name == "_CFBooleanGetValue") {
+		using Call = std::uint8_t (DARLING_CF_GUEST_ABI *)(darling_windows_CFBooleanRef);
+		resumed_state.x[0] = reinterpret_cast<Call>(target)(
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0])));
+		return true;
+	}
 	if (name == "_CFURLCreateStringByReplacingPercentEscapes") {
 		using Call = darling_windows_CFStringRef (DARLING_CF_GUEST_ABI *)(const void*,
 			darling_windows_CFStringRef, darling_windows_CFStringRef);
@@ -685,6 +701,15 @@ bool DispatchArm64CoreFoundationRunLoopImport(const std::string& name,
 			darling_windows_CFArrayRef);
 		resumed_state.x[0] = static_cast<std::uint64_t>(reinterpret_cast<Call>(target)(
 			reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[0]))));
+		return true;
+	}
+	if (name == "_CFArrayExchangeValuesAtIndices") {
+		using Call = void (DARLING_CF_GUEST_ABI *)(darling_windows_CFArrayRef,
+			darling_windows_CFIndex, darling_windows_CFIndex);
+		reinterpret_cast<Call>(target)(reinterpret_cast<void*>(
+			static_cast<std::uintptr_t>(x[0])),
+			static_cast<darling_windows_CFIndex>(x[1]),
+			static_cast<darling_windows_CFIndex>(x[2]));
 		return true;
 	}
 	if (name == "_CFArrayCreateMutable") {

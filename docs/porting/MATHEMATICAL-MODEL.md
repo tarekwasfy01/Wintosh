@@ -1108,7 +1108,11 @@ and [`kCFTypeArrayCallBacks`](https://developer.apple.com/documentation/corefoun
 The ARM64 import layer now exposes the array operations needed to construct and
 mutate a guest-owned sequence: `CFArrayCreateMutable`, `CFArrayGetValueAtIndex`,
 `CFArrayGetValues`, `CFArrayContainsValue`, append, insert, set, remove-at-index,
-and remove-all. The bridge represents a `CFRange` as `(location,length)` in the
+exchange-indices, and remove-all. Type-ID imports for arrays, dictionaries,
+numbers, dates, booleans, URLs, sets, and run-loop objects return their scalar
+Darwin `CFTypeID` through `x0`; `CFBooleanGetValue` likewise returns its
+normalized byte boolean in `x0`. The bridge represents a `CFRange` as
+`(location,length)` in the
 Darwin ARM64 argument registers and validates bulk output spans before writing
 guest memory. For a valid sequence `A` with `n` elements, insertion at `i`
 obeys `0≤i≤n` and `A'=A[0:i]·[x]·A[i:n]`; removal obeys `0≤i<n` and
@@ -1118,7 +1122,9 @@ conservation equation `retains - releases = |A|` after destruction. For range
 replacement of `[i,i+ℓ)` by `R`, the resulting state is
 `A'=A[0:i]·R·A[i+ℓ:n]`; append-array is the special case `i=n,ℓ=0` with `R`
 selected from the source array. Both operations and the count/first/last index
-queries now have ARM64 import adapters and fixture coverage. Copy APIs are
+queries and index exchange now have ARM64 import adapters and fixture coverage.
+The fixture also resolves and checks the Array, Number, Date, and Dictionary
+type IDs. Copy APIs are
 bridged too. Comparator-based sort/search and Array, Dictionary, and Set
 enumeration now route guest function pointers through the active ARM64
 interpreter: `apply(x)` maps each selected element to the callback, while sort

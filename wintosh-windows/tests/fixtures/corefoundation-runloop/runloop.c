@@ -138,7 +138,7 @@ static void timer_callback(CFRunLoopTimerRef timer, void *info)
 static void source_perform(void *info)
 {
 	++sourceState.calls;
-	sourceState.context_matches = info != 0;
+	sourceState.context_matches = info == &sourceState;
 }
 
 int main(void)
@@ -220,8 +220,17 @@ int main(void)
 	CFRunLoopTimerInvalidate(repeatingTimer);
 	CFRelease(repeatingTimer);
 	sourceState = (struct SourceState){0, 0};
-	CFRunLoopSourceContext sourceContext = {
-		0, &sourceState, 0, 0, 0, 0, 0, 0, 0, source_perform};
+	CFRunLoopSourceContext sourceContext;
+	sourceContext.version = 0;
+	sourceContext.info = &sourceState;
+	sourceContext.retain = 0;
+	sourceContext.release = 0;
+	sourceContext.copyDescription = 0;
+	sourceContext.equal = 0;
+	sourceContext.hash = 0;
+	sourceContext.schedule = 0;
+	sourceContext.cancel = 0;
+	sourceContext.perform = source_perform;
 	CFRunLoopSourceRef source = CFRunLoopSourceCreate(0, 0, &sourceContext);
 	if (source == 0) return 41;
 	CFRunLoopAddSource(loop, source, mode);
@@ -232,6 +241,8 @@ int main(void)
 	if (sourceState.calls != 1) return 45;
 	if (!sourceState.context_matches) return 46;
 	CFRunLoopRemoveSource(loop, source, mode);
+	if (CFRunLoopContainsSource(loop, source, mode))
+		return 48;
 	CFRunLoopSourceInvalidate(source);
 	if (CFRunLoopSourceIsValid(source)) return 44;
 	CFRelease(source);

@@ -74,7 +74,7 @@ It also checks timer tolerance APIs, unchanged nominal fire date, rejection of
 negative tolerance, and multiple firings from a repeating timer. AppKit
 integration remains unverified. It also creates and registers a version-0
 `CFRunLoopSource`, signals it twice, and confirms one guest perform callback
-with non-null context.
+with exact context identity.
 
 `CFMachPort` exports the type ID, create/create-with-port, run-loop source,
 port/context/validity queries, invalidation, and invalidation-callback accessors.

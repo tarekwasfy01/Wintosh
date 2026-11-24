@@ -214,8 +214,9 @@ this local implementation slice. The guest passes `returnAfterSource=true` and
 checks the public `kCFRunLoopRunHandledSource` result. A separate guest source
 checks the source order query. Another guest source verifies one context retain
 and release callback plus the `GetContext` round trip for its info and callback
-pointers. The host CoreFoundation smoke also checks native schedule/cancel
-callbacks. Calling those two callbacks from a Mach-O guest remains unverified.
+pointers. The host CoreFoundation smoke checks native schedule/cancel callbacks
+on explicit removal and invalidation, including automatic run-loop detachment.
+Calling those two callbacks from a Mach-O guest remains unverified.
 
 The guest thread-destructor exports also now use explicit Darwin ABI bridges:
 `__cxa_thread_atexit_impl` accepts its DSO handle and registered guest

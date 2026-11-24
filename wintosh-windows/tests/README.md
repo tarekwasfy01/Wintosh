@@ -32,8 +32,10 @@ unmaps it. This exercises the placeholder path around Windows' allocation
 granularity. On older fallback paths file-backed views still require a
 whole-view unmap. The runtime currently also routes `MAP_FIXED` over a
 subrange of one tracked placeholder-backed file view through partial unmap and
-placeholder replacement, but this occupied-view path does not yet have a
-dedicated regression fixture. Cross-allocation and image replacements remain
+placeholder replacement. The host smoke replaces the middle page of a
+three-page view with a different file offset and checks both retained neighbors;
+the ARM64 guest fixture repeats the same replacement through its Darwin mmap
+bridge. Cross-allocation, image, and anonymous/file-kind replacements remain
 unsupported.
 
 The guest fixture also creates a file with `open`, writes seed bytes, maps it

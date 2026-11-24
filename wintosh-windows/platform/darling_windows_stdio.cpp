@@ -5016,6 +5016,9 @@ extern "C" int darling_windows_getfsstat(darling_darwin_statfs* buffer,
 	}
 }
 
+static int DarlingWindowsMunmapInternal(void* address, std::size_t length,
+	bool preserve_placeholder_hole);
+
 extern "C" void* darling_windows_mmap(void* address, std::size_t length,
 	int protection, int flags, int descriptor, std::int64_t offset)
 {
@@ -5185,12 +5188,17 @@ extern "C" void* darling_windows_mmap(void* address, std::size_t length,
 		if ((flags & map_fixed) != 0 &&
 			CanPartiallyReplaceOwnedPlaceholderFileMapping(address,
 				placeholder_view_bytes) &&
-			darling_windows_munmap(address, placeholder_view_bytes) == 0) {
+			DarlingWindowsMunmapInternal(address, placeholder_view_bytes, true) == 0) {
 			constexpr ULONG mem_replace_placeholder = 0x00004000;
 			base = placeholder_apis.map_view_of_file3 == nullptr ? nullptr :
 				placeholder_apis.map_view_of_file3(mapping, GetCurrentProcess(),
 					address, unsigned_offset, placeholder_view_bytes,
 					mem_replace_placeholder, view_protection, nullptr, 0);
+			if (base == nullptr) {
+				const DWORD error = GetLastError();
+				(void)VirtualFree(address, 0, MEM_RELEASE);
+				SetLastError(error);
+			}
 			if (base != nullptr) {
 				actual_view_bytes = placeholder_view_bytes;
 				guest_offset = 0;
@@ -5254,7 +5262,8 @@ extern "C" void* darling_windows_mmap(void* address, std::size_t length,
 	return result;
 }
 
-extern "C" int darling_windows_munmap(void* address, std::size_t length)
+static int DarlingWindowsMunmapInternal(void* address, std::size_t length,
+	bool preserve_placeholder_hole)
 {
 	if (address == nullptr || address == reinterpret_cast<void*>(-1) || length == 0) {
 		darling::windows_host::DarwinErrno::Set(22);
@@ -5440,7 +5449,8 @@ extern "C" int darling_windows_munmap(void* address, std::size_t length)
 		}
 	}
 	void* removed_placeholder = static_cast<std::uint8_t*>(original_base) + left_bytes;
-	if (!VirtualFree(removed_placeholder, 0, MEM_RELEASE)) {
+	if (!preserve_placeholder_hole &&
+		!VirtualFree(removed_placeholder, 0, MEM_RELEASE)) {
 		const auto error = GetLastError();
 		rollback();
 		darling::windows_host::DarwinErrno::SetFromWin32(error);
@@ -5457,6 +5467,12 @@ extern "C" int darling_windows_munmap(void* address, std::size_t length)
 	owner->active_views = owner->active_views - 1 + retained_views;
 	return 0;
 }
+
+extern "C" int darling_windows_munmap(void* address, std::size_t length)
+{
+	return DarlingWindowsMunmapInternal(address, length, false);
+}
+
 extern "C" int darling_windows_madvise(void* address, std::size_t length,
 	int advice)
 {

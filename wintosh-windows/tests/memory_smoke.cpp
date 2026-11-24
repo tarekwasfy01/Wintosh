@@ -231,7 +231,12 @@ int main()
 		shared_split_bytes[0] = 'A';
 		shared_split_bytes[4096] = 'B';
 		shared_split_bytes[8192] = 'C';
-		if (darling_windows_msync(shared_split, split_view_bytes, 16) != 0 ||
+		void* fixed_file_middle = darling_windows_mmap(shared_split_bytes + 4096,
+			4096, 3, 0x0001 | 0x0010, split_descriptor, 0);
+		if (fixed_file_middle != shared_split_bytes + 4096 ||
+			shared_split_bytes[0] != 'A' || shared_split_bytes[4096] != 'A' ||
+			shared_split_bytes[8192] != 'C' ||
+			darling_windows_msync(shared_split, split_view_bytes, 16) != 0 ||
 			darling_windows_munmap(shared_split_bytes + 4096, 4096) != 0 ||
 			shared_split_bytes[0] != 'A' || shared_split_bytes[8192] != 'C' ||
 			darling_windows_munmap(shared_split_bytes + 4096, 4096) == 0 ||

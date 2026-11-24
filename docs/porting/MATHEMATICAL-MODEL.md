@@ -201,9 +201,10 @@ The old file view is first split through the same host transaction used by
 partial `munmap`; this leaves the target interval as an exact placeholder.
 `MapViewOfFile3(MEM_REPLACE_PLACEHOLDER)` then installs the new section view.
 The current implementation only admits a target contained in one tracked,
-placeholder-backed file view. Cross-allocation, image, anonymous-to-file, and
-multi-view replacements still need separate ownership transactions. This path
-has compiled but does not yet have a dedicated runtime regression fixture.
+placeholder-backed file view. Host and ARM64 guest regression fixtures replace
+the middle page of a three-page view with a different file offset and verify
+both retained neighbors. Cross-allocation, image, anonymous-to-file, and
+multi-view replacements still need separate ownership transactions.
 
 Mit Seitengröße `p` und Seitenzahlen `a = ℓ/p`, `m = k/p` und
 `c = (n-ℓ-k)/p` entspricht die Erhaltung der beiden Restbereiche auf dem

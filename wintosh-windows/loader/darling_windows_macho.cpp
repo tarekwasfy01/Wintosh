@@ -69,6 +69,15 @@ bool DispatchArm64CoreFoundationRunLoopImport(const std::string& name,
 	DarlingWindowsA64Backend& backend, std::uint64_t& return_value)
 {
 	const auto& x = state.x;
+	if (name == "_CFRunLoopPerformBlock") {
+		using Call = void (DARLING_CF_GUEST_ABI *)(darling_windows_CFRunLoopRef,
+			darling_windows_CFTypeRef, void*);
+		reinterpret_cast<Call>(target)(reinterpret_cast<void*>(
+			static_cast<std::uintptr_t>(x[0])), reinterpret_cast<void*>(
+			static_cast<std::uintptr_t>(x[1])), reinterpret_cast<void*>(
+			static_cast<std::uintptr_t>(x[2])));
+		return true;
+	}
 	if (name == "_CFRunLoopTimerCreate") {
 		if (x[4] != 0 && !backend.ContainsGuestRange(x[4],
 			sizeof(DarlingCFRunLoopTimerContext), false))

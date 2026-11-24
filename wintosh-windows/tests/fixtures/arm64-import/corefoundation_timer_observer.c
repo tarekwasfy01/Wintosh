@@ -27,12 +27,29 @@ extern CFRunLoopObserverRef CFRunLoopObserverCreate(const void *, CFOptionFlags,
 extern void CFRunLoopAddObserver(CFRunLoopRef, CFRunLoopObserverRef, CFStringRef);
 extern void CFRunLoopRemoveObserver(CFRunLoopRef, CFRunLoopObserverRef, CFStringRef);
 extern int CFRunLoopRunInMode(CFStringRef, double, unsigned char);
+extern void CFRunLoopPerformBlock(CFRunLoopRef, CFTypeRef, void *);
 extern void CFRelease(CFTypeRef);
 
 static int timerCalls;
 static int observerCalls;
+static int blockCalls;
 static int timerInfo;
 static int observerInfo;
+
+typedef struct {
+	void *isa;
+	int flags;
+	int reserved;
+	void (*invoke)(void *);
+	const void *descriptor;
+} Block;
+typedef struct { unsigned long reserved; unsigned long size; } BlockDescriptor;
+static void run_loop_block(void *block)
+{
+	if (block != 0) ++blockCalls;
+}
+static const BlockDescriptor blockDescriptor = { 0, sizeof(Block) };
+static Block runLoopBlock = { 0, 1 << 28, 0, run_loop_block, &blockDescriptor };
 
 static void timer_callout(CFRunLoopTimerRef timer, void *info)
 {
@@ -73,8 +90,9 @@ int main(void)
 	if (observer == 0) return 23;
 	CFRunLoopAddTimer(loop, timer, mode);
 	CFRunLoopAddObserver(loop, observer, mode);
+	CFRunLoopPerformBlock(loop, mode, &runLoopBlock);
 	const int result = CFRunLoopRunInMode(mode, 0.01, 0);
-	if (result < 1 || timerCalls != 1 || observerCalls != 1) return 11;
+	if (result < 1 || timerCalls != 1 || observerCalls != 1 || blockCalls != 1) return 11;
 	CFRunLoopRemoveTimer(loop, timer, mode);
 	CFRunLoopRemoveObserver(loop, observer, mode);
 	CFRelease(timer);

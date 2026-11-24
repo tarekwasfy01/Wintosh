@@ -1042,8 +1042,15 @@ receives its `seconds` value in `v0`, and its mode and boolean flag in `x0` and
 prototype types and AArch64 calling convention, rather than assigning a
 register from the argument's ordinal position.
 
+`CFRunLoopPerformBlock` retains the guest block and queues its invocation for
+the requested mode. On ARM64 the Blocks ABI supplies the block literal in
+`x0`; the active Objective-C guest method invoker resumes its invoke function
+in the interpreter. The ARM64 fixture verifies a global block is performed
+once during the selected mode alongside timer and observer delivery.
+
 The focused ARM64 fixtures cover timer and observer creation, registration,
-invalidation/removal, mode execution, and synchronous guest callback dispatch.
-They do not establish full Darwin run-loop compatibility: timer rescheduling
-and tolerance, nested or concurrent run loops, every callback-context
-ownership case, and AppKit event delivery remain separate work.
+invalidation/removal, mode execution, perform-block ownership, and synchronous
+guest callback dispatch. They do not establish full Darwin run-loop
+compatibility: timer rescheduling and tolerance, nested or concurrent run
+loops, every callback-context ownership case, and AppKit event delivery remain
+separate work.

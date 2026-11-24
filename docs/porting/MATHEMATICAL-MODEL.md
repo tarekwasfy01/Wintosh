@@ -951,9 +951,9 @@ The implementation's matrix maps Darwin number tags to host storage as follows:
 | SInt8 / Char | 8-bit signed | signed 64-bit | Implemented |
 | SInt16 / Short | 16-bit signed | signed 64-bit | Implemented |
 | SInt32 / Int | 32-bit signed | signed 64-bit | Implemented |
-| SInt64 / Long / LongLong / CFIndex / NSInteger | 64-bit signed | signed 64-bit | Implemented for x86_64 guest |
+| SInt64 / Long / LongLong / CFIndex / NSInteger | 64-bit signed | signed 64-bit | Implemented; ARM64 import-tested |
 | Float32 / Float | 32-bit float | double | Implemented |
-| Float64 / Double / CGFloat | 64-bit float | double | Implemented for 64-bit guest |
+| Float64 / Double / CGFloat | 64-bit float | double | Implemented; ARM64 import-tested |
 
 This bridge keeps values usable by property-list and collection code but does
 not claim CFNumber's exact internal-type preservation or all architecture and
@@ -961,6 +961,14 @@ overflow corner cases. `CFDate` stores Darwin absolute time as a double and
 compares in reference-date seconds. These contracts follow [Apple CFNumber](https://developer.apple.com/documentation/corefoundation/cfnumber),
 [CFDate](https://developer.apple.com/documentation/corefoundation/cfdatecreate%28_%3A_%3A%29),
 and [CFDictionary](https://developer.apple.com/documentation/corefoundation/cfdictionary).
+
+The ARM64 import adapter now routes `CFNumberCreate`, `CFNumberGetValue`,
+`CFNumberIsFloatType`, and `CFNumberCompare`. Before scalar reads or writes it
+maps the Darwin tag to width `w(T)∈{1,2,4,8}` and requires a guest range
+`[p,p+w(T))` with the appropriate read/write permission. The guest fixture
+checks signed-integer-to-64-bit extraction, integer/real classification, and
+cross-representation ordering. Numeric values remain canonicalized to signed
+64-bit integers or doubles in the host object model.
 
 For dictionary collection semantics the supported callback matrix is explicit:
 

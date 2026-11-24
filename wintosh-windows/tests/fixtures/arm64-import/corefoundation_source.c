@@ -1,5 +1,6 @@
 /* Wintosh original ARM64 Darwin guest fixture; GPL-3.0-only. */
 typedef long CFIndex;
+typedef int CFNumberType;
 typedef struct CFRange { CFIndex location; CFIndex length; } CFRange;
 typedef void *CFTypeRef;
 typedef void *CFStringRef;
@@ -58,6 +59,10 @@ extern void CFRelease(CFTypeRef);
 extern CFStringRef CFStringCreateWithCString(const void *, const char *,
 	unsigned int);
 extern CFStringRef CFCopyDescription(const void *);
+extern CFTypeRef CFNumberCreate(const void *, CFNumberType, const void *);
+extern unsigned char CFNumberGetValue(CFTypeRef, CFNumberType, void *);
+extern unsigned char CFNumberIsFloatType(CFTypeRef);
+extern long CFNumberCompare(CFTypeRef, CFTypeRef, const void *);
 extern CFTypeRef CFArrayCreate(const void *, const void *const *, CFIndex,
 	const CFArrayCallBacks *);
 extern CFTypeRef CFArrayCreateMutable(const void *, CFIndex,
@@ -292,6 +297,18 @@ static void source_perform(void *info)
 
 int main(void)
 {
+	int integerValue = 40;
+	double realValue = 40.5;
+	CFTypeRef integerNumber = CFNumberCreate(0, 9, &integerValue);
+	CFTypeRef realNumber = CFNumberCreate(0, 6, &realValue);
+	long long convertedInteger = 0;
+	if (integerNumber == 0 || realNumber == 0 ||
+		!CFNumberGetValue(integerNumber, 4, &convertedInteger) ||
+		convertedInteger != 40 || CFNumberIsFloatType(integerNumber) ||
+		!CFNumberIsFloatType(realNumber) ||
+		CFNumberCompare(integerNumber, realNumber, 0) >= 0) return 59;
+	CFRelease(integerNumber);
+	CFRelease(realNumber);
 	arrayValueA = 2;
 	arrayValueB = 1;
 	dictionaryKeyA = 3;

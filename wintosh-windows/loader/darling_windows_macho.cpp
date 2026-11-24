@@ -115,6 +115,55 @@ bool DispatchArm64CoreFoundationRunLoopImport(const std::string& name,
 				static_cast<std::uintptr_t>(x[0]))));
 		return true;
 	}
+	if (name == "_CFNumberCreate" || name == "_CFNumberGetValue") {
+		const auto type = static_cast<std::int32_t>(x[1]);
+		std::size_t scalar_bytes = 0;
+		switch (type) {
+		case 1: case 7: scalar_bytes = sizeof(std::int8_t); break;
+		case 2: case 8: scalar_bytes = sizeof(std::int16_t); break;
+		case 3: case 9: scalar_bytes = sizeof(std::int32_t); break;
+		case 4: case 10: case 11: case 14: case 15:
+			scalar_bytes = sizeof(std::int64_t); break;
+		case 5: case 12: scalar_bytes = sizeof(float); break;
+		case 6: case 13: case 16: scalar_bytes = sizeof(double); break;
+		default: break;
+		}
+		if (name == "_CFNumberCreate") {
+			if (scalar_bytes != 0 && (x[2] == 0 || !backend.ContainsGuestRange(
+				x[2], scalar_bytes, false)))
+				throw std::runtime_error("ARM64 CFNumberCreate import received an invalid scalar range");
+			using Call = darling_windows_CFTypeRef (DARLING_CF_GUEST_ABI *)(
+				const void*, darling_windows_CFNumberType, const void*);
+			resumed_state.x[0] = reinterpret_cast<std::uintptr_t>(reinterpret_cast<Call>(target)(
+				reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[0])), type,
+				reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[2]))));
+		} else {
+			if (scalar_bytes != 0 && (x[2] == 0 || !backend.ContainsGuestRange(
+				x[2], scalar_bytes, true)))
+				throw std::runtime_error("ARM64 CFNumberGetValue import received an invalid output range");
+			using Call = std::uint8_t (DARLING_CF_GUEST_ABI *)(
+				darling_windows_CFTypeRef, darling_windows_CFNumberType, void*);
+			resumed_state.x[0] = reinterpret_cast<Call>(target)(
+				reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0])), type,
+				reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[2])));
+		}
+		return true;
+	}
+	if (name == "_CFNumberIsFloatType") {
+		using Call = std::uint8_t (DARLING_CF_GUEST_ABI *)(darling_windows_CFTypeRef);
+		resumed_state.x[0] = reinterpret_cast<Call>(target)(reinterpret_cast<void*>(
+			static_cast<std::uintptr_t>(x[0])));
+		return true;
+	}
+	if (name == "_CFNumberCompare") {
+		using Call = std::intptr_t (DARLING_CF_GUEST_ABI *)(darling_windows_CFTypeRef,
+			darling_windows_CFTypeRef, const void*);
+		resumed_state.x[0] = static_cast<std::uint64_t>(reinterpret_cast<Call>(target)(
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0])),
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[1])),
+			reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[2]))));
+		return true;
+	}
 	if (name == "_CFRunLoopGetCurrent" || name == "_CFRunLoopGetMain") {
 		using Call = darling_windows_CFRunLoopRef (DARLING_CF_GUEST_ABI *)();
 		resumed_state.x[0] = reinterpret_cast<std::uintptr_t>(

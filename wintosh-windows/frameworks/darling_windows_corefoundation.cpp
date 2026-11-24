@@ -33,6 +33,7 @@
 #include <cstdarg>
 #include <cstdio>
 #include <limits>
+#include <type_traits>
 #include <map>
 #include <filesystem>
 #include <fstream>
@@ -266,6 +267,43 @@ bool EqualDictionaryKeys(const Object* dictionary, const void* left, const void*
 const void* RetainSetValue(Object* set, const void* value);
 void ReleaseSetValue(Object* set, const void* value);
 bool EqualSetValues(const Object* set, const void* left, const void* right);
+template <typename Value>
+std::uintptr_t GuestCallbackArgument(Value value)
+{
+	if constexpr (std::is_pointer_v<Value>)
+		return reinterpret_cast<std::uintptr_t>(value);
+	else
+		return static_cast<std::uintptr_t>(value);
+}
+
+template <typename Callback, typename... Arguments>
+auto InvokeGuestCallbackResult(Callback callback, Arguments... values)
+	-> std::invoke_result_t<Callback, Arguments...>
+{
+	using Result = std::invoke_result_t<Callback, Arguments...>;
+	const std::array<std::uintptr_t, sizeof...(Arguments)> arguments{
+		GuestCallbackArgument(values)...};
+	std::uintptr_t result{};
+	if (darling_objc_invoke_guest_function_result(
+		reinterpret_cast<std::uintptr_t>(callback), arguments.data(),
+		arguments.size(), &result)) {
+		if constexpr (std::is_pointer_v<Result>) return reinterpret_cast<Result>(result);
+		else return static_cast<Result>(result);
+	}
+	return callback(values...);
+}
+
+template <typename Callback, typename... Arguments>
+void InvokeGuestCallback(Callback callback, Arguments... values)
+{
+	const std::array<std::uintptr_t, sizeof...(Arguments)> arguments{
+		GuestCallbackArgument(values)...};
+	if (!darling_objc_invoke_guest_function(
+		reinterpret_cast<std::uintptr_t>(callback), arguments.data(),
+		arguments.size()))
+		callback(values...);
+}
+
 template <typename RetainCallback>
 const void* InvokeContextRetain(RetainCallback callback, const void* info)
 {
@@ -470,7 +508,8 @@ const void* RetainArrayValue(Object* array, const void* value)
 		return value;
 	}
 	if (array->array_callbacks.retain == nullptr) return value;
-	try { return array->array_callbacks.retain(array->array_allocator, value); }
+	try { return InvokeGuestCallbackResult(array->array_callbacks.retain,
+		array->array_allocator, value); }
 	catch (...) { return nullptr; }
 }
 void ReleaseArrayValue(Object* array, const void* value)
@@ -480,7 +519,8 @@ void ReleaseArrayValue(Object* array, const void* value)
 		return;
 	}
 	if (array->array_callbacks.release != nullptr) {
-		try { array->array_callbacks.release(array->array_allocator, value); }
+		try { InvokeGuestCallback(array->array_callbacks.release,
+			array->array_allocator, value); }
 		catch (...) { /* C callbacks must not unwind through CoreFoundation. */ }
 	}
 }
@@ -488,7 +528,8 @@ bool EqualArrayValues(const Object* array, const void* left, const void* right)
 {
 	if (array != nullptr && array->has_array_callback_table) {
 		if (array->array_callbacks.equal == nullptr) return left == right;
-		try { return array->array_callbacks.equal(left, right) != 0; }
+		try { return InvokeGuestCallbackResult(array->array_callbacks.equal,
+			left, right) != 0; }
 		catch (...) { return false; }
 	}
 	return darling_windows_CFEqual(left, right);
@@ -500,7 +541,8 @@ const void* RetainDictionaryKey(Object* dictionary, const void* key)
 		return key;
 	}
 	if (dictionary->dictionary_key_callbacks.retain == nullptr) return key;
-	try { return dictionary->dictionary_key_callbacks.retain(dictionary->dictionary_allocator, key); }
+	try { return InvokeGuestCallbackResult(dictionary->dictionary_key_callbacks.retain,
+		dictionary->dictionary_allocator, key); }
 	catch (...) { return nullptr; }
 }
 const void* RetainDictionaryValue(Object* dictionary, const void* value)
@@ -510,7 +552,8 @@ const void* RetainDictionaryValue(Object* dictionary, const void* value)
 		return value;
 	}
 	if (dictionary->dictionary_value_callbacks.retain == nullptr) return value;
-	try { return dictionary->dictionary_value_callbacks.retain(dictionary->dictionary_allocator, value); }
+	try { return InvokeGuestCallbackResult(dictionary->dictionary_value_callbacks.retain,
+		dictionary->dictionary_allocator, value); }
 	catch (...) { return nullptr; }
 }
 void ReleaseDictionaryKey(Object* dictionary, const void* key)
@@ -520,7 +563,8 @@ void ReleaseDictionaryKey(Object* dictionary, const void* key)
 		return;
 	}
 	if (dictionary->dictionary_key_callbacks.release != nullptr) {
-		try { dictionary->dictionary_key_callbacks.release(dictionary->dictionary_allocator, key); }
+		try { InvokeGuestCallback(dictionary->dictionary_key_callbacks.release,
+			dictionary->dictionary_allocator, key); }
 		catch (...) { /* C callbacks must not unwind through CoreFoundation. */ }
 	}
 }
@@ -531,7 +575,8 @@ void ReleaseDictionaryValue(Object* dictionary, const void* value)
 		return;
 	}
 	if (dictionary->dictionary_value_callbacks.release != nullptr) {
-		try { dictionary->dictionary_value_callbacks.release(dictionary->dictionary_allocator, value); }
+		try { InvokeGuestCallback(dictionary->dictionary_value_callbacks.release,
+			dictionary->dictionary_allocator, value); }
 		catch (...) { /* C callbacks must not unwind through CoreFoundation. */ }
 	}
 }
@@ -539,7 +584,8 @@ bool EqualDictionaryKeys(const Object* dictionary, const void* left, const void*
 {
 	if (dictionary != nullptr && dictionary->has_dictionary_callback_tables) {
 		if (dictionary->dictionary_key_callbacks.equal == nullptr) return left == right;
-		try { return dictionary->dictionary_key_callbacks.equal(left, right) != 0; }
+		try { return InvokeGuestCallbackResult(dictionary->dictionary_key_callbacks.equal,
+			left, right) != 0; }
 		catch (...) { return false; }
 	}
 	return darling_windows_CFEqual(left, right);
@@ -551,7 +597,8 @@ const void* RetainSetValue(Object* set, const void* value)
 		return value;
 	}
 	if (set->set_callbacks.retain == nullptr) return value;
-	try { return set->set_callbacks.retain(set->set_allocator, value); }
+	try { return InvokeGuestCallbackResult(set->set_callbacks.retain,
+		set->set_allocator, value); }
 	catch (...) { return nullptr; }
 }
 void ReleaseSetValue(Object* set, const void* value)
@@ -561,7 +608,8 @@ void ReleaseSetValue(Object* set, const void* value)
 		return;
 	}
 	if (set->set_callbacks.release != nullptr) {
-		try { set->set_callbacks.release(set->set_allocator, value); }
+		try { InvokeGuestCallback(set->set_callbacks.release,
+			set->set_allocator, value); }
 		catch (...) { /* C callbacks must not unwind through CoreFoundation. */ }
 	}
 }
@@ -569,7 +617,8 @@ bool EqualSetValues(const Object* set, const void* left, const void* right)
 {
 	if (set != nullptr && set->has_set_callback_table) {
 		if (set->set_callbacks.equal == nullptr) return left == right;
-		try { return set->set_callbacks.equal(left, right) != 0; }
+		try { return InvokeGuestCallbackResult(set->set_callbacks.equal,
+			left, right) != 0; }
 		catch (...) { return false; }
 	}
 	return darling_windows_CFEqual(left, right);
@@ -579,7 +628,7 @@ std::uintptr_t HashSetValue(const Object* set, const void* value)
 	if (set != nullptr && set->has_set_callback_table) {
 		if (set->set_callbacks.hash == nullptr)
 			return reinterpret_cast<std::uintptr_t>(value);
-		try { return set->set_callbacks.hash(value); }
+		try { return InvokeGuestCallbackResult(set->set_callbacks.hash, value); }
 		catch (...) { return 0; }
 	}
 	return static_cast<std::uintptr_t>(darling_windows_CFHash(value));

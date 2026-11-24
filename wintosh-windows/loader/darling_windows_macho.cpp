@@ -149,6 +149,25 @@ bool DispatchArm64CoreFoundationRunLoopImport(const std::string& name,
 			reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[0]))));
 		return true;
 	}
+	if (name == "_CFArrayCreate") {
+		constexpr std::uint64_t max_array_elements = 1u << 20;
+		if (x[2] > max_array_elements || (x[2] != 0 &&
+			(x[1] == 0 || !backend.ContainsGuestRange(x[1],
+				static_cast<std::size_t>(x[2]) * sizeof(void*), false))) ||
+			(x[3] != 0 && !backend.ContainsGuestRange(x[3],
+				sizeof(DarlingCFArrayCallbacks), false)))
+			throw std::runtime_error("ARM64 CFArrayCreate import received an invalid guest range");
+		using Call = darling_windows_CFArrayRef (DARLING_CF_GUEST_ABI *)(
+			const void*, const void* const*, darling_windows_CFIndex,
+			const DarlingCFArrayCallbacks*);
+		resumed_state.x[0] = reinterpret_cast<std::uintptr_t>(reinterpret_cast<Call>(target)(
+			reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[0])),
+			reinterpret_cast<const void* const*>(static_cast<std::uintptr_t>(x[1])),
+			static_cast<darling_windows_CFIndex>(x[2]),
+			reinterpret_cast<const DarlingCFArrayCallbacks*>(
+				static_cast<std::uintptr_t>(x[3]))));
+		return true;
+	}
 	if (name == "_CFRunLoopPerformBlock") {
 		using Call = void (DARLING_CF_GUEST_ABI *)(darling_windows_CFRunLoopRef,
 			darling_windows_CFTypeRef, void*);

@@ -4,6 +4,13 @@ typedef void *CFTypeRef;
 typedef void *CFStringRef;
 typedef void *CFRunLoopRef;
 typedef void *CFRunLoopSourceRef;
+typedef struct CFArrayCallBacks {
+	CFIndex version;
+	const void *(*retain)(const void *, const void *);
+	void (*release)(const void *, const void *);
+	const void *(*copyDescription)(const void *);
+	unsigned char (*equal)(const void *, const void *);
+} CFArrayCallBacks;
 typedef struct CFRunLoopSourceContext {
 	CFIndex version;
 	void *info;
@@ -33,11 +40,31 @@ extern void CFRunLoopSourceSignal(CFRunLoopSourceRef);
 extern void CFRunLoopSourceInvalidate(CFRunLoopSourceRef);
 extern int CFRunLoopRunInMode(CFStringRef, double, unsigned char);
 extern void CFRelease(CFTypeRef);
+extern CFTypeRef CFArrayCreate(const void *, const void *const *, CFIndex,
+	const CFArrayCallBacks *);
+extern CFIndex CFArrayGetCount(CFTypeRef);
 
 static int scheduleCalls;
 static int cancelCalls;
 static int performCalls;
 static int contextInfo;
+static int arrayValueA;
+static int arrayValueB;
+static int arrayRetainCalls;
+static int arrayReleaseCalls;
+
+static const void *array_retain(const void *allocator, const void *value)
+{
+	(void)allocator;
+	if (value == &arrayValueA || value == &arrayValueB) ++arrayRetainCalls;
+	return value;
+}
+
+static void array_release(const void *allocator, const void *value)
+{
+	(void)allocator;
+	if (value == &arrayValueA || value == &arrayValueB) ++arrayReleaseCalls;
+}
 
 static void source_schedule(void *info, CFRunLoopRef loop, const void *mode)
 {
@@ -58,6 +85,13 @@ static void source_perform(void *info)
 
 int main(void)
 {
+	const void *arrayValues[] = { &arrayValueA, &arrayValueB };
+	CFArrayCallBacks arrayCallbacks = { 0, array_retain, array_release, 0, 0 };
+	CFTypeRef array = CFArrayCreate(0, arrayValues, 2, &arrayCallbacks);
+	if (array == 0 || CFArrayGetCount(array) != 2 || arrayRetainCalls != 2)
+		return 17;
+	CFRelease(array);
+	if (arrayReleaseCalls != 2) return 18;
 	CFRunLoopSourceContext context;
 	context.version = 0;
 	context.info = &contextInfo;

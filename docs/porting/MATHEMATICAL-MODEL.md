@@ -1126,5 +1126,11 @@ result back to CoreFoundation, while a release callback is void. If no active
 guest dispatcher claims an address, the native host callback remains the
 fallback. The ARM64 timer/observer and Mach-port fixtures assert the resulting
 retain/release counts and retained pointer lifecycle. This establishes only
-these context callbacks; collection callbacks and other callback-bearing
-CoreFoundation APIs still need their own guest dispatch audit.
+these context callbacks. Collection retain/release/equality callbacks and Set
+hash callbacks use a typed register-vector bridge as well: callback arguments
+map positionally to `x0…x(n−1)`, pointer/integer results return in `x0`, and
+non-guest function addresses use the native fallback. The ARM64 fixture creates
+an array with guest retain/release callbacks and checks `retain_count = 2`,
+`release_count = 2` across create/count/destroy. Dictionary/Set collection
+callbacks and copy-description callbacks still need ARM64 end-to-end fixtures;
+other callback-bearing CoreFoundation APIs remain to be audited.

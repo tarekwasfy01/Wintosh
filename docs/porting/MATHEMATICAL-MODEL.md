@@ -1060,8 +1060,14 @@ replacement of `[i,i+ℓ)` by `R`, the resulting state is
 `A'=A[0:i]·R·A[i+ℓ:n]`; append-array is the special case `i=n,ℓ=0` with `R`
 selected from the source array. Both operations and the count/first/last index
 queries now have ARM64 import adapters and fixture coverage. Copy APIs are
-bridged too. Comparator-based sort/search, array exchange, callback enumeration,
-and the remaining array surface still need ARM64 coverage.
+bridged too. Comparator-based sort/search and Array, Dictionary, and Set
+enumeration now route guest function pointers through the active ARM64
+interpreter: `apply(x)` maps each selected element to the callback, while sort
+uses `cmp(aᵢ,aⱼ)` and binary search uses at most `⌈log₂(n+1)⌉` comparator
+probes plus the equality probe. The fixture checks ascending order, exact-match
+index, enumeration cardinality, and accumulated callback state for all three
+collection types. Array exchange and the remaining array surface still need
+ARM64 coverage.
 
 ## ARM64 CoreFoundation run-loop callbacks
 

@@ -280,6 +280,45 @@ bool DispatchArm64CoreFoundationRunLoopImport(const std::string& name,
 			 static_cast<darling_windows_CFIndex>(x[3])});
 		return true;
 	}
+	if (name == "_CFArrayApplyFunction" || name == "_CFArraySortValues") {
+		if (name == "_CFArrayApplyFunction") {
+			using Call = void (DARLING_CF_GUEST_ABI *)(darling_windows_CFArrayRef,
+				darling_windows_CFRange, darling_windows_CFArrayGuestApplierFunction,
+				void*);
+			reinterpret_cast<Call>(target)(reinterpret_cast<void*>(
+				static_cast<std::uintptr_t>(x[0])),
+				{static_cast<darling_windows_CFIndex>(x[1]),
+				 static_cast<darling_windows_CFIndex>(x[2])},
+				reinterpret_cast<darling_windows_CFArrayGuestApplierFunction>(
+					static_cast<std::uintptr_t>(x[3])),
+				reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[4])));
+		} else {
+			using Call = void (DARLING_CF_GUEST_ABI *)(darling_windows_CFArrayRef,
+				darling_windows_CFRange, darling_windows_CFComparatorFunction, void*);
+			reinterpret_cast<Call>(target)(reinterpret_cast<void*>(
+				static_cast<std::uintptr_t>(x[0])),
+				{static_cast<darling_windows_CFIndex>(x[1]),
+				 static_cast<darling_windows_CFIndex>(x[2])},
+				reinterpret_cast<darling_windows_CFComparatorFunction>(
+					static_cast<std::uintptr_t>(x[3])),
+				reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[4])));
+		}
+		return true;
+	}
+	if (name == "_CFArrayBSearchValues") {
+		using Call = darling_windows_CFIndex (DARLING_CF_GUEST_ABI *)(
+			darling_windows_CFArrayRef, darling_windows_CFRange,
+			darling_windows_CFTypeRef, darling_windows_CFComparatorFunction, void*);
+		resumed_state.x[0] = static_cast<std::uint64_t>(reinterpret_cast<Call>(target)(
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0])),
+			{static_cast<darling_windows_CFIndex>(x[1]),
+			 static_cast<darling_windows_CFIndex>(x[2])},
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[3])),
+			reinterpret_cast<darling_windows_CFComparatorFunction>(
+				static_cast<std::uintptr_t>(x[4])),
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[5]))));
+		return true;
+	}
 	if (name == "_CFArrayRemoveAllValues") {
 		using Call = void (DARLING_CF_GUEST_ABI *)(darling_windows_CFArrayRef);
 		reinterpret_cast<Call>(target)(reinterpret_cast<void*>(
@@ -390,6 +429,16 @@ bool DispatchArm64CoreFoundationRunLoopImport(const std::string& name,
 			static_cast<std::uintptr_t>(x[0])), reinterpret_cast<const void**>(
 			static_cast<std::uintptr_t>(x[1])), reinterpret_cast<const void**>(
 			static_cast<std::uintptr_t>(x[2])));
+		return true;
+	}
+	if (name == "_CFDictionaryApplyFunction") {
+		using Call = void (DARLING_CF_GUEST_ABI *)(darling_windows_CFDictionaryRef,
+			darling_windows_CFDictionaryGuestApplierFunction, void*);
+		reinterpret_cast<Call>(target)(reinterpret_cast<void*>(
+			static_cast<std::uintptr_t>(x[0])),
+		reinterpret_cast<darling_windows_CFDictionaryGuestApplierFunction>(
+				static_cast<std::uintptr_t>(x[1])),
+		reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[2])));
 		return true;
 	}
 	if (name == "_CFDictionaryCreateMutable") {
@@ -513,6 +562,16 @@ bool DispatchArm64CoreFoundationRunLoopImport(const std::string& name,
 		reinterpret_cast<Call>(target)(reinterpret_cast<void*>(
 			static_cast<std::uintptr_t>(x[0])), reinterpret_cast<const void**>(
 			static_cast<std::uintptr_t>(x[1])));
+		return true;
+	}
+	if (name == "_CFSetApplyFunction") {
+		using Call = void (DARLING_CF_GUEST_ABI *)(darling_windows_CFSetRef,
+			darling_windows_CFSetGuestApplierFunction, void*);
+		reinterpret_cast<Call>(target)(reinterpret_cast<void*>(
+			static_cast<std::uintptr_t>(x[0])),
+		reinterpret_cast<darling_windows_CFSetGuestApplierFunction>(
+				static_cast<std::uintptr_t>(x[1])),
+		reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[2])));
 		return true;
 	}
 	if (name == "_CFSetCreateMutable") {

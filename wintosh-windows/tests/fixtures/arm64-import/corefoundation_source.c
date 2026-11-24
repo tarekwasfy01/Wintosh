@@ -75,6 +75,12 @@ extern CFIndex CFArrayGetCountOfValue(CFTypeRef, CFRange, CFTypeRef);
 extern CFIndex CFArrayGetFirstIndexOfValue(CFTypeRef, CFRange, CFTypeRef);
 extern CFIndex CFArrayGetLastIndexOfValue(CFTypeRef, CFRange, CFTypeRef);
 extern void CFArrayGetValues(CFTypeRef, CFRange, const void **);
+extern void CFArrayApplyFunction(CFTypeRef, CFRange,
+	void (*)(const void *, void *), void *);
+extern void CFArraySortValues(CFTypeRef, CFRange,
+	int (*)(const void *, const void *, void *), void *);
+extern CFIndex CFArrayBSearchValues(CFTypeRef, CFRange, CFTypeRef,
+	int (*)(const void *, const void *, void *), void *);
 extern CFIndex CFArrayGetCount(CFTypeRef);
 extern CFTypeRef CFDictionaryCreate(const void *, const void *const *,
 	const void *const *, CFIndex, const CFDictionaryKeyCallBacks *,
@@ -92,6 +98,8 @@ extern CFTypeRef CFDictionaryCreateMutableCopy(const void *, CFIndex, CFTypeRef)
 extern unsigned char CFDictionaryGetValueIfPresent(CFTypeRef, const void *, const void **);
 extern unsigned char CFDictionaryContainsValue(CFTypeRef, const void *);
 extern void CFDictionaryGetKeysAndValues(CFTypeRef, const void **, const void **);
+extern void CFDictionaryApplyFunction(CFTypeRef,
+	void (*)(const void *, const void *, void *), void *);
 extern CFTypeRef CFSetCreate(const void *, const void *const *, CFIndex,
 	const CFDictionaryKeyCallBacks *);
 extern CFIndex CFSetGetCount(CFTypeRef);
@@ -106,6 +114,7 @@ extern CFTypeRef CFSetCreateMutableCopy(const void *, CFIndex, CFTypeRef);
 extern const void *CFSetGetValue(CFTypeRef, const void *);
 extern unsigned char CFSetGetValueIfPresent(CFTypeRef, const void *, const void **);
 extern void CFSetGetValues(CFTypeRef, const void **);
+extern void CFSetApplyFunction(CFTypeRef, void (*)(const void *, void *), void *);
 
 static int scheduleCalls;
 static int cancelCalls;
@@ -116,6 +125,13 @@ static int arrayValueB;
 static int arrayRetainCalls;
 static int arrayReleaseCalls;
 static int arrayDescriptionCalls;
+static int arrayApplyCalls;
+static int arrayApplySum;
+static int arrayCompareCalls;
+static int dictionaryApplyCalls;
+static int dictionaryApplySum;
+static int setApplyCalls;
+static int setApplySum;
 static int dictionaryKeyRetainCalls;
 static int dictionaryKeyReleaseCalls;
 static int dictionaryValueRetainCalls;
@@ -148,6 +164,38 @@ static const void *array_copy_description(const void *value)
 {
 	if (value == &arrayValueA || value == &arrayValueB) ++arrayDescriptionCalls;
 	return CFStringCreateWithCString(0, "array-item", 0x08000100u);
+}
+static void array_apply(const void *value, void *context)
+{
+	if (context != 0 && value != 0) {
+		++arrayApplyCalls;
+	*(int *)context += *(const int *)value;
+		arrayApplySum += *(const int *)value;
+	}
+}
+static int array_compare(const void *left, const void *right, void *context)
+{
+	(void)context;
+	++arrayCompareCalls;
+	const int leftValue = *(const int *)left;
+	const int rightValue = *(const int *)right;
+	return leftValue < rightValue ? -1 : leftValue > rightValue ? 1 : 0;
+}
+static void dictionary_apply(const void *key, const void *value, void *context)
+{
+	if (context != 0 && key != 0 && value != 0) {
+		++dictionaryApplyCalls;
+		*(int *)context += *(const int *)key + *(const int *)value;
+		dictionaryApplySum += *(const int *)key + *(const int *)value;
+	}
+}
+static void set_apply(const void *value, void *context)
+{
+	if (context != 0 && value != 0) {
+		++setApplyCalls;
+		*(int *)context += *(const int *)value;
+		setApplySum += *(const int *)value;
+	}
 }
 
 static const void *dictionary_key_retain(const void *allocator, const void *value)
@@ -244,6 +292,14 @@ static void source_perform(void *info)
 
 int main(void)
 {
+	arrayValueA = 2;
+	arrayValueB = 1;
+	dictionaryKeyA = 3;
+	dictionaryKeyB = 8;
+	dictionaryValueA = 5;
+	dictionaryValueB = 4;
+	setValueA = 9;
+	setValueB = 10;
 	const void *arrayValues[] = { &arrayValueA, &arrayValueB };
 	CFArrayCallBacks arrayCallbacks = { 0, array_retain, array_release,
 		array_copy_description, 0 };
@@ -281,6 +337,16 @@ int main(void)
 	CFRelease(sourceArray);
 	if (CFArrayGetCount(mutableArray) != 3 ||
 		CFArrayGetValueAtIndex(mutableArray, 2) != &arrayValueB) return 44;
+	CFArraySortValues(mutableArray, (CFRange){ 0, 3 }, array_compare, 0);
+	if (CFArrayGetValueAtIndex(mutableArray, 0) != &arrayValueB ||
+		CFArrayGetValueAtIndex(mutableArray, 1) != &arrayValueB ||
+		CFArrayGetValueAtIndex(mutableArray, 2) != &arrayValueA ||
+		arrayCompareCalls == 0) return 54;
+	if (CFArrayBSearchValues(mutableArray, (CFRange){ 0, 3 }, &arrayValueA,
+		array_compare, 0) != 2) return 55;
+	int appliedSum = 0;
+	CFArrayApplyFunction(mutableArray, (CFRange){ 0, 3 }, array_apply, &appliedSum);
+	if (arrayApplyCalls != 3 || appliedSum != 4 || arrayApplySum != 4) return 56;
 	CFArrayRemoveValueAtIndex(mutableArray, 0);
 	CFArrayAppendValue(mutableArray, &arrayValueA);
 	CFArrayRemoveAllValues(mutableArray);
@@ -323,6 +389,11 @@ int main(void)
 	CFDictionaryRemoveAllValues(mutableDictionary);
 	if (CFDictionaryGetCount(mutableDictionary) != 0) return 30;
 	CFDictionarySetValue(mutableDictionary, &dictionaryKeyA, &dictionaryValueB);
+	int dictionaryApplyTotal = 0;
+	CFDictionaryApplyFunction(mutableDictionary, dictionary_apply,
+		&dictionaryApplyTotal);
+	if (dictionaryApplyCalls != 1 || dictionaryApplyTotal != 7 ||
+		dictionaryApplySum != 7) return 57;
 	const void *dictionaryOutputKey = 0, *dictionaryOutputValue = 0;
 	if (!CFDictionaryGetValueIfPresent(mutableDictionary, &dictionaryKeyA,
 		&dictionaryOutputValue) || dictionaryOutputValue != &dictionaryValueB ||
@@ -371,6 +442,9 @@ int main(void)
 	CFSetRemoveAllValues(mutableSet);
 	if (CFSetGetCount(mutableSet) != 0) return 35;
 	CFSetAddValue(mutableSet, &setValueA);
+	int setApplyTotal = 0;
+	CFSetApplyFunction(mutableSet, set_apply, &setApplyTotal);
+	if (setApplyCalls != 1 || setApplyTotal != 9 || setApplySum != 9) return 58;
 	const void *setOutput[1] = { 0 };
 	const void *setOutputValue = 0;
 	CFSetGetValues(mutableSet, setOutput);

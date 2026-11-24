@@ -7128,7 +7128,7 @@ void DarlingArrayApplyThunk(const void* value, void* opaque)
 {
 	auto* state = static_cast<DarlingArrayApplyContext*>(opaque);
 	if (state != nullptr && state->callback != nullptr)
-		state->callback(value, state->context);
+		InvokeGuestCallback(state->callback, value, state->context);
 }
 bool DarlingArrayIsMutable(darling_windows_CFArrayRef value)
 {
@@ -7304,7 +7304,7 @@ extern "C" DARLING_CF_GUEST_ABI void CFArraySortValues(
 	auto end = begin + range.length;
 	try {
 		std::stable_sort(begin, end, [comparator, context](const void* left, const void* right) {
-			return comparator(left, right, context) < 0;
+			return InvokeGuestCallbackResult(comparator, left, right, context) < 0;
 		});
 	} catch (...) { /* Comparator failures must not unwind through the guest ABI. */ }
 }
@@ -7325,12 +7325,14 @@ extern "C" DARLING_CF_GUEST_ABI darling_windows_CFIndex CFArrayBSearchValues(
 	try {
 		while (low < high) {
 			const auto middle = low + (high - low) / 2;
-			if (comparator(object->array[static_cast<std::size_t>(middle)], candidate,
-				context) < 0) low = middle + 1;
+			if (InvokeGuestCallbackResult(comparator,
+				object->array[static_cast<std::size_t>(middle)], candidate, context) < 0)
+				low = middle + 1;
 			else high = middle;
 		}
 		if (low < range.location + range.length &&
-			comparator(object->array[static_cast<std::size_t>(low)], candidate, context) == 0) {
+			InvokeGuestCallbackResult(comparator,
+				object->array[static_cast<std::size_t>(low)], candidate, context) == 0) {
 			return low;
 		}
 		return low;
@@ -7789,7 +7791,7 @@ void DarlingInvokeGuestDictionaryApplier(const void* key, const void* value, voi
 {
 	auto* context = static_cast<DarlingGuestDictionaryApplyContext*>(raw_context);
 	if (context == nullptr || context->callback == nullptr) return;
-	try { context->callback(key, value, context->context); }
+	try { InvokeGuestCallback(context->callback, key, value, context->context); }
 	catch (...) { /* Do not unwind through the CoreFoundation collection loop. */ }
 }
 }
@@ -7953,7 +7955,7 @@ void DarlingInvokeGuestSetApplier(const void* value, void* raw_context)
 {
 	auto* context = static_cast<DarlingGuestSetApplyContext*>(raw_context);
 	if (context == nullptr || context->callback == nullptr) return;
-	try { context->callback(value, context->context); }
+	try { InvokeGuestCallback(context->callback, value, context->context); }
 	catch (...) { /* Keep guest exceptions inside the framework boundary. */ }
 }
 }

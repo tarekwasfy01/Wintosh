@@ -28,7 +28,8 @@ resource-limit copies, `FIONREAD` output from a guest pipe, Darwin error
 returns, the carry bit, login and UID/GID/group identity calls, selected
 `poll`/`select` write readiness, `select` timeout copy-back,
 Darwin `getdirentries` records and base offset, `statfs`/`fstatfs` metadata
-copies, `pathconf`/`fpathconf` limits, `utimes`/`futimes`,
+copies, `getfsstat` mounted-volume records, `pathconf`/`fpathconf` limits,
+`utimes`/`futimes`,
 `setsockopt`/`getsockopt`,
 process-group/session calls, and nonblocking file-lock acquire/release;
 terminal winsize requests remain unverified. The

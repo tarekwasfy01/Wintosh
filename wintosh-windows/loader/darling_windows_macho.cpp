@@ -7780,6 +7780,34 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 					}
 					syscall_result = darling_windows_fchdir(static_cast<int>(arguments[0]));
 					break;
+				case 18: { // SYS_getfsstat
+					constexpr std::uint64_t maximum_statfs_buffer = 16 * 1024 * 1024;
+					if (arguments[1] > maximum_statfs_buffer ||
+						arguments[2] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max())) {
+						error_number = EINVAL;
+						break;
+					}
+					const auto bytes = static_cast<std::size_t>(arguments[1]);
+					if (bytes != 0 && (arguments[0] == 0 ||
+							!backend.ContainsGuestRange(arguments[0], bytes, true))) {
+						error_number = EFAULT;
+						break;
+					}
+					const auto capacity = bytes / sizeof(darling_darwin_statfs);
+					std::vector<darling_darwin_statfs> filesystems(capacity);
+					syscall_result = darling_windows_getfsstat(
+						bytes == 0 ? nullptr : filesystems.data(),
+						static_cast<int>(bytes), static_cast<int>(arguments[2]));
+					if (syscall_result > 0 && bytes != 0) {
+						const auto copied = std::min<std::size_t>(
+							static_cast<std::size_t>(syscall_result), capacity);
+						std::memcpy(reinterpret_cast<void*>(static_cast<std::uintptr_t>(
+							arguments[0])), filesystems.data(),
+							copied * sizeof(darling_darwin_statfs));
+					}
+					break;
+				}
 				case 157: // SYS_statfs
 				case 158: { // SYS_fstatfs
 					if (!backend.ContainsGuestRange(arguments[1],

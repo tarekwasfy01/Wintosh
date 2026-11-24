@@ -11,8 +11,9 @@ CoreFoundation observers; their callback functions execute from the loaded
 guest image. The fixture checks four activity callbacks and one-shot
 invalidation, exact repeating-observer context forwarding, and a non-null
 one-shot context. It also creates, registers, and fires a one-shot
-`CFRunLoopTimer` callback from the guest image. It does not cover arbitrary
-framework startup or AppKit events.
+`CFRunLoopTimer` callback from the guest image, checks its tolerance APIs and
+nominal fire date, then verifies a repeating timer fires more than once. It
+does not cover arbitrary framework startup or AppKit events.
 
 `arm64_import_e2e.ps1` builds two ARM64 Mach-O guests with Clang/ld64.lld and
 runs them through the optional Dynarmic backend. It covers `_strlen` and

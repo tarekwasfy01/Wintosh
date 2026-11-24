@@ -70,7 +70,9 @@ non-null one-shot context, and one-shot invalidation. Guest context
 retain/release callbacks and all observer flags remain unverified. The same
 guest creates and registers a one-shot `CFRunLoopTimer`, then verifies its
 guest callback runs once with non-null context and the timer invalidates.
-AppKit integration remains unverified.
+It also checks timer tolerance APIs, unchanged nominal fire date, rejection of
+negative tolerance, and multiple firings from a repeating timer. AppKit
+integration remains unverified.
 
 `CFMachPort` exports the type ID, create/create-with-port, run-loop source,
 port/context/validity queries, invalidation, and invalidation-callback accessors.

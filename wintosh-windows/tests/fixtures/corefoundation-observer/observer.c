@@ -41,6 +41,11 @@ extern CFRunLoopTimerRef CFRunLoopTimerCreate(const void *allocator,
 	double fireDate, double interval, CFOptionFlags flags, CFIndex order,
 	void (*callout)(CFRunLoopTimerRef, void *),
 	const CFRunLoopTimerContext *context);
+extern double CFRunLoopTimerGetNextFireDate(CFRunLoopTimerRef timer);
+extern double CFRunLoopTimerGetInterval(CFRunLoopTimerRef timer);
+extern unsigned char CFRunLoopTimerDoesRepeat(CFRunLoopTimerRef timer);
+extern double CFRunLoopTimerGetTolerance(CFRunLoopTimerRef timer);
+extern void CFRunLoopTimerSetTolerance(CFRunLoopTimerRef timer, double tolerance);
 extern unsigned char CFRunLoopTimerIsValid(CFRunLoopTimerRef timer);
 extern void CFRunLoopTimerInvalidate(CFRunLoopTimerRef timer);
 extern void CFRunLoopAddTimer(CFRunLoopRef loop,
@@ -150,6 +155,12 @@ int main(void)
 		0, 0, timer_callback, &timerContext);
 	if (timer == 0)
 		return 32;
+	CFRunLoopTimerSetTolerance(timer, 0.01);
+	if (CFRunLoopTimerGetTolerance(timer) != 0.01 ||
+		CFRunLoopTimerGetNextFireDate(timer) != 0.0 ||
+		CFRunLoopTimerDoesRepeat(timer)) return 36;
+	CFRunLoopTimerSetTolerance(timer, -1.0);
+	if (CFRunLoopTimerGetTolerance(timer) != 0.01) return 37;
 	CFRunLoopAddTimer(loop, timer, mode);
 	(void)CFRunLoopRunInMode(mode, 1.0, 0);
 	if (timerState.calls != 1) return 33;
@@ -158,6 +169,21 @@ int main(void)
 	CFRunLoopRemoveTimer(loop, timer, mode);
 	CFRunLoopTimerInvalidate(timer);
 	CFRelease(timer);
+	timerState = (struct TimerState){0, 0};
+	CFRunLoopTimerRef repeatingTimer = CFRunLoopTimerCreate(0,
+		0.0, 0.005, 0, 0, timer_callback, &timerContext);
+	if (repeatingTimer == 0) return 38;
+	CFRunLoopTimerSetTolerance(repeatingTimer, 0.002);
+	if (CFRunLoopTimerGetTolerance(repeatingTimer) != 0.002 ||
+		CFRunLoopTimerGetInterval(repeatingTimer) != 0.005 ||
+		!CFRunLoopTimerDoesRepeat(repeatingTimer)) return 39;
+	CFRunLoopAddTimer(loop, repeatingTimer, mode);
+	(void)CFRunLoopRunInMode(mode, 0.03, 0);
+	if (timerState.calls < 2 || !timerState.context_matches ||
+		!CFRunLoopTimerIsValid(repeatingTimer)) return 40;
+	CFRunLoopRemoveTimer(loop, repeatingTimer, mode);
+	CFRunLoopTimerInvalidate(repeatingTimer);
+	CFRelease(repeatingTimer);
 	CFRelease(mode);
 	if (!passed)
 		return 14;

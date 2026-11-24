@@ -203,7 +203,10 @@ data address; the one-shot callback verifies non-null context. Context
 retain/release callbacks, all observer flags, real AppKit event integration,
 and the broader CoreFoundation run-loop contract remain open. The same guest
 then creates a one-shot `CFRunLoopTimer`, registers it, and verifies its guest
-callback fires once with a non-null context before the timer invalidates.
+callback fires once with a non-null context before the timer invalidates. It
+also exercises guest calls to the timer tolerance getters/setters, confirms the
+nominal fire date stays unchanged, checks invalid negative tolerance rejection,
+and runs a repeating timer until at least two callbacks arrive.
 
 The guest thread-destructor exports also now use explicit Darwin ABI bridges:
 `__cxa_thread_atexit_impl` accepts its DSO handle and registered guest

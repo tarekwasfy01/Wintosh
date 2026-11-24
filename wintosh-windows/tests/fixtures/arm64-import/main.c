@@ -8,6 +8,25 @@ typedef struct {
 	unsigned long maximum;
 } guest_rlimit;
 
+typedef struct {
+	int block_size;
+	int io_size;
+	unsigned long blocks;
+	unsigned long blocks_free;
+	unsigned long blocks_available;
+	unsigned long files;
+	unsigned long files_free;
+	unsigned long filesystem_id;
+	unsigned int owner;
+	unsigned int type;
+	unsigned int flags;
+	unsigned int subtype;
+	char filesystem_name[16];
+	char mount_name[1024];
+	char source_name[1024];
+	unsigned int reserved[8];
+} guest_statfs;
+
 static long darwin_syscall3(long number, long argument0, long argument1,
 	long argument2, unsigned long *error_flag)
 {
@@ -159,12 +178,26 @@ int main(int argc, char **argv, char **envp)
 		darwin_syscall3(230, 0xdead, 1, 0, &syscall_error) != 14 ||
 		syscall_error != 1)
 		return 22;
-	if (darwin_syscall3(6, network_socket, 0, 0, 0) != 0)
+	static guest_statfs filesystem;
+	if (darwin_syscall3(157, (long)argv[0], (long)&filesystem, 0, &syscall_error) != 0 ||
+		syscall_error != 0 || filesystem.block_size <= 0 ||
+		filesystem.filesystem_name[0] == '\0')
 		return 23;
+	if (darwin_syscall3(157, (long)argv[0], 0xdead, 0, &syscall_error) != 14 ||
+		syscall_error != 1)
+		return 24;
+	const long filesystem_fd = darwin_syscall3(5, (long)argv[0], 0, 0, 0);
+	if (filesystem_fd < 3 ||
+		darwin_syscall3(158, filesystem_fd, (long)&filesystem, 0, &syscall_error) != 0 ||
+		syscall_error != 0 || filesystem.block_size <= 0 ||
+		darwin_syscall3(6, filesystem_fd, 0, 0, 0) != 0)
+		return 25;
+	if (darwin_syscall3(6, network_socket, 0, 0, 0) != 0)
+		return 26;
 	size_t (*volatile guest_strlen)(const char *) = strlen;
 	if (guest_strlen(argv[0]) == 0)
-		return 24;
-	static const char marker[] = "ARM64_SVC_IDENTITY_GROUP_SELECT_POLL_SOCKETOPT_DESCRIPTOR_PROCESS_RLIMIT_IOCTL=PASS\n";
+		return 27;
+	static const char marker[] = "ARM64_SVC_IDENTITY_GROUP_SELECT_POLL_SOCKETOPT_STATFS_DESCRIPTOR_PROCESS_RLIMIT_IOCTL=PASS\n";
 	return darwin_syscall3(4, 1, (long)marker, sizeof(marker) - 1, 0) ==
-		sizeof(marker) - 1 ? 42 : 25;
+		sizeof(marker) - 1 ? 42 : 28;
 }

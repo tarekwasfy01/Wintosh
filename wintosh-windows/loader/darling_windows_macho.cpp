@@ -7739,6 +7739,33 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 					syscall_result = darling_windows_fdatasync(
 						static_cast<int>(arguments[0]));
 					break;
+				case 157: // SYS_statfs
+				case 158: { // SYS_fstatfs
+					if (!backend.ContainsGuestRange(arguments[1],
+						sizeof(darling_darwin_statfs), true)) {
+						error_number = EFAULT;
+						break;
+					}
+					if (syscall_number == 157 && !backend.ContainsGuestCString(
+						arguments[0], 32768)) {
+						error_number = EFAULT;
+						break;
+					}
+					if (syscall_number == 158 && arguments[0] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max())) {
+						error_number = EBADF;
+						break;
+					}
+					darling_darwin_statfs information{};
+					syscall_result = syscall_number == 157 ?
+						darling_windows_statfs(reinterpret_cast<const char*>(
+							static_cast<std::uintptr_t>(arguments[0])), &information) :
+						darling_windows_fstatfs(static_cast<int>(arguments[0]), &information);
+					if (syscall_result == 0)
+						std::memcpy(reinterpret_cast<void*>(static_cast<std::uintptr_t>(
+							arguments[1])), &information, sizeof(information));
+					break;
+				}
 				case 188: // SYS_stat
 				case 190: { // SYS_lstat
 					if (!backend.ContainsGuestCString(arguments[0], 4096)) {

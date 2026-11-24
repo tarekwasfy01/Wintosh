@@ -27,6 +27,10 @@ void RunLoopCallback(void* context) {
 	runloop_callback_value = *static_cast<int*>(context);
 	++runloop_callback_count;
 }
+void DARLING_CF_GUEST_ABI RunLoopTimerCallback(darling_windows_CFTypeRef, void* context)
+{
+	++*static_cast<int*>(context);
+}
 void ArrayApplyCallback(const void* value, void* context)
 {
 	if (value != nullptr) ++*static_cast<int*>(context);
@@ -706,6 +710,33 @@ int main()
 			std::numeric_limits<double>::infinity(), RunLoopCallback, &callback_value);
 	darling_windows_CFRunLoopRunInMode(1.0, true);
 	const bool timer_ok = timer_queued && timer_boundary_ok && runloop_callback_value == 7;
+	const auto timer_mode = darling_windows_CFStringCreateWithCString("kCFRunLoopDefaultMode");
+	int cf_timer_calls = 0;
+	DarlingCFRunLoopTimerContext cf_timer_context{0, &cf_timer_calls, nullptr, nullptr, nullptr};
+	const double cf_timer_fire_date = std::chrono::duration<double>(
+		std::chrono::system_clock::now().time_since_epoch()).count() - 978307200.0 + 0.05;
+	auto* cf_timer = CFRunLoopTimerCreate(nullptr, cf_timer_fire_date, 0, 0, 0,
+		RunLoopTimerCallback, &cf_timer_context);
+	CFRunLoopTimerSetTolerance(cf_timer, 0.02);
+	const bool cf_timer_tolerance_ok = cf_timer != nullptr && timer_mode != nullptr &&
+		CFRunLoopTimerGetTolerance(cf_timer) == 0.02 &&
+		CFRunLoopTimerGetNextFireDate(cf_timer) == cf_timer_fire_date &&
+		(CFRunLoopTimerSetTolerance(cf_timer, -1),
+			CFRunLoopTimerGetTolerance(cf_timer) == 0.02) &&
+		(CFRunLoopTimerSetTolerance(cf_timer,
+			std::numeric_limits<double>::quiet_NaN()),
+			CFRunLoopTimerGetTolerance(cf_timer) == 0.02);
+	bool cf_timer_fired = false;
+	if (cf_timer != nullptr && timer_mode != nullptr) {
+		CFRunLoopAddTimer(CFRunLoopGetCurrent(), cf_timer, timer_mode);
+		CFRunLoopRunInMode(timer_mode, 1.0, false);
+		cf_timer_fired = cf_timer_calls == 1;
+		CFRunLoopRemoveTimer(CFRunLoopGetCurrent(), cf_timer, timer_mode);
+		CFRunLoopTimerInvalidate(cf_timer);
+		darling_windows_CFRelease(cf_timer);
+	}
+	if (timer_mode != nullptr) darling_windows_CFRelease(timer_mode);
+	const bool cf_timer_ok = cf_timer_tolerance_ok && cf_timer_fired;
 	const auto center = darling_windows_CFNotificationCenterGetLocal();
 	const int notification_object = 1;
 	const bool notification_ok = darling_windows_CFNotificationCenterAddObserver(
@@ -1115,7 +1146,7 @@ int main()
 	darling_windows_CFRelease(parsed_binary_data);
 	darling_windows_CFRelease(string);
 	if (!dictionary_hash_ok || !set_hash_ok || !mutable_copy_ok) return 1;
-	const bool corefoundation_ok = string_ok && formatted_string_ok && substring_ok && string_match_ok && string_find_ok && equal_ok && semantic_lookup_ok && collection_equal_ok && array_search_ok && data_ok && data_slice_ok && array_ok && array_values_ok && number_ok && real_number_ok && number_conversion_ok && number_boundary_ok && dictionary_ok && dictionary_values_ok && set_ok && set_values_ok && collection_mutation_safe && date_url_ok && url_xml_ok && scalar_ok && runloop_ok && callback_ok && timer_ok && drain_sources_ok && notification_ok && delivered && plist_ok && array_plist_ok && data_plist_ok && date_plist_ok && real_plist_ok && escaping_ok && plist_parse_ok && plist_dict_parse_ok && plist_data_parse_ok && plist_date_parse_ok && plist_fractional_date_ok && plist_offset_date_ok && binary_plist_ok && binary_dictionary_ok && binary_utf16_ok && binary_extended_ok && binary_data_ok && binary_date_ok && binary_real_ok && binary_uid_ok && mutable_array_ok && mutable_dictionary_ok && mutable_set_ok && mutable_data_ok;
+	const bool corefoundation_ok = string_ok && formatted_string_ok && substring_ok && string_match_ok && string_find_ok && equal_ok && semantic_lookup_ok && collection_equal_ok && array_search_ok && data_ok && data_slice_ok && array_ok && array_values_ok && number_ok && real_number_ok && number_conversion_ok && number_boundary_ok && dictionary_ok && dictionary_values_ok && set_ok && set_values_ok && collection_mutation_safe && date_url_ok && url_xml_ok && scalar_ok && runloop_ok && callback_ok && timer_ok && cf_timer_ok && drain_sources_ok && notification_ok && delivered && plist_ok && array_plist_ok && data_plist_ok && date_plist_ok && real_plist_ok && escaping_ok && plist_parse_ok && plist_dict_parse_ok && plist_data_parse_ok && plist_date_parse_ok && plist_fractional_date_ok && plist_offset_date_ok && binary_plist_ok && binary_dictionary_ok && binary_utf16_ok && binary_extended_ok && binary_data_ok && binary_date_ok && binary_real_ok && binary_uid_ok && mutable_array_ok && mutable_dictionary_ok && mutable_set_ok && mutable_data_ok;
 	if (!corefoundation_ok) {
 		std::cerr << "COREFOUNDATION_FLAGS runloop=" << runloop_ok
 			<< " main=" << runloop_main_ok << " boundary=" << runloop_time_boundary_ok
@@ -1124,6 +1155,8 @@ int main()
 			<< " callback=" << callback_ok << " queued=" << queued_sources
 			<< " one=" << one_source_ok << " second=" << source_queue_ok
 			<< " drain=" << drain_sources_ok << " timer=" << timer_ok
+			<< " timer_tolerance=" << cf_timer_ok
+			<< " timer_tolerance=" << cf_timer_ok
 			<< " notify=" << notification_ok << " delivered=" << delivered
 			<< " plist=" << plist_ok << " binary=" << binary_plist_ok << '\n';
 	}
@@ -1136,5 +1169,5 @@ int main()
 	darling_windows_CFRelease(unicode_whitespace);
 	darling_windows_CFRelease(case_source);
 	darling_windows_CFRelease(case_string);
-	return string_ok && formatted_string_ok && substring_ok && string_match_ok && string_find_ok && unicode_length_ok && unicode_trim_ok && equal_ok && mutable_string_ok && string_bytes_ok && trim_ok && semantic_lookup_ok && array_search_ok && data_ok && data_slice_ok && array_ok && array_values_ok && array_overlap_copy_ok && array_empty_range_ok && number_ok && real_number_ok && number_conversion_ok && number_boundary_ok && real_conversion_ok && number_compare_ok && numeric_equal_ok && dictionary_ok && duplicate_dictionary_ok && dictionary_values_ok && set_ok && set_values_ok && collection_mutation_safe && date_url_ok && url_xml_ok && date_compare_ok && date_interval_ok && negative_date_ok && date_rounding_ok && scalar_ok && singleton_lifetime_ok && singleton_still_valid && runloop_ok && callback_ok && queued_sources && one_source_ok && source_queue_ok && drain_sources_ok && timer_ok && notification_ok && wildcard_notification_ok && notification_global_remove_ok && notification_missing_remove_ok && delivered && plist_ok && array_plist_ok && data_plist_ok && date_plist_ok && real_plist_ok && escaping_ok && plist_parse_ok && plist_dict_parse_ok && plist_data_parse_ok && plist_date_parse_ok && plist_fractional_date_ok && plist_offset_date_ok && binary_plist_ok && binary_dictionary_ok && binary_utf16_ok && binary_extended_ok && binary_data_ok && binary_date_ok && binary_real_ok && binary_uid_ok && mutable_array_ok && mutable_dictionary_ok && mutable_set_ok && mutable_data_ok && mutable_data_alias_ok && data_overlap_copy_ok ? 0 : 1;
+	return string_ok && formatted_string_ok && substring_ok && string_match_ok && string_find_ok && unicode_length_ok && unicode_trim_ok && equal_ok && mutable_string_ok && string_bytes_ok && trim_ok && semantic_lookup_ok && array_search_ok && data_ok && data_slice_ok && array_ok && array_values_ok && array_overlap_copy_ok && array_empty_range_ok && number_ok && real_number_ok && number_conversion_ok && number_boundary_ok && real_conversion_ok && number_compare_ok && numeric_equal_ok && dictionary_ok && duplicate_dictionary_ok && dictionary_values_ok && set_ok && set_values_ok && collection_mutation_safe && date_url_ok && url_xml_ok && date_compare_ok && date_interval_ok && negative_date_ok && date_rounding_ok && scalar_ok && singleton_lifetime_ok && singleton_still_valid && runloop_ok && callback_ok && queued_sources && one_source_ok && source_queue_ok && drain_sources_ok && timer_ok && cf_timer_ok && notification_ok && wildcard_notification_ok && notification_global_remove_ok && notification_missing_remove_ok && delivered && plist_ok && array_plist_ok && data_plist_ok && date_plist_ok && real_plist_ok && escaping_ok && plist_parse_ok && plist_dict_parse_ok && plist_data_parse_ok && plist_date_parse_ok && plist_fractional_date_ok && plist_offset_date_ok && binary_plist_ok && binary_dictionary_ok && binary_utf16_ok && binary_extended_ok && binary_data_ok && binary_date_ok && binary_real_ok && binary_uid_ok && mutable_array_ok && mutable_dictionary_ok && mutable_set_ok && mutable_data_ok && mutable_data_alias_ok && data_overlap_copy_ok ? 0 : 1;
 }

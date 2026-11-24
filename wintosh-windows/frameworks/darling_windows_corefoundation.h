@@ -789,6 +789,10 @@ extern "C" DARLING_CF_GUEST_ABI double CFRunLoopTimerGetNextFireDate(
 	darling_windows_CFTypeRef timer);
 extern "C" DARLING_CF_GUEST_ABI void CFRunLoopTimerSetNextFireDate(
 	darling_windows_CFTypeRef timer, double fire_date);
+extern "C" DARLING_CF_GUEST_ABI double CFRunLoopTimerGetTolerance(
+	darling_windows_CFTypeRef timer);
+extern "C" DARLING_CF_GUEST_ABI void CFRunLoopTimerSetTolerance(
+	darling_windows_CFTypeRef timer, double tolerance);
 extern "C" DARLING_CF_GUEST_ABI double CFRunLoopTimerGetInterval(
 	darling_windows_CFTypeRef timer);
 extern "C" DARLING_CF_GUEST_ABI std::uint8_t CFRunLoopTimerDoesRepeat(

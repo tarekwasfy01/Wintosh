@@ -180,6 +180,17 @@ restores it. The complete `wintosh_mach_abi_smoke` executable passes. This
 local ABI slice still does not establish complete XNU lifecycle or arbitrary
 Cocoa application compatibility.
 
+## CoreFoundation timer tolerance, 2026-11-24
+
+The guest resolver now exports `CFRunLoopTimerGetTolerance` and
+`CFRunLoopTimerSetTolerance`. A finite, nonnegative tolerance delays an
+eligible timer only within its allowed window; run-loop deadline calculation
+uses `fireDate + tolerance`, while the public next-fire-date APIs keep the
+nominal scheduled date. Invalid tolerance values are ignored. The focused
+CoreFoundation smoke creates, configures, schedules, fires, and invalidates a
+one-shot timer, and verifies the nominal date remains unchanged when tolerance
+is set. The full framework/API surface remains partial.
+
 The guest thread-destructor exports also now use explicit Darwin ABI bridges:
 `__cxa_thread_atexit_impl` accepts its DSO handle and registered guest
 callbacks are invoked with the guest calling convention at thread exit; newly

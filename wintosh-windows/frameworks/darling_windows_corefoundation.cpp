@@ -127,6 +127,7 @@ struct Object {
 	DarlingCFRunLoopTimerCallout run_loop_timer_callout{};
 	double run_loop_timer_fire_date = 0;
 	double run_loop_timer_interval = 0;
+	double run_loop_timer_tolerance = 0;
 	darling_windows_CFIndex run_loop_timer_order = 0;
 	bool run_loop_timer_valid = false;
 	std::mutex run_loop_timer_mutex;
@@ -4067,7 +4068,8 @@ bool HasDueRunLoopTimer(const RunLoopState& state, const std::string& mode)
 		if (!RunLoopTimerMatchesMode(binding, mode)) continue;
 		std::lock_guard lock(binding.object->run_loop_timer_mutex);
 		if (binding.object->run_loop_timer_valid &&
-			binding.object->run_loop_timer_fire_date <= now) return true;
+			binding.object->run_loop_timer_fire_date +
+				binding.object->run_loop_timer_tolerance <= now) return true;
 	}
 	return false;
 }
@@ -4165,8 +4167,9 @@ std::optional<std::chrono::steady_clock::time_point> NextRunLoopTimerDeadline(
 		if (!RunLoopTimerMatchesMode(binding, mode)) continue;
 		std::lock_guard lock(binding.object->run_loop_timer_mutex);
 		if (!binding.object->run_loop_timer_valid) continue;
-		const double remaining = (std::max)(0.0,
-			binding.object->run_loop_timer_fire_date - now_absolute);
+		const double delivery_date = binding.object->run_loop_timer_fire_date +
+			binding.object->run_loop_timer_tolerance;
+		const double remaining = (std::max)(0.0, delivery_date - now_absolute);
 		const auto bounded = (std::min)(remaining, 315360000.0);
 		const auto candidate = now_steady + std::chrono::duration_cast<
 			std::chrono::steady_clock::duration>(std::chrono::duration<double>(bounded));
@@ -4184,7 +4187,8 @@ std::vector<Object*> CollectDueRunLoopTimers(RunLoopState& state, const std::str
 		if (!RunLoopTimerMatchesMode(binding, mode)) continue;
 		auto* timer = binding.object;
 		std::lock_guard lock(timer->run_loop_timer_mutex);
-		if (!timer->run_loop_timer_valid || timer->run_loop_timer_fire_date > now) continue;
+		if (!timer->run_loop_timer_valid || timer->run_loop_timer_fire_date +
+			timer->run_loop_timer_tolerance > now) continue;
 		RetainOwned(timer);
 		try { due.push_back(timer); }
 		catch (...) { ReleaseOwned(timer); break; }
@@ -5331,6 +5335,39 @@ extern "C" DARLING_CF_GUEST_ABI void CFRunLoopTimerSetNextFireDate(
 		std::lock_guard lock(timer->run_loop_timer_mutex);
 		if (!timer->run_loop_timer_valid) return;
 		timer->run_loop_timer_fire_date = fire_date;
+		try {
+			for (const auto& schedule : timer->run_loop_timer_schedules) {
+				auto state = schedule.state.lock();
+				if (state != nullptr && std::find(states.begin(), states.end(), state) == states.end())
+					states.push_back(std::move(state));
+			}
+		} catch (...) { /* Existing schedules remain valid if wake-list allocation fails. */ }
+	}
+	for (const auto& state : states) {
+		state->condition.notify_all();
+		if (state == main_run_loop.state) darling_windows_appkit_wake_main_run_loop();
+	}
+}
+
+extern "C" DARLING_CF_GUEST_ABI double CFRunLoopTimerGetTolerance(
+	darling_windows_CFTypeRef value)
+{
+	auto* timer = AsRunLoopTimer(value);
+	if (timer == nullptr) return 0;
+	std::lock_guard lock(timer->run_loop_timer_mutex);
+	return timer->run_loop_timer_tolerance;
+}
+
+extern "C" DARLING_CF_GUEST_ABI void CFRunLoopTimerSetTolerance(
+	darling_windows_CFTypeRef value, double tolerance)
+{
+	auto* timer = AsRunLoopTimer(value);
+	if (timer == nullptr || !std::isfinite(tolerance) || tolerance < 0) return;
+	std::vector<std::shared_ptr<RunLoopState>> states;
+	{
+		std::lock_guard lock(timer->run_loop_timer_mutex);
+		if (!timer->run_loop_timer_valid) return;
+		timer->run_loop_timer_tolerance = tolerance;
 		try {
 			for (const auto& schedule : timer->run_loop_timer_schedules) {
 				auto state = schedule.state.lock();
@@ -8462,6 +8499,10 @@ extern "C" std::uintptr_t darling_windows_corefoundation_symbol(const char* name
 		return reinterpret_cast<std::uintptr_t>(&CFRunLoopTimerGetNextFireDate);
 	if (std::strcmp(name, "CFRunLoopTimerSetNextFireDate") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFRunLoopTimerSetNextFireDate);
+	if (std::strcmp(name, "CFRunLoopTimerGetTolerance") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFRunLoopTimerGetTolerance);
+	if (std::strcmp(name, "CFRunLoopTimerSetTolerance") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFRunLoopTimerSetTolerance);
 	if (std::strcmp(name, "CFRunLoopTimerGetInterval") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFRunLoopTimerGetInterval);
 	if (std::strcmp(name, "CFRunLoopTimerDoesRepeat") == 0)

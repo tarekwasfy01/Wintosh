@@ -51,8 +51,11 @@ are also exported. Signaled sources enqueue one ordered callback over their
 registered modes; the first eligible run loop consumes the pending signal.
 `CFRunLoopTimer` create/query/mutate/invalidate and mode registration are
 exported. Timers fire on the active loop thread; repeating timers advance their
-scheduled date and skip missed intervals. Timer tolerance and native Windows
-input-source registration remain missing. `CFRunLoopObserver` create/query/
+scheduled date and skip missed intervals. `CFRunLoopTimerGetTolerance` and
+`CFRunLoopTimerSetTolerance` expose a finite, nonnegative tolerance. The loop
+never fires before the nominal date and uses the end of the tolerance window
+as its wake deadline. Native Windows input-source registration remains
+missing. `CFRunLoopObserver` create/query/
 invalidate and mode registration are exported for entry, before-timer/source,
 before/after-wait, and exit callbacks; one-shot observers invalidate after
 their first matching callback. Apple documents that sources, timers, and

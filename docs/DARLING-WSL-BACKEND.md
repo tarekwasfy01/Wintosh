@@ -7,16 +7,37 @@
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\tools\Invoke-DarlingWslBackend.ps1 -Mode Probe
 powershell -ExecutionPolicy Bypass -File .\tools\Invoke-DarlingWslBackend.ps1 -Mode Run -Distribution <name> -DarlingCommand <path> -DarlingArgument <args>
+powershell -ExecutionPolicy Bypass -File .\tools\Build-DarwinComputaWslBackend.ps1 -Distribution <name> -ComputaRoot /opt/Darwin_Computa
 powershell -ExecutionPolicy Bypass -File .\tools\Invoke-DarlingWslBackend.ps1 -Mode DarwinComputa -Distribution <name> -ComputaRoot /opt/Darwin_Computa -GuestMachO /usr/bin/sw_vers
 # WSL2 is permitted only for development and compatibility tests:
+powershell -ExecutionPolicy Bypass -File .\tools\Build-DarwinComputaWslBackend.ps1 -Distribution <name> -ComputaRoot /opt/Darwin_Computa -AllowWsl2ForDevelopment
 powershell -ExecutionPolicy Bypass -File .\tools\Invoke-DarlingWslBackend.ps1 -Mode DarwinComputa -Distribution <name> -ComputaRoot /opt/Darwin_Computa -AllowWsl2ForDevelopment
 ```
+
+The build script checks the selected distribution version and build packages,
+sets the x86-64 guest and Darwin defines, builds the Linux target, then runs
+both upstream self-tests. Install these packages in the distribution first:
+`build-essential`, `libsdl2-dev`, `libssl-dev`, `libcurl4-openssl-dev`,
+`libminizip-dev`, `libgl-dev` and `libglu1-mesa-dev`. GCC 15 may require a
+downstream compatibility fix for a packed ELF field in `loader64.cpp`; the
+script reports the compiler failure and does not patch the external checkout.
 
 In `DarwinComputa` mode, `-ComputaRoot` points to a Linux build of the Darwin_Computa checkout inside WSL. The wrapper checks the selected distribution's WSL version and requires **WSL1** by default; WSL2 needs the explicit `-AllowWsl2ForDevelopment` switch. It runs `project/linux/Build/Release/boxedwine --darwin-run /usr/bin/darlingserver` with `DSERVER_INIT=<GuestMachO>`. This is the project's direct-init demo path; it bypasses full `launchd` service bootstrap. Upstream currently forwards only the executable path, not its argv.
 
 `Windows/WintOS -> wsl.exe -> WSL Linux process -> Boxedwine CPU + Linux kernel emulator -> Darling/darlingserver -> Mach-O`
 
 WSL1 is a Windows-provided Linux-to-Windows syscall compatibility layer, not a library embedded in WintOS. Boxedwine is an ordinary process that emulates the Linux kernel in userspace. WintOS can orchestrate these existing components, but cannot turn WSL1 itself into an in-process WintOS module. The Darwin_Computa checkout's MSVC project does not build its Darwin path, so this backend uses its Linux target inside WSL. A Windows `.app` still needs a staging bridge to the Darwin guest filesystem.
+
+## WSL source and driver boundary
+
+Microsoft publishes the WSL repository under MIT, including the command-line
+tools, service, Linux-side init/daemons and Plan 9 file server. Microsoft still
+identifies `Lxcore.sys` (the WSL1 kernel driver) as closed source; `P9rdr.sys`
+and `p9np.dll` are also Windows-image components, not downloadable WSL source
+packages. The public WSL repository therefore cannot supply a buildable WSL1
+syscall layer for embedding in WintOS. On Windows, WSL1 must use the driver's
+Windows optional feature; a separately downloaded driver is not an available
+substitute. Sources: [Microsoft's WSL component and source status](https://learn.microsoft.com/en-us/windows/wsl/opensource), [microsoft/WSL repository and MIT license](https://github.com/microsoft/WSL).
 
 ## Full-Darling completion gates
 

@@ -24,6 +24,9 @@ uncovered.
 
 `arm64_import_e2e.ps1` builds two ARM64 Mach-O guests with Clang/ld64.lld and
 runs them through the optional Dynarmic backend. It covers `_strlen` and
+guest SVC calls for `fcntl` descriptor flag read/write, descriptor duplication,
+`getrlimit`/`setrlimit` structure copies, invalid-pointer `EFAULT`, unsupported
+`ioctl` `ENOTTY`, and Darwin's syscall carry flag. It also covers
 Objective-C integer/double arguments and returns, object identity, pointer
 dereference, a stack-passed seventh integer, two-/four-double HFA returns, and
 a 24-byte indirect structure return through `objc_msgSend`. A guest method also

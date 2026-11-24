@@ -117,6 +117,9 @@ if ($text -match 'DARLING_(GUEST_EXCEPTION|RUNNER_ERROR)' -or
 	$text -match 'no ABI adapter|unsupported SVC|unknown thunk') {
 	throw "ARM64 import fixture reported an execution failure: $text"
 }
+if ($text -notmatch 'ARM64_SVC_DESCRIPTOR_RLIMIT=PASS') {
+	throw "ARM64 descriptor/resource-limit SVC fixture did not report success: $text"
+}
 if ($objcExitCode -ne 42) {
 	throw "ARM64 Objective-C guest callback expected exit 42, got $objcExitCode; output=$objcText"
 }

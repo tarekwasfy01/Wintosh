@@ -87,6 +87,7 @@ enum {
 	CFRunLoopBeforeTimers = 1ull << 1,
 	CFRunLoopBeforeSources = 1ull << 2,
 	CFRunLoopExit = 1ull << 7,
+	CFRunLoopRunHandledSource = 4,
 };
 
 struct CallbackState {
@@ -237,7 +238,8 @@ int main(void)
 	if (!CFRunLoopContainsSource(loop, source, mode)) return 42;
 	CFRunLoopSourceSignal(source);
 	CFRunLoopSourceSignal(source);
-	(void)CFRunLoopRunInMode(mode, 0.03, 0);
+	const int sourceRunResult = CFRunLoopRunInMode(mode, 0.03, 1);
+	if (sourceRunResult != CFRunLoopRunHandledSource) return 51;
 	if (sourceState.calls != 1) return 45;
 	if (!sourceState.context_matches) return 46;
 	CFRunLoopRemoveSource(loop, source, mode);

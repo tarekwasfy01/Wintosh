@@ -4827,14 +4827,18 @@ extern "C" DARLING_CF_GUEST_ABI void CFRunLoopSourceSignal(darling_windows_CFTyp
 {
 	auto* source = AsRunLoopSource(value);
 	if (source == nullptr) return;
+	bool newly_signaled = false;
 	{
 		std::lock_guard lock(source->run_loop_source_mutex);
 		if (!source->run_loop_source_valid) return;
 		if (source->run_loop_source_is_v1) return;
-		source->run_loop_source_signaled = true;
-		++source->run_loop_source_generation;
+		if (!source->run_loop_source_signaled) {
+			source->run_loop_source_signaled = true;
+			++source->run_loop_source_generation;
+			newly_signaled = true;
+		}
 	}
-	DispatchSignaledRunLoopSource(source);
+	if (newly_signaled) DispatchSignaledRunLoopSource(source);
 }
 
 extern "C" DARLING_CF_GUEST_ABI void CFRunLoopSourceInvalidate(

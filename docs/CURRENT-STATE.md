@@ -210,7 +210,8 @@ and runs a repeating timer until at least two callbacks arrive.
 The guest then creates and registers a version-0 `CFRunLoopSource`, signals it
 twice before running the loop, and verifies the guest perform callback runs
 once with the exact guest context. This confirms source signal coalescing for
-this local implementation slice.
+this local implementation slice. The guest passes `returnAfterSource=true` and
+checks the public `kCFRunLoopRunHandledSource` result.
 
 The guest thread-destructor exports also now use explicit Darwin ABI bridges:
 `__cxa_thread_atexit_impl` accepts its DSO handle and registered guest

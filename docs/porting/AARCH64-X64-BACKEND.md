@@ -300,6 +300,7 @@ Lizenzabgleich bleiben Gates vor einer standardmäßigen Integration.
 | Zeitstempel-SVCs | `utimes` und `futimes` kopieren Gast-`timeval`-Paare in geprüfte temporäre Zeitwerte; die Fixture prüft erfolgreiche Pfad-/Deskriptoränderungen sowie `EINVAL` und `EFAULT` |
 | Verzeichnis-SVCs | `fchdir` leitet den Arbeitsverzeichniswechsel aus dem gespeicherten Deskriptorpfad ab; die ARM64-Fixture prüft Erfolg und `EBADF` für einen ungültigen Deskriptor |
 | Volume-SVCs | `getfsstat` ermittelt die verfügbaren Windows-Volumes und kopiert begrenzte Darwin-`statfs`-Datensätze; die Fixture prüft Zählabfrage, Datensatzinhalt und `EFAULT` |
+| Pfad-SVCs | `fstatat` und `fstatat64` nutzen den gemeinsamen Windows-Pfadadapter für relative Pfade ab Verzeichnisdeskriptoren; die Fixture prüft Verzeichnismodus, Aliasnummer und `EFAULT` |
 | x64-Host-Gast-Speicherprüfung | Segmentrechte und Bereichsgrenzen umgesetzt; Image-, Startup-, Heap-, mmap- und Host-Datenbereiche werden geprüft bzw. registriert und in Fixtures ausgeführt |
 | A64-Import-Trampoline und ABI-Dispatcher | ausgewählte C-/Darwin-/Framework-Imports, Gastcallbacks, Heap-/Block- und Datenimporte, Stackargumente, HFA- und indirekte Struct-Rückgaben bestehen; übrige Aggregate und Signaturen bleiben offen |
 | Schmale ARM64 Mach-O Runtime-Fixtures auf x64 Windows | mehrere Source-Fixtures für Syscalls, dyld, Objective-C, CoreFoundation und Speicher; keine echte macOS-App oder vollständige Bundle-Ausführung belegt |

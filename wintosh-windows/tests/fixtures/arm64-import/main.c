@@ -239,6 +239,15 @@ int main(int argc, char **argv, char **envp)
 			&syscall_error) != 255 || syscall_error != 0 ||
 		darwin_syscall3(191, 0xdead, 4, 0, &syscall_error) != 14 || syscall_error != 1)
 		return 30;
+	static unsigned char directory_stat[256];
+	if (darwin_syscall5(469, directory_fd, (long)".", (long)directory_stat,
+		0, 0, &syscall_error) != 0 || syscall_error != 0 ||
+		(*(unsigned short *)(directory_stat + 8) & 0170000) != 0040000 ||
+		darwin_syscall5(470, directory_fd, (long)".", (long)directory_stat,
+		0, 0, &syscall_error) != 0 || syscall_error != 0 ||
+		darwin_syscall5(469, directory_fd, (long)".", 0xdead,
+		0, 0, &syscall_error) != 14 || syscall_error != 1)
+		return 30;
 	if (darwin_syscall3(13, directory_fd, 0, 0, &syscall_error) != 0 ||
 		syscall_error != 0 || darwin_syscall3(13, 0xdead, 0, 0,
 			&syscall_error) != 9 || syscall_error != 1)
@@ -256,7 +265,7 @@ int main(int argc, char **argv, char **envp)
 	size_t (*volatile guest_strlen)(const char *) = strlen;
 	if (guest_strlen(argv[0]) == 0)
 		return 34;
-	static const char marker[] = "ARM64_SVC_IDENTITY_GROUP_SELECT_POLL_SOCKETOPT_STATFS_GETFSSTAT_DIRENTRIES_PATHCONF_FCHDIR_UTIMES_DESCRIPTOR_PROCESS_RLIMIT_IOCTL=PASS\n";
+	static const char marker[] = "ARM64_SVC_IDENTITY_GROUP_SELECT_POLL_SOCKETOPT_STATFS_GETFSSTAT_DIRENTRIES_PATHCONF_FSTATAT_FCHDIR_UTIMES_DESCRIPTOR_PROCESS_RLIMIT_IOCTL=PASS\n";
 	return darwin_syscall3(4, 1, (long)marker, sizeof(marker) - 1, 0) ==
 		sizeof(marker) - 1 ? 42 : 35;
 }

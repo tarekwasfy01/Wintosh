@@ -7780,6 +7780,43 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 					}
 					syscall_result = darling_windows_fchdir(static_cast<int>(arguments[0]));
 					break;
+				case 469: // SYS_fstatat
+				case 470: { // SYS_fstatat64
+					constexpr std::uint64_t at_fdcwd_zero_extended =
+						static_cast<std::uint64_t>(std::numeric_limits<std::uint32_t>::max()) - 1;
+					constexpr std::uint64_t at_fdcwd_sign_extended =
+						std::numeric_limits<std::uint64_t>::max() - 1;
+					int directory_descriptor = 0;
+					if (arguments[0] == at_fdcwd_zero_extended ||
+						arguments[0] == at_fdcwd_sign_extended) {
+						directory_descriptor = -2;
+					} else if (arguments[0] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max())) {
+						error_number = EBADF;
+						break;
+					} else {
+						directory_descriptor = static_cast<int>(arguments[0]);
+					}
+					if (!backend.ContainsGuestCString(arguments[1], 32768) ||
+						!backend.ContainsGuestRange(arguments[2],
+							sizeof(darling_darwin_stat), true)) {
+						error_number = EFAULT;
+						break;
+					}
+					if (arguments[3] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max())) {
+						error_number = EINVAL;
+						break;
+					}
+					darling_darwin_stat metadata{};
+					syscall_result = darling_windows_fstatat(directory_descriptor,
+						reinterpret_cast<const char*>(static_cast<std::uintptr_t>(
+							arguments[1])), &metadata, static_cast<int>(arguments[3]));
+					if (syscall_result == 0)
+						std::memcpy(reinterpret_cast<void*>(static_cast<std::uintptr_t>(
+							arguments[2])), &metadata, sizeof(metadata));
+					break;
+				}
 				case 18: { // SYS_getfsstat
 					constexpr std::uint64_t maximum_statfs_buffer = 16 * 1024 * 1024;
 					if (arguments[1] > maximum_statfs_buffer ||

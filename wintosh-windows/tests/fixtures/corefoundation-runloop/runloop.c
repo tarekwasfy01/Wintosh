@@ -105,6 +105,8 @@ static struct TimerState timerState;
 struct SourceState {
 	int calls;
 	int context_matches;
+	int retains;
+	int releases;
 };
 static struct SourceState sourceState;
 
@@ -140,6 +142,16 @@ static void source_perform(void *info)
 {
 	++sourceState.calls;
 	sourceState.context_matches = info == &sourceState;
+}
+static const void *source_retain(const void *info)
+{
+	if (info != &sourceState) return 0;
+	++sourceState.retains;
+	return info;
+}
+static void source_release(const void *info)
+{
+	if (info == &sourceState) ++sourceState.releases;
 }
 
 int main(void)
@@ -248,6 +260,24 @@ int main(void)
 	CFRunLoopSourceInvalidate(source);
 	if (CFRunLoopSourceIsValid(source)) return 44;
 	CFRelease(source);
+	sourceState.retains = 0;
+	sourceState.releases = 0;
+	CFRunLoopSourceContext retainedContext;
+	retainedContext.version = 0;
+	retainedContext.info = &sourceState;
+	retainedContext.retain = source_retain;
+	retainedContext.release = source_release;
+	retainedContext.copyDescription = 0;
+	retainedContext.equal = 0;
+	retainedContext.hash = 0;
+	retainedContext.schedule = 0;
+	retainedContext.cancel = 0;
+	retainedContext.perform = source_perform;
+	CFRunLoopSourceRef retainedSource = CFRunLoopSourceCreate(0, 0,
+		&retainedContext);
+	if (retainedSource == 0 || sourceState.retains != 1) return 52;
+	CFRelease(retainedSource);
+	if (sourceState.releases != 1) return 53;
 	CFRelease(mode);
 	if (!passed)
 		return 14;

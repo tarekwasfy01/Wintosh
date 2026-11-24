@@ -75,7 +75,9 @@ negative tolerance, and multiple firings from a repeating timer. AppKit
 integration remains unverified. It also creates and registers a version-0
 `CFRunLoopSource`, signals it twice, and confirms one guest perform callback
 with exact context identity. It requests return-after-source and checks the
-`kCFRunLoopRunHandledSource` result.
+`kCFRunLoopRunHandledSource` result. A separate source verifies its guest
+context retain/release pair; guest schedule/cancel and `GetContext` callbacks
+remain unverified.
 
 `CFMachPort` exports the type ID, create/create-with-port, run-loop source,
 port/context/validity queries, invalidation, and invalidation-callback accessors.

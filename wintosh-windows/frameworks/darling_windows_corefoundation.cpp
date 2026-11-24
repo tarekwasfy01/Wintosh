@@ -1219,7 +1219,13 @@ bool DispatchSignaledRunLoopSource(Object* source)
 							info = const_cast<void*>(source->run_loop_source_info);
 						}
 						if (callback != nullptr) {
-							try { callback(info); }
+							const std::array<std::uintptr_t, 1> arguments{
+								reinterpret_cast<std::uintptr_t>(info)};
+							try {
+								if (!darling_objc_invoke_guest_function(
+									reinterpret_cast<std::uintptr_t>(callback),
+									arguments.data(), arguments.size())) callback(info);
+							}
 							catch (...) { /* Guest callbacks must not unwind through CoreFoundation. */ }
 						}
 					}, invocation, std::move(target.second), order});
@@ -4652,7 +4658,15 @@ void InvokeRunLoopSourceModeCallback(Object* source, bool scheduling,
 	if (callback == nullptr) return;
 	const auto mode_object = RunLoopModeObject(mode);
 	if (mode_object == nullptr) return;
-	try { callback(const_cast<void*>(source->run_loop_source_info), loop, mode_object); }
+	const std::array<std::uintptr_t, 3> arguments{
+		reinterpret_cast<std::uintptr_t>(const_cast<void*>(source->run_loop_source_info)),
+		reinterpret_cast<std::uintptr_t>(loop),
+		reinterpret_cast<std::uintptr_t>(mode_object)};
+	try {
+		if (!darling_objc_invoke_guest_function(
+			reinterpret_cast<std::uintptr_t>(callback), arguments.data(), arguments.size()))
+			callback(const_cast<void*>(source->run_loop_source_info), loop, mode_object);
+	}
 	catch (...) { /* Guest callbacks must not unwind through CoreFoundation. */ }
 	ReleaseOwned(As(mode_object));
 }

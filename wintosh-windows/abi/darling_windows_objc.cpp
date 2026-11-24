@@ -202,6 +202,8 @@ namespace {
 thread_local darling_objc_image_token* active_image_token = nullptr;
 thread_local darling_objc_guest_method_invoker active_guest_method_invoker = nullptr;
 thread_local void* active_guest_method_invoker_context = nullptr;
+thread_local darling_objc_guest_function_invoker active_guest_function_invoker = nullptr;
+thread_local void* active_guest_function_invoker_context = nullptr;
 thread_local darling_objc_guest_block_allocate active_guest_block_allocate = nullptr;
 thread_local darling_objc_guest_block_deallocate active_guest_block_deallocate = nullptr;
 thread_local void* active_guest_block_allocator_context = nullptr;
@@ -884,6 +886,30 @@ extern "C" darling_objc_guest_method_invoker darling_objc_set_guest_method_invok
 	active_guest_method_invoker = invoker;
 	active_guest_method_invoker_context = context;
 	return previous;
+}
+
+extern "C" darling_objc_guest_function_invoker
+darling_objc_set_guest_function_invoker(
+	darling_objc_guest_function_invoker invoker, void* context,
+	void** previous_context)
+{
+	const auto previous = active_guest_function_invoker;
+	if (previous_context != nullptr)
+		*previous_context = active_guest_function_invoker_context;
+	active_guest_function_invoker = invoker;
+	active_guest_function_invoker_context = context;
+	return previous;
+}
+
+extern "C" bool darling_objc_invoke_guest_function(std::uintptr_t function,
+	const std::uintptr_t* arguments, std::size_t argument_count)
+{
+	if (function == 0 || active_guest_function_invoker == nullptr ||
+		(argument_count != 0 && arguments == nullptr) || argument_count > 8)
+		return false;
+	active_guest_function_invoker(function, arguments, argument_count,
+		active_guest_function_invoker_context);
+	return true;
 }
 
 extern "C" void darling_objc_set_guest_block_allocator(

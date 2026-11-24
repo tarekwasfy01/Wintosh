@@ -369,6 +369,8 @@ The current ARM64 dispatch transform matrix is consequently:
 | CGRect/CGPoint/CGSize HFA returns | encoding-based typed IMP call | assembly restores `d0-d3`; compiler probes match on both ABIs | source compiled; guest unverified |
 | NSRange return | encoding-based typed IMP call | assembly restores `x0-x1`; compiler probes match on both ABIs | source compiled; guest unverified |
 | CGRect/HFA arguments | Darwin stack reader | Windows and Apple ARM64 compiler probes both use `d0-d3` for four-double HFA | source compiled; guest unverified |
+| CoreFoundation Source0 callbacks | Host-to-guest call places up to eight integer/pointer arguments in `x0-x7` | Active ARM64 interpreter resumes the callback PC with the Darwin GP registers; native-ABI guests keep direct calls | ARM64 and x86_64 guest fixtures pass |
+| Selected ARM64 Source0 imports | Guest-to-host adapter maps scalar/pointer arguments to CoreFoundation signatures | Validates guest strings and source-context ranges; adapts create, context retrieval, add/remove, current loop, and release | ARM64 guest fixture passes |
 | Other aggregates, indirect returns, and overflow cases | signature-specific | signature-specific | requires fixtures |
 | Apple red-zone access | Windows host must preserve/translate | not applicable | missing |
 
@@ -795,7 +797,7 @@ pending. The current default common set is `{kCFRunLoopDefaultMode}` until
 | Mode membership | Work runs only in registered modes | Mode-tagged callbacks; default and common modes | WSL1 offers Linux compatibility but does not define Cocoa run-loop modes | Clang Release build; no guest fixture |
 | Ordered selector queue | Process target selector on target thread in requested modes/order | `NSRunLoop.performSelector:target:argument:order:modes:` | No direct WSL1 equivalent | Source/build only |
 | Main AppKit loop | Cocoa loop dispatches AppKit input and Foundation work | Existing Win32 message loop pumps default-mode CF callback work | WSL1 cannot supply AppKit behavior | Source/build only |
-| CF source version 0 | Register by mode, signal, retain, invalidate, and service in order; schedule/cancel callouts bracket actual membership transitions | Mode-tagged callback queue; first eligible loop consumes a signal; duplicate add/remove operations do not repeat callouts | Not supplied by WSL1 | `wintosh_corefoundation_source_callbacks_e2e` verifies Darwin x86_64 callback ABI, context round-trip, and one callout per transition |
+| CF source version 0 | Register by mode, signal, retain, invalidate, and service in order; schedule/cancel callouts bracket actual membership transitions | Mode-tagged callback queue; first eligible loop consumes a signal; duplicate add/remove operations do not repeat callouts | Not supplied by WSL1 | x86_64 callback ABI and ARM64 interpreter callback/import paths pass focused guest fixtures |
 | CF source version 1 | Register a Mach port and perform received messages in order | `getPort` is queried on registration and each turn; incoming messages are polled on 10 ms wait slices | Not supplied by WSL1 | Clang Release build; reply-message handling and guest fixture remain open |
 | CF timer | Fire at deadline, repeat on cadence, invalidate after one shot | Timer registry per loop and mode; repeating fire date advances over missed intervals | Not supplied by WSL1 | Clang Release build; no guest fixture |
 | CF observer | Report run-loop phases in registered modes; one-shot invalidates once | Ordered callbacks for entry, before timers/sources, before/after wait, and exit | Not supplied by WSL1 | Clang Release build; no guest fixture |
@@ -819,6 +821,18 @@ bound is `Δt ≤ 10 ms` while an active-mode version-1 source is registered;
 reply messages returned by `perform` are sent through the Mach message ABI and
 then deallocated using the callback's allocator. A native multi-port wait set
 remains unsupported.
+
+For an ARM64 guest callback address `f` with up to eight integer/pointer
+arguments `a`, the active interpreter bridge is
+`InvokeA64(f,a) = RunGuest(PC=f, X[0..n)=a)`. The callback runner uses the
+current guest execution seed and resumes the guest after the callback returns.
+CoreFoundation Source0 schedule, cancel, and perform callouts use this route
+when an ARM64 guest invoker is active; native-ABI guests retain direct calls.
+The ARM64 end-to-end fixture exercises the selected host imports for string
+creation, current-run-loop lookup, source creation/context retrieval,
+add/remove, and release. This verifies only those signatures; it does not
+establish general ARM64 CoreFoundation import coverage or guest callbacks
+dispatched after their active execution context has ended.
 The source/port registry enforces one source per port for each live source.
 For an allocator `a` with context `c`, allocation is `A(a,n,h) = c.allocate(n,h,c.info)`;
 deallocation is `D(a,p) = c.deallocate(p,c.info)`. When `a = null`, both

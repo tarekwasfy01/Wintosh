@@ -13,6 +13,7 @@
 #include "darling_windows_abi_bridge.h"
 #include "../abi/darling_windows_objc.h"
 #include "darling_windows_tlv.h"
+#include "../frameworks/darling_windows_corefoundation.h"
 #if defined(WINTOSH_HAS_DYNARMIC)
 #include "darling_windows_a64_backend.h"
 #endif
@@ -3932,6 +3933,21 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 			const auto result = (*context.run)(callback, *context.depth + 1);
 			*context.seed = result.state;
 		};
+		const auto invoke_guest_function = +[](std::uintptr_t function,
+			const std::uintptr_t* arguments, std::size_t argument_count,
+			void* opaque) {
+			auto& context = *static_cast<GuestInitializerContext*>(opaque);
+			if (argument_count > 8 || (argument_count != 0 && arguments == nullptr))
+				throw std::runtime_error("ARM64 guest callback has an unsupported register argument count");
+			if (*context.depth >= 64)
+				throw std::runtime_error("ARM64 guest function callback depth exceeded");
+			A64CpuState callback = *context.seed;
+			callback.pc = function;
+			for (std::size_t index = 0; index < argument_count; ++index)
+				callback.x[index] = arguments[index];
+			const auto result = (*context.run)(callback, *context.depth + 1);
+			*context.seed = result.state;
+		};
 		dispatch_guest_import = [&](const A64ExecutionResult& trap,
 			unsigned depth) -> A64CpuState {
 			if (!trap.svc || *trap.svc != 0x82)
@@ -3995,6 +4011,57 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 				resumed.x[0] = static_cast<std::uint64_t>(darling_windows_write(
 					static_cast<int>(x[0]), reinterpret_cast<const void*>(
 						static_cast<std::uintptr_t>(x[1])), bytes));
+			} else if (name == "_CFStringCreateWithCString") {
+				if (x[1] != 0 && !backend.ContainsGuestCString(x[1], 1u << 20))
+					throw std::runtime_error("ARM64 CoreFoundation string import received an invalid C string");
+				using Call = darling_windows_CFStringRef (DARLING_CF_GUEST_ABI *)(
+					const void*, const char*, std::uint32_t);
+				resumed.x[0] = reinterpret_cast<std::uintptr_t>(reinterpret_cast<Call>(
+					imported->target)(reinterpret_cast<const void*>(
+						static_cast<std::uintptr_t>(x[0])), reinterpret_cast<const char*>(
+						static_cast<std::uintptr_t>(x[1])), static_cast<std::uint32_t>(x[2])));
+			} else if (name == "_CFRunLoopGetCurrent") {
+				using Call = darling_windows_CFRunLoopRef (DARLING_CF_GUEST_ABI *)();
+				resumed.x[0] = reinterpret_cast<std::uintptr_t>(
+					reinterpret_cast<Call>(imported->target)());
+			} else if (name == "_CFRunLoopSourceCreate") {
+				if (x[2] != 0 && !backend.ContainsGuestRange(x[2],
+					sizeof(DarlingCFRunLoopSourceContext), false))
+					throw std::runtime_error("ARM64 CoreFoundation source import received an invalid context");
+				using Call = darling_windows_CFTypeRef (DARLING_CF_GUEST_ABI *)(
+					const void*, darling_windows_CFIndex,
+					const DarlingCFRunLoopSourceContext*);
+				resumed.x[0] = reinterpret_cast<std::uintptr_t>(reinterpret_cast<Call>(
+					imported->target)(reinterpret_cast<const void*>(
+						static_cast<std::uintptr_t>(x[0])),
+						static_cast<darling_windows_CFIndex>(x[1]),
+						reinterpret_cast<const DarlingCFRunLoopSourceContext*>(
+							static_cast<std::uintptr_t>(x[2]))));
+			} else if (name == "_CFRunLoopSourceGetContext") {
+				if (x[1] == 0 || !backend.ContainsGuestRange(x[1],
+					sizeof(DarlingCFRunLoopSourceContext), true))
+					throw std::runtime_error("ARM64 CoreFoundation context import received an invalid output range");
+				using Call = void (DARLING_CF_GUEST_ABI *)(
+					darling_windows_CFTypeRef, DarlingCFRunLoopSourceContext*);
+				reinterpret_cast<Call>(imported->target)(reinterpret_cast<void*>(
+					static_cast<std::uintptr_t>(x[0])),
+					reinterpret_cast<DarlingCFRunLoopSourceContext*>(
+						static_cast<std::uintptr_t>(x[1])));
+			} else if (name == "_CFRunLoopAddSource" ||
+				name == "_CFRunLoopRemoveSource") {
+				using Call = void (DARLING_CF_GUEST_ABI *)(
+					darling_windows_CFRunLoopRef, darling_windows_CFTypeRef,
+					darling_windows_CFStringRef);
+				const auto target = reinterpret_cast<Call>(imported->target);
+				initializer_seed = trap.state;
+				initializer_depth = depth;
+				target(reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0])),
+					reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[1])),
+					reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[2])));
+			} else if (name == "_CFRelease") {
+				using Call = void (DARLING_CF_GUEST_ABI *)(const void*);
+				reinterpret_cast<Call>(imported->target)(reinterpret_cast<const void*>(
+					static_cast<std::uintptr_t>(x[0])));
 			} else if (name == "_atexit") {
 				resumed.x[0] = static_cast<std::uint64_t>(
 					darling_windows_atexit_guest_for_dso(
@@ -4236,6 +4303,20 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 			}
 		} restore_initializer_invoker{previous_invoker,
 			previous_invoker_context};
+		void* previous_function_invoker_context = nullptr;
+		const auto previous_function_invoker = darling_objc_set_guest_function_invoker(
+			invoke_guest_function, &initializer_context,
+			&previous_function_invoker_context);
+		struct RestoreGuestFunctionInvoker final {
+			darling_objc_guest_function_invoker invoker;
+			void* context;
+			~RestoreGuestFunctionInvoker()
+			{
+				(void)darling_objc_set_guest_function_invoker(invoker, context,
+					nullptr);
+			}
+		} restore_function_invoker{previous_function_invoker,
+			previous_function_invoker_context};
 		darling_objc_guest_block_allocate previous_block_allocate = nullptr;
 		darling_objc_guest_block_deallocate previous_block_deallocate = nullptr;
 		void* previous_block_allocator_context = nullptr;
@@ -4330,6 +4411,53 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 						cpu.x[0] = static_cast<std::uint64_t>(darling_windows_write(
 							static_cast<int>(x[0]), reinterpret_cast<const void*>(
 								static_cast<std::uintptr_t>(x[1])), bytes));
+					} else if (name == "_CFStringCreateWithCString") {
+						if (x[1] != 0 && !backend.ContainsGuestCString(x[1], 1u << 20))
+							throw std::runtime_error("ARM64 CoreFoundation string import received an invalid C string");
+						using Call = darling_windows_CFStringRef (DARLING_CF_GUEST_ABI *)(
+							const void*, const char*, std::uint32_t);
+						cpu.x[0] = reinterpret_cast<std::uintptr_t>(reinterpret_cast<Call>(
+							imported->target)(reinterpret_cast<const void*>(
+								static_cast<std::uintptr_t>(x[0])), reinterpret_cast<const char*>(
+								static_cast<std::uintptr_t>(x[1])), static_cast<std::uint32_t>(x[2])));
+					} else if (name == "_CFRunLoopGetCurrent") {
+						using Call = darling_windows_CFRunLoopRef (DARLING_CF_GUEST_ABI *)();
+						cpu.x[0] = reinterpret_cast<std::uintptr_t>(
+							reinterpret_cast<Call>(imported->target)());
+					} else if (name == "_CFRunLoopSourceCreate") {
+						if (x[2] != 0 && !backend.ContainsGuestRange(x[2],
+							sizeof(DarlingCFRunLoopSourceContext), false))
+							throw std::runtime_error("ARM64 CoreFoundation source import received an invalid context");
+						using Call = darling_windows_CFTypeRef (DARLING_CF_GUEST_ABI *)(
+							const void*, darling_windows_CFIndex,
+							const DarlingCFRunLoopSourceContext*);
+						cpu.x[0] = reinterpret_cast<std::uintptr_t>(reinterpret_cast<Call>(
+							imported->target)(reinterpret_cast<const void*>(
+								static_cast<std::uintptr_t>(x[0])),
+								static_cast<darling_windows_CFIndex>(x[1]),
+								reinterpret_cast<const DarlingCFRunLoopSourceContext*>(
+									static_cast<std::uintptr_t>(x[2]))));
+					} else if (name == "_CFRunLoopSourceGetContext") {
+						if (x[1] == 0 || !backend.ContainsGuestRange(x[1],
+							sizeof(DarlingCFRunLoopSourceContext), true))
+							throw std::runtime_error("ARM64 CoreFoundation context import received an invalid output range");
+						using Call = void (DARLING_CF_GUEST_ABI *)(
+							darling_windows_CFTypeRef, DarlingCFRunLoopSourceContext*);
+						reinterpret_cast<Call>(imported->target)(reinterpret_cast<void*>(
+							static_cast<std::uintptr_t>(x[0])),
+							reinterpret_cast<DarlingCFRunLoopSourceContext*>(
+								static_cast<std::uintptr_t>(x[1])));
+					} else if (name == "_CFRunLoopAddSource" ||
+						name == "_CFRunLoopRemoveSource") {
+						using Call = void (DARLING_CF_GUEST_ABI *)(
+							darling_windows_CFRunLoopRef, darling_windows_CFTypeRef,
+							darling_windows_CFStringRef);
+						initializer_seed = result.state;
+						initializer_depth = 0;
+						reinterpret_cast<Call>(imported->target)(
+							reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0])),
+							reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[1])),
+							reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[2])));
 					} else if (name == "_atexit") {
 						cpu.x[0] = static_cast<std::uint64_t>(
 							darling_windows_atexit_guest_for_dso(
@@ -4444,7 +4572,12 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 							reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[0])),
 							static_cast<int>(x[1]));
 						cpu.x[0] = 0;
-					} else if (name == "_objc_release" || name == "_CFRelease") {
+					} else if (name == "_CFRelease") {
+						using Call = void (DARLING_CF_GUEST_ABI *)(const void*);
+						reinterpret_cast<Call>(imported->target)(reinterpret_cast<const void*>(
+							static_cast<std::uintptr_t>(x[0])));
+						cpu.x[0] = 0;
+					} else if (name == "_objc_release") {
 						reinterpret_cast<DarlingObjcReleaseImport>(imported->target)(
 							reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0])));
 						cpu.x[0] = 0;

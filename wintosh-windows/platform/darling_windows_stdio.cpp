@@ -4747,6 +4747,17 @@ extern "C" int darling_windows_chdir(const char* path)
 	}
 }
 
+extern "C" int darling_windows_fchdir(int descriptor)
+{
+	try {
+		darling::windows_host::DarwinPaths::ChangeWorkingDirectory(
+			global_syscalls.PathForDescriptor(descriptor));
+		return 0;
+	} catch (...) {
+		return -1;
+	}
+}
+
 extern "C" char* darling_windows_getcwd(char* buffer, std::size_t size)
 {
 	try {

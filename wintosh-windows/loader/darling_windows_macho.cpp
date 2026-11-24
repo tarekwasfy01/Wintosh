@@ -7772,6 +7772,14 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 							arguments[3])), &base, sizeof(base));
 					break;
 				}
+				case 13: // SYS_fchdir
+					if (arguments[0] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max())) {
+						error_number = EBADF;
+						break;
+					}
+					syscall_result = darling_windows_fchdir(static_cast<int>(arguments[0]));
+					break;
 				case 157: // SYS_statfs
 				case 158: { // SYS_fstatfs
 					if (!backend.ContainsGuestRange(arguments[1],

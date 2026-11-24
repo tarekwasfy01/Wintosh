@@ -300,6 +300,7 @@ extern "C" int darling_windows_utimensat(int directory_descriptor, const char* p
 	const darling_timespec times[2], int flags);
 extern "C" int darling_windows_futimens(int descriptor, const darling_timespec times[2]);
 extern "C" int darling_windows_chdir(const char* path);
+extern "C" int darling_windows_fchdir(int descriptor);
 extern "C" char* darling_windows_getcwd(char* buffer, std::size_t size);
 extern "C" char* darling_windows_realpath(const char* path, char* resolved);
 extern "C" int darling_windows_mkdir(const char* path, int mode);

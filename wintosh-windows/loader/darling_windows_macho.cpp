@@ -6810,6 +6810,32 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 					syscall_result_x1 = static_cast<std::uint64_t>(
 						darling_windows_getppid());
 					break;
+				case 82: // SYS_setpgid
+					if (arguments[0] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max()) ||
+						arguments[1] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max())) {
+						error_number = EINVAL;
+						break;
+					}
+					syscall_result = darling_windows_setpgid(
+						static_cast<int>(arguments[0]), static_cast<int>(arguments[1]));
+					break;
+				case 89: // SYS_getdtablesize
+					syscall_result = darling_windows_getdtablesize();
+					break;
+				case 147: // SYS_setsid
+					syscall_result = darling_windows_setsid();
+					break;
+				case 151: // SYS_getpgid
+					if (arguments[0] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max())) {
+						error_number = EINVAL;
+						break;
+					}
+					syscall_result = darling_windows_getpgid(
+						static_cast<int>(arguments[0]));
+					break;
 				case 37: // SYS_kill
 					if (arguments[0] > std::numeric_limits<std::uint32_t>::max() ||
 						arguments[1] > static_cast<std::uint64_t>(

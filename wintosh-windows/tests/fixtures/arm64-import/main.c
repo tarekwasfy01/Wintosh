@@ -47,10 +47,15 @@ int main(int argc, char **argv, char **envp)
 		nofile.current == 0 || nofile.current > nofile.maximum ||
 		darwin_syscall3(195, 8, (long)&nofile, 0, 0) != 0) // get/setrlimit RLIMIT_NOFILE
 		return 6;
+	if (darwin_syscall3(89, 0, 0, 0, 0) != 1024 ||
+		darwin_syscall3(82, 0, 0, 0, 0) != 0 ||
+		darwin_syscall3(151, 0, 0, 0, 0) <= 0 ||
+		darwin_syscall3(147, 0, 0, 0, 0) <= 0)
+		return 7;
 	unsigned long syscall_error = 0;
 	if (darwin_syscall3(194, 8, 0, 0, &syscall_error) != 14 || syscall_error != 1 ||
 		darwin_syscall3(54, 1, 0xdead, 0, &syscall_error) != 25 || syscall_error != 1)
-		return 7;
+		return 8;
 	register long pipe_read __asm__("x0") = 0;
 	register long pipe_write __asm__("x1") = 0;
 	register long pipe_call __asm__("x16") = 42;
@@ -62,12 +67,12 @@ int main(int argc, char **argv, char **envp)
 	if (pipe_read < 0 || pipe_write < 0 ||
 		darwin_syscall3(4, pipe_write, (long)pipe_payload,
 			sizeof(pipe_payload) - 1, 0) != sizeof(pipe_payload) - 1)
-		return 8;
+		return 9;
 	unsigned int available = 0;
 	if (darwin_syscall3(54, pipe_read, 0x4004667f, (long)&available,
 		&syscall_error) != 0 || syscall_error != 0 ||
 		available != sizeof(pipe_payload) - 1)
-		return 9;
+		return 10;
 	char pipe_result[sizeof(pipe_payload)] = {0};
 	if (darwin_syscall3(3, pipe_read, (long)pipe_result,
 		sizeof(pipe_result) - 1, 0) != sizeof(pipe_result) - 1 ||
@@ -75,11 +80,11 @@ int main(int argc, char **argv, char **envp)
 		pipe_result[2] != 'p' || pipe_result[3] != 'e' ||
 		darwin_syscall3(6, pipe_read, 0, 0, 0) != 0 ||
 		darwin_syscall3(6, pipe_write, 0, 0, 0) != 0)
-		return 10;
+		return 11;
 	size_t (*volatile guest_strlen)(const char *) = strlen;
 	if (guest_strlen(argv[0]) == 0)
-		return 11;
-	static const char marker[] = "ARM64_SVC_DESCRIPTOR_RLIMIT_IOCTL=PASS\n";
+		return 12;
+	static const char marker[] = "ARM64_SVC_DESCRIPTOR_PROCESS_RLIMIT_IOCTL=PASS\n";
 	return darwin_syscall3(4, 1, (long)marker, sizeof(marker) - 1, 0) ==
-		sizeof(marker) - 1 ? 42 : 12;
+		sizeof(marker) - 1 ? 42 : 13;
 }

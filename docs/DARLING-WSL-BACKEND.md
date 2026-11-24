@@ -8,13 +8,15 @@
 powershell -ExecutionPolicy Bypass -File .\tools\Invoke-DarlingWslBackend.ps1 -Mode Probe
 powershell -ExecutionPolicy Bypass -File .\tools\Invoke-DarlingWslBackend.ps1 -Mode Run -Distribution <name> -DarlingCommand <path> -DarlingArgument <args>
 powershell -ExecutionPolicy Bypass -File .\tools\Invoke-DarlingWslBackend.ps1 -Mode DarwinComputa -Distribution <name> -ComputaRoot /opt/Darwin_Computa -GuestMachO /usr/bin/sw_vers
+# WSL2 is permitted only for development and compatibility tests:
+powershell -ExecutionPolicy Bypass -File .\tools\Invoke-DarlingWslBackend.ps1 -Mode DarwinComputa -Distribution <name> -ComputaRoot /opt/Darwin_Computa -AllowWsl2ForDevelopment
 ```
 
-In `DarwinComputa` mode, `-ComputaRoot` points to a Linux build of the Darwin_Computa checkout inside WSL. The wrapper runs `project/linux/Build/Release/boxedwine --darwin-run /usr/bin/darlingserver` with `DSERVER_INIT=<GuestMachO>`. This is the project's direct-init demo path; it bypasses full `launchd` service bootstrap. Upstream currently forwards only the executable path, not its argv.
+In `DarwinComputa` mode, `-ComputaRoot` points to a Linux build of the Darwin_Computa checkout inside WSL. The wrapper checks the selected distribution's WSL version and requires **WSL1** by default; WSL2 needs the explicit `-AllowWsl2ForDevelopment` switch. It runs `project/linux/Build/Release/boxedwine --darwin-run /usr/bin/darlingserver` with `DSERVER_INIT=<GuestMachO>`. This is the project's direct-init demo path; it bypasses full `launchd` service bootstrap. Upstream currently forwards only the executable path, not its argv.
 
 `Windows/WintOS -> wsl.exe -> WSL Linux process -> Boxedwine CPU + Linux kernel emulator -> Darling/darlingserver -> Mach-O`
 
-WSL1 is the Linux-to-Windows syscall compatibility layer and does not start a virtual machine. Boxedwine is an ordinary process that emulates the Linux kernel in userspace. The Darwin_Computa checkout's MSVC project does not build its Darwin path, so this backend uses its Linux target inside WSL. A Windows `.app` still needs a staging bridge to the Darwin guest filesystem.
+WSL1 is a Windows-provided Linux-to-Windows syscall compatibility layer, not a library embedded in WintOS. Boxedwine is an ordinary process that emulates the Linux kernel in userspace. WintOS can orchestrate these existing components, but cannot turn WSL1 itself into an in-process WintOS module. The Darwin_Computa checkout's MSVC project does not build its Darwin path, so this backend uses its Linux target inside WSL. A Windows `.app` still needs a staging bridge to the Darwin guest filesystem.
 
 ## Full-Darling completion gates
 
@@ -32,4 +34,4 @@ In this environment Ubuntu runs as WSL2. Darwin_Computa's Linux target was built
 
 The official Darling 2026-06-08 Debian packages were extracted into a local, untracked rootfs. The real `/usr/bin/sw_vers` Mach-O loaded through `mldr`, checked in with `darlingserver`, and exercised Mach RPC. It did not finish startup. Traces show missing Linux runtime files including `libstdc++.so.6` and `/bin/sh`, missing writable prefix paths, and an unimplemented Linux syscall. A successful Mach-O app run is not yet verified.
 
-The Windows host reports that its current configuration does not support WSL1. The backend has only been built and exercised under WSL2 so far; WSL1 is still required to verify the requested no-VM deployment. The next engineering steps are to close the Linux rootfs dependencies, address the first blocking syscall from a focused trace, then verify a clean CLI run before working on launchd, app bundles and Cocoa GUI.
+The Windows host reports that its current configuration does not support WSL1. Enabling the Windows optional feature requires an elevated administrator session, and Windows may require a restart before Ubuntu can be converted to WSL1. The launcher now refuses WSL2 by default; the explicit development switch does not meet the no-VM target. The WSL2 Mach-O run still stops during Darling bootstrap after Mach-RPC. The remaining runtime work is to identify that bootstrap stall, verify a clean CLI run under WSL1, then complete launchd, app-bundle staging and Cocoa GUI.

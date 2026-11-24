@@ -6,7 +6,8 @@ param(
     [string]$ComputaRoot = '',
     [string]$GuestMachO = '/usr/bin/sw_vers',
     [string]$DarlingCommand = 'true',
-    [string[]]$DarlingArgument = @()
+    [string[]]$DarlingArgument = @(),
+    [switch]$AllowWsl2ForDevelopment
 )
 
 $ErrorActionPreference = 'Stop'
@@ -41,6 +42,24 @@ try {
         }
         if (-not $GuestMachO.StartsWith('/')) {
             throw '-GuestMachO must be an absolute guest path such as /usr/bin/sw_vers.'
+        }
+        $distributionList = (& wsl.exe --list --verbose 2>&1 | Out-String) -replace "`0", ''
+        if ($LASTEXITCODE -ne 0) {
+            throw "Could not list WSL distributions.`n$distributionList"
+        }
+        $distributionPattern = '^\s*\*?\s*' + [regex]::Escape($Distribution) + '\s+\S+\s+(?<Version>[12])\s*$'
+        $distributionLine = $distributionList -split '\r?\n' |
+            Where-Object { $_ -match $distributionPattern } |
+            Select-Object -First 1
+        if (-not $distributionLine) {
+            throw "Could not determine the WSL version for distribution '$Distribution'."
+        }
+        $wslVersion = [regex]::Match($distributionLine, $distributionPattern).Groups['Version'].Value
+        if ($wslVersion -ne '1' -and -not $AllowWsl2ForDevelopment) {
+            throw "Distribution '$Distribution' is WSL $wslVersion. This runtime mode requires WSL1 to avoid WSL2 virtualization. Use -AllowWsl2ForDevelopment only for compatibility testing."
+        }
+        if ($wslVersion -eq '2' -and $AllowWsl2ForDevelopment) {
+            Write-Warning 'Running under WSL2 for development; this does not satisfy the no-virtualization WSL1 target.'
         }
         if ($DarlingArgument.Count -ne 0) {
             throw 'Darwin_Computa currently forwards only the executable path; upstream DSERVER_INIT does not yet forward argv.'

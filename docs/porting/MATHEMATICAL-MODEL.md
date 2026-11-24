@@ -986,6 +986,12 @@ equal key's associated value is replaced. Removal is `D' = D \ {(k,v)}` for
 the pair whose key compares equal. Every transition is routed through the
 guest callback table, so ownership counts satisfy
 `retains - releases = live stored representatives` per collection.
+Dictionary copy and mutable-copy imports now clone the entry state while
+preserving the callback tables: `D₁=copy(D₀)` initially has the same key/value
+mapping, but `mutate(D₀)` leaves `D₁` unchanged. `GetValueIfPresent` writes its
+out-parameter only after finding the key; `GetKeysAndValues` writes exactly
+`|D|` key slots and `|D|` value slots, after the ARM64 bridge validates both
+guest output spans.
 
 The ARM64 set bridge covers mutable construction, membership, add/set/replace,
 remove, and remove-all. Its state transition is `S'=S∪{x}` for add,
@@ -994,6 +1000,10 @@ is callback equality. The ARM64 guest fixture checks duplicate-add idempotence,
 lookup, replacement, emptying, and collection release. These import paths do
 not imply full CoreFoundation coverage: allocator semantics, all remaining
 collection APIs, and broad application compatibility are still separate work.
+ARM64 set copy and mutable-copy operations preserve the callback table and
+create independent membership state. For `S₁=copy(S₀)`, later mutation of
+`S₀` does not change `S₁`; `GetValues` and `GetValueIfPresent` provide bounded
+guest-memory exports of the current set representatives.
 
 `CFSet` uses the set invariant `∀x,y ∈ S: x ≠ y` under the set's equality
 callback (pointer identity when it is null). Add is

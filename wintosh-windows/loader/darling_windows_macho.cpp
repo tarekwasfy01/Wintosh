@@ -338,6 +338,60 @@ bool DispatchArm64CoreFoundationRunLoopImport(const std::string& name,
 			reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[0]))));
 		return true;
 	}
+	if (name == "_CFDictionaryCreateCopy" ||
+		name == "_CFDictionaryCreateMutableCopy") {
+		if (name == "_CFDictionaryCreateCopy") {
+			using Call = darling_windows_CFDictionaryRef (DARLING_CF_GUEST_ABI *)(
+				const void*, darling_windows_CFDictionaryRef);
+			resumed_state.x[0] = reinterpret_cast<std::uintptr_t>(reinterpret_cast<Call>(target)(
+				reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[0])),
+				reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[1]))));
+		} else {
+			using Call = darling_windows_CFDictionaryRef (DARLING_CF_GUEST_ABI *)(
+				const void*, darling_windows_CFIndex, darling_windows_CFDictionaryRef);
+			resumed_state.x[0] = reinterpret_cast<std::uintptr_t>(reinterpret_cast<Call>(target)(
+				reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[0])),
+				static_cast<darling_windows_CFIndex>(x[1]),
+				reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[2]))));
+		}
+		return true;
+	}
+	if (name == "_CFDictionaryGetValueIfPresent") {
+		if (x[2] == 0 || !backend.ContainsGuestRange(x[2], sizeof(void*), true))
+			throw std::runtime_error("ARM64 CFDictionaryGetValueIfPresent import received an invalid output pointer");
+		using Call = std::uint8_t (DARLING_CF_GUEST_ABI *)(
+			darling_windows_CFDictionaryRef, const void*, const void**);
+		resumed_state.x[0] = reinterpret_cast<Call>(target)(reinterpret_cast<void*>(
+			static_cast<std::uintptr_t>(x[0])), reinterpret_cast<const void*>(
+			static_cast<std::uintptr_t>(x[1])), reinterpret_cast<const void**>(
+			static_cast<std::uintptr_t>(x[2])));
+		return true;
+	}
+	if (name == "_CFDictionaryContainsValue") {
+		using Call = std::uint8_t (DARLING_CF_GUEST_ABI *)(
+			darling_windows_CFDictionaryRef, const void*);
+		resumed_state.x[0] = reinterpret_cast<Call>(target)(reinterpret_cast<void*>(
+			static_cast<std::uintptr_t>(x[0])), reinterpret_cast<const void*>(
+			static_cast<std::uintptr_t>(x[1])));
+		return true;
+	}
+	if (name == "_CFDictionaryGetKeysAndValues") {
+		const auto count = darling_windows_CFDictionaryGetCount(
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0])));
+		if (count < 0 || count > (1 << 20) || (count != 0 &&
+			((x[1] == 0 || !backend.ContainsGuestRange(x[1],
+				static_cast<std::size_t>(count) * sizeof(void*), true)) ||
+			 (x[2] == 0 || !backend.ContainsGuestRange(x[2],
+				static_cast<std::size_t>(count) * sizeof(void*), true)))))
+			throw std::runtime_error("ARM64 CFDictionaryGetKeysAndValues import received an invalid output range");
+		using Call = void (DARLING_CF_GUEST_ABI *)(darling_windows_CFDictionaryRef,
+			const void**, const void**);
+		reinterpret_cast<Call>(target)(reinterpret_cast<void*>(
+			static_cast<std::uintptr_t>(x[0])), reinterpret_cast<const void**>(
+			static_cast<std::uintptr_t>(x[1])), reinterpret_cast<const void**>(
+			static_cast<std::uintptr_t>(x[2])));
+		return true;
+	}
 	if (name == "_CFDictionaryCreateMutable") {
 		if (x[2] != 0 && !backend.ContainsGuestRange(x[2],
 			sizeof(DarlingCFDictionaryKeyCallbacks), false))
@@ -409,6 +463,56 @@ bool DispatchArm64CoreFoundationRunLoopImport(const std::string& name,
 			darling_windows_CFSetRef);
 		resumed_state.x[0] = static_cast<std::uint64_t>(reinterpret_cast<Call>(target)(
 			reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[0]))));
+		return true;
+	}
+	if (name == "_CFSetCreateCopy" || name == "_CFSetCreateMutableCopy") {
+		if (name == "_CFSetCreateCopy") {
+			using Call = darling_windows_CFSetRef (DARLING_CF_GUEST_ABI *)(
+				const void*, darling_windows_CFSetRef);
+			resumed_state.x[0] = reinterpret_cast<std::uintptr_t>(reinterpret_cast<Call>(target)(
+				reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[0])),
+				reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[1]))));
+		} else {
+			using Call = darling_windows_CFSetRef (DARLING_CF_GUEST_ABI *)(
+				const void*, darling_windows_CFIndex, darling_windows_CFSetRef);
+			resumed_state.x[0] = reinterpret_cast<std::uintptr_t>(reinterpret_cast<Call>(target)(
+				reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[0])),
+				static_cast<darling_windows_CFIndex>(x[1]),
+				reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[2]))));
+		}
+		return true;
+	}
+	if (name == "_CFSetGetValue" || name == "_CFSetGetValueIfPresent") {
+		if (name == "_CFSetGetValueIfPresent" && (x[2] == 0 ||
+			!backend.ContainsGuestRange(x[2], sizeof(void*), true)))
+			throw std::runtime_error("ARM64 CFSetGetValueIfPresent import received an invalid output pointer");
+		if (name == "_CFSetGetValue") {
+			using Call = darling_windows_CFTypeRef (DARLING_CF_GUEST_ABI *)(
+				darling_windows_CFSetRef, const void*);
+			resumed_state.x[0] = reinterpret_cast<std::uintptr_t>(reinterpret_cast<Call>(target)(
+				reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0])),
+				reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[1]))));
+		} else {
+			using Call = std::uint8_t (DARLING_CF_GUEST_ABI *)(darling_windows_CFSetRef,
+				const void*, const void**);
+			resumed_state.x[0] = reinterpret_cast<Call>(target)(reinterpret_cast<void*>(
+				static_cast<std::uintptr_t>(x[0])), reinterpret_cast<const void*>(
+				static_cast<std::uintptr_t>(x[1])), reinterpret_cast<const void**>(
+				static_cast<std::uintptr_t>(x[2])));
+		}
+		return true;
+	}
+	if (name == "_CFSetGetValues") {
+		const auto count = darling_windows_CFSetGetCount(
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0])));
+		if (count < 0 || count > (1 << 20) || (count != 0 &&
+			(x[1] == 0 || !backend.ContainsGuestRange(x[1],
+				static_cast<std::size_t>(count) * sizeof(void*), true))))
+			throw std::runtime_error("ARM64 CFSetGetValues import received an invalid output range");
+		using Call = void (DARLING_CF_GUEST_ABI *)(darling_windows_CFSetRef, const void**);
+		reinterpret_cast<Call>(target)(reinterpret_cast<void*>(
+			static_cast<std::uintptr_t>(x[0])), reinterpret_cast<const void**>(
+			static_cast<std::uintptr_t>(x[1])));
 		return true;
 	}
 	if (name == "_CFSetCreateMutable") {

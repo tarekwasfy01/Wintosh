@@ -87,6 +87,11 @@ extern unsigned char CFDictionaryContainsKey(CFTypeRef, const void *);
 extern void CFDictionarySetValue(CFTypeRef, const void *, const void *);
 extern void CFDictionaryRemoveValue(CFTypeRef, const void *);
 extern void CFDictionaryRemoveAllValues(CFTypeRef);
+extern CFTypeRef CFDictionaryCreateCopy(const void *, CFTypeRef);
+extern CFTypeRef CFDictionaryCreateMutableCopy(const void *, CFIndex, CFTypeRef);
+extern unsigned char CFDictionaryGetValueIfPresent(CFTypeRef, const void *, const void **);
+extern unsigned char CFDictionaryContainsValue(CFTypeRef, const void *);
+extern void CFDictionaryGetKeysAndValues(CFTypeRef, const void **, const void **);
 extern CFTypeRef CFSetCreate(const void *, const void *const *, CFIndex,
 	const CFDictionaryKeyCallBacks *);
 extern CFIndex CFSetGetCount(CFTypeRef);
@@ -96,6 +101,11 @@ extern unsigned char CFSetContainsValue(CFTypeRef, const void *);
 extern void CFSetAddValue(CFTypeRef, const void *);
 extern void CFSetRemoveValue(CFTypeRef, const void *);
 extern void CFSetRemoveAllValues(CFTypeRef);
+extern CFTypeRef CFSetCreateCopy(const void *, CFTypeRef);
+extern CFTypeRef CFSetCreateMutableCopy(const void *, CFIndex, CFTypeRef);
+extern const void *CFSetGetValue(CFTypeRef, const void *);
+extern unsigned char CFSetGetValueIfPresent(CFTypeRef, const void *, const void **);
+extern void CFSetGetValues(CFTypeRef, const void **);
 
 static int scheduleCalls;
 static int cancelCalls;
@@ -312,7 +322,30 @@ int main(void)
 	CFDictionarySetValue(mutableDictionary, &dictionaryKeyA, &dictionaryValueA);
 	CFDictionaryRemoveAllValues(mutableDictionary);
 	if (CFDictionaryGetCount(mutableDictionary) != 0) return 30;
+	CFDictionarySetValue(mutableDictionary, &dictionaryKeyA, &dictionaryValueB);
+	const void *dictionaryOutputKey = 0, *dictionaryOutputValue = 0;
+	if (!CFDictionaryGetValueIfPresent(mutableDictionary, &dictionaryKeyA,
+		&dictionaryOutputValue) || dictionaryOutputValue != &dictionaryValueB ||
+		!CFDictionaryContainsValue(mutableDictionary, &dictionaryValueB)) return 45;
+	CFDictionaryGetKeysAndValues(mutableDictionary, &dictionaryOutputKey,
+		&dictionaryOutputValue);
+	if (dictionaryOutputKey != &dictionaryKeyA ||
+		dictionaryOutputValue != &dictionaryValueB) return 46;
+	CFTypeRef dictionaryCopy = CFDictionaryCreateCopy(0, mutableDictionary);
+	CFTypeRef mutableDictionaryCopy = CFDictionaryCreateMutableCopy(0, 0,
+		mutableDictionary);
+	if (dictionaryCopy == 0 || mutableDictionaryCopy == 0 ||
+		CFDictionaryGetCount(dictionaryCopy) != 1 ||
+		CFDictionaryGetCount(mutableDictionaryCopy) != 1) return 47;
+	CFDictionaryRemoveValue(mutableDictionary, &dictionaryKeyA);
+	if (CFDictionaryGetCount(dictionaryCopy) != 1 ||
+		CFDictionaryGetCount(mutableDictionaryCopy) != 1) return 48;
+	CFRelease(dictionaryCopy);
+	CFRelease(mutableDictionaryCopy);
+	CFDictionaryRemoveAllValues(mutableDictionary);
 	CFRelease(mutableDictionary);
+	if (dictionaryKeyRetainCalls != dictionaryKeyReleaseCalls ||
+		dictionaryValueRetainCalls != dictionaryValueReleaseCalls) return 49;
 	const void *setValues[] = { &setValueA, &setValueB };
 	CFDictionaryKeyCallBacks setCallbacks = { 0, set_retain, set_release, 0,
 		set_equal, set_hash };
@@ -337,7 +370,25 @@ int main(void)
 	CFSetAddValue(mutableSet, &setValueA);
 	CFSetRemoveAllValues(mutableSet);
 	if (CFSetGetCount(mutableSet) != 0) return 35;
+	CFSetAddValue(mutableSet, &setValueA);
+	const void *setOutput[1] = { 0 };
+	const void *setOutputValue = 0;
+	CFSetGetValues(mutableSet, setOutput);
+	if (setOutput[0] != &setValueA || CFSetGetValue(mutableSet, &setValueA) !=
+		&setValueA || !CFSetGetValueIfPresent(mutableSet, &setValueA,
+		&setOutputValue) || setOutputValue != &setValueA) return 50;
+	CFTypeRef setCopy = CFSetCreateCopy(0, mutableSet);
+	CFTypeRef mutableSetCopy = CFSetCreateMutableCopy(0, 0, mutableSet);
+	if (setCopy == 0 || mutableSetCopy == 0 || CFSetGetCount(setCopy) != 1 ||
+		CFSetGetCount(mutableSetCopy) != 1) return 51;
+	CFSetRemoveValue(mutableSet, &setValueA);
+	if (CFSetGetCount(setCopy) != 1 || CFSetGetCount(mutableSetCopy) != 1)
+		return 52;
+	CFRelease(setCopy);
+	CFRelease(mutableSetCopy);
+	CFSetRemoveAllValues(mutableSet);
 	CFRelease(mutableSet);
+	if (setRetainCalls != setReleaseCalls) return 53;
 	CFRunLoopSourceContext context;
 	context.version = 0;
 	context.info = &contextInfo;

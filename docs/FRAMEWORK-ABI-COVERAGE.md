@@ -60,7 +60,10 @@ invalidate and mode registration are exported for entry, before-timer/source,
 before/after-wait, and exit callbacks; one-shot observers invalidate after
 their first matching callback. Apple documents that sources, timers, and
 observers are activated by their registered modes; current evidence is
-source/build level only, without guest ABI fixtures.
+the CoreFoundation ABI smoke: it checks phase order across entry, timer/source,
+waiting, and exit; it also checks one-shot invalidation and observer removal.
+The callback is compiled with the Darwin guest ABI attribute, but a callback
+executed from a loaded Mach-O fixture remains unverified.
 
 `CFMachPort` exports the type ID, create/create-with-port, run-loop source,
 port/context/validity queries, invalidation, and invalidation-callback accessors.

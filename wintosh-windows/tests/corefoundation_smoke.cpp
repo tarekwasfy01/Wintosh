@@ -1,6 +1,7 @@
 /* Stage 1 CoreFoundation value-semantics boundary proof; GPL-3.0-only. */
 #include "darling_windows_corefoundation.h"
 
+#include <algorithm>
 #include <cstring>
 #include <chrono>
 #include <iostream>
@@ -32,6 +33,17 @@ void RunLoopCallback(void* context) {
 void DARLING_CF_GUEST_ABI RunLoopTimerCallback(darling_windows_CFTypeRef, void* context)
 {
 	++*static_cast<int*>(context);
+}
+struct RunLoopObserverState {
+	std::vector<std::uint64_t> activities;
+	int calls{};
+};
+void DARLING_CF_GUEST_ABI RunLoopObserverCallback(
+	darling_windows_CFTypeRef, std::uint64_t activity, void* context)
+{
+	auto* state = static_cast<RunLoopObserverState*>(context);
+	state->activities.push_back(activity);
+	++state->calls;
 }
 void ArrayApplyCallback(const void* value, void* context)
 {
@@ -740,8 +752,94 @@ int main()
 		CFRunLoopTimerInvalidate(cf_timer);
 		darling_windows_CFRelease(cf_timer);
 	}
+	constexpr std::uint64_t observer_entry = 1ull << 0;
+	constexpr std::uint64_t observer_before_timers = 1ull << 1;
+	constexpr std::uint64_t observer_before_sources = 1ull << 2;
+	constexpr std::uint64_t observer_before_waiting = 1ull << 5;
+	constexpr std::uint64_t observer_after_waiting = 1ull << 6;
+	constexpr std::uint64_t observer_exit = 1ull << 7;
+	const auto observed_activities = observer_entry | observer_before_timers |
+		observer_before_sources | observer_before_waiting | observer_after_waiting | observer_exit;
+	RunLoopObserverState repeating_observer_state;
+	RunLoopObserverState one_shot_observer_state;
+	DarlingCFRunLoopObserverContext repeating_observer_context{
+		0, &repeating_observer_state, nullptr, nullptr, nullptr};
+	DarlingCFRunLoopObserverContext one_shot_observer_context{
+		0, &one_shot_observer_state, nullptr, nullptr, nullptr};
+	auto* repeating_observer = CFRunLoopObserverCreate(nullptr, observed_activities,
+		1, 5, RunLoopObserverCallback, &repeating_observer_context);
+	auto* one_shot_observer = CFRunLoopObserverCreate(nullptr, observer_before_sources,
+		0, 0, RunLoopObserverCallback, &one_shot_observer_context);
+	int observer_wait_timer_calls = 0;
+	DarlingCFRunLoopTimerContext observer_wait_timer_context{
+		0, &observer_wait_timer_calls, nullptr, nullptr, nullptr};
+	const double observer_wait_fire_date = std::chrono::duration<double>(
+		std::chrono::system_clock::now().time_since_epoch()).count() - 978307200.0 + 1.0;
+	auto* observer_wait_timer = CFRunLoopTimerCreate(nullptr, observer_wait_fire_date,
+		0, 0, 0, RunLoopTimerCallback, &observer_wait_timer_context);
+	if (timer_mode != nullptr && repeating_observer != nullptr &&
+		one_shot_observer != nullptr && observer_wait_timer != nullptr) {
+		CFRunLoopAddObserver(CFRunLoopGetCurrent(), repeating_observer, timer_mode);
+		CFRunLoopAddObserver(CFRunLoopGetCurrent(), one_shot_observer, timer_mode);
+		CFRunLoopAddTimer(CFRunLoopGetCurrent(), observer_wait_timer, timer_mode);
+		CFRunLoopRunInMode(timer_mode, 0.01, false);
+	}
+	const bool cf_observer_ok = timer_mode != nullptr && repeating_observer != nullptr &&
+		one_shot_observer != nullptr &&
+		CFRunLoopContainsObserver(CFRunLoopGetCurrent(), repeating_observer, timer_mode) &&
+		!CFRunLoopObserverIsValid(one_shot_observer) && one_shot_observer_state.calls == 1 &&
+		!CFRunLoopContainsObserver(CFRunLoopGetCurrent(), one_shot_observer, timer_mode) &&
+		!repeating_observer_state.activities.empty() &&
+		repeating_observer_state.activities.front() == observer_entry &&
+		repeating_observer_state.activities.back() == observer_exit &&
+		std::find(repeating_observer_state.activities.begin(),
+			repeating_observer_state.activities.end(), observer_before_waiting) !=
+			repeating_observer_state.activities.end() &&
+		std::find(repeating_observer_state.activities.begin(),
+			repeating_observer_state.activities.end(), observer_after_waiting) !=
+			repeating_observer_state.activities.end() &&
+		std::find(repeating_observer_state.activities.begin(),
+			repeating_observer_state.activities.end(), observer_before_timers) <
+			std::find(repeating_observer_state.activities.begin(),
+				repeating_observer_state.activities.end(), observer_before_sources) &&
+		std::find(repeating_observer_state.activities.begin(),
+			repeating_observer_state.activities.end(), observer_before_sources) <
+			std::find(repeating_observer_state.activities.begin(),
+				repeating_observer_state.activities.end(), observer_before_waiting) &&
+		std::find(repeating_observer_state.activities.begin(),
+			repeating_observer_state.activities.end(), observer_before_waiting) <
+			std::find(repeating_observer_state.activities.begin(),
+				repeating_observer_state.activities.end(), observer_after_waiting);
+	if (!cf_observer_ok) {
+		std::cerr << "CF_OBSERVER calls=" << repeating_observer_state.calls << ","
+			<< one_shot_observer_state.calls << ",valid="
+			<< (one_shot_observer != nullptr && CFRunLoopObserverIsValid(one_shot_observer))
+			<< ",contains=" << (timer_mode != nullptr && repeating_observer != nullptr &&
+				CFRunLoopContainsObserver(CFRunLoopGetCurrent(), repeating_observer, timer_mode))
+			<< ",phases=";
+		for (const auto phase : repeating_observer_state.activities) std::cerr << phase << ':';
+		std::cerr << '\n';
+	}
+	if (timer_mode != nullptr) {
+		if (observer_wait_timer != nullptr) {
+			CFRunLoopRemoveTimer(CFRunLoopGetCurrent(), observer_wait_timer, timer_mode);
+			CFRunLoopTimerInvalidate(observer_wait_timer);
+		}
+		if (repeating_observer != nullptr) {
+			CFRunLoopRemoveObserver(CFRunLoopGetCurrent(), repeating_observer, timer_mode);
+			CFRunLoopObserverInvalidate(repeating_observer);
+		}
+		if (one_shot_observer != nullptr) {
+			CFRunLoopRemoveObserver(CFRunLoopGetCurrent(), one_shot_observer, timer_mode);
+			CFRunLoopObserverInvalidate(one_shot_observer);
+		}
+	}
+	if (repeating_observer != nullptr) darling_windows_CFRelease(repeating_observer);
+	if (one_shot_observer != nullptr) darling_windows_CFRelease(one_shot_observer);
+	if (observer_wait_timer != nullptr) darling_windows_CFRelease(observer_wait_timer);
 	if (timer_mode != nullptr) darling_windows_CFRelease(timer_mode);
-	const bool cf_timer_ok = cf_timer_tolerance_ok && cf_timer_symbols_ok && cf_timer_fired;
+	const bool cf_timer_ok = cf_timer_tolerance_ok && cf_timer_symbols_ok &&
+		cf_timer_fired && cf_observer_ok;
 	const auto center = darling_windows_CFNotificationCenterGetLocal();
 	const int notification_object = 1;
 	const bool notification_ok = darling_windows_CFNotificationCenterAddObserver(
@@ -1160,7 +1258,8 @@ int main()
 			<< " callback=" << callback_ok << " queued=" << queued_sources
 			<< " one=" << one_source_ok << " second=" << source_queue_ok
 			<< " drain=" << drain_sources_ok << " timer=" << timer_ok
-			<< " timer_tolerance=" << cf_timer_ok
+			<< " timer_tolerance=" << cf_timer_tolerance_ok
+			<< " observer=" << cf_observer_ok
 			<< " timer_tolerance=" << cf_timer_ok
 			<< " notify=" << notification_ok << " delivered=" << delivered
 			<< " plist=" << plist_ok << " binary=" << binary_plist_ok << '\n';

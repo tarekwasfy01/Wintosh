@@ -1060,3 +1060,10 @@ observer forms: `x0=loop`, `x1=object`, `x2=mode`; the one-byte Darwin result is
 returned through `x0`. Fixtures assert membership transitions
 `0 → 1 → 0` around add/remove for all three registration kinds. This verifies
 the ABI adapter and the mode-specific membership predicate together.
+
+Timer date and tolerance setters read their `double` value from `v0`; their
+getters, the interval getter, and `CFRunLoopGetNextTimerFireDate` return the
+double in `v0`. The fixture writes distinct fractional values and reads them
+back, so the test checks the FP argument and result paths instead of only the
+integer register bridge. Timer creation continues to map `fireDate`/`interval`
+to `v0`/`v1` while `flags`, `order`, `callout`, and `context` use `x1`–`x4`.

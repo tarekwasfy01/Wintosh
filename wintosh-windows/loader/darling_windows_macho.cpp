@@ -65,10 +65,13 @@ thread_local unsigned* active_arm64_depth = nullptr;
 thread_local const void* active_arm64_dso_handle = nullptr;
 
 bool DispatchArm64CoreFoundationRunLoopImport(const std::string& name,
-	std::uintptr_t target, const A64CpuState& state,
-	DarlingWindowsA64Backend& backend, std::uint64_t& return_value)
+	std::uintptr_t target, const A64CpuState& state, A64CpuState& resumed_state,
+	DarlingWindowsA64Backend& backend)
 {
 	const auto& x = state.x;
+	const auto set_double_return = [&](double value) {
+		std::memcpy(&resumed_state.v[0], &value, sizeof(value));
+	};
 	if (name == "_CFRunLoopPerformBlock") {
 		using Call = void (DARLING_CF_GUEST_ABI *)(darling_windows_CFRunLoopRef,
 			darling_windows_CFTypeRef, void*);
@@ -84,7 +87,7 @@ bool DispatchArm64CoreFoundationRunLoopImport(const std::string& name,
 		using Call = std::uint8_t (DARLING_CF_GUEST_ABI *)(
 		darling_windows_CFRunLoopRef, darling_windows_CFTypeRef,
 		darling_windows_CFStringRef);
-		return_value = reinterpret_cast<Call>(target)(
+		resumed_state.x[0] = reinterpret_cast<Call>(target)(
 			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0])),
 			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[1])),
 			reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[2])));
@@ -101,7 +104,7 @@ bool DispatchArm64CoreFoundationRunLoopImport(const std::string& name,
 		using Call = darling_windows_CFTypeRef (DARLING_CF_GUEST_ABI *)(
 			const void*, double, double, std::uint64_t, darling_windows_CFIndex,
 			DarlingCFRunLoopTimerCallout, const DarlingCFRunLoopTimerContext*);
-		return_value = reinterpret_cast<std::uintptr_t>(reinterpret_cast<Call>(target)(
+		resumed_state.x[0] = reinterpret_cast<std::uintptr_t>(reinterpret_cast<Call>(target)(
 			reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[0])),
 			fire_date, interval, x[1], static_cast<darling_windows_CFIndex>(x[2]),
 			reinterpret_cast<DarlingCFRunLoopTimerCallout>(
@@ -132,7 +135,7 @@ bool DispatchArm64CoreFoundationRunLoopImport(const std::string& name,
 		using Call = darling_windows_CFTypeRef (DARLING_CF_GUEST_ABI *)(
 			const void*, std::uint64_t, std::uint8_t, darling_windows_CFIndex,
 			DarlingCFRunLoopObserverCallout, const DarlingCFRunLoopObserverContext*);
-		return_value = reinterpret_cast<std::uintptr_t>(reinterpret_cast<Call>(target)(
+		resumed_state.x[0] = reinterpret_cast<std::uintptr_t>(reinterpret_cast<Call>(target)(
 			reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[0])), x[1],
 			static_cast<std::uint8_t>(x[2]), static_cast<darling_windows_CFIndex>(x[3]),
 			reinterpret_cast<DarlingCFRunLoopObserverCallout>(
@@ -161,9 +164,48 @@ bool DispatchArm64CoreFoundationRunLoopImport(const std::string& name,
 		std::memcpy(&seconds, &state.v[0], sizeof(seconds));
 		using Call = std::int32_t (DARLING_CF_GUEST_ABI *)(
 			darling_windows_CFStringRef, double, std::uint8_t);
-		return_value = static_cast<std::uint64_t>(reinterpret_cast<Call>(target)(
+		resumed_state.x[0] = static_cast<std::uint64_t>(reinterpret_cast<Call>(target)(
 			reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[0])), seconds,
 			static_cast<std::uint8_t>(x[1])));
+		return true;
+	}
+	if (name == "_CFRunLoopTimerGetNextFireDate" ||
+		name == "_CFRunLoopTimerGetTolerance" ||
+		name == "_CFRunLoopTimerGetInterval") {
+		using Call = double (DARLING_CF_GUEST_ABI *)(darling_windows_CFTypeRef);
+		set_double_return(reinterpret_cast<Call>(target)(
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0]))));
+		return true;
+	}
+	if (name == "_CFRunLoopTimerSetNextFireDate" ||
+		name == "_CFRunLoopTimerSetTolerance") {
+		double value{};
+		std::memcpy(&value, &state.v[0], sizeof(value));
+		using Call = void (DARLING_CF_GUEST_ABI *)(darling_windows_CFTypeRef, double);
+		reinterpret_cast<Call>(target)(
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0])), value);
+		return true;
+	}
+	if (name == "_CFRunLoopGetNextTimerFireDate") {
+		using Call = double (DARLING_CF_GUEST_ABI *)(
+			darling_windows_CFRunLoopRef, darling_windows_CFStringRef);
+		set_double_return(reinterpret_cast<Call>(target)(
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0])),
+			reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[1]))));
+		return true;
+	}
+	if (name == "_CFRunLoopTimerDoesRepeat" ||
+		name == "_CFRunLoopTimerIsValid") {
+		using Call = std::uint8_t (DARLING_CF_GUEST_ABI *)(darling_windows_CFTypeRef);
+		resumed_state.x[0] = reinterpret_cast<Call>(target)(
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0])));
+		return true;
+	}
+	if (name == "_CFRunLoopTimerGetOrder") {
+		using Call = darling_windows_CFIndex (DARLING_CF_GUEST_ABI *)(
+			darling_windows_CFTypeRef);
+		resumed_state.x[0] = static_cast<std::uint64_t>(reinterpret_cast<Call>(target)(
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0]))));
 		return true;
 	}
 	return false;
@@ -4071,12 +4113,10 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 			initializer_depth = depth;
 			const auto& x = trap.state.x;
 			const auto& name = imported->symbol;
-			std::uint64_t run_loop_return{};
 			if (DispatchArm64CoreFoundationRunLoopImport(name, imported->target,
-				trap.state, backend, run_loop_return)) {
+				trap.state, resumed, backend)) {
 				initializer_seed = trap.state;
 				initializer_depth = depth;
-				resumed.x[0] = run_loop_return;
 				return resumed;
 			}
 			if (name == "_dlerror") {
@@ -4478,12 +4518,10 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 					initializer_depth = 0;
 					const auto& x = result.state.x;
 					const auto& name = imported->symbol;
-					std::uint64_t run_loop_return{};
 					if (DispatchArm64CoreFoundationRunLoopImport(name, imported->target,
-						result.state, backend, run_loop_return)) {
+						result.state, cpu, backend)) {
 						initializer_seed = result.state;
 						initializer_depth = 0;
-						cpu.x[0] = run_loop_return;
 						continue;
 					}
 					if (name == "_dlerror") {

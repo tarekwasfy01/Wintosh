@@ -6717,6 +6717,63 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 					}
 					break;
 				}
+				case 93: { // SYS_select
+					if (arguments[0] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max())) {
+						error_number = EINVAL;
+						break;
+					}
+					constexpr std::size_t fd_set_size = sizeof(darling_fd_set);
+					constexpr std::size_t timeval_size = sizeof(darling_timeval);
+					if ((arguments[1] != 0 && !backend.ContainsGuestRange(
+							arguments[1], fd_set_size, true)) ||
+						(arguments[2] != 0 && !backend.ContainsGuestRange(
+							arguments[2], fd_set_size, true)) ||
+						(arguments[3] != 0 && !backend.ContainsGuestRange(
+							arguments[3], fd_set_size, true)) ||
+						(arguments[4] != 0 && !backend.ContainsGuestRange(
+							arguments[4], timeval_size, true))) {
+						error_number = EFAULT;
+						break;
+					}
+					darling_fd_set read_set{};
+					darling_fd_set write_set{};
+					darling_fd_set exception_set{};
+					darling_timeval timeout{};
+					if (arguments[1] != 0)
+						std::memcpy(&read_set, reinterpret_cast<const void*>(
+							static_cast<std::uintptr_t>(arguments[1])), fd_set_size);
+					if (arguments[2] != 0)
+						std::memcpy(&write_set, reinterpret_cast<const void*>(
+							static_cast<std::uintptr_t>(arguments[2])), fd_set_size);
+					if (arguments[3] != 0)
+						std::memcpy(&exception_set, reinterpret_cast<const void*>(
+							static_cast<std::uintptr_t>(arguments[3])), fd_set_size);
+					if (arguments[4] != 0)
+						std::memcpy(&timeout, reinterpret_cast<const void*>(
+							static_cast<std::uintptr_t>(arguments[4])), timeval_size);
+					syscall_result = darling_windows_select(
+						static_cast<int>(arguments[0]),
+						arguments[1] == 0 ? nullptr : &read_set,
+						arguments[2] == 0 ? nullptr : &write_set,
+						arguments[3] == 0 ? nullptr : &exception_set,
+						arguments[4] == 0 ? nullptr : &timeout);
+					if (syscall_result >= 0) {
+						if (arguments[1] != 0)
+							std::memcpy(reinterpret_cast<void*>(static_cast<std::uintptr_t>(
+								arguments[1])), &read_set, fd_set_size);
+						if (arguments[2] != 0)
+							std::memcpy(reinterpret_cast<void*>(static_cast<std::uintptr_t>(
+								arguments[2])), &write_set, fd_set_size);
+						if (arguments[3] != 0)
+							std::memcpy(reinterpret_cast<void*>(static_cast<std::uintptr_t>(
+								arguments[3])), &exception_set, fd_set_size);
+						if (arguments[4] != 0)
+							std::memcpy(reinterpret_cast<void*>(static_cast<std::uintptr_t>(
+								arguments[4])), &timeout, timeval_size);
+					}
+					break;
+				}
 				case 54: { // SYS_ioctl (supported terminal requests only)
 					constexpr std::uint64_t tiocgwinsz = 0x40087468ull;
 					constexpr std::uint64_t tiocswinsz = 0x80087467ull;

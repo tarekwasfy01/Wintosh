@@ -25,6 +25,25 @@ static long darwin_syscall3(long number, long argument0, long argument1,
 	return x0;
 }
 
+static long darwin_syscall5(long number, long argument0, long argument1,
+	long argument2, long argument3, long argument4, unsigned long *error_flag)
+{
+	register long x0 __asm__("x0") = argument0;
+	register long x1 __asm__("x1") = argument1;
+	register long x2 __asm__("x2") = argument2;
+	register long x3 __asm__("x3") = argument3;
+	register long x4 __asm__("x4") = argument4;
+	register long x16 __asm__("x16") = number;
+	unsigned long nzcv;
+	__asm__ volatile("svc #0x80\n\tmrs %0, nzcv"
+		: "=r"(nzcv), "+r"(x0), "+r"(x1), "+r"(x2), "+r"(x3), "+r"(x4), "+r"(x16)
+		:
+		: "memory", "cc");
+	if (error_flag != 0)
+		*error_flag = (nzcv >> 29) & 1;
+	return x0;
+}
+
 int main(int argc, char **argv, char **envp)
 {
 	(void)envp;
@@ -105,10 +124,20 @@ int main(int argc, char **argv, char **envp)
 		darwin_syscall3(6, pipe_read, 0, 0, 0) != 0 ||
 		darwin_syscall3(6, pipe_write, 0, 0, 0) != 0)
 		return 13;
+	unsigned int write_fds[32] = {0};
+	write_fds[0] = 1u << 1;
+	struct { long seconds; long microseconds; } select_timeout = {0, 0};
+	if (darwin_syscall5(93, 2, 0, (long)write_fds, 0,
+		(long)&select_timeout, 0) != 1 || write_fds[0] != (1u << 1) ||
+		select_timeout.seconds != 0 || select_timeout.microseconds != 0)
+		return 14;
+	if (darwin_syscall5(93, 1, 0xdead, 0, 0, 0, &syscall_error) != 14 ||
+		syscall_error != 1)
+		return 15;
 	size_t (*volatile guest_strlen)(const char *) = strlen;
 	if (guest_strlen(argv[0]) == 0)
-		return 14;
-	static const char marker[] = "ARM64_SVC_IDENTITY_GROUP_DESCRIPTOR_PROCESS_RLIMIT_IOCTL=PASS\n";
+		return 16;
+	static const char marker[] = "ARM64_SVC_IDENTITY_GROUP_SELECT_DESCRIPTOR_PROCESS_RLIMIT_IOCTL=PASS\n";
 	return darwin_syscall3(4, 1, (long)marker, sizeof(marker) - 1, 0) ==
-		sizeof(marker) - 1 ? 42 : 15;
+		sizeof(marker) - 1 ? 42 : 17;
 }

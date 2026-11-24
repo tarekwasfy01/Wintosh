@@ -795,7 +795,7 @@ pending. The current default common set is `{kCFRunLoopDefaultMode}` until
 | Mode membership | Work runs only in registered modes | Mode-tagged callbacks; default and common modes | WSL1 offers Linux compatibility but does not define Cocoa run-loop modes | Clang Release build; no guest fixture |
 | Ordered selector queue | Process target selector on target thread in requested modes/order | `NSRunLoop.performSelector:target:argument:order:modes:` | No direct WSL1 equivalent | Source/build only |
 | Main AppKit loop | Cocoa loop dispatches AppKit input and Foundation work | Existing Win32 message loop pumps default-mode CF callback work | WSL1 cannot supply AppKit behavior | Source/build only |
-| CF source version 0 | Register by mode, signal, retain, invalidate, and service in order | Mode-tagged callback queue; first eligible loop consumes a signal | Not supplied by WSL1 | Clang Release build; no guest fixture |
+| CF source version 0 | Register by mode, signal, retain, invalidate, and service in order; schedule/cancel callouts bracket actual membership transitions | Mode-tagged callback queue; first eligible loop consumes a signal; duplicate add/remove operations do not repeat callouts | Not supplied by WSL1 | `wintosh_corefoundation_source_callbacks_e2e` verifies Darwin x86_64 callback ABI, context round-trip, and one callout per transition |
 | CF source version 1 | Register a Mach port and perform received messages in order | `getPort` is queried on registration and each turn; incoming messages are polled on 10 ms wait slices | Not supplied by WSL1 | Clang Release build; reply-message handling and guest fixture remain open |
 | CF timer | Fire at deadline, repeat on cadence, invalidate after one shot | Timer registry per loop and mode; repeating fire date advances over missed intervals | Not supplied by WSL1 | Clang Release build; no guest fixture |
 | CF observer | Report run-loop phases in registered modes; one-shot invalidates once | Ordered callbacks for entry, before timers/sources, before/after wait, and exit | Not supplied by WSL1 | Clang Release build; no guest fixture |
@@ -805,7 +805,15 @@ For a source `s`, registered loops `L(s)` and generation `g`,
 its registered modes. Delivery is enabled only if `valid(s) ∧ signaled(s) ∧
 generation(s)=g`; the first eligible loop atomically clears `signaled(s)`, so
 remaining mode/loop tokens become no-ops. This models version-0 manual
-signaling. Version-1 sources use `getPort` to poll the registered Mach port,
+signaling. For a concrete loop/mode pair, let `R(s,L,m)` be its registration
+bit. A successful transition `0→1` commits membership and then calls
+`schedule(info,L,m)` once; an attempted `1→1` add has no callout. A successful
+transition `1→0` removes membership and then calls `cancel(info,L,m)` once; an
+attempted `0→0` removal has no callout. Callouts run after the internal locks
+are released, so guest code can safely re-enter CoreFoundation. The guest
+fixture checks both callback pointers through `GetContext`, validates the
+arguments, and verifies idempotence on repeated add/remove. Version-1 sources
+use `getPort` to poll the registered Mach port,
 receive one ready message, and call `perform` in source order. The polling
 bound is `Δt ≤ 10 ms` while an active-mode version-1 source is registered;
 reply messages returned by `perform` are sent through the Mach message ABI and

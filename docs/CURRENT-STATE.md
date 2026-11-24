@@ -5,6 +5,23 @@ test-count and feature-status statements. As of 2026-11-24, the configured
 Clang build registers 78 CTest cases. The latest focused CoreFoundation set
 passed 4/4; this does not assert that the full suite passed at this revision.
 
+## Darling backend on WSL1, 2026-11-25
+
+Ubuntu was converted to WSL1 and reports version `1`. Darwin_Computa was
+copied into `/home/tarek/Darwin_Computa` and rebuilt there with the x86-64 and
+Darwin compile definitions. Its `--x64-selftest` passed 234/234 and
+`--darwin-selftest` passed 12/12. GCC 15 required copying the packed ELF
+`e_machine` field to a local value before formatting; this compatibility edit
+was made only in the WSL build copy, not the Windows source checkout.
+
+The real Darling `/usr/bin/sw_vers` Mach-O then ran under the WSL1
+Darwin_Computa/Boxedwine path via `mldr` and exited with status 0, printing
+macOS 11.7.4 (`BuildVersion: Darling`). The `darlingserver` parent stayed
+alive after that guest command and was manually stopped after the bounded
+runtime check. Unsupported shared memfd behavior, a missing `xdg-user-dir`,
+and Linux syscall 166 remain visible in the trace. This verifies one CLI
+Mach-O path, not launchd, AppKit, GUI output, or general app compatibility.
+
 ## ARM64 CoreFoundation data imports, 2026-11-24
 
 The ARM64 loader classifies resolved host targets with `VirtualQuery`:

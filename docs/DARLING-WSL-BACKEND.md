@@ -48,8 +48,8 @@ substitute. Sources: [Microsoft's WSL component and source status](https://learn
 
 ## Full-Darling completion gates
 
-1. Build Darwin_Computa's x86-64 Linux target inside the deployment WSL1 distribution with `BOXEDWINE_GUEST_X64=1` and `BOXEDWINE_DARWIN=1`; preserve the GPLv2 component boundary. The current build evidence is from WSL2.
-2. Stage the complete Darling prefix and Linux dependency closure; verify `mldr`, `dyld`, `libSystem`, frameworks and `darlingserver` together.
+1. **Complete:** Build Darwin_Computa's x86-64 Linux target inside the deployment WSL1 distribution with `BOXEDWINE_GUEST_X64=1` and `BOXEDWINE_DARWIN=1`; preserve the GPLv2 component boundary.
+2. **Partial:** Stage the Darling rootfs and dependency closure; `mldr` has now run a real Mach-O CLI tool, but the full `launchd`/framework closure is not verified.
 3. Boot normal `launchd` and complete its system-job bootstrap for `launchctl`, `shellspawn` and service processes.
 4. Stage app bundles and resources into guest-visible paths while preserving arguments.
 5. Verify multiple apps, lifecycle and IPC, then Cocoa/AppKit windows and input/output through the SDL/graphics bridge.
@@ -58,8 +58,8 @@ Do not label this a full Darling runtime until those gates pass. Exit `20` means
 
 ## Local build evidence
 
-In this environment Ubuntu runs as WSL2. Darwin_Computa's Linux target was built with the x86-64 and Darwin defines. Its `--x64-selftest` passed 234/234; `--darwin-selftest` passed 12/12. GCC 15 required a one-line packed-field value copy in a disposable build copy; the upstream checkout was not modified.
+On 2026-11-25, Ubuntu was converted to and verified as **WSL1**. The Darwin_Computa checkout was copied from the Windows workspace into `/home/tarek/Darwin_Computa` so compilation runs on the WSL Linux filesystem. Its x86-64 Linux target was rebuilt with `BOXEDWINE_GUEST_X64=1` and `BOXEDWINE_DARWIN=1`; `--x64-selftest` passed 234/234 and `--darwin-selftest` passed 12/12. GCC 15 required a one-line packed-field value copy in this disposable WSL checkout; the Windows source checkout was not modified.
 
-The official Darling 2026-06-08 Debian packages were extracted into a local, untracked rootfs. The real `/usr/bin/sw_vers` Mach-O loaded through `mldr`, checked in with `darlingserver`, and exercised Mach RPC. It did not finish startup. Traces show missing Linux runtime files including `libstdc++.so.6` and `/bin/sh`, missing writable prefix paths, and an unimplemented Linux syscall. A successful Mach-O app run is not yet verified.
+The official Darling package zips were present in the local rootfs. In WSL1, the real `/usr/bin/sw_vers` Mach-O loaded through `mldr`, ran under `darlingserver`, and exited with status 0 after printing `ProductName: macOS`, `ProductVersion: 11.7.4`, and `BuildVersion: Darling`. This is the first verified Mach-O command-line program through the Darwin_Computa/Boxedwine/Darling path on WSL1. The parent `darlingserver` remained alive after the guest command exited, so the harness was stopped; graceful service shutdown and exit-status forwarding are not yet implemented. Logs also include unsupported shared-memfd behavior, missing `xdg-user-dir`, and Linux syscall 166. This does not demonstrate a GUI app or complete Darling compatibility.
 
-The Windows host reports that its current configuration does not support WSL1. Enabling the Windows optional feature requires an elevated administrator session, and Windows may require a restart before Ubuntu can be converted to WSL1. The launcher now refuses WSL2 by default; the explicit development switch does not meet the no-VM target. The WSL2 Mach-O run still stops during Darling bootstrap after Mach-RPC. The remaining runtime work is to identify that bootstrap stall, verify a clean CLI run under WSL1, then complete launchd, app-bundle staging and Cocoa GUI.
+The WSL1 build and narrow `sw_vers` run are now verified. Remaining work is to make the Darling service lifecycle terminate cleanly, complete the prefix/bootstrap requirements, stage `.app` bundles and argv, then verify launchd, GUI windows, input/output, and multiple applications. Do not label this a full Darling runtime until those gates pass.

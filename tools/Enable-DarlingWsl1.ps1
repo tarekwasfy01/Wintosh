@@ -17,9 +17,13 @@ try {
     if ($feature.State -ne 'Enabled') {
         $result = Enable-WindowsOptionalFeature -Online `
             -FeatureName Microsoft-Windows-Subsystem-Linux -NoRestart
-        if ($result.RestartNeeded) {
+        $feature = Get-WindowsOptionalFeature -Online -FeatureName Microsoft-Windows-Subsystem-Linux
+        if ($result.RestartNeeded -or $feature.State -eq 'EnablePending') {
             Write-Warning 'Windows needs a restart to enable WSL1. Restart, then run this script again to convert the distribution.'
             exit 3010
+        }
+        if ($feature.State -ne 'Enabled') {
+            throw "Windows did not enable Microsoft-Windows-Subsystem-Linux (state: $($feature.State)). Run DISM /Online /Enable-Feature /FeatureName:Microsoft-Windows-Subsystem-Linux /All, restart Windows, then retry."
         }
     }
 
@@ -54,9 +58,16 @@ try {
         Write-Output "WSL_BACKUP=$resolvedBackup"
     }
 
-    & wsl.exe --set-version $Distribution 1
+    $conversionOutput = (& wsl.exe --set-version $Distribution 1 2>&1 | Out-String) -replace "`0", ''
     if ($LASTEXITCODE -ne 0) {
-        throw "WSL conversion failed with exit code $LASTEXITCODE. The distribution was not verified as WSL1."
+        if ($conversionOutput -match 'WSL_E_WSL1_NOT_SUPPORTED') {
+            $currentFeature = Get-WindowsOptionalFeature -Online `
+                -FeatureName Microsoft-Windows-Subsystem-Linux
+            if ($currentFeature.State -eq 'Enabled') {
+                throw "WSL reports WSL_E_WSL1_NOT_SUPPORTED although the Windows feature is enabled. Restart Windows to activate the feature, then rerun this script. Distribution '$Distribution' was not verified as WSL1."
+            }
+        }
+        throw "WSL conversion failed with exit code $LASTEXITCODE. The distribution was not verified as WSL1.`n$conversionOutput"
     }
 
     $listing = (& wsl.exe --list --verbose 2>&1 | Out-String) -replace "`0", ''

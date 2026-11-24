@@ -29,7 +29,7 @@ guest SVC calls for `fcntl` descriptor flag read/write, descriptor duplication,
 `ioctl` `ENOTTY`, successful `FIONREAD` pipe output, and Darwin's syscall carry
 flag, plus `getlogin`/`setlogin`, `getgroups`/`setgroups`, same-ID
 `setuid`/`setgid`/`setegid`/`seteuid` and guest-buffer checks, `getdtablesize`,
-`select` writable-descriptor readiness and timeout copy-back, `setpgid`,
+`poll`/`select` writable-descriptor readiness and `select` timeout copy-back, `setpgid`,
 `setsockopt`/`getsockopt` round-trip, `getpgid`, `setsid`, and nonblocking
 `flock` acquisition/release. The fixture also
 covers Objective-C integer/double arguments and returns, object identity, pointer

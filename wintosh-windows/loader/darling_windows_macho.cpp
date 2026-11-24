@@ -6774,6 +6774,35 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 					}
 					break;
 				}
+				case 230: { // SYS_poll
+					constexpr std::uint64_t maximum_poll_descriptors = 4096;
+					if (arguments[1] > maximum_poll_descriptors) {
+						error_number = EINVAL;
+						break;
+					}
+					using HostPollDescriptor = darling::windows_host::darling_pollfd;
+					static_assert(sizeof(HostPollDescriptor) == 8);
+					const auto count = static_cast<std::size_t>(arguments[1]);
+					const auto bytes = count * sizeof(HostPollDescriptor);
+					if (bytes != 0 && (!backend.ContainsGuestRange(
+							arguments[0], bytes, false) || !backend.ContainsGuestRange(
+							arguments[0], bytes, true))) {
+						error_number = EFAULT;
+						break;
+					}
+					std::vector<HostPollDescriptor> descriptors(count);
+					if (bytes != 0)
+						std::memcpy(descriptors.data(), reinterpret_cast<const void*>(
+							static_cast<std::uintptr_t>(arguments[0])), bytes);
+					const auto timeout = static_cast<std::int32_t>(
+						static_cast<std::uint32_t>(arguments[2]));
+					syscall_result = darling_windows_poll(
+						descriptors.empty() ? nullptr : descriptors.data(), count, timeout);
+					if (syscall_result >= 0 && bytes != 0)
+						std::memcpy(reinterpret_cast<void*>(static_cast<std::uintptr_t>(
+							arguments[0])), descriptors.data(), bytes);
+					break;
+				}
 				case 54: { // SYS_ioctl (supported terminal requests only)
 					constexpr std::uint64_t tiocgwinsz = 0x40087468ull;
 					constexpr std::uint64_t tiocswinsz = 0x80087467ull;

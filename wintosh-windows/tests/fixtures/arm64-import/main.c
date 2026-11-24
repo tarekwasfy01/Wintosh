@@ -153,12 +153,18 @@ int main(int argc, char **argv, char **envp)
 	if (darwin_syscall5(118, network_socket, 0xffff, 8, 0xdead,
 		(long)&option_size, &syscall_error) != 14 || syscall_error != 1)
 		return 21;
-	if (darwin_syscall3(6, network_socket, 0, 0, 0) != 0)
+	struct { int descriptor; short events; short returned_events; } poll_output = {1, 4, 0};
+	if (darwin_syscall3(230, (long)&poll_output, 1, 0, &syscall_error) != 1 ||
+		syscall_error != 0 || (poll_output.returned_events & 4) == 0 ||
+		darwin_syscall3(230, 0xdead, 1, 0, &syscall_error) != 14 ||
+		syscall_error != 1)
 		return 22;
+	if (darwin_syscall3(6, network_socket, 0, 0, 0) != 0)
+		return 23;
 	size_t (*volatile guest_strlen)(const char *) = strlen;
 	if (guest_strlen(argv[0]) == 0)
-		return 23;
-	static const char marker[] = "ARM64_SVC_IDENTITY_GROUP_SELECT_SOCKETOPT_DESCRIPTOR_PROCESS_RLIMIT_IOCTL=PASS\n";
+		return 24;
+	static const char marker[] = "ARM64_SVC_IDENTITY_GROUP_SELECT_POLL_SOCKETOPT_DESCRIPTOR_PROCESS_RLIMIT_IOCTL=PASS\n";
 	return darwin_syscall3(4, 1, (long)marker, sizeof(marker) - 1, 0) ==
-		sizeof(marker) - 1 ? 42 : 24;
+		sizeof(marker) - 1 ? 42 : 25;
 }

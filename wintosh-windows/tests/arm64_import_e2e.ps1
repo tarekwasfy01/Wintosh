@@ -117,7 +117,7 @@ if ($text -match 'DARLING_(GUEST_EXCEPTION|RUNNER_ERROR)' -or
 	$text -match 'no ABI adapter|unsupported SVC|unknown thunk') {
 	throw "ARM64 import fixture reported an execution failure: $text"
 }
-if ($text -notmatch 'ARM64_SVC_IDENTITY_GROUP_SELECT_SOCKETOPT_DESCRIPTOR_PROCESS_RLIMIT_IOCTL=PASS') {
+if ($text -notmatch 'ARM64_SVC_IDENTITY_GROUP_SELECT_POLL_SOCKETOPT_DESCRIPTOR_PROCESS_RLIMIT_IOCTL=PASS') {
 	throw "ARM64 identity/process/descriptor/resource-limit/ioctl SVC fixture did not report success: $text"
 }
 if ($objcExitCode -ne 42) {

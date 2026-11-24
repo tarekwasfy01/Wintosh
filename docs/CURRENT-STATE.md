@@ -159,7 +159,7 @@ separate directory can load and call a plugin from a second subdirectory via
 its inherited `@rpath`, then close it. Images whose own initializers call
 `dlopen` before publication remain future work.
 
-## Mach broker update, 2026-11-23
+## Mach broker update, 2026-11-24
 
 The Windows Release targets `wintosh.exe` and `wintosh_broker.exe` build with
 the WIPC version-8 Mach reply-port transport. Brokered send requests now carry
@@ -172,9 +172,13 @@ coverage remain open.
 Mach port destruction now delivers a registered no-senders notification before
 receive-right teardown consumes the port's notification registration. The
 Mach ABI smoke reaches and confirms this transition. The broker OOL fixture
-uses the Darwin four-byte descriptor boundary and now passes its send/receive
-round trip. Later port-descriptor checks in the broader Mach ABI smoke still
-fail, so the overall test is not yet green.
+uses the Darwin four-byte descriptor boundary and passes its send/receive round
+trip. Port descriptor coverage now validates single and multiple descriptors,
+send-right copy/move, send-once move, receive-right copy/move, and make-send.
+`MOVE_RECEIVE` now moves the receive right into transit and the receiving side
+restores it. The complete `wintosh_mach_abi_smoke` executable passes. This
+local ABI slice still does not establish complete XNU lifecycle or arbitrary
+Cocoa application compatibility.
 
 The guest thread-destructor exports also now use explicit Darwin ABI bridges:
 `__cxa_thread_atexit_impl` accepts its DSO handle and registered guest

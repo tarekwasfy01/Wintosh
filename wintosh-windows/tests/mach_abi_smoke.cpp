@@ -1181,10 +1181,16 @@ int main()
 		if (destroy_notify != 0) darling_windows_mach_port_destroy(task, destroy_notify);
 		if (!destroy_sender_notify_ok) return 1;
 		std::cout << "MACH_DESTROY_NOTIFY=PASS\n";
+		if (darling_windows_mach_port_insert_right(task, ns_notify, ns_notify,
+			darling_mach_make_send) != 0) return 1;
+		darling_mach_port_name_t descriptor_source = 0;
+		if (darling_windows_mach_port_allocate(task, &descriptor_source) != 0 ||
+			darling_windows_mach_port_insert_right(task, descriptor_source, descriptor_source,
+				darling_mach_make_send) != 0) return 1;
 		darling_mach_msg_header descriptor_message{};
 		darling_mach_msg_body descriptor_body{1};
-		darling_mach_msg_port_descriptor descriptor{thread, 0, 19, 0, 0};
-		descriptor_message.msgh_bits = darling_mach_msg_complex;
+		darling_mach_msg_port_descriptor descriptor{descriptor_source, 0, 19, 0, 0};
+		descriptor_message.msgh_bits = darling_mach_msg_complex | darling_mach_copy_send;
 		descriptor_message.msgh_size = sizeof(descriptor_message) + sizeof(descriptor_body) + sizeof(descriptor);
 		descriptor_message.msgh_remote_port = ns_notify;
 		descriptor_message.msgh_id = 0x44455343;
@@ -1204,6 +1210,9 @@ int main()
 			descriptor_received_size == wire.size() &&
 			std::memcmp(descriptor_received.data(), wire.data(), wire.size()) == 0;
 		if (!descriptor_send_ok || !descriptor_receive_ok) return 1;
+		std::cout << "MACH_PORT_DESCRIPTOR=PASS\n";
+		if (darling_windows_mach_port_mod_refs(task, descriptor_source,
+			darling_mach_port_type_send, -1) != 0) return 1;
 		struct MultiDescriptorMessage {
 			darling_mach_msg_header header;
 			darling_mach_msg_body body;
@@ -1221,8 +1230,11 @@ int main()
 		const bool multi_descriptor_receive_ok = darling_windows_mach_port_receive(ns_notify,
 			descriptor_received.data(), descriptor_received.size(), &multi_descriptor_received_size, 100) == 0 &&
 			multi_descriptor_received_size == sizeof(multi_descriptor_message);
-		(void)darling_windows_mach_port_mod_refs(task, thread, darling_mach_port_type_send, -2);
 		if (!multi_descriptor_send_ok || !multi_descriptor_receive_ok) return 1;
+		std::cout << "MACH_MULTI_PORT_DESCRIPTOR=PASS\n";
+		if (darling_windows_mach_port_mod_refs(task, descriptor_source,
+			darling_mach_port_type_send, -2) != 0) return 1;
+		darling_windows_mach_port_destroy(task, descriptor_source);
 		darling_mach_port_name_t move_source = 0;
 		std::uint32_t move_refs = 0;
 		if (darling_windows_mach_port_allocate(task, &move_source) != 0 ||
@@ -1246,6 +1258,7 @@ int main()
 				darling_mach_port_type_send, &move_refs) == 0 && move_refs == 1;
 		darling_windows_mach_port_destroy(task, move_source);
 		if (!move_send_ok || !move_receive_ok) return 1;
+		std::cout << "MACH_MOVE_SEND_DESCRIPTOR=PASS\n";
 		darling_mach_port_name_t move_once_source = 0;
 		std::uint32_t move_once_refs = 0;
 		if (darling_windows_mach_port_allocate(task, &move_once_source) != 0 ||
@@ -1268,6 +1281,7 @@ int main()
 				darling_mach_port_type_send_once, &move_once_refs) == 0 && move_once_refs == 1;
 		darling_windows_mach_port_destroy(task, move_once_source);
 		if (!move_once_send_ok || !move_once_receive_ok) return 1;
+		std::cout << "MACH_MOVE_SEND_ONCE_DESCRIPTOR=PASS\n";
 		darling_mach_port_name_t copy_send_source = 0;
 		std::uint32_t copy_send_refs = 0;
 		if (darling_windows_mach_port_allocate(task, &copy_send_source) != 0 ||
@@ -1287,6 +1301,7 @@ int main()
 			descriptor_received.data(), descriptor_received.size(), &move_received_size, 100) == 0;
 		darling_windows_mach_port_destroy(task, copy_send_source);
 		if (!copy_send_ok || !copy_send_receive_ok) return 1;
+		std::cout << "MACH_COPY_SEND_DESCRIPTOR=PASS\n";
 		darling_mach_port_name_t copy_receive_source = 0;
 		std::uint32_t copy_receive_refs = 0;
 		if (darling_windows_mach_port_allocate(task, &copy_receive_source) != 0)
@@ -1304,6 +1319,7 @@ int main()
 			descriptor_received.data(), descriptor_received.size(), &move_received_size, 100) == 0;
 		darling_windows_mach_port_destroy(task, copy_receive_source);
 		if (!copy_receive_send_ok || !copy_receive_receive_ok) return 1;
+		std::cout << "MACH_COPY_RECEIVE_DESCRIPTOR=PASS\n";
 		darling_mach_port_name_t move_receive_source = 0;
 		std::uint32_t move_receive_type = darling_mach_port_type_none;
 		if (darling_windows_mach_port_allocate(task, &move_receive_source) != 0)
@@ -1324,6 +1340,7 @@ int main()
 			move_receive_type_result == 0 && move_receive_type == darling_mach_port_type_receive;
 		if (move_receive_source != 0) darling_windows_mach_port_destroy(task, move_receive_source);
 		if (!move_receive_send_ok || !move_receive_receive_ok) return 1;
+		std::cout << "MACH_MOVE_RECEIVE_DESCRIPTOR=PASS\n";
 		darling_mach_port_name_t make_send_source = 0;
 		std::uint32_t make_send_refs = 0;
 		if (darling_windows_mach_port_allocate(task, &make_send_source) != 0)
@@ -1341,6 +1358,7 @@ int main()
 			descriptor_received.data(), descriptor_received.size(), &move_received_size, 100) == 0;
 		darling_windows_mach_port_destroy(task, make_send_source);
 		if (!make_send_ok || !make_send_receive_ok) return 1;
+		std::cout << "MACH_MAKE_SEND_DESCRIPTOR=PASS\n";
 		std::uint32_t ool_payload = 0x4f4f4c21;
 		darling_mach_msg_ool_descriptor ool_descriptor{
 			static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(&ool_payload)),

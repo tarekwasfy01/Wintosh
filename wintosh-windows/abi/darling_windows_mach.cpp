@@ -3359,6 +3359,7 @@ extern "C" darling_kern_return_t darling_windows_mach_msg(
 						case darling_mach_make_send_once: right = darling_mach_port_type_send_once; delta = 1; break;
 						case darling_mach_move_send: right = darling_mach_port_type_send; break;
 						case darling_mach_move_send_once: right = darling_mach_port_type_send_once; break;
+						case darling_mach_move_receive: right = darling_mach_port_type_receive; break;
 						default: break;
 						}
 						if (delta != 0 && add_copy(descriptors[index].name, right, delta) != 0) {

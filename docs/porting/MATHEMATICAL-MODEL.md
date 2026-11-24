@@ -844,13 +844,14 @@ currently shares system-heap behavior. `CFAllocatorCreate` allocates its own
 object through its requested backing allocator and supports the context
 callbacks when `kCFAllocatorUseContext` is selected. Consistent use of custom
 allocators by every CF constructor remains outside the current implementation.
-ARM64 imports for the six `kCFAllocator…` pointer constants now bind to their
-read-only host data cells instead of function trampolines; those cells are
-registered as readable guest memory. The ARM64 source-callback fixture passes
-`kCFAllocatorUseContext`, verifies backing storage allocation and deallocation,
-and checks the custom allocation callbacks. This data-cell bridge currently
-covers these six known pointer constants; it does not yet infer arbitrary data
-symbol sizes or model writable imported globals.
+ARM64 host imports now use Windows page protection to distinguish executable
+function targets from readable data targets. Function imports still bind to
+ARM64 trampolines; a resolved data target aliases its committed, non-executable
+VirtualQuery region into guest memory with matching writability. The ARM64
+source-callback fixture passes `kCFAllocatorUseContext`, verifies allocator
+backing storage allocation and deallocation, and checks the custom allocation
+callbacks. This covers host-resolved data regions generally, but does not make
+compound host globals or stored host function pointers Darwin-ABI compatible.
 Guest `CFString` (CString/characters), `CFData`, `CFArray`, `CFDictionary`,
 `CFSet`, `CFNumber`, `CFDate`, and `CFMachPort` object blocks use the allocator
 passed to their constructor and retain it until `Release(object)`. Their

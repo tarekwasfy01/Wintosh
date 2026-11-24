@@ -5247,8 +5247,14 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 			const auto& imports = candidate.Arm64HostImports();
 			for (const auto& import : imports) {
 				if (import.identifier == 0) {
-					guest_memory.push_back({import.target, sizeof(std::uintptr_t),
-						true, false, false});
+					const auto overlaps = std::find_if(guest_memory.begin(),
+						guest_memory.end(), [&import](const auto& region) {
+							return import.data_region < region.address + region.bytes &&
+								region.address < import.data_region + import.data_region_bytes;
+						});
+					if (overlaps == guest_memory.end())
+						guest_memory.push_back({import.data_region,
+							import.data_region_bytes, true, import.data_writable, false});
 				} else {
 					arm64_host_imports.push_back(import);
 				}
@@ -7723,19 +7729,25 @@ std::uintptr_t MachOImage::Mapping::CreateArm64HostImportThunk(
 {
 	if (target == 0 || m_reservation == nullptr)
 		throw std::invalid_argument("ARM64 host import thunk requires a target and mapping");
-	static constexpr std::array<std::string_view, 6> pointer_data_symbols{
-		"_kCFAllocatorDefault", "_kCFAllocatorSystemDefault",
-		"_kCFAllocatorMalloc", "_kCFAllocatorMallocZone",
-		"_kCFAllocatorNull", "_kCFAllocatorUseContext"};
-	if (std::find(pointer_data_symbols.begin(), pointer_data_symbols.end(), symbol) !=
-		pointer_data_symbols.end()) {
+	MEMORY_BASIC_INFORMATION memory{};
+	if (VirtualQuery(reinterpret_cast<const void*>(target), &memory,
+		sizeof(memory)) == sizeof(memory) && memory.State == MEM_COMMIT &&
+		(memory.Protect & (PAGE_GUARD | PAGE_NOACCESS)) == 0 &&
+		(memory.Protect & (PAGE_EXECUTE | PAGE_EXECUTE_READ |
+			PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY)) == 0) {
+		const auto data_region = reinterpret_cast<std::uintptr_t>(memory.BaseAddress);
+		const auto data_region_bytes = static_cast<std::size_t>(memory.RegionSize);
 		const auto existing = std::find_if(m_arm64_host_imports.begin(),
 			m_arm64_host_imports.end(), [&symbol, target](const auto& item) {
 				return item.identifier == 0 && item.symbol == symbol &&
 					item.target == target;
 			});
-		if (existing == m_arm64_host_imports.end())
-			m_arm64_host_imports.push_back({0, symbol, target, target});
+		if (existing == m_arm64_host_imports.end()) {
+			const bool writable = (memory.Protect & (PAGE_READWRITE |
+				PAGE_WRITECOPY)) != 0;
+			m_arm64_host_imports.push_back({0, symbol, target, target,
+				data_region, data_region_bytes, writable});
+		}
 		return target;
 	}
 	const auto existing = std::find_if(m_arm64_host_imports.begin(),

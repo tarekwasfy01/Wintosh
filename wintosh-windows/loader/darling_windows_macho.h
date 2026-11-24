@@ -524,6 +524,9 @@ public:
 		std::string symbol;
 		std::uintptr_t target = 0;
 		std::uintptr_t thunk = 0;
+		std::uintptr_t data_region = 0;
+		std::size_t data_region_bytes = 0;
+		bool data_writable = false;
 	};
 	Mapping() noexcept = default;
 	Mapping(const Mapping&) = delete;

@@ -359,10 +359,11 @@ remain incomplete.
 deallocation, preferred-size queries, and per-thread default selection.
 Default allocations use the guest heap. `CFAllocatorCreate` uses its requested
 backing allocator, including the supplied context for `kCFAllocatorUseContext`.
-On ARM64, the six exported `kCFAllocator…` pointer constants are mapped as
-readable data cells rather than imported as callable trampolines; the guest
-source-callback fixture covers `kCFAllocatorUseContext`. Arbitrary imported
-data symbols and writable-global synchronization are not yet implemented.
+On ARM64, resolved non-executable host symbols are mapped as guest data regions
+with their Windows read/write protections; executable symbols use callable
+trampolines. The guest source-callback fixture covers `kCFAllocatorUseContext`.
+Compound host globals and stored host function pointers may still have
+host-specific layouts or values.
 Guest `CFString` (CString/characters and copy/mutable-copy/mutable
 constructors), `CFData`, `CFArray`, `CFDictionary`,
 `CFSet`, `CFNumber`, `CFDate`, `CFMachPort`, and the guest CFURL string/path

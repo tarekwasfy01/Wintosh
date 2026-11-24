@@ -62,6 +62,19 @@ static int observerCalls;
 static int blockCalls;
 static int timerInfo;
 static int observerInfo;
+static int contextRetainCalls;
+static int contextReleaseCalls;
+
+static const void *context_retain(const void *info)
+{
+	if (info == &timerInfo || info == &observerInfo) ++contextRetainCalls;
+	return info;
+}
+
+static void context_release(const void *info)
+{
+	if (info == &timerInfo || info == &observerInfo) ++contextReleaseCalls;
+}
 static int currentModeCalls;
 static CFRunLoopRef testLoop;
 
@@ -103,14 +116,14 @@ int main(void)
 	Context timerContext;
 	timerContext.version = 0;
 	timerContext.info = &timerInfo;
-	timerContext.retain = 0;
-	timerContext.release = 0;
+	timerContext.retain = context_retain;
+	timerContext.release = context_release;
 	timerContext.copyDescription = 0;
 	Context observerContext;
 	observerContext.version = 0;
 	observerContext.info = &observerInfo;
-	observerContext.retain = 0;
-	observerContext.release = 0;
+	observerContext.retain = context_retain;
+	observerContext.release = context_release;
 	observerContext.copyDescription = 0;
 	CFStringRef mode = CFStringCreateWithCString(0,
 		"kCFRunLoopDefaultMode", 0x08000100u);
@@ -171,6 +184,7 @@ int main(void)
 		CFRunLoopContainsObserver(loop, observer, mode)) return 25;
 	CFRelease(timer);
 	CFRelease(observer);
+	if (contextRetainCalls != 2 || contextReleaseCalls != 2) return 34;
 	CFRelease(commonMode);
 	CFRelease(commonModes);
 	CFRelease(mode);

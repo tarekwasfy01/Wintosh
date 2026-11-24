@@ -907,9 +907,19 @@ extern "C" bool darling_objc_invoke_guest_function(std::uintptr_t function,
 	if (function == 0 || active_guest_function_invoker == nullptr ||
 		(argument_count != 0 && arguments == nullptr) || argument_count > 8)
 		return false;
-	active_guest_function_invoker(function, arguments, argument_count,
-		active_guest_function_invoker_context);
-	return true;
+	return active_guest_function_invoker(function, arguments, argument_count,
+		nullptr, active_guest_function_invoker_context);
+}
+
+extern "C" bool darling_objc_invoke_guest_function_result(std::uintptr_t function,
+	const std::uintptr_t* arguments, std::size_t argument_count,
+	std::uintptr_t* result)
+{
+	if (function == 0 || active_guest_function_invoker == nullptr || result == nullptr ||
+		(argument_count != 0 && arguments == nullptr) || argument_count > 8)
+		return false;
+	return active_guest_function_invoker(function, arguments, argument_count,
+		result, active_guest_function_invoker_context);
 }
 
 extern "C" void darling_objc_set_guest_block_allocator(

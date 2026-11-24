@@ -4283,8 +4283,9 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 		struct GuestInitializerContext final {
 			A64CpuState* seed;
 			unsigned* depth;
+			DarlingWindowsA64Backend* backend;
 			std::function<A64ExecutionResult(A64CpuState, unsigned)>* run;
-		} initializer_context{&initializer_seed, &initializer_depth,
+		} initializer_context{&initializer_seed, &initializer_depth, &backend,
 			&run_guest_callback};
 		const auto invoke_guest_initializer = +[](IMP implementation, id receiver,
 			SEL selector, void* opaque) {
@@ -4298,8 +4299,11 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 		};
 		const auto invoke_guest_function = +[](std::uintptr_t function,
 			const std::uintptr_t* arguments, std::size_t argument_count,
-			void* opaque) {
+			std::uintptr_t* returned_value, void* opaque) -> bool {
 			auto& context = *static_cast<GuestInitializerContext*>(opaque);
+			if (!context.run || context.backend == nullptr ||
+				!context.backend->ContainsExecutableGuestAddress(function))
+				return false;
 			if (argument_count > 8 || (argument_count != 0 && arguments == nullptr))
 				throw std::runtime_error("ARM64 guest callback has an unsupported register argument count");
 			if (*context.depth >= 64)
@@ -4310,6 +4314,9 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 				callback.x[index] = arguments[index];
 			const auto result = (*context.run)(callback, *context.depth + 1);
 			*context.seed = result.state;
+			if (returned_value != nullptr)
+				*returned_value = static_cast<std::uintptr_t>(result.state.x[0]);
+			return true;
 		};
 		dispatch_guest_import = [&](const A64ExecutionResult& trap,
 			unsigned depth) -> A64CpuState {

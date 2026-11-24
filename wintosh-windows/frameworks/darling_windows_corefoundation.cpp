@@ -266,6 +266,29 @@ bool EqualDictionaryKeys(const Object* dictionary, const void* left, const void*
 const void* RetainSetValue(Object* set, const void* value);
 void ReleaseSetValue(Object* set, const void* value);
 bool EqualSetValues(const Object* set, const void* left, const void* right);
+template <typename RetainCallback>
+const void* InvokeContextRetain(RetainCallback callback, const void* info)
+{
+	const std::array<std::uintptr_t, 1> arguments{
+		reinterpret_cast<std::uintptr_t>(info)};
+	std::uintptr_t result{};
+	if (darling_objc_invoke_guest_function_result(
+		reinterpret_cast<std::uintptr_t>(callback), arguments.data(),
+		arguments.size(), &result))
+		return reinterpret_cast<const void*>(result);
+	return callback(info);
+}
+
+template <typename ReleaseCallback>
+void InvokeContextRelease(ReleaseCallback callback, const void* info)
+{
+	const std::array<std::uintptr_t, 1> arguments{
+		reinterpret_cast<std::uintptr_t>(info)};
+	if (!darling_objc_invoke_guest_function(
+		reinterpret_cast<std::uintptr_t>(callback), arguments.data(), arguments.size()))
+		callback(info);
+}
+
 void ReleaseOwned(Object* object)
 {
 	if (object == nullptr || object->immortal) return;
@@ -305,7 +328,7 @@ void ReleaseOwned(Object* object)
 			catch (...) { /* Guest callbacks must not unwind through CoreFoundation. */ }
 		}
 		if (info != nullptr && release != nullptr) {
-			try { release(info); }
+			try { InvokeContextRelease(release, info); }
 			catch (...) { /* Guest callbacks must not unwind through CoreFoundation. */ }
 		}
 		return;
@@ -368,17 +391,17 @@ Object::~Object()
 	if (kind == Kind::RunLoopSource && run_loop_source_info != nullptr) {
 		const auto release = run_loop_source_is_v1 ? run_loop_source_context1.release :
 			run_loop_source_context.release;
-		try { if (release != nullptr) release(run_loop_source_info); }
+		try { if (release != nullptr) InvokeContextRelease(release, run_loop_source_info); }
 		catch (...) { /* Guest callbacks must not unwind through CoreFoundation. */ }
 	}
 	if (kind == Kind::RunLoopTimer && run_loop_timer_context.release != nullptr &&
 		run_loop_timer_info != nullptr) {
-		try { run_loop_timer_context.release(run_loop_timer_info); }
+		try { InvokeContextRelease(run_loop_timer_context.release, run_loop_timer_info); }
 		catch (...) { /* Guest callbacks must not unwind through CoreFoundation. */ }
 	}
 	if (kind == Kind::RunLoopObserver && run_loop_observer_context.release != nullptr &&
 		run_loop_observer_info != nullptr) {
-		try { run_loop_observer_context.release(run_loop_observer_info); }
+		try { InvokeContextRelease(run_loop_observer_context.release, run_loop_observer_info); }
 		catch (...) { /* Guest callbacks must not unwind through CoreFoundation. */ }
 	}
 	if (kind == Kind::MachPort) {
@@ -392,13 +415,13 @@ Object::~Object()
 			(void)darling_windows_mach_port_destroy(darling_windows_mach_task_self(), mach_port_name);
 		if (!mach_port_context_released && mach_port_info != nullptr &&
 			mach_port_context.release != nullptr) {
-			try { mach_port_context.release(mach_port_info); }
+			try { InvokeContextRelease(mach_port_context.release, mach_port_info); }
 			catch (...) { /* Guest callbacks must not unwind through CoreFoundation. */ }
 		}
 	}
 	if (kind == Kind::Allocator && !allocator_context_release_deferred && allocator_info != nullptr &&
 		allocator_context.release != nullptr) {
-		try { allocator_context.release(allocator_info); }
+		try { InvokeContextRelease(allocator_context.release, allocator_info); }
 		catch (...) { /* Guest callbacks must not unwind through CoreFoundation. */ }
 	}
 	if (opaque_destroy != nullptr) {
@@ -4815,7 +4838,7 @@ extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeRef CFRunLoopSourceCreate(
 	const auto info = is_v1 ? context1->info : context->info;
 	const auto retain = is_v1 ? context1->retain : context->retain;
 	if (info != nullptr && retain != nullptr) {
-		try { source->run_loop_source_info = retain(info); }
+		try { source->run_loop_source_info = InvokeContextRetain(retain, info); }
 		catch (...) { delete source; return nullptr; }
 		if (source->run_loop_source_info == nullptr) { delete source; return nullptr; }
 	} else source->run_loop_source_info = info;
@@ -4925,7 +4948,7 @@ extern "C" DARLING_CF_GUEST_ABI darling_windows_CFAllocatorRef CFAllocatorCreate
 	const bool use_context = object_allocator == &allocator_use_context_sentinel;
 	const void* retained_info = context->info;
 	if (retained_info != nullptr && context->retain != nullptr) {
-		try { retained_info = context->retain(retained_info); }
+		try { retained_info = InvokeContextRetain(context->retain, retained_info); }
 		catch (...) { return nullptr; }
 	}
 	Object* backing = nullptr;
@@ -4943,7 +4966,7 @@ extern "C" DARLING_CF_GUEST_ABI darling_windows_CFAllocatorRef CFAllocatorCreate
 	}
 	if (storage == nullptr) {
 		if (retained_info != nullptr && context->release != nullptr) {
-			try { context->release(retained_info); }
+			try { InvokeContextRelease(context->release, retained_info); }
 			catch (...) { /* Guest callbacks must not unwind through CoreFoundation. */ }
 		}
 		return nullptr;
@@ -4956,7 +4979,7 @@ extern "C" DARLING_CF_GUEST_ABI darling_windows_CFAllocatorRef CFAllocatorCreate
 			catch (...) { /* Guest callbacks must not unwind through CoreFoundation. */ }
 		} else if (backing != nullptr) CFAllocatorDeallocate(backing, storage);
 		if (retained_info != nullptr && context->release != nullptr) {
-			try { context->release(retained_info); }
+			try { InvokeContextRelease(context->release, retained_info); }
 			catch (...) { /* Guest callbacks must not unwind through CoreFoundation. */ }
 		}
 		return nullptr;
@@ -5099,7 +5122,8 @@ extern "C" DARLING_CF_GUEST_ABI darling_windows_CFMachPortRef CFMachPortCreateWi
 	object->mach_port_valid = true;
 	const void* info = context == nullptr ? nullptr : context->info;
 	if (info != nullptr && object->mach_port_context.retain != nullptr) {
-		try { object->mach_port_info = object->mach_port_context.retain(info); }
+		try { object->mach_port_info = InvokeContextRetain(
+			object->mach_port_context.retain, info); }
 		catch (...) { ReleaseOwned(object); return nullptr; }
 		if (object->mach_port_info == nullptr) { ReleaseOwned(object); return nullptr; }
 	} else object->mach_port_info = info;
@@ -5229,7 +5253,7 @@ extern "C" DARLING_CF_GUEST_ABI void CFMachPortInvalidate(
 		catch (...) { /* Guest callbacks must not unwind through CoreFoundation. */ }
 	}
 	if (info != nullptr && release_context != nullptr) {
-		try { release_context(info); }
+		try { InvokeContextRelease(release_context, info); }
 		catch (...) { /* Guest callbacks must not unwind through CoreFoundation. */ }
 	}
 }
@@ -5358,7 +5382,8 @@ extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeRef CFRunLoopTimerCreate(
 	timer->run_loop_timer_order = order;
 	timer->run_loop_timer_valid = true;
 	if (context->info != nullptr && context->retain != nullptr) {
-		try { timer->run_loop_timer_info = context->retain(context->info); }
+		try { timer->run_loop_timer_info = InvokeContextRetain(
+			context->retain, context->info); }
 		catch (...) { delete timer; return nullptr; }
 		if (timer->run_loop_timer_info == nullptr) { delete timer; return nullptr; }
 	} else timer->run_loop_timer_info = context->info;
@@ -5644,7 +5669,8 @@ extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeRef CFRunLoopObserverCreat
 	observer->run_loop_observer_repeats = repeats != 0;
 	observer->run_loop_observer_valid = true;
 	if (context != nullptr && context->info != nullptr && context->retain != nullptr) {
-		try { observer->run_loop_observer_info = context->retain(context->info); }
+		try { observer->run_loop_observer_info = InvokeContextRetain(
+			context->retain, context->info); }
 		catch (...) { delete observer; return nullptr; }
 		if (observer->run_loop_observer_info == nullptr) { delete observer; return nullptr; }
 	} else if (context != nullptr) observer->run_loop_observer_info = context->info;

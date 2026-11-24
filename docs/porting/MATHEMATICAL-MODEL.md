@@ -1106,3 +1106,16 @@ interpreter callback bridge. Port invalidation transitions the wrapper to
 invalid and invalidates its registered run-loop sources. The fixture verifies
 that lifecycle and callback path; delivery of an actual Mach message through
 the CFMachPort message callout still needs a guest message-send fixture.
+
+Context retain/release callbacks for run-loop sources, timers, observers,
+allocators, and CFMachPorts now share the callback dispatch rule
+`dispatch(f) = guest(f)` when `f` lies in executable guest memory, and
+`dispatch(f) = host(f)` otherwise. This address predicate prevents internal
+host callbacks from being misinterpreted as guest instructions. A retain
+callback returns its retained pointer in AArch64 `x0`; the bridge carries that
+result back to CoreFoundation, while a release callback is void. If no active
+guest dispatcher claims an address, the native host callback remains the
+fallback. The ARM64 timer/observer and Mach-port fixtures assert the resulting
+retain/release counts and retained pointer lifecycle. This establishes only
+these context callbacks; collection callbacks and other callback-bearing
+CoreFoundation APIs still need their own guest dispatch audit.

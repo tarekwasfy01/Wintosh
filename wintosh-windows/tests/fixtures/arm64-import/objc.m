@@ -8,6 +8,8 @@ extern void *malloc(unsigned long bytes);
 extern void *realloc(void *allocation, unsigned long bytes);
 extern void free(void *allocation);
 extern int write(int descriptor, const void *bytes, unsigned long length);
+extern void *_Block_copy(const void *block);
+extern void _Block_release(const void *block);
 static volatile long wintosh_block_marker;
 static void (^wintosh_global_block)(void) = ^{
 	wintosh_block_marker = 42;
@@ -497,6 +499,40 @@ int main(int argc, char **argv, char **envp)
 	wintosh_global_block();
 	if (wintosh_block_marker != 42)
 		return 13;
+	long captured_scalar = 42;
+	void (^stack_block)(void) = ^{
+		wintosh_block_marker = captured_scalar;
+	};
+	void *copied_stack_block = _Block_copy((const void *)stack_block);
+	if (copied_stack_block == (void *)0)
+		return 14;
+	((void (^)(void))copied_stack_block)();
+	_Block_release(copied_stack_block);
+	if (wintosh_block_marker != 42)
+		return 15;
+	id captured_string = (id)@"WintoshBlockCapture";
+	void (^object_block)(void) = ^{
+		wintosh_block_marker = captured_string != (id)0 ? 42 : 0;
+	};
+	void *copied_object_block = _Block_copy((const void *)object_block);
+	if (copied_object_block == (void *)0)
+		return 16;
+	((void (^)(void))copied_object_block)();
+	_Block_release(copied_object_block);
+	if (wintosh_block_marker != 42)
+		return 17;
+	__block long byref_value = 40;
+	void (^byref_block)(void) = ^{
+		byref_value += 2;
+		wintosh_block_marker = byref_value;
+	};
+	void *copied_byref_block = _Block_copy((const void *)byref_block);
+	if (copied_byref_block == (void *)0)
+		return 18;
+	((void (^)(void))copied_byref_block)();
+	_Block_release(copied_byref_block);
+	if (wintosh_block_marker != 42 || byref_value != 42)
+		return 19;
 	SEL answer = sel_registerName("answer");
 	SEL inherited_answer = sel_registerName("inheritedAnswer");
 	SEL category_answer = sel_registerName("categoryAnswer");

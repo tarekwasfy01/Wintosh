@@ -73,6 +73,12 @@ using DarlingObjcUnaryImport = void* (DARLING_HOST_GUEST_ABI *)(void*);
 using DarlingObjcReleaseImport = void (DARLING_HOST_GUEST_ABI *)(void*);
 using DarlingObjcNameImport = std::uintptr_t (DARLING_HOST_GUEST_ABI *)(
 	const char*);
+using DarlingBlockCopyImport = void* (DARLING_HOST_GUEST_ABI *)(const void*);
+using DarlingBlockReleaseImport = void (DARLING_HOST_GUEST_ABI *)(const void*);
+using DarlingBlockObjectAssignImport = void (DARLING_HOST_GUEST_ABI *)(
+	void*, const void*, int);
+using DarlingBlockObjectDisposeImport = void (DARLING_HOST_GUEST_ABI *)(
+	const void*, int);
 
 void DARLING_HOST_GUEST_ABI FreeStandardHostAllocation(void* allocation)
 {
@@ -3603,6 +3609,59 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 		std::vector<std::uintptr_t> guest_malloc_allocations;
 		std::vector<std::pair<std::uintptr_t, std::size_t>> guest_mmap_allocations;
 		std::vector<std::unique_ptr<char[]>> guest_loader_error_buffers;
+		struct GuestBlockStorageContext final {
+			DarlingWindowsA64Backend* backend{};
+			std::vector<void*> allocations;
+			~GuestBlockStorageContext()
+			{
+				for (void* allocation : allocations) {
+					if (allocation == nullptr)
+						continue;
+					(void)backend->RemoveDynamicGuestMapping(
+						reinterpret_cast<std::uintptr_t>(allocation));
+					HeapFree(GetProcessHeap(), 0, allocation);
+				}
+			}
+		} guest_block_storage{&backend};
+		const auto allocate_guest_block = +[](std::size_t bytes,
+			void* opaque) -> void* {
+			auto& storage = *static_cast<GuestBlockStorageContext*>(opaque);
+			if (bytes == 0 || bytes > 64u * 1024u * 1024u)
+				return nullptr;
+			void* allocation = HeapAlloc(GetProcessHeap(), 0, bytes);
+			if (allocation == nullptr)
+				return nullptr;
+			const auto address = reinterpret_cast<std::uintptr_t>(allocation);
+			if (!storage.backend->RegisterDynamicGuestMapping({address, bytes,
+				true, true, false, true, address, bytes, false})) {
+				HeapFree(GetProcessHeap(), 0, allocation);
+				throw std::runtime_error(
+					"ARM64 block allocation overlaps registered guest memory");
+			}
+			try {
+				storage.allocations.push_back(allocation);
+			} catch (...) {
+				(void)storage.backend->RemoveDynamicGuestMapping(address);
+				HeapFree(GetProcessHeap(), 0, allocation);
+				throw;
+			}
+			return allocation;
+		};
+		const auto deallocate_guest_block = +[](void* allocation,
+			void* opaque) {
+			if (allocation == nullptr)
+				return;
+			auto& storage = *static_cast<GuestBlockStorageContext*>(opaque);
+			const auto found = std::find(storage.allocations.begin(),
+				storage.allocations.end(), allocation);
+			if (found == storage.allocations.end())
+				throw std::runtime_error(
+					"ARM64 block release does not own its guest mapping");
+			(void)storage.backend->RemoveDynamicGuestMapping(
+				reinterpret_cast<std::uintptr_t>(allocation));
+			storage.allocations.erase(found);
+			HeapFree(GetProcessHeap(), 0, allocation);
+		};
 		const auto copy_guest_loader_error = [&](const char* error) {
 			if (error == nullptr)
 				return std::uintptr_t{0};
@@ -4030,23 +4089,24 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 					reinterpret_cast<DarlingHostFreeImport>(imported->target));
 				resumed.x[0] = 0;
 			} else if (name == "__Block_copy" || name == "_Block_copy") {
-				resumed.x[0] = reinterpret_cast<std::uintptr_t (*)(const void*)>(
+				resumed.x[0] = reinterpret_cast<std::uintptr_t>(
+					reinterpret_cast<DarlingBlockCopyImport>(
 					imported->target)(reinterpret_cast<const void*>(
-						static_cast<std::uintptr_t>(x[0])));
+						static_cast<std::uintptr_t>(x[0]))));
 			} else if (name == "__Block_release" || name == "_Block_release") {
-				reinterpret_cast<void (*)(const void*)>(imported->target)(
+				reinterpret_cast<DarlingBlockReleaseImport>(imported->target)(
 					reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[0])));
 				resumed.x[0] = 0;
 			} else if (name == "__Block_object_assign" ||
 				name == "_Block_object_assign") {
-				reinterpret_cast<void (*)(void*, const void*, int)>(imported->target)(
+				reinterpret_cast<DarlingBlockObjectAssignImport>(imported->target)(
 					reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0])),
 					reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[1])),
 					static_cast<int>(x[2]));
 				resumed.x[0] = 0;
 			} else if (name == "__Block_object_dispose" ||
 				name == "_Block_object_dispose") {
-				reinterpret_cast<void (*)(const void*, int)>(imported->target)(
+				reinterpret_cast<DarlingBlockObjectDisposeImport>(imported->target)(
 					reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[0])),
 					static_cast<int>(x[1]));
 				resumed.x[0] = 0;
@@ -4176,6 +4236,23 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 			}
 		} restore_initializer_invoker{previous_invoker,
 			previous_invoker_context};
+		darling_objc_guest_block_allocate previous_block_allocate = nullptr;
+		darling_objc_guest_block_deallocate previous_block_deallocate = nullptr;
+		void* previous_block_allocator_context = nullptr;
+		darling_objc_set_guest_block_allocator(allocate_guest_block,
+			deallocate_guest_block, &guest_block_storage, &previous_block_allocate,
+			&previous_block_deallocate, &previous_block_allocator_context);
+		struct RestoreGuestBlockAllocator final {
+			darling_objc_guest_block_allocate allocate;
+			darling_objc_guest_block_deallocate deallocate;
+			void* context;
+			~RestoreGuestBlockAllocator()
+			{
+				darling_objc_set_guest_block_allocator(allocate, deallocate,
+					context, nullptr, nullptr, nullptr);
+			}
+		} restore_guest_block_allocator{previous_block_allocate,
+			previous_block_deallocate, previous_block_allocator_context};
 		initializer_seed = cpu;
 		initializer_depth = 0;
 		if (!darling_objc_run_pending_guest_callbacks())
@@ -4346,23 +4423,24 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 							reinterpret_cast<DarlingHostFreeImport>(imported->target));
 						cpu.x[0] = 0;
 					} else if (name == "__Block_copy" || name == "_Block_copy") {
-						cpu.x[0] = reinterpret_cast<std::uintptr_t (*)(const void*)>(
+						cpu.x[0] = reinterpret_cast<std::uintptr_t>(
+							reinterpret_cast<DarlingBlockCopyImport>(
 							imported->target)(reinterpret_cast<const void*>(
-								static_cast<std::uintptr_t>(x[0])));
+								static_cast<std::uintptr_t>(x[0]))));
 					} else if (name == "__Block_release" || name == "_Block_release") {
-						reinterpret_cast<void (*)(const void*)>(imported->target)(
+						reinterpret_cast<DarlingBlockReleaseImport>(imported->target)(
 							reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[0])));
 						cpu.x[0] = 0;
 					} else if (name == "__Block_object_assign" ||
 						name == "_Block_object_assign") {
-						reinterpret_cast<void (*)(void*, const void*, int)>(imported->target)(
+						reinterpret_cast<DarlingBlockObjectAssignImport>(imported->target)(
 							reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0])),
 							reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[1])),
 							static_cast<int>(x[2]));
 						cpu.x[0] = 0;
 					} else if (name == "__Block_object_dispose" ||
 						name == "_Block_object_dispose") {
-						reinterpret_cast<void (*)(const void*, int)>(imported->target)(
+						reinterpret_cast<DarlingBlockObjectDisposeImport>(imported->target)(
 							reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[0])),
 							static_cast<int>(x[1]));
 						cpu.x[0] = 0;

@@ -13,11 +13,12 @@ performs nested `sel_registerName`, `objc_msgSend`, `_strlen`, `_malloc`, and
 `_realloc`/`_free` imports, verifying guest heap write/read/resize/free. It is
 not a general Objective-C or macOS application test.
 
-The Objective-C guest also compiles and invokes a global Clang block literal,
-covering `__NSConcreteGlobalBlock` binding and the guest ARM64 block invoke
-ABI. Copying a non-global guest block currently fails closed: its host-heap
-copy is not mapped into the bounded guest address space. Captured-object helper
-callbacks and escaping stack blocks therefore remain unsupported.
+The Objective-C guest also compiles and invokes a global Clang block, copies
+and invokes a scalar-capture stack block, copies an object-capture block, and
+copies/invokes a `__block` scalar capture. These exercise `NSConcrete` binding,
+guest-address registration for copied blocks, and nested guest copy/dispose and
+Byref callbacks. They do not establish full libclosure behavior, weak captures,
+arbitrary block signatures, or asynchronous block lifetime.
 
 The same guest calls imported `_mmap`, `_mprotect`, and `_munmap`: it creates a
 three-page anonymous private mapping, writes and reads it, changes it to

@@ -206,7 +206,28 @@ private:
 	{
 		const auto* region = Find(address, sizeof(T), Access::Read);
 		if (region == nullptr) {
-			RecordFault(address, "AArch64 data read is outside readable guest memory");
+			std::string message =
+				"AArch64 data read is outside readable guest memory";
+			const A64GuestMemoryRegion* nearest = nullptr;
+			std::uint64_t nearest_distance =
+				(std::numeric_limits<std::uint64_t>::max)();
+			for (const auto& candidate : m_memory) {
+				if (!candidate.dynamically_allocated)
+					continue;
+				const auto end = candidate.address + candidate.bytes;
+				const auto distance = address < candidate.address ?
+					candidate.address - address : address >= end ? address - end : 0;
+				if (distance < nearest_distance) {
+					nearest = &candidate;
+					nearest_distance = distance;
+				}
+			}
+			if (nearest != nullptr) {
+				message += " (nearest dynamic region [" +
+					std::to_string(nearest->address) + "," +
+					std::to_string(nearest->address + nearest->bytes) + "))";
+			}
+			RecordFault(address, message.c_str());
 			return {};
 		}
 		return Read<T>(address, *region);

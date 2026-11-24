@@ -85,9 +85,19 @@ bool DARLING_OBJC_GUEST_ABI darling_objc_load_image(darling_objc_image_token* to
 	bool arm64_guest);
 using darling_objc_guest_method_invoker = void (*)(IMP implementation,
 	id receiver, SEL selector, void* context);
+using darling_objc_guest_block_allocate = void* (*)(std::size_t bytes,
+	void* context);
+using darling_objc_guest_block_deallocate = void (*)(void* allocation,
+	void* context);
 darling_objc_guest_method_invoker DARLING_OBJC_GUEST_ABI
 darling_objc_set_guest_method_invoker(darling_objc_guest_method_invoker invoker,
 	void* context, void** previous_context);
+void DARLING_OBJC_GUEST_ABI darling_objc_set_guest_block_allocator(
+	darling_objc_guest_block_allocate allocate,
+	darling_objc_guest_block_deallocate deallocate, void* context,
+	darling_objc_guest_block_allocate* previous_allocate,
+	darling_objc_guest_block_deallocate* previous_deallocate,
+	void** previous_context);
 void DARLING_OBJC_GUEST_ABI darling_objc_ensure_class_initialized(Class cls);
 void DARLING_OBJC_GUEST_ABI darling_objc_queue_guest_callback(IMP implementation,
 	id receiver, SEL selector);

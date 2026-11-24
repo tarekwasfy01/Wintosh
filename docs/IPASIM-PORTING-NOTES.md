@@ -660,11 +660,12 @@ Weak block-field flags are explicitly non-retaining now. The remaining weak
 slot registration and weak-Byref teardown semantics still require the native
 Objective-C weak ABI.
 
-Current ARM64 boundary: the Dynarmic fixture compiles and invokes one global
-Clang block literal after binding `__NSConcreteGlobalBlock`. Non-global guest
-block copies now fail closed while their host-heap storage is outside the
-bounded guest address map. The host-side block copy/dispose tests above do not
-prove guest copy-helper execution or escaping stack-block support.
+Current ARM64 coverage: the Dynarmic fixture compiles and invokes global,
+scalar-capture, object-capture, and `__block` scalar-capture Clang blocks.
+Copied block storage is registered in the guest map, and guest copy/dispose
+plus Byref helpers run through nested ARM64 callbacks. This does not prove
+complete libclosure, weak-reference behavior, arbitrary signatures, or
+asynchronous block lifetime.
 
 Cross-process Darwin `SIGKILL` is now emulated with `TerminateProcess` and is
 covered by the process fixture on both targets. Graceful cross-process signal

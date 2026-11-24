@@ -200,6 +200,11 @@ extern "C" bool darling_objc_exception_try(
 namespace {
 
 thread_local darling_objc_image_token* active_image_token = nullptr;
+thread_local darling_objc_guest_method_invoker active_guest_method_invoker = nullptr;
+thread_local void* active_guest_method_invoker_context = nullptr;
+thread_local darling_objc_guest_block_allocate active_guest_block_allocate = nullptr;
+thread_local darling_objc_guest_block_deallocate active_guest_block_deallocate = nullptr;
+thread_local void* active_guest_block_allocator_context = nullptr;
 
 // The low-level libclosure entry points receive the compiler's block literal,
 // not the bridge-only DarlingObjcAppleBlock wrapper.  Keep ownership state for
@@ -229,6 +234,8 @@ struct AppleBlockRuntimeState final {
 	std::uint32_t retain_count = 1;
 	std::size_t size = 0;
 	AppleBlockDisposeHelper dispose_helper{};
+	darling_objc_guest_block_deallocate guest_deallocate{};
+	void* guest_allocator_context{};
 };
 
 std::mutex& AppleBlockRuntimeMutex()
@@ -262,6 +269,8 @@ struct AppleByrefRuntimeState final {
 	std::uint32_t retain_count = 1;
 	AppleByrefHeader* stack_source{};
 	void (*destroy_helper)(void*){};
+	darling_objc_guest_block_deallocate guest_deallocate{};
+	void* guest_allocator_context{};
 };
 
 std::unordered_map<void*, AppleByrefRuntimeState>& ExternalAppleByrefs()
@@ -276,11 +285,13 @@ void* CopyExternalAppleByref(void* raw_byref)
 		return nullptr;
 	constexpr std::int32_t byref_needs_free = 1 << 24;
 	constexpr std::int32_t byref_has_copy_dispose = 1 << 25;
-	auto* source = static_cast<AppleByrefHeader*>(raw_byref);
-	AppleByrefHeader* forwarding = source->forwarding != nullptr ?
-		source->forwarding : source;
-	if (darling_objc_has_guest_method_invoker())
-		return raw_byref;
+	AppleByrefHeader source_header{};
+	std::memcpy(&source_header, raw_byref, sizeof(source_header));
+	AppleByrefHeader* forwarding = source_header.forwarding != nullptr ?
+		source_header.forwarding :
+		static_cast<AppleByrefHeader*>(raw_byref);
+	AppleByrefHeader forwarding_header{};
+	std::memcpy(&forwarding_header, forwarding, sizeof(forwarding_header));
 	{
 		std::lock_guard lock(AppleBlockRuntimeMutex());
 		const auto found = ExternalAppleByrefs().find(forwarding);
@@ -289,27 +300,42 @@ void* CopyExternalAppleByref(void* raw_byref)
 			return forwarding;
 		}
 	}
-	if ((forwarding->flags & byref_needs_free) != 0)
+	if ((forwarding_header.flags & byref_needs_free) != 0)
 		return forwarding;
-	if (forwarding->size < static_cast<std::int32_t>(sizeof(AppleByrefHeader)) ||
-		forwarding->size > 64 * 1024 * 1024)
+	if (forwarding_header.size < static_cast<std::int32_t>(sizeof(AppleByrefHeader)) ||
+		forwarding_header.size > 64 * 1024 * 1024)
 		return raw_byref;
-	auto* copy = static_cast<AppleByrefHeader*>(HeapAlloc(
-		GetProcessHeap(), 0, static_cast<std::size_t>(forwarding->size)));
+	const auto allocation_size = static_cast<std::size_t>(forwarding_header.size);
+	const bool guest_allocation = active_guest_method_invoker != nullptr;
+	if (guest_allocation && active_guest_block_allocate == nullptr)
+		return nullptr;
+	auto* copy = static_cast<AppleByrefHeader*>(guest_allocation ?
+		active_guest_block_allocate(allocation_size,
+			active_guest_block_allocator_context) :
+		HeapAlloc(GetProcessHeap(), 0, allocation_size));
 	if (copy == nullptr)
 		return nullptr;
 	std::memcpy(copy, forwarding, static_cast<std::size_t>(forwarding->size));
 	copy->flags |= byref_needs_free;
 	copy->forwarding = copy;
-	if ((forwarding->flags & byref_has_copy_dispose) != 0 &&
-		forwarding->keep_helper != nullptr)
-		forwarding->keep_helper(copy, forwarding);
+	if ((forwarding_header.flags & byref_has_copy_dispose) != 0 &&
+		forwarding_header.keep_helper != nullptr) {
+		if (guest_allocation)
+			darling_objc_queue_guest_callback(
+				reinterpret_cast<IMP>(forwarding_header.keep_helper),
+				reinterpret_cast<id>(copy), reinterpret_cast<SEL>(forwarding));
+		else
+			forwarding_header.keep_helper(copy, forwarding);
+	}
 	{
 		std::lock_guard lock(AppleBlockRuntimeMutex());
 		ExternalAppleByrefs().emplace(copy, AppleByrefRuntimeState{
-			1, forwarding, forwarding->destroy_helper});
+			1, forwarding, forwarding_header.destroy_helper,
+			guest_allocation ? active_guest_block_deallocate : nullptr,
+			guest_allocation ? active_guest_block_allocator_context : nullptr});
 	}
-	source->forwarding = copy;
+	std::memcpy(static_cast<std::uint8_t*>(raw_byref) +
+		offsetof(AppleByrefHeader, forwarding), &copy, sizeof(copy));
 	return copy;
 }
 
@@ -317,8 +343,10 @@ void ReleaseExternalAppleByref(void* raw_byref)
 {
 	if (raw_byref == nullptr)
 		return;
-	auto* source = static_cast<AppleByrefHeader*>(raw_byref);
-	auto* forwarding = source->forwarding != nullptr ? source->forwarding : source;
+	AppleByrefHeader source_header{};
+	std::memcpy(&source_header, raw_byref, sizeof(source_header));
+	auto* forwarding = source_header.forwarding != nullptr ?
+		source_header.forwarding : static_cast<AppleByrefHeader*>(raw_byref);
 	AppleByrefRuntimeState state{};
 	bool release = false;
 	{
@@ -334,11 +362,23 @@ void ReleaseExternalAppleByref(void* raw_byref)
 	}
 	if (!release)
 		return;
-	if (state.destroy_helper != nullptr)
-		state.destroy_helper(forwarding);
-	if (state.stack_source != nullptr)
-		state.stack_source->forwarding = state.stack_source;
-	HeapFree(GetProcessHeap(), 0, forwarding);
+	if (state.destroy_helper != nullptr) {
+		if (state.guest_deallocate != nullptr)
+			darling_objc_queue_guest_callback(
+				reinterpret_cast<IMP>(state.destroy_helper),
+				reinterpret_cast<id>(forwarding), nullptr);
+		else
+			state.destroy_helper(forwarding);
+	}
+	if (state.stack_source != nullptr) {
+		std::memcpy(reinterpret_cast<std::uint8_t*>(state.stack_source) +
+			offsetof(AppleByrefHeader, forwarding), &state.stack_source,
+			sizeof(state.stack_source));
+	}
+	if (state.guest_deallocate != nullptr)
+		state.guest_deallocate(forwarding, state.guest_allocator_context);
+	else
+		HeapFree(GetProcessHeap(), 0, forwarding);
 }
 
 bool IsManagedAppleBlock(void* raw_block)
@@ -378,14 +418,10 @@ void* CopyExternalAppleBlock(void* raw_block)
 			return raw_block;
 		}
 	}
-	const auto& block = *static_cast<const AppleBlockHeader*>(raw_block);
+	AppleBlockHeader block{};
+	std::memcpy(&block, raw_block, sizeof(block));
 	if ((block.flags & AppleBlockIsGlobal) != 0)
 		return raw_block;
-	// A copied block would live in host heap memory that the bounded ARM64
-	// guest address map does not expose.  Fail explicitly until block storage
-	// has a guest-visible allocator instead of returning an unusable pointer.
-	if (darling_objc_has_guest_method_invoker())
-		return nullptr;
 	// An already heap-owned block from an unknown runtime is not safe to free
 	// without owning its allocator metadata.  Retain-only is fail-safe here;
 	// blocks copied by this bridge are tracked below.
@@ -396,18 +432,31 @@ void* CopyExternalAppleBlock(void* raw_block)
 	AppleBlockDisposeHelper dispose_helper = nullptr;
 	if (!ReadExternalDescriptor(block, size, &copy_helper, &dispose_helper))
 		return raw_block;
-	void* copy = HeapAlloc(GetProcessHeap(), 0, size);
+	const bool guest_allocation = active_guest_method_invoker != nullptr;
+	if (guest_allocation && active_guest_block_allocate == nullptr)
+		return nullptr;
+	void* copy = guest_allocation ?
+		active_guest_block_allocate(size, active_guest_block_allocator_context) :
+		HeapAlloc(GetProcessHeap(), 0, size);
 	if (copy == nullptr)
 		return nullptr;
 	std::memcpy(copy, raw_block, size);
 	auto* copy_header = static_cast<AppleBlockHeader*>(copy);
 	copy_header->flags |= AppleBlockNeedsFree;
-	if (copy_helper != nullptr)
-		copy_helper(copy, raw_block);
+	if (copy_helper != nullptr) {
+		if (guest_allocation)
+			darling_objc_queue_guest_callback(
+				reinterpret_cast<IMP>(copy_helper), reinterpret_cast<id>(copy),
+				reinterpret_cast<SEL>(raw_block));
+		else
+			copy_helper(copy, raw_block);
+	}
 	{
 		std::lock_guard lock(AppleBlockRuntimeMutex());
 		ExternalAppleBlocks().emplace(copy,
-			AppleBlockRuntimeState{1, size, dispose_helper});
+			AppleBlockRuntimeState{1, size, dispose_helper,
+				guest_allocation ? active_guest_block_deallocate : nullptr,
+				guest_allocation ? active_guest_block_allocator_context : nullptr});
 	}
 	return copy;
 }
@@ -431,9 +480,18 @@ void ReleaseExternalAppleBlock(void* raw_block)
 	}
 	if (!release)
 		return;
-	if (state.dispose_helper != nullptr)
-		state.dispose_helper(raw_block);
-	HeapFree(GetProcessHeap(), 0, raw_block);
+	if (state.dispose_helper != nullptr) {
+		if (state.guest_deallocate != nullptr)
+			darling_objc_queue_guest_callback(
+				reinterpret_cast<IMP>(state.dispose_helper),
+				reinterpret_cast<id>(raw_block), nullptr);
+		else
+			state.dispose_helper(raw_block);
+	}
+	if (state.guest_deallocate != nullptr)
+		state.guest_deallocate(raw_block, state.guest_allocator_context);
+	else
+		HeapFree(GetProcessHeap(), 0, raw_block);
 }
 
 // Objective-C metadata keeps pointer-sized fields, but the class_ro_t and
@@ -751,8 +809,6 @@ std::string CanonicalObjcEncoding(const std::string& encoding);
 } // namespace
 
 namespace {
-thread_local darling_objc_guest_method_invoker active_guest_method_invoker = nullptr;
-thread_local void* active_guest_method_invoker_context = nullptr;
 struct PendingGuestCallback final {
 	IMP implementation{};
 	id receiver{};
@@ -828,6 +884,24 @@ extern "C" darling_objc_guest_method_invoker darling_objc_set_guest_method_invok
 	active_guest_method_invoker = invoker;
 	active_guest_method_invoker_context = context;
 	return previous;
+}
+
+extern "C" void darling_objc_set_guest_block_allocator(
+	darling_objc_guest_block_allocate allocate,
+	darling_objc_guest_block_deallocate deallocate, void* context,
+	darling_objc_guest_block_allocate* previous_allocate,
+	darling_objc_guest_block_deallocate* previous_deallocate,
+	void** previous_context)
+{
+	if (previous_allocate != nullptr)
+		*previous_allocate = active_guest_block_allocate;
+	if (previous_deallocate != nullptr)
+		*previous_deallocate = active_guest_block_deallocate;
+	if (previous_context != nullptr)
+		*previous_context = active_guest_block_allocator_context;
+	active_guest_block_allocate = allocate;
+	active_guest_block_deallocate = deallocate;
+	active_guest_block_allocator_context = context;
 }
 
 extern "C" void darling_objc_ensure_class_initialized(Class cls)
@@ -5997,11 +6071,12 @@ extern "C" void darling_objc_apple_block_invoke0(void* raw_block)
 		if (block->invoke != nullptr) block->invoke(block, nullptr);
 		return;
 	}
-	auto* block = static_cast<AppleBlockHeader*>(raw_block);
-	if (block->invoke == nullptr) return;
+	AppleBlockHeader block{};
+	std::memcpy(&block, raw_block, sizeof(block));
+	if (block.invoke == nullptr) return;
 	if (darling_objc_has_guest_method_invoker()) {
 		darling_objc_queue_guest_callback(
-			reinterpret_cast<IMP>(block->invoke), reinterpret_cast<id>(raw_block),
+			reinterpret_cast<IMP>(block.invoke), reinterpret_cast<id>(raw_block),
 			nullptr);
 		return;
 	}
@@ -6010,7 +6085,7 @@ extern "C" void darling_objc_apple_block_invoke0(void* raw_block)
 #else
 	using Invoke = void (*)(void*);
 #endif
-	reinterpret_cast<Invoke>(block->invoke)(raw_block);
+	reinterpret_cast<Invoke>(block.invoke)(raw_block);
 }
 
 extern "C" const char* darling_objc_apple_block_signature(

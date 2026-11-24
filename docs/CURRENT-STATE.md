@@ -1,15 +1,16 @@
 # Complete current workspace state
 
-## ARM64 Objective-C global block literal, 2026-11-24
+## ARM64 Objective-C Blocks ABI, 2026-11-24
 
-The ARM64 Objective-C end-to-end fixture now compiles and invokes a real
-Clang-generated global block literal under the Dynarmic backend. The host
-resolver supplies stable identities for the `NSConcrete` block data symbols,
-and the guest code executes the literal's `invoke` function directly. The
-guest Blocks ABI remains partial: copying non-global blocks returns `nil`
-because host-heap copies are not registered in the bounded ARM64 guest address
-space; captured-object copy/dispose callbacks and escaping stack blocks are
-not supported by this step.
+The ARM64 Objective-C end-to-end fixture now compiles and invokes Clang block
+literals through the Dynarmic backend. Coverage includes a global block, a
+copied scalar-capture stack block, an object-capture block, and a copied
+`__block` scalar capture. Guest block copies use a host allocator whose ranges
+are registered in the bounded ARM64 address map; copy/dispose and Byref
+callbacks return through the guest dispatcher. Mach-O Blocks imports use the
+same SysV host ABI bridge as Objective-C and memory imports. Full libclosure,
+weak-reference behavior, arbitrary block signatures, and asynchronous block
+lifetime remain unverified.
 
 ## ARM64 guest imports on x64 Windows, 2026-11-23
 
@@ -35,8 +36,8 @@ aggregates and a 24-byte structure returned through the ARM64 indirect-result
 register. A guest Objective-C method also performs nested `sel_registerName`,
 `objc_msgSend`, and `_strlen` imports while executing, including recursive guest
 method dispatch. These fixtures do not establish the general Objective-C ABI,
-arbitrary aggregates, block/variadic callbacks, framework startup, or arbitrary
-macOS application support. Guest callbacks also allocate, write, read, and free
+arbitrary aggregates, arbitrary block signatures or variadic callbacks,
+framework startup, or arbitrary macOS application support. Guest callbacks also allocate, write, read, and free
 heap memory through nested `_malloc`/`_realloc`/`_free` imports; allocations
 are registered in the bounded guest address space and their mappings are
 updated or removed on resize/free. Imported ARM64 `_mmap`/`_munmap`/`_mprotect`

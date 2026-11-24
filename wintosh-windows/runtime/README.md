@@ -195,9 +195,12 @@ two-/four-double homogeneous aggregates and a 24-byte indirect result through
 x8. A guest callback also makes nested `sel_registerName`, `objc_msgSend`, and
 `_strlen` imports, including recursive guest-method dispatch. It also allocates
 guest-readable/writable memory through `_malloc`, grows it through `_realloc`,
-then frees it through `_free`. Other aggregate layouts, nested Darwin syscalls, variadic dispatch,
-blocks, framework startup, and arbitrary application behavior remain
-unsupported or unverified. Other host imports fail closed.
+then frees it through `_free`. The Objective-C fixture also covers global and
+copied ARM64 blocks with scalar, object, and `__block` captures, including
+registered guest storage and nested copy/dispose callbacks. Other aggregate
+layouts, arbitrary block signatures, variadic dispatch, framework startup,
+and arbitrary application behavior remain unsupported or unverified. Other
+host imports fail closed.
 `--diagnose-host` is independent of an input image and reports the current
 Windows architecture, pointer width, supported native Mach-O target, prefix
 source, preferred universal-binary slice, and configured cross-architecture

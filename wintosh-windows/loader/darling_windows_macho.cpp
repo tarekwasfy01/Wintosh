@@ -256,6 +256,90 @@ bool DispatchArm64CoreFoundationRunLoopImport(const std::string& name,
 			static_cast<darling_windows_CFIndex>(x[2]));
 		return true;
 	}
+	if (name == "_CFDataCreate") {
+		constexpr std::uint64_t max_data_bytes = 1ull << 30;
+		if (x[2] > max_data_bytes || (x[2] != 0 && (x[1] == 0 ||
+			!backend.ContainsGuestRange(x[1], static_cast<std::size_t>(x[2]), false))))
+			throw std::runtime_error("ARM64 CFDataCreate import received an invalid guest byte range");
+		using Call = darling_windows_CFDataRef (DARLING_CF_GUEST_ABI *)(
+			const void*, const unsigned char*, darling_windows_CFIndex);
+		resumed_state.x[0] = reinterpret_cast<std::uintptr_t>(reinterpret_cast<Call>(target)(
+			reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[0])),
+			reinterpret_cast<const unsigned char*>(static_cast<std::uintptr_t>(x[1])),
+			static_cast<darling_windows_CFIndex>(x[2])));
+		return true;
+	}
+	if (name == "_CFDataCreateMutable") {
+		using Call = darling_windows_CFMutableDataRef (DARLING_CF_GUEST_ABI *)(
+			const void*, darling_windows_CFIndex);
+		resumed_state.x[0] = reinterpret_cast<std::uintptr_t>(reinterpret_cast<Call>(target)(
+			reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[0])),
+			static_cast<darling_windows_CFIndex>(x[1])));
+		return true;
+	}
+	if (name == "_CFDataCreateCopy") {
+		using Call = darling_windows_CFDataRef (DARLING_CF_GUEST_ABI *)(
+			const void*, darling_windows_CFDataRef);
+		resumed_state.x[0] = reinterpret_cast<std::uintptr_t>(reinterpret_cast<Call>(target)(
+			reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[0])),
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[1]))));
+		return true;
+	}
+	if (name == "_CFDataGetLength") {
+		using Call = darling_windows_CFIndex (DARLING_CF_GUEST_ABI *)(darling_windows_CFDataRef);
+		resumed_state.x[0] = static_cast<std::uint64_t>(reinterpret_cast<Call>(target)(
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0]))));
+		return true;
+	}
+	if (name == "_CFDataGetBytes") {
+		constexpr std::uint64_t max_data_bytes = 1ull << 30;
+		if (x[2] > max_data_bytes || (x[2] != 0 && (x[3] == 0 ||
+			!backend.ContainsGuestRange(x[3], static_cast<std::size_t>(x[2]), true))))
+			throw std::runtime_error("ARM64 CFDataGetBytes import received an invalid output range");
+		using Call = void (DARLING_CF_GUEST_ABI *)(darling_windows_CFDataRef,
+			darling_windows_CFRange, unsigned char*);
+		reinterpret_cast<Call>(target)(reinterpret_cast<void*>(
+			static_cast<std::uintptr_t>(x[0])),
+			{static_cast<darling_windows_CFIndex>(x[1]),
+			 static_cast<darling_windows_CFIndex>(x[2])},
+			reinterpret_cast<unsigned char*>(static_cast<std::uintptr_t>(x[3])));
+		return true;
+	}
+	if (name == "_CFDataAppendBytes") {
+		constexpr std::uint64_t max_data_bytes = 1ull << 30;
+		if (x[2] > max_data_bytes || (x[2] != 0 && (x[1] == 0 ||
+			!backend.ContainsGuestRange(x[1], static_cast<std::size_t>(x[2]), false))))
+			throw std::runtime_error("ARM64 CFDataAppendBytes import received an invalid guest byte range");
+		using Call = void (DARLING_CF_GUEST_ABI *)(darling_windows_CFMutableDataRef,
+			const unsigned char*, darling_windows_CFIndex);
+		reinterpret_cast<Call>(target)(reinterpret_cast<void*>(
+			static_cast<std::uintptr_t>(x[0])), reinterpret_cast<const unsigned char*>(
+			static_cast<std::uintptr_t>(x[1])), static_cast<darling_windows_CFIndex>(x[2]));
+		return true;
+	}
+	if (name == "_CFDataReplaceBytes") {
+		constexpr std::uint64_t max_data_bytes = 1ull << 30;
+		if (x[4] > max_data_bytes || (x[4] != 0 && (x[3] == 0 ||
+			!backend.ContainsGuestRange(x[3], static_cast<std::size_t>(x[4]), false))))
+			throw std::runtime_error("ARM64 CFDataReplaceBytes import received an invalid replacement range");
+		using Call = void (DARLING_CF_GUEST_ABI *)(darling_windows_CFMutableDataRef,
+			darling_windows_CFRange, const unsigned char*, darling_windows_CFIndex);
+		reinterpret_cast<Call>(target)(reinterpret_cast<void*>(
+			static_cast<std::uintptr_t>(x[0])),
+			{static_cast<darling_windows_CFIndex>(x[1]),
+			 static_cast<darling_windows_CFIndex>(x[2])},
+			reinterpret_cast<const unsigned char*>(static_cast<std::uintptr_t>(x[3])),
+			static_cast<darling_windows_CFIndex>(x[4]));
+		return true;
+	}
+	if (name == "_CFDataSetLength") {
+		using Call = void (DARLING_CF_GUEST_ABI *)(darling_windows_CFMutableDataRef,
+			darling_windows_CFIndex);
+		reinterpret_cast<Call>(target)(reinterpret_cast<void*>(
+			static_cast<std::uintptr_t>(x[0])),
+			static_cast<darling_windows_CFIndex>(x[1]));
+		return true;
+	}
 	if (name == "_CFDateCreate") {
 		double absolute_time{};
 		std::memcpy(&absolute_time, &state.v[0], sizeof(absolute_time));

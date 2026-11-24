@@ -856,6 +856,15 @@ representation conversion, and maximum encoded-size queries. For output
 interval `[p,p+n)` before calling the host-backed implementation; character
 arrays use `2·length` bytes. The fixture round-trips the ASCII string “Darwin”
 through UTF-8 bytes and UTF-16 code units and checks its six-code-unit length.
+The ARM64 `CFData` bridge now maps immutable/mutable creation and copying,
+length, range reads, append, replacement, and resizing. For byte sequence `D`
+and range `[i,i+ℓ)`, replacement with `R` is
+`D'=D[0:i]·R·D[i+ℓ:|D|]`; append is `D'=D·R`, and resize to `m` truncates or
+zero-extends to length `m`. Every read/write span is checked before crossing
+the guest/host boundary. The fixture validates the exact bytes after these
+transitions and the independently copied result. Raw byte-pointer getters are
+not yet bridged because their returned storage must remain mapped across future
+guest calls and mutations.
 For a CFMachPort wrapper `p`, source delivery is `Deliver(p,m) = Valid(p) ∧
 Receive(GetPort(p),m)`, with the callback `Callout(p,m,size,info)` invoked once
 for each received message. `Invalidate(p)` performs the state transition

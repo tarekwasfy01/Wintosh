@@ -42,6 +42,14 @@ typedef struct CFRunLoopSourceContext {
 _Static_assert(sizeof(CFRunLoopSourceContext) == 80, "Darwin source context layout");
 
 extern CFStringRef CFStringCreateWithCString(const void *, const char *, unsigned int);
+extern CFTypeRef CFDataCreate(const void *, const unsigned char *, CFIndex);
+extern CFTypeRef CFDataCreateMutable(const void *, CFIndex);
+extern CFTypeRef CFDataCreateCopy(const void *, CFTypeRef);
+extern CFIndex CFDataGetLength(CFTypeRef);
+extern void CFDataGetBytes(CFTypeRef, CFRange, unsigned char *);
+extern void CFDataAppendBytes(CFTypeRef, const unsigned char *, CFIndex);
+extern void CFDataReplaceBytes(CFTypeRef, CFRange, const unsigned char *, CFIndex);
+extern void CFDataSetLength(CFTypeRef, CFIndex);
 extern CFStringRef CFStringCreateWithCharacters(const void *, const unsigned short *, CFIndex);
 extern CFStringRef CFStringCreateCopy(const void *, CFStringRef);
 extern CFIndex CFStringGetLength(CFStringRef);
@@ -310,6 +318,30 @@ static void source_perform(void *info)
 
 int main(void)
 {
+	const unsigned char initialData[] = { 1, 2, 3, 4 };
+	const unsigned char appendedData[] = { 5, 6 };
+	const unsigned char replacementData[] = { 9 };
+	unsigned char dataOutput[5] = { 0 };
+	CFTypeRef data = CFDataCreate(0, initialData, 4);
+	CFTypeRef mutableData = CFDataCreateMutable(0, 8);
+	if (data == 0 || mutableData == 0 || CFDataGetLength(data) != 4) return 64;
+	CFDataGetBytes(data, (CFRange){ 0, 4 }, dataOutput);
+	if (dataOutput[0] != 1 || dataOutput[3] != 4) return 65;
+	CFDataAppendBytes(mutableData, initialData, 4);
+	CFDataAppendBytes(mutableData, appendedData, 2);
+	CFDataReplaceBytes(mutableData, (CFRange){ 1, 2 }, replacementData, 1);
+	if (CFDataGetLength(mutableData) != 5) return 66;
+	CFDataGetBytes(mutableData, (CFRange){ 0, 5 }, dataOutput);
+	if (dataOutput[0] != 1 || dataOutput[1] != 9 || dataOutput[2] != 4 ||
+		dataOutput[3] != 5 || dataOutput[4] != 6) return 67;
+	CFDataSetLength(mutableData, 3);
+	CFTypeRef dataCopy = CFDataCreateCopy(0, mutableData);
+	if (dataCopy == 0 || CFDataGetLength(dataCopy) != 3) return 68;
+	CFDataGetBytes(dataCopy, (CFRange){ 0, 3 }, dataOutput);
+	if (dataOutput[0] != 1 || dataOutput[1] != 9 || dataOutput[2] != 4) return 69;
+	CFRelease(dataCopy);
+	CFRelease(mutableData);
+	CFRelease(data);
 	const unsigned int utf8Encoding = 0x08000100u;
 	CFStringRef sourceString = CFStringCreateWithCString(0, "Darwin", utf8Encoding);
 	char stringBuffer[16] = { 0 };

@@ -7140,6 +7140,49 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 					syscall_result_x1 = static_cast<std::uint64_t>(
 						darling_windows_getegid());
 					break;
+				case 49: { // SYS_getlogin
+					if (arguments[0] == 0 || arguments[1] == 0) {
+						error_number = EFAULT;
+						break;
+					}
+					if (arguments[1] > 4096) {
+						error_number = EINVAL;
+						break;
+					}
+					const auto size = static_cast<std::size_t>(arguments[1]);
+					if (!backend.ContainsGuestRange(arguments[0], size, true)) {
+						error_number = EFAULT;
+						break;
+					}
+					std::vector<char> login(size);
+					const int result = darling_windows_getlogin_r(login.data(), size);
+					if (result != 0) {
+						error_number = DarwinErrno::Get();
+						if (error_number == 0)
+							error_number = result;
+						break;
+					}
+					const auto terminator = std::find(login.begin(), login.end(), '\0');
+					if (terminator == login.end()) {
+						error_number = EIO;
+						break;
+					}
+					const auto bytes = static_cast<std::size_t>(
+						std::distance(login.begin(), terminator)) + 1;
+					std::memcpy(reinterpret_cast<void*>(static_cast<std::uintptr_t>(
+						arguments[0])), login.data(), bytes);
+					syscall_result = 0;
+					break;
+				}
+				case 50: // SYS_setlogin
+					if (!backend.ContainsGuestCString(arguments[0], 4096)) {
+						error_number = EFAULT;
+						break;
+					}
+					syscall_result = darling_windows_setlogin(
+						reinterpret_cast<const char*>(static_cast<std::uintptr_t>(
+							arguments[0])));
+					break;
 				case 81: // SYS_getpgrp
 					syscall_result = darling_windows_getpgrp();
 					break;

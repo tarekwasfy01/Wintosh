@@ -1133,7 +1133,8 @@ non-guest function addresses use the native fallback. The ARM64 fixture creates
 an array with guest retain/release callbacks and checks `retain_count = 2`,
 `release_count = 2` across create/count/destroy. Dictionary/Set retain, release,
 equality, and hash callbacks also have ARM64 fixtures; copy-description callbacks
-and other callback-bearing CoreFoundation APIs remain to be audited.
+are now exercised through `CFCopyDescription`; other callback-bearing
+CoreFoundation APIs remain to be audited.
 
 The same ARM64 import dispatcher now accepts `CFDictionaryCreate` and
 `CFSetCreate` after checking their pointer-vector and callback-table guest
@@ -1143,5 +1144,10 @@ two value retains, and matching release counts at destruction. The Set fixture
 forces one hash collision and checks `hash_calls = 2`, `equal_calls = 1`, and
 two retain/release pairs. The count imports return through `x0`. These cases
 exercise both the argument vector and callback result vector for guest
-collections; mutable replacement/removal and description callbacks remain
-uncovered.
+collections; mutable replacement/removal remain uncovered. `CFCopyDescription`
+now formats arrays, dictionaries, and sets from
+the callback-produced CFStrings, returns a new CFString, and releases each
+temporary callback result after conversion. The fixture checks two description
+calls for array elements, two each for dictionary keys and values, and two for
+set members. Set output is sorted by rendered element text for deterministic
+results.

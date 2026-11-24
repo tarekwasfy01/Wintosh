@@ -108,6 +108,13 @@ bool DispatchArm64CoreFoundationRunLoopImport(const std::string& name,
 	const auto set_double_return = [&](double value) {
 		std::memcpy(&resumed_state.v[0], &value, sizeof(value));
 	};
+	if (name == "_CFCopyDescription") {
+		using Call = darling_windows_CFStringRef (DARLING_CF_GUEST_ABI *)(const void*);
+		resumed_state.x[0] = reinterpret_cast<std::uintptr_t>(
+			reinterpret_cast<Call>(target)(reinterpret_cast<const void*>(
+				static_cast<std::uintptr_t>(x[0]))));
+		return true;
+	}
 	if (name == "_CFRunLoopGetCurrent" || name == "_CFRunLoopGetMain") {
 		using Call = darling_windows_CFRunLoopRef (DARLING_CF_GUEST_ABI *)();
 		resumed_state.x[0] = reinterpret_cast<std::uintptr_t>(

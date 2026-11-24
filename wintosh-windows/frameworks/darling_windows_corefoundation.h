@@ -235,6 +235,8 @@ extern "C" darling_windows_CFTypeID darling_windows_CFGetTypeID(const void* valu
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeRef CFRetain(const void* value);
 extern "C" DARLING_CF_GUEST_ABI void CFRelease(const void* value);
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeID CFGetTypeID(const void* value);
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFCopyDescription(
+	const void* value);
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFDataRef CFDataCreate(
 	const void* allocator, const unsigned char* bytes, darling_windows_CFIndex length);
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFMutableDataRef CFDataCreateMutable(

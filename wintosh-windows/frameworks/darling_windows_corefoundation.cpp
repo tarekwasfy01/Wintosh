@@ -6112,6 +6112,82 @@ std::uintptr_t DARLING_CF_GUEST_ABI DarlingCFTypeHash(const void* value)
 	return static_cast<std::uintptr_t>(darling_windows_CFHash(value));
 }
 
+template <typename CopyDescriptionCallback>
+std::string CopyCallbackDescription(CopyDescriptionCallback callback,
+	const void* value)
+{
+	const auto* description = callback == nullptr ?
+		DarlingCFTypeCopyDescription(value) :
+		InvokeGuestCallbackResult(callback, value);
+	if (description == nullptr) return "<null>";
+	char buffer[4096]{};
+	const bool copied = darling_windows_CFStringGetCString(description, buffer,
+		static_cast<darling_windows_CFIndex>(sizeof(buffer)));
+	darling_windows_CFRelease(description);
+	return copied ? std::string(buffer) : std::string("<non-string>");
+}
+
+std::string DescribeCFObject(const void* value)
+{
+	const auto* object = As(value);
+	if (object == nullptr) return "<null>";
+	std::string description;
+	try {
+		switch (object->kind) {
+		case Kind::String:
+			return "\"" + object->string + "\"";
+		case Kind::Array:
+			description = "[";
+			for (std::size_t index = 0; index < object->array.size(); ++index) {
+				if (index != 0) description += ", ";
+				description += CopyCallbackDescription(
+					object->has_array_callback_table ?
+					object->array_callbacks.copy_description : nullptr,
+					object->array[index]);
+			}
+			description += "]";
+			return description;
+		case Kind::Dictionary:
+			description = "{";
+			for (std::size_t index = 0; index < object->dictionary.size(); ++index) {
+				if (index != 0) description += ", ";
+				description += CopyCallbackDescription(
+					object->has_dictionary_callback_tables ?
+					object->dictionary_key_callbacks.copy_description : nullptr,
+					object->dictionary[index].first);
+				description += " = ";
+				description += CopyCallbackDescription(
+					object->has_dictionary_callback_tables ?
+					object->dictionary_value_callbacks.copy_description : nullptr,
+					object->dictionary[index].second);
+			}
+			description += "}";
+			return description;
+		case Kind::Set: {
+			std::vector<std::string> values;
+			values.reserve(object->set_entries.size());
+			for (const auto& entry : object->set_entries)
+				values.push_back(CopyCallbackDescription(
+					object->has_set_callback_table ?
+					object->set_callbacks.copy_description : nullptr, entry.second));
+			std::sort(values.begin(), values.end());
+			description = "{";
+			for (std::size_t index = 0; index < values.size(); ++index) {
+				if (index != 0) description += ", ";
+				description += values[index];
+			}
+			description += "}";
+			return description;
+		}
+		default:
+			return CopyCallbackDescription(
+				static_cast<const void* (*)(const void*)>(nullptr), value);
+		}
+	} catch (...) {
+		return "<description-error>";
+	}
+}
+
 constexpr std::uint32_t kDarlingCfUtf8Encoding = 0x08000100;
 bool DarlingCfSupportsStringEncoding(std::uint32_t encoding)
 {
@@ -6131,6 +6207,13 @@ extern "C" const DarlingCFDictionaryKeyCallbacks kCFTypeSetCallBacks = {
 extern "C" const DarlingCFArrayCallbacks kCFTypeArrayCallBacks = {
 	0, &DarlingCFTypeRetain, &DarlingCFTypeRelease,
 	&DarlingCFTypeCopyDescription, &DarlingCFTypeEqual};
+
+extern "C" DARLING_CF_GUEST_ABI darling_windows_CFStringRef CFCopyDescription(
+	const void* value)
+{
+	const auto description = DescribeCFObject(value);
+	return darling_windows_CFStringCreateWithCString(description.c_str());
+}
 
 namespace {
 Object* NullCFAllocator()
@@ -8492,6 +8575,8 @@ extern "C" std::uintptr_t darling_windows_corefoundation_symbol(const char* name
 {
 	if (name == nullptr) return 0;
 	if (*name == '_') ++name;
+	if (std::strcmp(name, "CFCopyDescription") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFCopyDescription);
 	if (std::strcmp(name, "CFPreferencesCopyAppValue") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFPreferencesCopyAppValue);
 	if (std::strcmp(name, "CFPreferencesSetAppValue") == 0)

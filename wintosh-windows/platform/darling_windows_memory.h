@@ -42,4 +42,6 @@ extern "C" int darling_windows_munmap_anonymous(void* address, std::size_t lengt
 
 namespace darling::windows_host {
 bool RegisterOwnedAnonymousMappingChecked(void* address, std::size_t length) noexcept;
+bool TryReleaseOwnedAnonymousReservationForReplacement(
+	void* address, std::size_t length) noexcept;
 }

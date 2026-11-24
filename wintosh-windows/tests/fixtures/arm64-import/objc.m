@@ -146,6 +146,20 @@ static long WintoshFileMappedRoundTrip(const char *path)
 	memory[0] = 'M';
 	memory[4096] = 'I';
 	memory[8192] = 'L';
+	void *anonymous_seed = mmap((void *)0, 4096, 3, 0x1000 | 0x0002, -1, 0);
+	if (anonymous_seed == (void *)-1) {
+		close(descriptor);
+		return 75;
+	}
+	*(volatile char *)anonymous_seed = 'O';
+	void *file_over_anonymous = mmap(anonymous_seed, 4096, 3,
+		0x0001 | 0x0010, descriptor, 0);
+	if (file_over_anonymous != anonymous_seed ||
+		*(volatile char *)file_over_anonymous != 'M' ||
+		munmap(file_over_anonymous, 4096) != 0) {
+		close(descriptor);
+		return 76;
+	}
 	void *fixed_replacement = mmap((void *)(memory + 4096), 4096, 3,
 		0x0001 | 0x0010, descriptor, 0);
 	if (fixed_replacement != (void *)(memory + 4096) ||

@@ -198,6 +198,46 @@ bool RegisterOwnedAnonymousMappingChecked(void* address, std::size_t length) noe
 	}
 }
 
+bool TryReleaseOwnedAnonymousReservationForReplacement(void* address,
+	std::size_t length) noexcept
+{
+	try {
+		const auto start = reinterpret_cast<std::uintptr_t>(address);
+		if (address == nullptr || length == 0 ||
+			length > (std::numeric_limits<std::uintptr_t>::max)() - start)
+			return false;
+		const auto end = start + length;
+		std::lock_guard lock(anonymous_mapping_mutex);
+		auto first = anonymous_mappings.upper_bound(start);
+		if (first == anonymous_mappings.begin())
+			return false;
+		--first;
+		const auto reservation = first->second.reservation;
+		if (first->first != start || reservation != address ||
+			first->second.reservation_bytes != length)
+			return false;
+		auto cursor = start;
+		for (const auto& [segment_start, segment] : anonymous_mappings) {
+			if (segment.reservation != reservation)
+				continue;
+			if (segment_start != cursor || segment.bytes > end - cursor)
+				return false;
+			cursor += segment.bytes;
+		}
+		if (cursor != end || !VirtualFree(address, 0, MEM_RELEASE))
+			return false;
+		for (auto it = anonymous_mappings.begin(); it != anonymous_mappings.end();) {
+			if (it->second.reservation == reservation)
+				it = anonymous_mappings.erase(it);
+			else
+				++it;
+		}
+		return true;
+	} catch (...) {
+		return false;
+	}
+}
+
 void* DarwinMemory::Mmap(std::size_t bytes, DarwinMemoryProtection protection)
 {
 	if (bytes == 0 || bytes > std::numeric_limits<SIZE_T>::max()) {

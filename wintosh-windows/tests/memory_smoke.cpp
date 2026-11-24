@@ -231,6 +231,23 @@ int main()
 		shared_split_bytes[0] = 'A';
 		shared_split_bytes[4096] = 'B';
 		shared_split_bytes[8192] = 'C';
+		void* anonymous_seed = darling_windows_mmap(nullptr, 4096, 3,
+			0x1000 | 0x0002, -1, 0);
+		if (anonymous_seed == reinterpret_cast<void*>(-1)) {
+			darling_windows_close(split_descriptor);
+			throw std::runtime_error("anonymous-to-file MAP_FIXED seed failed");
+		}
+		static_cast<char*>(anonymous_seed)[0] = 'O';
+		void* file_replacement = darling_windows_mmap(anonymous_seed, 4096, 3,
+			0x0001 | 0x0010, split_descriptor, 0);
+		if (file_replacement != anonymous_seed ||
+			static_cast<char*>(file_replacement)[0] != 'A' ||
+			darling_windows_munmap(file_replacement, 4096) != 0) {
+			if (file_replacement == reinterpret_cast<void*>(-1))
+				darling_windows_munmap_anonymous(anonymous_seed, 4096);
+			darling_windows_close(split_descriptor);
+			throw std::runtime_error("anonymous-to-file MAP_FIXED replacement failed");
+		}
 		void* fixed_file_middle = darling_windows_mmap(shared_split_bytes + 4096,
 			4096, 3, 0x0001 | 0x0010, split_descriptor, 0);
 		if (fixed_file_middle != shared_split_bytes + 4096 ||

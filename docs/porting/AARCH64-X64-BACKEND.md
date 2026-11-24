@@ -227,8 +227,11 @@ Auf placeholder-fähigem Windows kann `MAP_FIXED` ein Intervall innerhalb einer
 einzelnen besessenen Datei-View durch eine andere Datei-View oder durch
 zero-initialisierten anonymen Speicher ersetzen. Beim Datei-zu-Datei-Pfad
 bleiben die alten linken/rechten Views erhalten; beim Datei-zu-anonym-Pfad
-wechselt das Zielintervall in den separaten anonymen Ownership-Index. Feste
-Ersetzungen anonymer Views sind weiterhin auf `MAP_FIXED`-Teilbereiche
+wechselt das Zielintervall in den separaten anonymen Ownership-Index.
+Umgekehrt kann eine Datei-View eine vollständige, zusammenhängende anonyme
+Reservation am identischen Basisbereich ersetzen; Teilbereichs-Ersetzungen
+anonymer Reservierungen durch Datei-Views sind noch offen. Feste Ersetzungen
+anonymer Views sind weiterhin auf `MAP_FIXED`-Teilbereiche
 beschränkt, die vollständig von derselben besessenen anonymen Reservierung
 abgedeckt sind; dazu zählt auch eine decommittete Lücke, solange die
 Windows-Reservierung noch durch aktive Nachbarintervalle gehalten wird. Der

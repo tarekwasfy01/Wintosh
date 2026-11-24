@@ -210,7 +210,21 @@ The anonymous allocation is entered into its own host ownership index before
 the guest mapping transaction commits. The host and ARM64 fixtures verify the
 initial zero bytes and retained file neighbors. Anonymous-to-file,
 cross-allocation, image, and multi-view replacements still need separate
-ownership transactions.
+ownership transactions, except that the host and ARM64 fixtures now cover
+anonymous-to-file replacement when the target equals one complete tracked
+anonymous reservation. That case releases the reservation as a unit before
+installing the file view; partial anonymous-to-file replacement remains open.
+Formally, for anonymous reservation `A = [b,b+n)` and fixed file target
+`T = [x,x+s)`, the current reverse transition requires `x=b` and `s=n`:
+
+```text
+T = A
+Owner_before(A) = anonymous
+Owner_after(A) = file(mapping, offset)
+```
+
+The replacement is rejected if `T` only covers part of `A`, crosses another
+reservation, or includes an unmapped hole.
 
 Mit Seitengröße `p` und Seitenzahlen `a = ℓ/p`, `m = k/p` und
 `c = (n-ℓ-k)/p` entspricht die Erhaltung der beiden Restbereiche auf dem

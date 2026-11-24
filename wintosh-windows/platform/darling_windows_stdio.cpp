@@ -5218,6 +5218,26 @@ extern "C" void* darling_windows_mmap(void* address, std::size_t length,
 					view_offset_low, view_bytes, requested_base);
 			}
 		}
+		const bool fixed_file_view_supported =
+			(placeholder_apis.virtual_alloc2 != nullptr &&
+			 placeholder_apis.map_view_of_file3 != nullptr &&
+			 placeholder_apis.unmap_view_of_file2 != nullptr) ||
+			(requested_base_granularity_aligned && unsigned_offset % granularity == 0);
+		if (base == nullptr && (flags & map_fixed) != 0 && fixed_file_view_supported &&
+			darling::windows_host::TryReleaseOwnedAnonymousReservationForReplacement(
+				address, placeholder_view_bytes)) {
+			base = map_fixed_placeholder();
+			if (base != nullptr) {
+				actual_view_bytes = placeholder_view_bytes;
+				guest_offset = 0;
+				mapped_file_offset = unsigned_offset;
+				placeholder_backed = true;
+			} else if (requested_base_granularity_aligned &&
+				unsigned_offset % granularity == 0) {
+				base = MapViewOfFileEx(mapping, desired_access, view_offset_high,
+					view_offset_low, view_bytes, requested_base);
+			}
+		}
 	}
 	if (base == nullptr) {
 		const DWORD error = GetLastError();

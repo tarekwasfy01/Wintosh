@@ -42,8 +42,12 @@ try {
         if (-not $GuestMachO.StartsWith('/')) {
             throw '-GuestMachO must be an absolute guest path such as /usr/bin/sw_vers.'
         }
-        $launcher = $ComputaRoot.TrimEnd('/') + '/tools/run_darling_app.sh'
-        $computaArguments = @('--distribution', $Distribution, '--exec', $launcher, $GuestMachO) + $DarlingArgument
+        if ($DarlingArgument.Count -ne 0) {
+            throw 'Darwin_Computa currently forwards only the executable path; upstream DSERVER_INIT does not yet forward argv.'
+        }
+        $runtime = $ComputaRoot.TrimEnd('/') + '/project/linux/Build/Release/boxedwine'
+        $computaArguments = @('--distribution', $Distribution, '--exec', 'env',
+            "DSERVER_INIT=$GuestMachO", $runtime, '--darwin-run', '/usr/bin/darlingserver')
         Invoke-WslChecked -Arguments $computaArguments
         exit 0
     }

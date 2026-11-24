@@ -30,13 +30,15 @@ The current release contains the native Windows loader/bootstrap path and is
 still an experimental compatibility layer; it does not yet provide complete
 Darwin framework or arbitrary macOS application compatibility.
 
-The native runner does not require WSL. A separate full-Darling route is being
-connected through `wsl.exe` and Darwin_Computa: WSL1 hosts the Linux process,
-Boxedwine emulates its Linux kernel in userspace, and Darling runs inside that
-runtime. This is not a virtual machine and does not replace the native Win32
-loader. Start point and verified limits are in
+The native runner does not require WSL. A separate Darwin_Computa route is
+connected through `wsl.exe`: Boxedwine emulates the Linux kernel in userspace
+and Darling runs inside that runtime. This is not a virtual machine and does
+not replace the native Win32 loader. The Linux build and self-tests pass in
+WSL2; the first Mach-O reaches Darling Mach-RPC but has not completed startup.
+This host's Windows configuration reports WSL1 unsupported, so the requested
+WSL1 deployment remains unverified. Start point and verified limits are in
 [`docs/DARLING-WSL-BACKEND.md`](../docs/DARLING-WSL-BACKEND.md); the current
-host denies WSL access, so the cross-layer runtime is not yet verified here.
+cross-layer application run is still incomplete.
 
 ### CLI examples
 

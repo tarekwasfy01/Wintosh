@@ -62,7 +62,7 @@ their first matching callback. Apple documents that sources, timers, and
 observers are activated by their registered modes; current evidence is
 the CoreFoundation ABI smoke: it checks phase order across entry, timer/source,
 waiting, and exit; it also checks one-shot invalidation and observer removal.
-The Clang-only `wintosh_corefoundation_observer_e2e` additionally compiles and
+The Clang-only `wintosh_corefoundation_runloop_e2e` additionally compiles and
 links a source-derived x86_64 Mach-O and executes its repeating and one-shot
 callbacks from guest memory through the runner. It confirms four repeating
 activities, exact `context.info` forwarding for the repeating observer, a
@@ -72,7 +72,9 @@ guest creates and registers a one-shot `CFRunLoopTimer`, then verifies its
 guest callback runs once with non-null context and the timer invalidates.
 It also checks timer tolerance APIs, unchanged nominal fire date, rejection of
 negative tolerance, and multiple firings from a repeating timer. AppKit
-integration remains unverified.
+integration remains unverified. It also creates and registers a version-0
+`CFRunLoopSource`, signals it twice, and confirms one guest perform callback
+with non-null context.
 
 `CFMachPort` exports the type ID, create/create-with-port, run-loop source,
 port/context/validity queries, invalidation, and invalidation-callback accessors.

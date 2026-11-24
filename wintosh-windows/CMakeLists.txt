@@ -275,14 +275,14 @@ if (WIN32)
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/hello/hello.c"
                 "${CMAKE_CURRENT_BINARY_DIR}/hello.macho")
         set_tests_properties(wintosh_hello_e2e PROPERTIES RUN_SERIAL TRUE)
-        add_test(NAME wintosh_corefoundation_observer_e2e
+        add_test(NAME wintosh_corefoundation_runloop_e2e
             COMMAND powershell.exe -NoProfile -ExecutionPolicy Bypass -File
-                "${CMAKE_CURRENT_SOURCE_DIR}/tests/corefoundation_observer_e2e.ps1"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/corefoundation_runloop_e2e.ps1"
                 -Clang "${CMAKE_CXX_COMPILER}"
                 -Linker "${WINTOSH_LD64_LLD}"
                 -Runner "$<TARGET_FILE:wintosh>"
-                -OutputDirectory "${CMAKE_CURRENT_BINARY_DIR}/corefoundation-observer-e2e")
-        set_tests_properties(wintosh_corefoundation_observer_e2e
+                -OutputDirectory "${CMAKE_CURRENT_BINARY_DIR}/corefoundation-runloop-e2e")
+        set_tests_properties(wintosh_corefoundation_runloop_e2e
             PROPERTIES RUN_SERIAL TRUE TIMEOUT 30)
         add_test(NAME wintosh_guest_atexit_e2e
             COMMAND powershell.exe -NoProfile -ExecutionPolicy Bypass -File

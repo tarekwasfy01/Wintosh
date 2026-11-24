@@ -194,7 +194,7 @@ is set. The full framework/API surface remains partial.
 The focused smoke registers repeating and one-shot `CFRunLoopObserver`
 instances and confirms entry, before-timer, before-source, before-wait,
 after-wait, and exit callbacks in order. A new Clang-only
-`wintosh_corefoundation_observer_e2e` compiles and links an original x86_64
+`wintosh_corefoundation_runloop_e2e` compiles and links an original x86_64
 Mach-O fixture, then executes its repeating and one-shot callbacks from guest
 memory through the loader and CoreFoundation resolver. CTest passed 1/1. The
 fixture verifies four repeating activities and one-shot invalidation. The
@@ -207,6 +207,10 @@ callback fires once with a non-null context before the timer invalidates. It
 also exercises guest calls to the timer tolerance getters/setters, confirms the
 nominal fire date stays unchanged, checks invalid negative tolerance rejection,
 and runs a repeating timer until at least two callbacks arrive.
+The guest then creates and registers a version-0 `CFRunLoopSource`, signals it
+twice before running the loop, and verifies the guest perform callback runs
+once with a non-null context. This confirms source signal coalescing for this
+local implementation slice.
 
 The guest thread-destructor exports also now use explicit Darwin ABI bridges:
 `__cxa_thread_atexit_impl` accepts its DSO handle and registered guest

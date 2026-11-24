@@ -6,6 +6,7 @@ typedef void *CFRunLoopRef;
 typedef void *CFStringRef;
 typedef void *CFRunLoopObserverRef;
 typedef void *CFRunLoopTimerRef;
+typedef void *CFRunLoopSourceRef;
 typedef void (*CFRunLoopObserverCallout)(CFRunLoopObserverRef, CFOptionFlags, void *);
 typedef struct CFRunLoopObserverContext {
 	CFIndex version;
@@ -21,9 +22,22 @@ typedef struct CFRunLoopTimerContext {
 	void (*release)(const void *);
 	const void *(*copyDescription)(const void *);
 } CFRunLoopTimerContext;
+typedef struct CFRunLoopSourceContext {
+	CFIndex version;
+	void *info;
+	const void *(*retain)(const void *);
+	void (*release)(const void *);
+	const void *(*copyDescription)(const void *);
+	unsigned char (*equal)(const void *, const void *);
+	unsigned long (*hash)(const void *);
+	void (*schedule)(void *, CFRunLoopRef, const void *);
+	void (*cancel)(void *, CFRunLoopRef, const void *);
+	void (*perform)(void *);
+} CFRunLoopSourceContext;
 _Static_assert(sizeof(CFRunLoopObserverContext) == 40, "Darwin observer context layout");
 _Static_assert(__builtin_offsetof(CFRunLoopObserverContext, info) == 8,
 	"Darwin observer info offset");
+_Static_assert(sizeof(CFRunLoopSourceContext) == 80, "Darwin source context layout");
 
 extern CFStringRef CFStringCreateWithCString(const void *allocator,
 	const char *bytes, unsigned int encoding);
@@ -52,6 +66,17 @@ extern void CFRunLoopAddTimer(CFRunLoopRef loop,
 	CFRunLoopTimerRef timer, CFStringRef mode);
 extern void CFRunLoopRemoveTimer(CFRunLoopRef loop,
 	CFRunLoopTimerRef timer, CFStringRef mode);
+extern CFRunLoopSourceRef CFRunLoopSourceCreate(const void *allocator,
+	CFIndex order, const CFRunLoopSourceContext *context);
+extern unsigned char CFRunLoopSourceIsValid(CFRunLoopSourceRef source);
+extern void CFRunLoopSourceSignal(CFRunLoopSourceRef source);
+extern void CFRunLoopSourceInvalidate(CFRunLoopSourceRef source);
+extern unsigned char CFRunLoopContainsSource(CFRunLoopRef loop,
+	CFRunLoopSourceRef source, CFStringRef mode);
+extern void CFRunLoopAddSource(CFRunLoopRef loop,
+	CFRunLoopSourceRef source, CFStringRef mode);
+extern void CFRunLoopRemoveSource(CFRunLoopRef loop,
+	CFRunLoopSourceRef source, CFStringRef mode);
 extern int CFRunLoopRunInMode(CFStringRef mode, double seconds,
 	unsigned char returnAfterSource);
 extern void CFRelease(CFTypeRef value);
@@ -76,6 +101,11 @@ struct TimerState {
 	int context_matches;
 };
 static struct TimerState timerState;
+struct SourceState {
+	int calls;
+	int context_matches;
+};
+static struct SourceState sourceState;
 
 static void observer_callback(CFRunLoopObserverRef observer,
 	CFOptionFlags activity, void *info)
@@ -104,6 +134,11 @@ static void timer_callback(CFRunLoopTimerRef timer, void *info)
 	(void)timer;
 	++timerState.calls;
 	timerState.context_matches = info != 0;
+}
+static void source_perform(void *info)
+{
+	++sourceState.calls;
+	sourceState.context_matches = info != 0;
 }
 
 int main(void)
@@ -184,10 +219,27 @@ int main(void)
 	CFRunLoopRemoveTimer(loop, repeatingTimer, mode);
 	CFRunLoopTimerInvalidate(repeatingTimer);
 	CFRelease(repeatingTimer);
+	sourceState = (struct SourceState){0, 0};
+	CFRunLoopSourceContext sourceContext = {
+		0, &sourceState, 0, 0, 0, 0, 0, 0, 0, source_perform};
+	CFRunLoopSourceRef source = CFRunLoopSourceCreate(0, 0, &sourceContext);
+	if (source == 0) return 41;
+	CFRunLoopAddSource(loop, source, mode);
+	if (!CFRunLoopContainsSource(loop, source, mode)) return 42;
+	CFRunLoopSourceSignal(source);
+	CFRunLoopSourceSignal(source);
+	(void)CFRunLoopRunInMode(mode, 0.03, 0);
+	if (sourceState.calls != 1) return 45;
+	if (!sourceState.context_matches) return 46;
+	CFRunLoopRemoveSource(loop, source, mode);
+	CFRunLoopSourceInvalidate(source);
+	if (CFRunLoopSourceIsValid(source)) return 44;
+	CFRelease(source);
 	CFRelease(mode);
 	if (!passed)
 		return 14;
 	puts("COREFOUNDATION_GUEST_OBSERVER=PASS");
 	puts("COREFOUNDATION_GUEST_TIMER=PASS");
+	puts("COREFOUNDATION_GUEST_SOURCE=PASS");
 	return 0;
 }

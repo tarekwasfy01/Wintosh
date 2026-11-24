@@ -58,6 +58,9 @@ struct Object {
 	bool mutable_dictionary = false;
 	bool mutable_set = false;
 	bool mutable_array = false;
+	bool mutable_data = false;
+	bool data_guest_mapped = false;
+	bool data_guest_writable = false;
 	bool has_array_callback_table = false;
 	DarlingCFArrayCallbacks array_callbacks{};
 	const void* array_allocator = nullptr;
@@ -185,9 +188,34 @@ std::mutex cfmachport_registry_mutex;
 std::unordered_map<darling_mach_port_name_t, Object*> cfmachport_registry;
 std::uint8_t allocator_use_context_sentinel{};
 Object* As(const void* value) { return const_cast<Object*>(static_cast<const Object*>(value)); }
+void UnmapGuestData(Object* object) noexcept;
+bool MapGuestData(Object* object, bool guest_writes) noexcept;
 const std::string& URLStringForObject(const Object* object)
 {
 	return object->url_base == nullptr ? object->string : object->url_original_string;
+}
+void UnmapGuestData(Object* object) noexcept
+{
+	if (object == nullptr || !object->data_guest_mapped) return;
+	if (!object->data.empty())
+		(void)darling_objc_change_guest_memory_region(object->data.data(),
+			object->data.size(), object->data_guest_writable, false);
+	object->data_guest_mapped = false;
+	object->data_guest_writable = false;
+}
+bool MapGuestData(Object* object, bool guest_writes) noexcept
+{
+	if (object == nullptr || object->kind != Kind::Data) return false;
+	if (object->data.empty()) return true;
+	if (object->data_guest_mapped && object->data_guest_writable == guest_writes)
+		return true;
+	UnmapGuestData(object);
+	if (!darling_objc_has_guest_memory_mapper()) return true;
+	if (!darling_objc_change_guest_memory_region(object->data.data(),
+		object->data.size(), guest_writes, true)) return false;
+	object->data_guest_mapped = true;
+	object->data_guest_writable = guest_writes;
+	return true;
 }
 Object* AsCFAllocator(const void* value);
 Object* CreateObjectWithAllocator(const void* allocator, Kind kind);
@@ -416,6 +444,7 @@ Object* SystemCFAllocator()
 }
 Object::~Object()
 {
+	UnmapGuestData(this);
 	if (kind == Kind::RunLoopSource && run_loop_source_cfmachport != nullptr) {
 		std::lock_guard port_lock(run_loop_source_cfmachport->mach_port_mutex);
 		std::erase(run_loop_source_cfmachport->mach_port_sources, this);
@@ -3884,6 +3913,7 @@ extern "C" DARLING_CF_GUEST_ABI darling_windows_CFMutableDataRef CFDataCreateMut
 	if (object == nullptr) return nullptr;
 	try { object->data.reserve(static_cast<std::size_t>(capacity)); }
 	catch (...) { ReleaseOwned(object); return nullptr; }
+	object->mutable_data = true;
 	return object;
 }
 
@@ -3902,12 +3932,16 @@ extern "C" DARLING_CF_GUEST_ABI darling_windows_CFDataRef CFDataCreateCopy(
 extern "C" DARLING_CF_GUEST_ABI const unsigned char* CFDataGetBytePtr(
 	darling_windows_CFDataRef data)
 {
+	if (!MapGuestData(As(data), false)) return nullptr;
 	return darling_windows_CFDataGetBytePtr(data);
 }
 
 extern "C" DARLING_CF_GUEST_ABI unsigned char* CFDataGetMutableBytePtr(
 	darling_windows_CFDataRef data)
 {
+	const auto* object = static_cast<const Object*>(data);
+	if (object == nullptr || object->kind != Kind::Data || !object->mutable_data ||
+		!MapGuestData(const_cast<Object*>(object), true)) return nullptr;
 	return darling_windows_CFDataGetMutableBytePtr(data);
 }
 
@@ -3926,20 +3960,42 @@ extern "C" DARLING_CF_GUEST_ABI void CFDataGetBytes(darling_windows_CFDataRef da
 extern "C" DARLING_CF_GUEST_ABI void CFDataAppendBytes(darling_windows_CFDataRef data,
 	const unsigned char* bytes, darling_windows_CFIndex length)
 {
-	(void)darling_windows_CFDataAppendBytes(data, bytes, length);
+	auto* object = As(data);
+	if (object == nullptr || !object->mutable_data) return;
+	const bool remap = object->data_guest_mapped;
+	const bool writable = object->data_guest_writable;
+	UnmapGuestData(object);
+	try { (void)darling_windows_CFDataAppendBytes(data, bytes, length); }
+	catch (...) { /* Allocation failure must not unwind through the guest ABI. */ }
+	if (remap) (void)MapGuestData(object, writable);
 }
 
 extern "C" DARLING_CF_GUEST_ABI void CFDataReplaceBytes(darling_windows_CFDataRef data,
 	darling_windows_CFRange range, const unsigned char* bytes,
 	darling_windows_CFIndex length)
 {
-	(void)darling_windows_CFDataReplaceBytes(data, range.location, range.length, bytes, length);
+	auto* object = As(data);
+	if (object == nullptr || !object->mutable_data) return;
+	const bool remap = object->data_guest_mapped;
+	const bool writable = object->data_guest_writable;
+	UnmapGuestData(object);
+	try { (void)darling_windows_CFDataReplaceBytes(data, range.location, range.length,
+		bytes, length); }
+	catch (...) { /* Allocation failure must not unwind through the guest ABI. */ }
+	if (remap) (void)MapGuestData(object, writable);
 }
 
 extern "C" DARLING_CF_GUEST_ABI void CFDataSetLength(darling_windows_CFDataRef data,
 	darling_windows_CFIndex length)
 {
-	(void)darling_windows_CFDataSetLength(data, length);
+	auto* object = As(data);
+	if (object == nullptr || !object->mutable_data) return;
+	const bool remap = object->data_guest_mapped;
+	const bool writable = object->data_guest_writable;
+	UnmapGuestData(object);
+	try { (void)darling_windows_CFDataSetLength(data, length); }
+	catch (...) { /* Allocation failure must not unwind through the guest ABI. */ }
+	if (remap) (void)MapGuestData(object, writable);
 }
 
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFTypeID CFDataGetTypeID()

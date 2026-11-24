@@ -945,6 +945,11 @@ extern "C" bool darling_objc_change_guest_memory_region(void* address,
 		active_guest_memory_mapper_context);
 }
 
+extern "C" bool darling_objc_has_guest_memory_mapper()
+{
+	return active_guest_memory_mapper != nullptr;
+}
+
 extern "C" bool darling_objc_has_guest_function_invoker()
 {
 	return active_guest_function_invoker != nullptr;

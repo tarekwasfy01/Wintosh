@@ -863,8 +863,12 @@ and range `[i,i+ℓ)`, replacement with `R` is
 zero-extends to length `m`. Every read/write span is checked before crossing
 the guest/host boundary. The fixture validates the exact bytes after these
 transitions and the independently copied result. Raw byte-pointer getters are
-not yet bridged because their returned storage must remain mapped across future
-guest calls and mutations.
+mapped to the ARM64 guest address space for the data object's live backing
+vector. Before append/replace/resize, the old mapping is removed; afterward a
+previously exposed pointer range is re-registered with its prior read/write
+permission. Object release removes an active mapping. The fixture dereferences
+both const and mutable byte pointers, writes through the mutable pointer, and
+then observes the changed byte through `CFDataGetBytes`.
 For a CFMachPort wrapper `p`, source delivery is `Deliver(p,m) = Valid(p) ∧
 Receive(GetPort(p),m)`, with the callback `Callout(p,m,size,info)` invoked once
 for each received message. `Invalidate(p)` performs the state transition

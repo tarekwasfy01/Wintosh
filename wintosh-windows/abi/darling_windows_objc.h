@@ -110,6 +110,7 @@ darling_objc_guest_memory_mapper darling_objc_set_guest_memory_mapper(
 	void** previous_context);
 bool darling_objc_change_guest_memory_region(void* address, std::size_t bytes,
 	bool guest_writes, bool map);
+bool darling_objc_has_guest_memory_mapper();
 bool darling_objc_has_guest_function_invoker();
 void DARLING_OBJC_GUEST_ABI darling_objc_set_guest_block_allocator(
 	darling_objc_guest_block_allocate allocate,

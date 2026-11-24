@@ -291,6 +291,20 @@ bool DispatchArm64CoreFoundationRunLoopImport(const std::string& name,
 			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0]))));
 		return true;
 	}
+	if (name == "_CFDataGetBytePtr" || name == "_CFDataGetMutableBytePtr") {
+		if (name == "_CFDataGetBytePtr") {
+			using Call = const unsigned char* (DARLING_CF_GUEST_ABI *)(
+				darling_windows_CFDataRef);
+			resumed_state.x[0] = reinterpret_cast<std::uintptr_t>(reinterpret_cast<Call>(target)(
+				reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0]))));
+		} else {
+			using Call = unsigned char* (DARLING_CF_GUEST_ABI *)(
+				darling_windows_CFMutableDataRef);
+			resumed_state.x[0] = reinterpret_cast<std::uintptr_t>(reinterpret_cast<Call>(target)(
+				reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0]))));
+		}
+		return true;
+	}
 	if (name == "_CFDataGetBytes") {
 		constexpr std::uint64_t max_data_bytes = 1ull << 30;
 		if (x[2] > max_data_bytes || (x[2] != 0 && (x[3] == 0 ||

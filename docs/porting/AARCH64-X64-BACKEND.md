@@ -190,7 +190,10 @@ Der Loader dispatcht bei `svc #0x80` die Darwin-UNIX-Aufrufe `exit`, `read`,
 `readlink`, `umask`, `getpid`, `getppid`, `getuid`, `geteuid`, `getgid`,
 `getegid`, `getpgrp`, `dup`, `dup2`, `pipe`, `access`, `rename`, `mkdir`,
 `rmdir`, `fsync`, `fdatasync`, `stat`, `lstat`, `fstat`, `lseek`, `truncate`
-und `ftruncate` an vorhandene Wintosh-Adapter. BSD-Socketaufrufe `socket`,
+und `ftruncate` an vorhandene Wintosh-Adapter. `fcntl` deckt Descriptor-
+Duplikation und ausgewählte Flags ab; `getrlimit`/`setrlimit` kopieren geprüfte
+Gaststrukturen. Ein begrenztes `ioctl`-Subset leitet `TIOCGWINSZ`, `TIOCSWINSZ`
+und `FIONREAD` weiter. BSD-Socketaufrufe `socket`,
 `socketpair`, `connect`, `bind`, `listen`, `accept`, `recvfrom`, `sendto`,
 `getpeername`, `getsockname` und `shutdown` werden an WinSock-Adapter
 weitergereicht. Adressdaten laufen über begrenzte lokale Hostpuffer. Die
@@ -287,7 +290,8 @@ Lizenzabgleich bleiben Gates vor einer standardmäßigen Integration.
 | Dynarmic-Abhängigkeit reproduzierbar gebaut | Offline-Buildscript aus sauberem Quellcheckout erfolgreich; vcpkg-Manifestmodus wegen DNS nicht validiert |
 | A64-Backend in Wintosh | optionaler Adapter lokal gebaut; mehrere ARM64-Runtime-Fixtures laufen auf x64 Windows |
 | A64-Trap-Zustand | x0–x30, v0–v31, SP, PC, PSTATE, FPCR und FPSR rückführbar und fortsetzbar |
-| Darwin-UNIX-SVC | `exit`, `wait4` (mit lokaler Status-/Rusage-Kopie), `read`, `write`, `readv`, `writev`, `pread`, `pwrite`, `open`, `close`, `link`, `unlink`, `chdir`, `chmod`, `fchmod`, `symlink`, `readlink`, `umask`, Prozess-/Gruppen-ID-Aufrufe, `dup`, `dup2`, `pipe`, `socket`, `socketpair`, `connect`, `bind`, `listen`, `accept`, `recvfrom`, `sendto`, `getpeername`, `getsockname`, `shutdown`, `gettimeofday`, `getrusage`, `getpriority`, `setpriority`, `access`, `rename`, `mkdir`, `rmdir`, `fsync`, `fdatasync`, `stat`, `lstat`, `fstat`, `lseek`, `truncate`, `ftruncate`, `mmap`, `munmap` (nur ganzes Mapping), `mprotect`, `msync`, `madvise`, `sysctl` (implementierte zweistufige `KERN`-/`HW`-MIBs), `kill`, `sigaction`, `sigprocmask`; andere UNIX-Nummern liefern `ENOSYS`; kein Mach-Trap-Dispatcher |
+| Darwin-UNIX-SVC | `exit`, `wait4` (mit lokaler Status-/Rusage-Kopie), `read`, `write`, `readv`, `writev`, `pread`, `pwrite`, `open`, `close`, `fcntl` (Descriptor-Duplikation und ausgewählte Flags), `ioctl` (`TIOCGWINSZ`, `TIOCSWINSZ`, `FIONREAD`), `getrlimit`, `setrlimit`, `link`, `unlink`, `chdir`, `chmod`, `fchmod`, `symlink`, `readlink`, `umask`, Prozess-/Gruppen-ID-Aufrufe, `dup`, `dup2`, `pipe`, `socket`, `socketpair`, `connect`, `bind`, `listen`, `accept`, `recvfrom`, `sendto`, `getpeername`, `getsockname`, `shutdown`, `gettimeofday`, `getrusage`, `getpriority`, `setpriority`, `access`, `rename`, `mkdir`, `rmdir`, `fsync`, `fdatasync`, `stat`, `lstat`, `fstat`, `lseek`, `truncate`, `ftruncate`, `mmap`, `munmap` (nur ganzes Mapping), `mprotect`, `msync`, `madvise`, `sysctl` (implementierte zweistufige `KERN`-/`HW`-MIBs), `kill`, `sigaction`, `sigprocmask`; andere UNIX-Nummern liefern `ENOSYS`; kein Mach-Trap-Dispatcher |
+| Neue SVC-Adapter in diesem Stand | `fcntl`, `getrlimit`, `setrlimit` und begrenztes `ioctl` kompilieren; eigene ARM64-Gastfixture fehlt |
 | x64-Host-Gast-Speicherprüfung | Segmentrechte und Bereichsgrenzen umgesetzt; Image-, Startup-, Heap-, mmap- und Host-Datenbereiche werden geprüft bzw. registriert und in Fixtures ausgeführt |
 | A64-Import-Trampoline und ABI-Dispatcher | ausgewählte C-/Darwin-/Framework-Imports, Gastcallbacks, Heap-/Block- und Datenimporte, Stackargumente, HFA- und indirekte Struct-Rückgaben bestehen; übrige Aggregate und Signaturen bleiben offen |
 | Schmale ARM64 Mach-O Runtime-Fixtures auf x64 Windows | mehrere Source-Fixtures für Syscalls, dyld, Objective-C, CoreFoundation und Speicher; keine echte macOS-App oder vollständige Bundle-Ausführung belegt |

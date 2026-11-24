@@ -20,7 +20,12 @@ adapter layer, with the corresponding source and license provenance retained.
 6. Keep Darwin-only or Apple-framework behavior explicitly `missing` instead
    of silently mapping it to an unrelated Windows behavior.
 
-The tracked source is [PRIMITIVE-MATRIX.csv](../PRIMITIVE-MATRIX.csv). Its 30 rows now quote embedded commas; run [`validate_primitive_matrix.ps1`](validate_primitive_matrix.ps1) before using it in automated reports.
+The tracked source is [PRIMITIVE-MATRIX.csv](../PRIMITIVE-MATRIX.csv). Its 36
+data rows use CSV quoting for embedded commas. The ARM64 UNIX-SVC row records
+the newly connected `fcntl`, resource-limit, and bounded `ioctl` adapters as
+partial until guest fixtures establish their register, error, and copy
+semantics. The separate transformation-capability matrix and its Boolean
+composition tool are documented in [`TRANSFORM-CAPABILITIES.csv`](TRANSFORM-CAPABILITIES.csv).
 The consolidated cross-source extraction is [SOURCE-EXTRACTION-MATRIX.md](SOURCE-EXTRACTION-MATRIX.md).
 
 The Windows host adapter exposes a tested Darwin `rename` primitive through

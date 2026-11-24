@@ -6604,6 +6604,30 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 							old_value.data(), old_length);
 					break;
 				}
+				case 194: // SYS_getrlimit
+				case 195: { // SYS_setrlimit
+					if (arguments[0] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max())) {
+						error_number = EINVAL;
+						break;
+					}
+					if (!backend.ContainsGuestRange(arguments[1],
+						sizeof(darling_rlimit), syscall_number == 194)) {
+						error_number = EFAULT;
+						break;
+					}
+					darling_rlimit limit{};
+					auto* guest_limit = reinterpret_cast<darling_rlimit*>(
+						static_cast<std::uintptr_t>(arguments[1]));
+					if (syscall_number == 195)
+						std::memcpy(&limit, guest_limit, sizeof(limit));
+					syscall_result = syscall_number == 194 ?
+						darling_windows_getrlimit(static_cast<int>(arguments[0]), &limit) :
+						darling_windows_setrlimit(static_cast<int>(arguments[0]), &limit);
+					if (syscall_result == 0 && syscall_number == 194)
+						std::memcpy(guest_limit, &limit, sizeof(limit));
+					break;
+				}
 				case 5: // SYS_open
 					if (!backend.ContainsGuestCString(arguments[0], 4096)) {
 						error_number = EFAULT;
@@ -6660,6 +6684,86 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 					syscall_result = darling_windows_close(
 						static_cast<int>(arguments[0]));
 					break;
+				case 92: { // SYS_fcntl
+					if (arguments[0] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max()) ||
+						arguments[1] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max())) {
+						error_number = EINVAL;
+						break;
+					}
+					const auto descriptor = static_cast<int>(arguments[0]);
+					const auto command = static_cast<int>(arguments[1]);
+					switch (command) {
+					case 0:   // F_DUPFD
+					case 2:   // F_SETFD
+					case 4:   // F_SETFL
+					case 67: // F_DUPFD_CLOEXEC
+						if (arguments[2] > static_cast<std::uint64_t>(
+								std::numeric_limits<int>::max())) {
+							error_number = EINVAL;
+							break;
+						}
+						syscall_result = darling_windows_fcntl(descriptor, command,
+							static_cast<int>(arguments[2]));
+						break;
+					case 1: // F_GETFD
+					case 3: // F_GETFL
+						syscall_result = darling_windows_fcntl(descriptor, command);
+						break;
+					default:
+						error_number = EINVAL;
+						break;
+					}
+					break;
+				}
+				case 54: { // SYS_ioctl (supported terminal requests only)
+					constexpr std::uint64_t tiocgwinsz = 0x40087468ull;
+					constexpr std::uint64_t tiocswinsz = 0x80087467ull;
+					constexpr std::uint64_t fionread = 0x4004667full;
+					if (arguments[0] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max()) ||
+						arguments[1] > (std::numeric_limits<unsigned long>::max)()) {
+						error_number = EINVAL;
+						break;
+					}
+					const auto request = arguments[1];
+					if (request == tiocgwinsz || request == tiocswinsz) {
+						if (!backend.ContainsGuestRange(arguments[2],
+							sizeof(darling_winsize), request == tiocgwinsz)) {
+							error_number = EFAULT;
+							break;
+						}
+						darling_winsize size{};
+						if (request == tiocswinsz)
+							std::memcpy(&size, reinterpret_cast<const void*>(
+								static_cast<std::uintptr_t>(arguments[2])), sizeof(size));
+						syscall_result = darling_windows_ioctl(
+							static_cast<int>(arguments[0]),
+							static_cast<unsigned long>(request), &size);
+						if (syscall_result == 0 && request == tiocgwinsz)
+							std::memcpy(reinterpret_cast<void*>(static_cast<std::uintptr_t>(
+								arguments[2])), &size, sizeof(size));
+					} else if (request == fionread) {
+						if (!backend.ContainsGuestRange(arguments[2],
+							sizeof(std::uint32_t), true)) {
+							error_number = EFAULT;
+							break;
+						}
+						unsigned long available = 0;
+						syscall_result = darling_windows_ioctl(
+							static_cast<int>(arguments[0]),
+							static_cast<unsigned long>(request), &available);
+						if (syscall_result == 0) {
+							const auto guest_available = static_cast<std::uint32_t>(available);
+							std::memcpy(reinterpret_cast<void*>(static_cast<std::uintptr_t>(
+								arguments[2])), &guest_available, sizeof(guest_available));
+						}
+					} else {
+						error_number = ENOTTY;
+					}
+					break;
+				}
 				case 10: // SYS_unlink
 					if (!backend.ContainsGuestCString(arguments[0], 4096)) {
 						error_number = EFAULT;

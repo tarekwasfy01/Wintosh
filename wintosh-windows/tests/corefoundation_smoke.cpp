@@ -10,6 +10,8 @@
 #include <thread>
 #include <vector>
 
+extern "C" std::uintptr_t darling_windows_corefoundation_symbol(const char* name);
+
 namespace {
 int notification_count = 0;
 int wildcard_notification_count = 0;
@@ -726,6 +728,9 @@ int main()
 		(CFRunLoopTimerSetTolerance(cf_timer,
 			std::numeric_limits<double>::quiet_NaN()),
 			CFRunLoopTimerGetTolerance(cf_timer) == 0.02);
+	const bool cf_timer_symbols_ok =
+		darling_windows_corefoundation_symbol("CFRunLoopTimerGetTolerance") != 0 &&
+		darling_windows_corefoundation_symbol("CFRunLoopTimerSetTolerance") != 0;
 	bool cf_timer_fired = false;
 	if (cf_timer != nullptr && timer_mode != nullptr) {
 		CFRunLoopAddTimer(CFRunLoopGetCurrent(), cf_timer, timer_mode);
@@ -736,7 +741,7 @@ int main()
 		darling_windows_CFRelease(cf_timer);
 	}
 	if (timer_mode != nullptr) darling_windows_CFRelease(timer_mode);
-	const bool cf_timer_ok = cf_timer_tolerance_ok && cf_timer_fired;
+	const bool cf_timer_ok = cf_timer_tolerance_ok && cf_timer_symbols_ok && cf_timer_fired;
 	const auto center = darling_windows_CFNotificationCenterGetLocal();
 	const int notification_object = 1;
 	const bool notification_ok = darling_windows_CFNotificationCenterAddObserver(

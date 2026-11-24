@@ -995,6 +995,11 @@ validates a bounded UTF-16 input span. The guest fixture transforms
 `"Darwin Runtime"` into `"Darwin Darwin!"` by range replacement and a UTF-16
 append, then appends to a mutable copy and confirms its result is independent.
 This does not yet implement the full CoreFoundation mutable-string API surface.
+`CFStringGetCStringPtr` returns null for ARM64 guests: the host implementation's
+`std::string::c_str()` storage has no guest-address mapping or mutation-bound
+lifetime. Null is an allowed CoreFoundation result, so callers must use the
+checked `CFStringGetCString` copy-out operation instead of dereferencing a host
+pointer from guest code.
 
 ## CoreFoundation preferences bridge
 

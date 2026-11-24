@@ -482,6 +482,13 @@ bool DispatchArm64CoreFoundationRunLoopImport(const std::string& name,
 			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0]))));
 		return true;
 	}
+	if (name == "_CFStringGetCStringPtr") {
+		// A host std::string address is not automatically mapped into guest memory.
+		// CoreFoundation permits a null direct pointer, so require the caller to
+		// use CFStringGetCString's checked copy-out path instead.
+		resumed_state.x[0] = 0;
+		return true;
+	}
 	if (name == "_CFStringCreateCopy") {
 		using Call = darling_windows_CFStringRef (DARLING_CF_GUEST_ABI *)(
 			const void*, darling_windows_CFStringRef);

@@ -62,6 +62,7 @@ extern void CFStringAppendCString(CFStringRef, const char *, unsigned int);
 extern void CFStringAppendCharacters(CFStringRef, const unsigned short *, CFIndex);
 extern void CFStringReplace(CFStringRef, CFRange, CFStringRef);
 extern CFIndex CFStringGetLength(CFStringRef);
+extern const char *CFStringGetCStringPtr(CFStringRef, unsigned int);
 extern unsigned char CFStringGetCString(CFStringRef, char *, CFIndex, unsigned int);
 extern unsigned short CFStringGetCharacterAtIndex(CFStringRef, CFIndex);
 extern unsigned char CFStringGetCharacters(CFStringRef, CFRange, unsigned short *);
@@ -491,6 +492,7 @@ int main(void)
 	char stringBuffer[32] = { 0 };
 	unsigned short characters[6] = { 0 };
 	if (sourceString == 0 || CFStringGetLength(sourceString) != 6 ||
+		CFStringGetCStringPtr(sourceString, utf8Encoding) != 0 ||
 		CFStringGetCharacterAtIndex(sourceString, 0) != 'D' ||
 		!CFStringGetCString(sourceString, stringBuffer, sizeof(stringBuffer), utf8Encoding) ||
 		stringBuffer[0] != 'D' || stringBuffer[5] != 'n' ||

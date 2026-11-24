@@ -78,6 +78,18 @@ bool DispatchArm64CoreFoundationRunLoopImport(const std::string& name,
 			static_cast<std::uintptr_t>(x[2])));
 		return true;
 	}
+	if (name == "_CFRunLoopContainsSource" ||
+		name == "_CFRunLoopContainsTimer" ||
+		name == "_CFRunLoopContainsObserver") {
+		using Call = std::uint8_t (DARLING_CF_GUEST_ABI *)(
+		darling_windows_CFRunLoopRef, darling_windows_CFTypeRef,
+		darling_windows_CFStringRef);
+		return_value = reinterpret_cast<Call>(target)(
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0])),
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[1])),
+			reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[2])));
+		return true;
+	}
 	if (name == "_CFRunLoopTimerCreate") {
 		if (x[4] != 0 && !backend.ContainsGuestRange(x[4],
 			sizeof(DarlingCFRunLoopTimerContext), false))

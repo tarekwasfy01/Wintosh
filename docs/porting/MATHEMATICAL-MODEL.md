@@ -1054,3 +1054,9 @@ guest callback dispatch. They do not establish full Darwin run-loop
 compatibility: timer rescheduling and tolerance, nested or concurrent run
 loops, every callback-context ownership case, and AppKit event delivery remain
 separate work.
+
+Membership queries use the same three-register map for source, timer, and
+observer forms: `x0=loop`, `x1=object`, `x2=mode`; the one-byte Darwin result is
+returned through `x0`. Fixtures assert membership transitions
+`0 → 1 → 0` around add/remove for all three registration kinds. This verifies
+the ABI adapter and the mode-specific membership predicate together.

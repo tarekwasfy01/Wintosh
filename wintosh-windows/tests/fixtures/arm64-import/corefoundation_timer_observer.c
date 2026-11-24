@@ -21,11 +21,15 @@ extern CFRunLoopTimerRef CFRunLoopTimerCreate(const void *, double, double,
 	CFOptionFlags, CFIndex, void (*)(CFRunLoopTimerRef, void *), const Context *);
 extern void CFRunLoopAddTimer(CFRunLoopRef, CFRunLoopTimerRef, CFStringRef);
 extern void CFRunLoopRemoveTimer(CFRunLoopRef, CFRunLoopTimerRef, CFStringRef);
+extern unsigned char CFRunLoopContainsTimer(CFRunLoopRef, CFRunLoopTimerRef,
+	CFStringRef);
 extern CFRunLoopObserverRef CFRunLoopObserverCreate(const void *, CFOptionFlags,
 	unsigned char, CFIndex, void (*)(CFRunLoopObserverRef, CFOptionFlags, void *),
 	const Context *);
 extern void CFRunLoopAddObserver(CFRunLoopRef, CFRunLoopObserverRef, CFStringRef);
 extern void CFRunLoopRemoveObserver(CFRunLoopRef, CFRunLoopObserverRef, CFStringRef);
+extern unsigned char CFRunLoopContainsObserver(CFRunLoopRef,
+	CFRunLoopObserverRef, CFStringRef);
 extern int CFRunLoopRunInMode(CFStringRef, double, unsigned char);
 extern void CFRunLoopPerformBlock(CFRunLoopRef, CFTypeRef, void *);
 extern void CFRelease(CFTypeRef);
@@ -90,11 +94,15 @@ int main(void)
 	if (observer == 0) return 23;
 	CFRunLoopAddTimer(loop, timer, mode);
 	CFRunLoopAddObserver(loop, observer, mode);
+	if (!CFRunLoopContainsTimer(loop, timer, mode) ||
+		!CFRunLoopContainsObserver(loop, observer, mode)) return 24;
 	CFRunLoopPerformBlock(loop, mode, &runLoopBlock);
 	const int result = CFRunLoopRunInMode(mode, 0.01, 0);
 	if (result < 1 || timerCalls != 1 || observerCalls != 1 || blockCalls != 1) return 11;
 	CFRunLoopRemoveTimer(loop, timer, mode);
 	CFRunLoopRemoveObserver(loop, observer, mode);
+	if (CFRunLoopContainsTimer(loop, timer, mode) ||
+		CFRunLoopContainsObserver(loop, observer, mode)) return 25;
 	CFRelease(timer);
 	CFRelease(observer);
 	CFRelease(mode);

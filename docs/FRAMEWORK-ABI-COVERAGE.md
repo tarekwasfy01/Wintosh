@@ -65,8 +65,10 @@ waiting, and exit; it also checks one-shot invalidation and observer removal.
 The Clang-only `wintosh_corefoundation_observer_e2e` additionally compiles and
 links a source-derived x86_64 Mach-O and executes its repeating and one-shot
 callbacks from guest memory through the runner. It confirms four repeating
-activities and one-shot invalidation. Guest callback context retain/release,
-all observer flags, and AppKit integration remain unverified.
+activities, exact `context.info` forwarding for the repeating observer, a
+non-null one-shot context, and one-shot invalidation. Guest context
+retain/release callbacks, all observer flags, and AppKit integration remain
+unverified.
 
 `CFMachPort` exports the type ID, create/create-with-port, run-loop source,
 port/context/validity queries, invalidation, and invalidation-callback accessors.

@@ -6,6 +6,16 @@ typedef void *CFRunLoopRef;
 typedef void *CFStringRef;
 typedef void *CFRunLoopObserverRef;
 typedef void (*CFRunLoopObserverCallout)(CFRunLoopObserverRef, CFOptionFlags, void *);
+typedef struct CFRunLoopObserverContext {
+	CFIndex version;
+	void *info;
+	const void *(*retain)(const void *);
+	void (*release)(const void *);
+	const void *(*copyDescription)(const void *);
+} CFRunLoopObserverContext;
+_Static_assert(sizeof(CFRunLoopObserverContext) == 40, "Darwin observer context layout");
+_Static_assert(__builtin_offsetof(CFRunLoopObserverContext, info) == 8,
+	"Darwin observer info offset");
 
 extern CFStringRef CFStringCreateWithCString(const void *allocator,
 	const char *bytes, unsigned int encoding);
@@ -34,39 +44,48 @@ enum {
 struct CallbackState {
 	CFOptionFlags activities;
 	int calls;
+	int context_matches;
 };
 static struct CallbackState repeating;
 static struct CallbackState oneShot;
 
-static void repeating_callback(CFRunLoopObserverRef observer,
+static void observer_callback(CFRunLoopObserverRef observer,
 	CFOptionFlags activity, void *info)
 {
 	(void)observer;
-	(void)info;
-	repeating.activities |= activity;
-	++repeating.calls;
+	if (info == &repeating) {
+		repeating.activities |= activity;
+		++repeating.calls;
+		repeating.context_matches = 1;
+	} else if (info == &oneShot) {
+		oneShot.activities |= activity;
+		++oneShot.calls;
+		oneShot.context_matches = 1;
+	}
 }
 static void one_shot_callback(CFRunLoopObserverRef observer,
 	CFOptionFlags activity, void *info)
 {
 	(void)observer;
-	(void)info;
 	oneShot.activities |= activity;
 	++oneShot.calls;
+	oneShot.context_matches = info != 0;
 }
 
 int main(void)
 {
 	CFStringRef mode = CFStringCreateWithCString(0,
 		"kCFRunLoopDefaultMode", 0x08000100u);
-	repeating = (struct CallbackState){0, 0};
-	oneShot = (struct CallbackState){0, 0};
+	repeating = (struct CallbackState){0, 0, 0};
+	oneShot = (struct CallbackState){0, 0, 0};
+	CFRunLoopObserverContext repeatingContext = {0, &repeating, 0, 0, 0};
+	CFRunLoopObserverContext oneShotContext = {0, &oneShot, 0, 0, 0};
 	const CFOptionFlags phases = CFRunLoopEntry | CFRunLoopBeforeTimers |
 		CFRunLoopBeforeSources | CFRunLoopExit;
 	CFRunLoopObserverRef repeatingObserver = CFRunLoopObserverCreate(0,
-		phases, 1, 10, repeating_callback, 0);
+		phases, 1, 10, observer_callback, &repeatingContext);
 	CFRunLoopObserverRef oneShotObserver = CFRunLoopObserverCreate(0,
-		CFRunLoopEntry, 0, 0, one_shot_callback, 0);
+		CFRunLoopEntry, 0, 0, one_shot_callback, &oneShotContext);
 	if (mode == 0)
 		return 11;
 	if (repeatingObserver == 0)
@@ -78,9 +97,18 @@ int main(void)
 	CFRunLoopAddObserver(loop, oneShotObserver, mode);
 	(void)CFRunLoopRunInMode(mode, 0.01, 0);
 	const int passed = repeating.activities == phases && repeating.calls == 4 &&
-		oneShot.activities == CFRunLoopEntry && oneShot.calls == 1 &&
+		repeating.context_matches && oneShot.activities == CFRunLoopEntry &&
+		oneShot.calls == 1 && oneShot.context_matches == 1 &&
 		CFRunLoopObserverIsValid(repeatingObserver) &&
 		!CFRunLoopObserverIsValid(oneShotObserver);
+	if (repeating.activities != phases) return 21;
+	if (repeating.calls != 4) return 22;
+	if (!repeating.context_matches) return 23;
+	if (oneShot.activities != CFRunLoopEntry) return 24;
+	if (oneShot.calls != 1) return 25;
+	if (!oneShot.context_matches) return 26;
+	if (!CFRunLoopObserverIsValid(repeatingObserver)) return 27;
+	if (CFRunLoopObserverIsValid(oneShotObserver)) return 28;
 	CFRunLoopRemoveObserver(loop, repeatingObserver, mode);
 	CFRunLoopRemoveObserver(loop, oneShotObserver, mode);
 	CFRunLoopObserverInvalidate(repeatingObserver);

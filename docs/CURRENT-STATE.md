@@ -197,9 +197,11 @@ after-wait, and exit callbacks in order. A new Clang-only
 `wintosh_corefoundation_observer_e2e` compiles and links an original x86_64
 Mach-O fixture, then executes its repeating and one-shot callbacks from guest
 memory through the loader and CoreFoundation resolver. CTest passed 1/1. The
-fixture verifies four repeating activities and one-shot invalidation. Guest
-context retain/release, all observer flags, real AppKit event integration, and
-the broader CoreFoundation run-loop contract remain open.
+fixture verifies four repeating activities and one-shot invalidation. The
+repeating guest callback compares its received `context.info` against its guest
+data address; the one-shot callback verifies non-null context. Context
+retain/release callbacks, all observer flags, real AppKit event integration,
+and the broader CoreFoundation run-loop contract remain open.
 
 The guest thread-destructor exports also now use explicit Darwin ABI bridges:
 `__cxa_thread_atexit_impl` accepts its DSO handle and registered guest

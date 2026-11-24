@@ -6644,6 +6644,38 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 						reinterpret_cast<const char*>(static_cast<std::uintptr_t>(arguments[0])),
 						static_cast<int>(arguments[1]), static_cast<int>(arguments[2]));
 					break;
+				case 463: { // SYS_openat
+					constexpr std::uint64_t at_fdcwd_zero_extended =
+						static_cast<std::uint64_t>(std::numeric_limits<std::uint32_t>::max()) - 1;
+					constexpr std::uint64_t at_fdcwd_sign_extended =
+						std::numeric_limits<std::uint64_t>::max() - 1;
+					int directory_descriptor = 0;
+					if (arguments[0] == at_fdcwd_zero_extended ||
+						arguments[0] == at_fdcwd_sign_extended) {
+						directory_descriptor = -2;
+					} else if (arguments[0] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max())) {
+						error_number = EBADF;
+						break;
+					} else {
+						directory_descriptor = static_cast<int>(arguments[0]);
+					}
+					if (!backend.ContainsGuestCString(arguments[1], 32768)) {
+						error_number = EFAULT;
+						break;
+					}
+					if (arguments[2] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max()) ||
+						arguments[3] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max())) {
+						error_number = EINVAL;
+						break;
+					}
+					syscall_result = darling_windows_openat(directory_descriptor,
+						reinterpret_cast<const char*>(static_cast<std::uintptr_t>(arguments[1])),
+						static_cast<int>(arguments[2]), static_cast<int>(arguments[3]));
+					break;
+				}
 				case 3: // SYS_read
 				case 4: { // SYS_write
 					if (arguments[0] > static_cast<std::uint64_t>(

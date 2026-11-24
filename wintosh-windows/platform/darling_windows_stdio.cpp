@@ -2771,6 +2771,34 @@ extern "C" DARLING_HOST_GUEST_ABI int darling_windows_open(const char* path, int
 	}
 }
 
+extern "C" int darling_windows_openat(int directory_descriptor, const char* path,
+	int flags, int mode)
+{
+	constexpr int at_fdcwd = -2;
+	try {
+		if (path == nullptr) {
+			darling::windows_host::DarwinErrno::Set(22);
+			return -1;
+		}
+		auto requested_path = Utf8Path(path);
+		if (requested_path.empty()) {
+			darling::windows_host::DarwinErrno::Set(22);
+			return -1;
+		}
+		if (!requested_path.is_absolute() && directory_descriptor != at_fdcwd)
+			requested_path = global_syscalls.PathForDescriptor(directory_descriptor) /
+				requested_path;
+		const auto resolved_path = Utf8String(requested_path.wstring());
+		if (resolved_path.empty()) {
+			darling::windows_host::DarwinErrno::Set(22);
+			return -1;
+		}
+		return darling_windows_open(resolved_path.c_str(), flags, mode);
+	} catch (...) {
+		return -1;
+	}
+}
+
 extern "C" int darling_windows_mkstemp(char* path_template)
 {
 	try {

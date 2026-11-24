@@ -278,6 +278,8 @@ extern "C" std::int64_t darling_windows_recvmsg(int descriptor, darling_msghdr* 
 	int flags);
 extern "C" int darling_windows_shutdown(int descriptor, int how);
 extern "C" DARLING_HOST_GUEST_ABI int darling_windows_open(const char* path, int flags, int mode);
+extern "C" int darling_windows_openat(int directory_descriptor, const char* path,
+	int flags, int mode);
 extern "C" int darling_windows_mkstemp(char* path_template);
 extern "C" int darling_windows_mkstemps(char* path_template, int suffix_length);
 extern "C" char* darling_windows_mkdtemp(char* path_template);

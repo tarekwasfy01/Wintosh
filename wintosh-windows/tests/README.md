@@ -32,7 +32,7 @@ flag, plus `getlogin`/`setlogin`, `getgroups`/`setgroups`, same-ID
 `poll`/`select` writable-descriptor readiness and `select` timeout copy-back, `setpgid`,
 `setsockopt`/`getsockopt` round-trip, `getpgid`, `setsid`, and nonblocking
 `statfs`/`fstatfs` metadata copies, `getfsstat` volume records, descriptor-relative
-`fstatat`/`fstatat64` metadata, `fchdir`,
+`openat`, `fstatat`/`fstatat64` metadata, `fchdir`,
 Darwin `getdirentries` records and base offset,
 `pathconf`/`fpathconf` limits, `utimes`/`futimes` time copies, and `EFAULT`,
 `flock` acquisition/release. The fixture also

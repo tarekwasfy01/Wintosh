@@ -29,7 +29,8 @@ returns, the carry bit, login and UID/GID/group identity calls, selected
 `poll`/`select` write readiness, `select` timeout copy-back,
 Darwin `getdirentries` records and base offset, `statfs`/`fstatfs` metadata
 copies, `getfsstat` mounted-volume records, `pathconf`/`fpathconf` limits,
-descriptor-relative `fstatat`/`fstatat64` metadata, `utimes`/`futimes`,
+descriptor-relative `openat` and `fstatat`/`fstatat64` operations,
+`utimes`/`futimes`,
 `setsockopt`/`getsockopt`,
 process-group/session calls, and nonblocking file-lock acquire/release;
 terminal winsize requests remain unverified. The

@@ -228,6 +228,13 @@ int main(int argc, char **argv, char **envp)
 		syscall_error != 1 || darwin_syscall3(6, timestamp_fd, 0, 0, 0) != 0)
 		return 28;
 	const long directory_fd = darwin_syscall3(5, (long)".", 0x00100000, 0, 0);
+	const long openat_fd = darwin_syscall5(463, directory_fd, (long)".", 0, 0,
+		0, &syscall_error);
+	if (openat_fd < 3 || syscall_error != 0 ||
+		darwin_syscall5(463, 0xdead, (long)".", 0, 0, 0,
+			&syscall_error) != 9 || syscall_error != 1 ||
+		darwin_syscall3(6, openat_fd, 0, 0, 0) != 0)
+		return 29;
 	static char directory_buffer[sizeof(guest_dirent64) * 2];
 	long directory_base = 0;
 	if (directory_fd < 3 || darwin_syscall5(196, directory_fd,
@@ -265,7 +272,7 @@ int main(int argc, char **argv, char **envp)
 	size_t (*volatile guest_strlen)(const char *) = strlen;
 	if (guest_strlen(argv[0]) == 0)
 		return 34;
-	static const char marker[] = "ARM64_SVC_IDENTITY_GROUP_SELECT_POLL_SOCKETOPT_STATFS_GETFSSTAT_DIRENTRIES_PATHCONF_FSTATAT_FCHDIR_UTIMES_DESCRIPTOR_PROCESS_RLIMIT_IOCTL=PASS\n";
+	static const char marker[] = "ARM64_SVC_IDENTITY_GROUP_SELECT_POLL_SOCKETOPT_STATFS_GETFSSTAT_OPENAT_DIRENTRIES_PATHCONF_FSTATAT_FCHDIR_UTIMES_DESCRIPTOR_PROCESS_RLIMIT_IOCTL=PASS\n";
 	return darwin_syscall3(4, 1, (long)marker, sizeof(marker) - 1, 0) ==
 		sizeof(marker) - 1 ? 42 : 35;
 }

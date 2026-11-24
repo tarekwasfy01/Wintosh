@@ -302,6 +302,7 @@ Lizenzabgleich bleiben Gates vor einer standardmäßigen Integration.
 | Volume-SVCs | `getfsstat` ermittelt die verfügbaren Windows-Volumes und kopiert begrenzte Darwin-`statfs`-Datensätze; die Fixture prüft Zählabfrage, Datensatzinhalt und `EFAULT` |
 | Pfad-SVCs | `fstatat` und `fstatat64` nutzen den gemeinsamen Windows-Pfadadapter für relative Pfade ab Verzeichnisdeskriptoren; die Fixture prüft Verzeichnismodus, Aliasnummer und `EFAULT` |
 | `openat`-SVC | Darwin-SVC 463 löst relative Pfade anhand des offenen Verzeichnisdeskriptors auf und reicht dann an den gemeinsamen Öffnungsadapter weiter; die Fixture prüft Öffnung und `EBADF` |
+| Weitere `*at`-SVCs | `renameat` (465), `unlinkat` (472, mit `AT_REMOVEDIR`) und `mkdirat` (475) lösen jeden Pfad relativ zum passenden Deskriptor auf; die Fixture erstellt, verschiebt und entfernt ein prozess-eindeutiges Testverzeichnis und prüft ein ungültiges Flag |
 | x64-Host-Gast-Speicherprüfung | Segmentrechte und Bereichsgrenzen umgesetzt; Image-, Startup-, Heap-, mmap- und Host-Datenbereiche werden geprüft bzw. registriert und in Fixtures ausgeführt |
 | A64-Import-Trampoline und ABI-Dispatcher | ausgewählte C-/Darwin-/Framework-Imports, Gastcallbacks, Heap-/Block- und Datenimporte, Stackargumente, HFA- und indirekte Struct-Rückgaben bestehen; übrige Aggregate und Signaturen bleiben offen |
 | Schmale ARM64 Mach-O Runtime-Fixtures auf x64 Windows | mehrere Source-Fixtures für Syscalls, dyld, Objective-C, CoreFoundation und Speicher; keine echte macOS-App oder vollständige Bundle-Ausführung belegt |

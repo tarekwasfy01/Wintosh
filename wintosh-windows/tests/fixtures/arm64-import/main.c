@@ -235,6 +235,33 @@ int main(int argc, char **argv, char **envp)
 			&syscall_error) != 9 || syscall_error != 1 ||
 		darwin_syscall3(6, openat_fd, 0, 0, 0) != 0)
 		return 29;
+	char at_name[48] = "wintosh-at-";
+	char at_moved_name[48] = "wintosh-at-moved-";
+	char process_digits[20];
+	unsigned long process_id = (unsigned long)darwin_syscall3(20, 0, 0, 0, 0);
+	unsigned int digit_count = 0;
+	do {
+		process_digits[digit_count++] = (char)('0' + process_id % 10);
+		process_id /= 10;
+	} while (process_id != 0 && digit_count < sizeof(process_digits));
+	unsigned int at_name_length = sizeof("wintosh-at-") - 1;
+	unsigned int moved_name_length = sizeof("wintosh-at-moved-") - 1;
+	while (digit_count != 0) {
+		const char digit = process_digits[--digit_count];
+		at_name[at_name_length++] = digit;
+		at_moved_name[moved_name_length++] = digit;
+	}
+	at_name[at_name_length] = '\0';
+	at_moved_name[moved_name_length] = '\0';
+	if (darwin_syscall3(475, directory_fd, (long)at_name, 0700,
+		&syscall_error) != 0 || syscall_error != 0 ||
+		darwin_syscall5(465, directory_fd, (long)at_name, directory_fd,
+			(long)at_moved_name, 0, &syscall_error) != 0 || syscall_error != 0 ||
+		darwin_syscall3(472, directory_fd, (long)at_moved_name, 0x80,
+			&syscall_error) != 0 || syscall_error != 0 ||
+		darwin_syscall3(472, directory_fd, (long)at_moved_name, 0x40,
+			&syscall_error) != 22 || syscall_error != 1)
+		return 29;
 	static char directory_buffer[sizeof(guest_dirent64) * 2];
 	long directory_base = 0;
 	if (directory_fd < 3 || darwin_syscall5(196, directory_fd,
@@ -272,7 +299,7 @@ int main(int argc, char **argv, char **envp)
 	size_t (*volatile guest_strlen)(const char *) = strlen;
 	if (guest_strlen(argv[0]) == 0)
 		return 34;
-	static const char marker[] = "ARM64_SVC_IDENTITY_GROUP_SELECT_POLL_SOCKETOPT_STATFS_GETFSSTAT_OPENAT_DIRENTRIES_PATHCONF_FSTATAT_FCHDIR_UTIMES_DESCRIPTOR_PROCESS_RLIMIT_IOCTL=PASS\n";
+	static const char marker[] = "ARM64_SVC_IDENTITY_GROUP_SELECT_POLL_SOCKETOPT_STATFS_GETFSSTAT_OPENAT_RENAMEAT_UNLINKAT_MKDIRAT_DIRENTRIES_PATHCONF_FSTATAT_FCHDIR_UTIMES_DESCRIPTOR_PROCESS_RLIMIT_IOCTL=PASS\n";
 	return darwin_syscall3(4, 1, (long)marker, sizeof(marker) - 1, 0) ==
 		sizeof(marker) - 1 ? 42 : 35;
 }

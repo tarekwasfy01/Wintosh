@@ -284,6 +284,8 @@ extern "C" int darling_windows_mkstemp(char* path_template);
 extern "C" int darling_windows_mkstemps(char* path_template, int suffix_length);
 extern "C" char* darling_windows_mkdtemp(char* path_template);
 extern "C" int darling_windows_unlink(const char* path);
+extern "C" int darling_windows_unlinkat(int directory_descriptor, const char* path,
+	int flags);
 extern "C" int darling_windows_rmdir(const char* path);
 extern "C" int darling_windows_link(const char* existing_path, const char* link_path);
 extern "C" int darling_windows_symlink(const char* target, const char* link_path);
@@ -291,6 +293,8 @@ extern "C" std::int64_t darling_windows_readlink(const char* path, char* buffer,
 	std::size_t size);
 extern "C" int darling_windows_access(const char* path, int mode);
 extern "C" int darling_windows_rename(const char* old_path, const char* new_path);
+extern "C" int darling_windows_renameat(int old_directory_descriptor, const char* old_path,
+	int new_directory_descriptor, const char* new_path);
 extern "C" std::int64_t darling_windows_lseek(int descriptor, std::int64_t offset, int whence);
 extern "C" int darling_windows_ftruncate(int descriptor, std::int64_t length);
 extern "C" int darling_windows_truncate(const char* path, std::int64_t length);
@@ -306,6 +310,8 @@ extern "C" int darling_windows_fchdir(int descriptor);
 extern "C" char* darling_windows_getcwd(char* buffer, std::size_t size);
 extern "C" char* darling_windows_realpath(const char* path, char* resolved);
 extern "C" int darling_windows_mkdir(const char* path, int mode);
+extern "C" int darling_windows_mkdirat(int directory_descriptor, const char* path,
+	int mode);
 struct darling_dirent final {
 	std::uint64_t d_ino = 0;
 	std::int64_t d_seekoff = 0;

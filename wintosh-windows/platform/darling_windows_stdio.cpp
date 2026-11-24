@@ -765,6 +765,19 @@ std::filesystem::path Utf8Path(const char* value)
 	return std::filesystem::path(wide);
 }
 
+std::filesystem::path ResolveAtPath(int directory_descriptor, const char* value)
+{
+	constexpr int at_fdcwd = -2;
+	auto path = Utf8Path(value);
+	if (path.empty()) {
+		darling::windows_host::DarwinErrno::Set(22);
+		return {};
+	}
+	if (!path.is_absolute() && directory_descriptor != at_fdcwd)
+		path = global_syscalls.PathForDescriptor(directory_descriptor) / path;
+	return path;
+}
+
 darling_timespec FileTimeSpec(const FILETIME& value)
 {
 	ULARGE_INTEGER ticks{};
@@ -2776,18 +2789,9 @@ extern "C" int darling_windows_openat(int directory_descriptor, const char* path
 {
 	constexpr int at_fdcwd = -2;
 	try {
-		if (path == nullptr) {
-			darling::windows_host::DarwinErrno::Set(22);
+		auto requested_path = ResolveAtPath(directory_descriptor, path);
+		if (requested_path.empty())
 			return -1;
-		}
-		auto requested_path = Utf8Path(path);
-		if (requested_path.empty()) {
-			darling::windows_host::DarwinErrno::Set(22);
-			return -1;
-		}
-		if (!requested_path.is_absolute() && directory_descriptor != at_fdcwd)
-			requested_path = global_syscalls.PathForDescriptor(directory_descriptor) /
-				requested_path;
 		const auto resolved_path = Utf8String(requested_path.wstring());
 		if (resolved_path.empty()) {
 			darling::windows_host::DarwinErrno::Set(22);
@@ -2987,6 +2991,26 @@ extern "C" int darling_windows_unlink(const char* path)
 	}
 }
 
+extern "C" int darling_windows_unlinkat(int directory_descriptor, const char* path,
+	int flags)
+{
+	constexpr int at_removedir = 0x80;
+	if ((flags & ~at_removedir) != 0) {
+		darling::windows_host::DarwinErrno::Set(22);
+		return -1;
+	}
+	try {
+		const auto resolved = ResolveAtPath(directory_descriptor, path);
+		if (resolved.empty())
+			return -1;
+		const auto utf8_path = Utf8String(resolved.wstring());
+		return (flags & at_removedir) != 0 ? darling_windows_rmdir(utf8_path.c_str()) :
+			darling_windows_unlink(utf8_path.c_str());
+	} catch (...) {
+		return -1;
+	}
+}
+
 extern "C" int darling_windows_rmdir(const char* path)
 {
 	try {
@@ -3146,6 +3170,26 @@ extern "C" int darling_windows_rename(const char* old_path, const char* new_path
 			return 0;
 		darling::windows_host::DarwinErrno::SetFromWin32(GetLastError());
 		return -1;
+	} catch (...) {
+		return -1;
+	}
+}
+
+extern "C" int darling_windows_renameat(int old_directory_descriptor, const char* old_path,
+	int new_directory_descriptor, const char* new_path)
+{
+	try {
+		const auto resolved_old = ResolveAtPath(old_directory_descriptor, old_path);
+		const auto resolved_new = ResolveAtPath(new_directory_descriptor, new_path);
+		if (resolved_old.empty() || resolved_new.empty())
+			return -1;
+		const auto utf8_old = Utf8String(resolved_old.wstring());
+		const auto utf8_new = Utf8String(resolved_new.wstring());
+		if (utf8_old.empty() || utf8_new.empty()) {
+			darling::windows_host::DarwinErrno::Set(22);
+			return -1;
+		}
+		return darling_windows_rename(utf8_old.c_str(), utf8_new.c_str());
 	} catch (...) {
 		return -1;
 	}
@@ -4882,6 +4926,20 @@ extern "C" int darling_windows_mkdir(const char* path, int)
 {
 	try {
 		darling::windows_host::DarwinFilesystem::MakeDirectory(Utf8Path(path));
+		return 0;
+	} catch (...) {
+		return -1;
+	}
+}
+
+extern "C" int darling_windows_mkdirat(int directory_descriptor, const char* path, int mode)
+{
+	try {
+		const auto resolved = ResolveAtPath(directory_descriptor, path);
+		if (resolved.empty())
+			return -1;
+		darling::windows_host::DarwinFilesystem::MakeDirectory(resolved);
+		(void)mode;
 		return 0;
 	} catch (...) {
 		return -1;

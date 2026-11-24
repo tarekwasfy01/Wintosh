@@ -184,11 +184,15 @@ int wmain()
 			&broker_audit_received, darling_mach_receive_msg | darling_mach_receive_timeout,
 			0, sizeof(broker_audit_received), broker_local_port, 1000, 0);
 		std::array<std::uint8_t, 4> broker_ool_payload{0xde, 0xad, 0xbe, 0xef};
+		#pragma pack(push, 4)
 		struct BrokerOolMessage final {
 			darling_mach_msg_header header;
 			darling_mach_msg_body body;
 			darling_mach_msg_ool_descriptor descriptor;
 		} broker_ool_message{};
+		#pragma pack(pop)
+		static_assert(offsetof(BrokerOolMessage, descriptor) ==
+			sizeof(darling_mach_msg_header) + sizeof(darling_mach_msg_body));
 		broker_ool_message.header.msgh_bits = darling_mach_msg_complex;
 		broker_ool_message.header.msgh_size = sizeof(broker_ool_message);
 		broker_ool_message.header.msgh_remote_port = broker_local_port;
@@ -213,6 +217,15 @@ int wmain()
 			broker_ool_received_bytes != nullptr &&
 			std::equal(broker_ool_payload.begin(), broker_ool_payload.end(), broker_ool_received_bytes) &&
 			darling_windows_mach_ool_release(const_cast<std::uint8_t*>(broker_ool_received_bytes)) == 0;
+		if (!broker_ool_ok) {
+			std::cerr << "BROKER_OOL_DIAGNOSTIC send=" << broker_ool_send
+				<< " receive=" << broker_ool_receive
+				<< " descriptor_size=" << broker_ool_received_descriptor->size
+				<< " expected_size=" << broker_ool_payload.size()
+				<< " address=" << broker_ool_received_descriptor->address
+				<< " bytes_match=" << (broker_ool_received_bytes != nullptr &&
+					std::equal(broker_ool_payload.begin(), broker_ool_payload.end(), broker_ool_received_bytes)) << '\n';
+		}
 		std::cout << "BROKER_C_ABI_OOL=" << (broker_ool_ok ? "PASS" : "FAIL") << "\n";
 		struct BrokerPortMessage final {
 			darling_mach_msg_header header;

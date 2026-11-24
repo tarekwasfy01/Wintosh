@@ -1180,6 +1180,7 @@ int main()
 		if (destroy_target != 0) darling_windows_mach_port_destroy(task, destroy_target);
 		if (destroy_notify != 0) darling_windows_mach_port_destroy(task, destroy_notify);
 		if (!destroy_sender_notify_ok) return 1;
+		std::cout << "MACH_DESTROY_NOTIFY=PASS\n";
 		darling_mach_msg_header descriptor_message{};
 		darling_mach_msg_body descriptor_body{1};
 		darling_mach_msg_port_descriptor descriptor{thread, 0, 19, 0, 0};

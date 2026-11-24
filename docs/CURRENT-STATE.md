@@ -169,6 +169,13 @@ This is a selected Mach IPC slice, not proof that arbitrary Cocoa applications
 run. Voucher rights, full XNU lifecycle behavior, and end-to-end runtime
 coverage remain open.
 
+Mach port destruction now delivers a registered no-senders notification before
+receive-right teardown consumes the port's notification registration. The
+Mach ABI smoke reaches and confirms this transition. The broker OOL fixture
+uses the Darwin four-byte descriptor boundary and now passes its send/receive
+round trip. Later port-descriptor checks in the broader Mach ABI smoke still
+fail, so the overall test is not yet green.
+
 The guest thread-destructor exports also now use explicit Darwin ABI bridges:
 `__cxa_thread_atexit_impl` accepts its DSO handle and registered guest
 callbacks are invoked with the guest calling convention at thread exit; newly

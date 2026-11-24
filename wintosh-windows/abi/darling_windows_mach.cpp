@@ -2139,9 +2139,11 @@ extern "C" darling_kern_return_t darling_windows_mach_port_destroy(
 			}
 		}
 	}
-	const auto result = darling_windows_mach_port_deallocate(task, name);
-	if (result == 0 && had_senders) DeliverNoSendersNotification(name);
-	return result;
+	// Destroying the receive right can also deliver a port-deleted notification,
+	// which consumes the port's single notification registration. Deliver the
+	// no-senders notification first while that registration is still installed.
+	if (had_senders) DeliverNoSendersNotification(name);
+	return darling_windows_mach_port_deallocate(task, name);
 }
 
 extern "C" darling_kern_return_t darling_windows_mach_port_request_notification(

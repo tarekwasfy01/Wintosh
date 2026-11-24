@@ -7826,6 +7826,55 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 					}
 					break;
 				}
+				case 138: // SYS_utimes
+				case 139: { // SYS_futimes
+					if (syscall_number == 138 && !backend.ContainsGuestCString(
+							arguments[0], 32768)) {
+						error_number = EFAULT;
+						break;
+					}
+					if (syscall_number == 139 && arguments[0] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max())) {
+						error_number = EBADF;
+						break;
+					}
+					darling_timespec times[2]{};
+					const darling_timespec* times_pointer = nullptr;
+					if (arguments[1] != 0) {
+						if (!backend.ContainsGuestRange(arguments[1],
+								2 * sizeof(darling_timeval), false)) {
+							error_number = EFAULT;
+							break;
+						}
+						darling_timeval guest_times[2]{};
+						std::memcpy(guest_times, reinterpret_cast<const void*>(
+							static_cast<std::uintptr_t>(arguments[1])), sizeof(guest_times));
+						bool valid = true;
+						for (std::size_t index = 0; index < 2; ++index) {
+							if (guest_times[index].tv_usec < 0 ||
+								guest_times[index].tv_usec >= 1'000'000) {
+								valid = false;
+								break;
+							}
+							times[index].tv_sec = guest_times[index].tv_sec;
+							times[index].tv_nsec = guest_times[index].tv_usec * 1000;
+						}
+						if (!valid) {
+							error_number = EINVAL;
+							break;
+						}
+						times_pointer = times;
+					}
+					if (syscall_number == 138) {
+						syscall_result = darling_windows_utimensat(-2,
+							reinterpret_cast<const char*>(static_cast<std::uintptr_t>(
+								arguments[0])), times_pointer, 0);
+					} else {
+						syscall_result = darling_windows_futimens(
+							static_cast<int>(arguments[0]), times_pointer);
+					}
+					break;
+				}
 				case 188: // SYS_stat
 				case 190: { // SYS_lstat
 					if (!backend.ContainsGuestCString(arguments[0], 4096)) {

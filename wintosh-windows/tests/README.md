@@ -32,7 +32,8 @@ flag, plus `getlogin`/`setlogin`, `getgroups`/`setgroups`, same-ID
 `poll`/`select` writable-descriptor readiness and `select` timeout copy-back, `setpgid`,
 `setsockopt`/`getsockopt` round-trip, `getpgid`, `setsid`, and nonblocking
 `statfs`/`fstatfs` metadata copies, Darwin `getdirentries` records, base offset,
-`pathconf`/`fpathconf` limits, and `EFAULT`, `flock` acquisition/release. The fixture also
+`pathconf`/`fpathconf` limits, `utimes`/`futimes` time copies, and `EFAULT`,
+`flock` acquisition/release. The fixture also
 covers Objective-C integer/double arguments and returns, object identity, pointer
 dereference, a stack-passed seventh integer, two-/four-double HFA returns, and
 a 24-byte indirect structure return through `objc_msgSend`. A guest method also

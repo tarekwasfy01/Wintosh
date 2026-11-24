@@ -1072,3 +1072,11 @@ Timer and observer scalar accessors use `x0` for their object and return
 validity/repeat bytes, activity masks, or signed order through `x0`. Guest
 fixtures verify initial properties and the one-shot lifecycle transition:
 both timer and non-repeating observer become invalid after their callback.
+
+Run-loop control imports use the Darwin register contract: current/main loop
+getters take no arguments; mode-copy imports take the loop in `x0`; stop, wake,
+and waiting queries take the loop in `x0`; common-mode registration takes the
+loop and mode in `x0`/`x1`. The ARM64 fixture covers main/current lookup, wake,
+waiting-state query, adding a common mode, copying all modes and reading its
+array count. It also queries the active mode from inside a guest observer
+callback, covering a nested ARM64 import while the interpreter is re-entered.

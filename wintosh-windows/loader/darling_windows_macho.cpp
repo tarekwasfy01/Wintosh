@@ -72,6 +72,47 @@ bool DispatchArm64CoreFoundationRunLoopImport(const std::string& name,
 	const auto set_double_return = [&](double value) {
 		std::memcpy(&resumed_state.v[0], &value, sizeof(value));
 	};
+	if (name == "_CFRunLoopGetCurrent" || name == "_CFRunLoopGetMain") {
+		using Call = darling_windows_CFRunLoopRef (DARLING_CF_GUEST_ABI *)();
+		resumed_state.x[0] = reinterpret_cast<std::uintptr_t>(
+			reinterpret_cast<Call>(target)());
+		return true;
+	}
+	if (name == "_CFRunLoopCopyCurrentMode" || name == "_CFRunLoopCopyAllModes") {
+		using Call = darling_windows_CFTypeRef (DARLING_CF_GUEST_ABI *)(
+		darling_windows_CFRunLoopRef);
+		resumed_state.x[0] = reinterpret_cast<std::uintptr_t>(reinterpret_cast<Call>(target)(
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0]))));
+		return true;
+	}
+	if (name == "_CFRunLoopStop" || name == "_CFRunLoopWakeUp") {
+		using Call = void (DARLING_CF_GUEST_ABI *)(darling_windows_CFRunLoopRef);
+		reinterpret_cast<Call>(target)(reinterpret_cast<void*>(
+			static_cast<std::uintptr_t>(x[0])));
+		return true;
+	}
+	if (name == "_CFRunLoopIsWaiting") {
+		using Call = std::uint8_t (DARLING_CF_GUEST_ABI *)(
+			darling_windows_CFRunLoopRef);
+		resumed_state.x[0] = reinterpret_cast<Call>(target)(reinterpret_cast<void*>(
+			static_cast<std::uintptr_t>(x[0])));
+		return true;
+	}
+	if (name == "_CFRunLoopAddCommonMode") {
+		using Call = void (DARLING_CF_GUEST_ABI *)(darling_windows_CFRunLoopRef,
+			darling_windows_CFStringRef);
+		reinterpret_cast<Call>(target)(reinterpret_cast<void*>(
+			static_cast<std::uintptr_t>(x[0])), reinterpret_cast<const void*>(
+			static_cast<std::uintptr_t>(x[1])));
+		return true;
+	}
+	if (name == "_CFArrayGetCount") {
+		using Call = darling_windows_CFIndex (DARLING_CF_GUEST_ABI *)(
+			darling_windows_CFArrayRef);
+		resumed_state.x[0] = static_cast<std::uint64_t>(reinterpret_cast<Call>(target)(
+			reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[0]))));
+		return true;
+	}
 	if (name == "_CFRunLoopPerformBlock") {
 		using Call = void (DARLING_CF_GUEST_ABI *)(darling_windows_CFRunLoopRef,
 			darling_windows_CFTypeRef, void*);
@@ -4193,10 +4234,6 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 					imported->target)(reinterpret_cast<const void*>(
 						static_cast<std::uintptr_t>(x[0])), reinterpret_cast<const char*>(
 						static_cast<std::uintptr_t>(x[1])), static_cast<std::uint32_t>(x[2])));
-			} else if (name == "_CFRunLoopGetCurrent") {
-				using Call = darling_windows_CFRunLoopRef (DARLING_CF_GUEST_ABI *)();
-				resumed.x[0] = reinterpret_cast<std::uintptr_t>(
-					reinterpret_cast<Call>(imported->target)());
 			} else if (name == "_CFRunLoopSourceCreate") {
 				if (x[2] != 0 && !backend.ContainsGuestRange(x[2],
 					sizeof(DarlingCFRunLoopSourceContext), false))
@@ -4599,10 +4636,6 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 							imported->target)(reinterpret_cast<const void*>(
 								static_cast<std::uintptr_t>(x[0])), reinterpret_cast<const char*>(
 								static_cast<std::uintptr_t>(x[1])), static_cast<std::uint32_t>(x[2])));
-					} else if (name == "_CFRunLoopGetCurrent") {
-						using Call = darling_windows_CFRunLoopRef (DARLING_CF_GUEST_ABI *)();
-						cpu.x[0] = reinterpret_cast<std::uintptr_t>(
-							reinterpret_cast<Call>(imported->target)());
 					} else if (name == "_CFRunLoopSourceCreate") {
 						if (x[2] != 0 && !backend.ContainsGuestRange(x[2],
 							sizeof(DarlingCFRunLoopSourceContext), false))

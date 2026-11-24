@@ -17,6 +17,14 @@ _Static_assert(sizeof(Context) == 40, "Darwin run-loop context layout");
 
 extern CFStringRef CFStringCreateWithCString(const void *, const char *, unsigned int);
 extern CFRunLoopRef CFRunLoopGetCurrent(void);
+extern CFRunLoopRef CFRunLoopGetMain(void);
+extern CFStringRef CFRunLoopCopyCurrentMode(CFRunLoopRef);
+extern CFTypeRef CFRunLoopCopyAllModes(CFRunLoopRef);
+extern long CFArrayGetCount(CFTypeRef);
+extern void CFRunLoopAddCommonMode(CFRunLoopRef, CFStringRef);
+extern void CFRunLoopWakeUp(CFRunLoopRef);
+extern void CFRunLoopStop(CFRunLoopRef);
+extern unsigned char CFRunLoopIsWaiting(CFRunLoopRef);
 extern CFRunLoopTimerRef CFRunLoopTimerCreate(const void *, double, double,
 	CFOptionFlags, CFIndex, void (*)(CFRunLoopTimerRef, void *), const Context *);
 extern void CFRunLoopAddTimer(CFRunLoopRef, CFRunLoopTimerRef, CFStringRef);
@@ -52,6 +60,8 @@ static int observerCalls;
 static int blockCalls;
 static int timerInfo;
 static int observerInfo;
+static int currentModeCalls;
+static CFRunLoopRef testLoop;
 
 typedef struct {
 	void *isa;
@@ -76,8 +86,14 @@ static void timer_callout(CFRunLoopTimerRef timer, void *info)
 static void observer_callout(CFRunLoopObserverRef observer,
 	CFOptionFlags activity, void *info)
 {
-	if (observer != 0 && (activity & 1) != 0 && info == &observerInfo)
+	if (observer != 0 && (activity & 1) != 0 && info == &observerInfo) {
 		++observerCalls;
+		CFStringRef currentMode = CFRunLoopCopyCurrentMode(testLoop);
+		if (currentMode != 0) {
+			++currentModeCalls;
+			CFRelease(currentMode);
+		}
+	}
 }
 
 int main(void)
@@ -96,13 +112,25 @@ int main(void)
 	observerContext.copyDescription = 0;
 	CFStringRef mode = CFStringCreateWithCString(0,
 		"kCFRunLoopDefaultMode", 0x08000100u);
+	CFStringRef commonMode = CFStringCreateWithCString(0,
+		"WintoshTestCommonMode", 0x08000100u);
+	CFStringRef commonModes = CFStringCreateWithCString(0,
+		"kCFRunLoopCommonModes", 0x08000100u);
 	CFRunLoopRef loop = CFRunLoopGetCurrent();
+	testLoop = loop;
 	CFRunLoopTimerRef timer = CFRunLoopTimerCreate(0, 0.0, 0.0, 0, 0,
 		timer_callout, &timerContext);
 	CFRunLoopObserverRef observer = CFRunLoopObserverCreate(0, 1, 0, 0,
 		observer_callout, &observerContext);
 	if (mode == 0) return 20;
 	if (loop == 0) return 21;
+	if (CFRunLoopGetMain() == 0 || commonMode == 0 || commonModes == 0) return 30;
+	CFTypeRef allModes = CFRunLoopCopyAllModes(loop);
+	if (allModes == 0 || CFArrayGetCount(allModes) < 1) return 31;
+	CFRelease(allModes);
+	CFRunLoopAddCommonMode(loop, commonMode);
+	CFRunLoopWakeUp(loop);
+	(void)CFRunLoopIsWaiting(loop);
 	if (timer == 0) return 22;
 	if (observer == 0) return 23;
 	CFRunLoopTimerSetNextFireDate(timer, 0.25);
@@ -116,22 +144,26 @@ int main(void)
 		CFRunLoopObserverDoesRepeat(observer) ||
 		CFRunLoopObserverGetOrder(observer) != 0 ||
 		!CFRunLoopObserverIsValid(observer)) return 28;
-	CFRunLoopAddTimer(loop, timer, mode);
+	CFRunLoopAddTimer(loop, timer, commonModes);
 	CFRunLoopAddObserver(loop, observer, mode);
 	if (!CFRunLoopContainsTimer(loop, timer, mode) ||
 		!CFRunLoopContainsObserver(loop, observer, mode)) return 24;
+	if (!CFRunLoopContainsTimer(loop, timer, commonMode)) return 32;
 	if (CFRunLoopGetNextTimerFireDate(loop, mode) != 0.25) return 27;
 	CFRunLoopTimerSetNextFireDate(timer, 0.0);
 	CFRunLoopPerformBlock(loop, mode, &runLoopBlock);
 	const int result = CFRunLoopRunInMode(mode, 0.01, 0);
-	if (result < 1 || timerCalls != 1 || observerCalls != 1 || blockCalls != 1) return 11;
+	if (result < 1 || timerCalls != 1 || observerCalls != 1 ||
+		currentModeCalls != 1 || blockCalls != 1) return 11;
 	if (CFRunLoopTimerIsValid(timer) || CFRunLoopObserverIsValid(observer)) return 29;
-	CFRunLoopRemoveTimer(loop, timer, mode);
+	CFRunLoopRemoveTimer(loop, timer, commonModes);
 	CFRunLoopRemoveObserver(loop, observer, mode);
 	if (CFRunLoopContainsTimer(loop, timer, mode) ||
 		CFRunLoopContainsObserver(loop, observer, mode)) return 25;
 	CFRelease(timer);
 	CFRelease(observer);
+	CFRelease(commonMode);
+	CFRelease(commonModes);
 	CFRelease(mode);
 	return 42;
 }

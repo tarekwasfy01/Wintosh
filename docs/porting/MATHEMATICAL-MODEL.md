@@ -1045,9 +1045,13 @@ guest memory. For a valid sequence `A` with `n` elements, insertion at `i`
 obeys `0≤i≤n` and `A'=A[0:i]·[x]·A[i:n]`; removal obeys `0≤i<n` and
 `A'=A[0:i]·A[i+1:n]`; replacing index `i` preserves `n`. The ARM64 fixture
 checks these transforms, range membership and extraction, and the ownership
-conservation equation `retains - releases = |A|` after destruction. Copy APIs
-are bridged too, while bulk range replacement, sorting/comparison callbacks,
-and the remaining array surface are still pending ARM64 import coverage.
+conservation equation `retains - releases = |A|` after destruction. For range
+replacement of `[i,i+ℓ)` by `R`, the resulting state is
+`A'=A[0:i]·R·A[i+ℓ:n]`; append-array is the special case `i=n,ℓ=0` with `R`
+selected from the source array. Both operations and the count/first/last index
+queries now have ARM64 import adapters and fixture coverage. Copy APIs are
+bridged too. Comparator-based sort/search, array exchange, callback enumeration,
+and the remaining array surface still need ARM64 coverage.
 
 ## ARM64 CoreFoundation run-loop callbacks
 

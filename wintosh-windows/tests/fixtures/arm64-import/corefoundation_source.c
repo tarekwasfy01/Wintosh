@@ -67,8 +67,13 @@ extern void CFArrayInsertValueAtIndex(CFTypeRef, CFIndex, CFTypeRef);
 extern void CFArraySetValueAtIndex(CFTypeRef, CFIndex, CFTypeRef);
 extern void CFArrayRemoveValueAtIndex(CFTypeRef, CFIndex);
 extern void CFArrayRemoveAllValues(CFTypeRef);
+extern void CFArrayReplaceValues(CFTypeRef, CFRange, const void *const *, CFIndex);
+extern void CFArrayAppendArray(CFTypeRef, CFTypeRef, CFRange);
 extern const void *CFArrayGetValueAtIndex(CFTypeRef, CFIndex);
 extern unsigned char CFArrayContainsValue(CFTypeRef, CFRange, CFTypeRef);
+extern CFIndex CFArrayGetCountOfValue(CFTypeRef, CFRange, CFTypeRef);
+extern CFIndex CFArrayGetFirstIndexOfValue(CFTypeRef, CFRange, CFTypeRef);
+extern CFIndex CFArrayGetLastIndexOfValue(CFTypeRef, CFRange, CFTypeRef);
 extern void CFArrayGetValues(CFTypeRef, CFRange, const void **);
 extern CFIndex CFArrayGetCount(CFTypeRef);
 extern CFTypeRef CFDictionaryCreate(const void *, const void *const *,
@@ -252,6 +257,20 @@ int main(void)
 		return 37;
 	CFArraySetValueAtIndex(mutableArray, 1, &arrayValueB);
 	if (CFArrayGetValueAtIndex(mutableArray, 1) != &arrayValueB) return 38;
+	if (CFArrayGetCountOfValue(mutableArray, (CFRange){ 0, 2 }, &arrayValueB) != 2 ||
+		CFArrayGetFirstIndexOfValue(mutableArray, (CFRange){ 0, 2 }, &arrayValueB) != 0 ||
+		CFArrayGetLastIndexOfValue(mutableArray, (CFRange){ 0, 2 }, &arrayValueB) != 1)
+		return 41;
+	const void *replacementValues[] = { &arrayValueA };
+	CFArrayReplaceValues(mutableArray, (CFRange){ 0, 1 }, replacementValues, 1);
+	if (CFArrayGetValueAtIndex(mutableArray, 0) != &arrayValueA ||
+		CFArrayGetCount(mutableArray) != 2) return 42;
+	CFTypeRef sourceArray = CFArrayCreate(0, arrayValues, 2, &arrayCallbacks);
+	if (sourceArray == 0) return 43;
+	CFArrayAppendArray(mutableArray, sourceArray, (CFRange){ 1, 1 });
+	CFRelease(sourceArray);
+	if (CFArrayGetCount(mutableArray) != 3 ||
+		CFArrayGetValueAtIndex(mutableArray, 2) != &arrayValueB) return 44;
 	CFArrayRemoveValueAtIndex(mutableArray, 0);
 	CFArrayAppendValue(mutableArray, &arrayValueA);
 	CFArrayRemoveAllValues(mutableArray);

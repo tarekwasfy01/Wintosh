@@ -168,6 +168,65 @@ bool DispatchArm64CoreFoundationRunLoopImport(const std::string& name,
 				static_cast<std::uintptr_t>(x[3]))));
 		return true;
 	}
+	if (name == "_CFDictionaryCreate") {
+		constexpr std::uint64_t max_dictionary_entries = 1u << 20;
+		const auto count = x[3];
+		const auto pointer_bytes = count <= max_dictionary_entries ?
+			static_cast<std::size_t>(count) * sizeof(void*) : 0;
+		if (count > max_dictionary_entries || (count != 0 &&
+			(x[1] == 0 || x[2] == 0 ||
+				!backend.ContainsGuestRange(x[1], pointer_bytes, false) ||
+				!backend.ContainsGuestRange(x[2], pointer_bytes, false))) ||
+			(x[4] != 0 && !backend.ContainsGuestRange(x[4],
+				sizeof(DarlingCFDictionaryKeyCallbacks), false)) ||
+			(x[5] != 0 && !backend.ContainsGuestRange(x[5],
+				sizeof(DarlingCFDictionaryValueCallbacks), false)))
+			throw std::runtime_error("ARM64 CFDictionaryCreate import received an invalid guest range");
+		using Call = darling_windows_CFDictionaryRef (DARLING_CF_GUEST_ABI *)(
+			const void*, const void* const*, const void* const*,
+			darling_windows_CFIndex, const void*, const void*);
+		resumed_state.x[0] = reinterpret_cast<std::uintptr_t>(reinterpret_cast<Call>(target)(
+			reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[0])),
+			reinterpret_cast<const void* const*>(static_cast<std::uintptr_t>(x[1])),
+			reinterpret_cast<const void* const*>(static_cast<std::uintptr_t>(x[2])),
+			static_cast<darling_windows_CFIndex>(count),
+			reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[4])),
+			reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[5]))));
+		return true;
+	}
+	if (name == "_CFDictionaryGetCount") {
+		using Call = darling_windows_CFIndex (DARLING_CF_GUEST_ABI *)(
+			darling_windows_CFDictionaryRef);
+		resumed_state.x[0] = static_cast<std::uint64_t>(reinterpret_cast<Call>(target)(
+			reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[0]))));
+		return true;
+	}
+	if (name == "_CFSetCreate") {
+		constexpr std::uint64_t max_set_elements = 1u << 20;
+		const auto count = x[2];
+		const auto pointer_bytes = count <= max_set_elements ?
+			static_cast<std::size_t>(count) * sizeof(void*) : 0;
+		if (count > max_set_elements || (count != 0 &&
+			(x[1] == 0 || !backend.ContainsGuestRange(x[1], pointer_bytes, false))) ||
+			(x[3] != 0 && !backend.ContainsGuestRange(x[3],
+				sizeof(DarlingCFDictionaryKeyCallbacks), false)))
+			throw std::runtime_error("ARM64 CFSetCreate import received an invalid guest range");
+		using Call = darling_windows_CFSetRef (DARLING_CF_GUEST_ABI *)(
+			const void*, const void* const*, darling_windows_CFIndex, const void*);
+		resumed_state.x[0] = reinterpret_cast<std::uintptr_t>(reinterpret_cast<Call>(target)(
+			reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[0])),
+			reinterpret_cast<const void* const*>(static_cast<std::uintptr_t>(x[1])),
+			static_cast<darling_windows_CFIndex>(count),
+			reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[3]))));
+		return true;
+	}
+	if (name == "_CFSetGetCount") {
+		using Call = darling_windows_CFIndex (DARLING_CF_GUEST_ABI *)(
+			darling_windows_CFSetRef);
+		resumed_state.x[0] = static_cast<std::uint64_t>(reinterpret_cast<Call>(target)(
+			reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[0]))));
+		return true;
+	}
 	if (name == "_CFRunLoopPerformBlock") {
 		using Call = void (DARLING_CF_GUEST_ABI *)(darling_windows_CFRunLoopRef,
 			darling_windows_CFTypeRef, void*);

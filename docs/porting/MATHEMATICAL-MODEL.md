@@ -1131,6 +1131,17 @@ hash callbacks use a typed register-vector bridge as well: callback arguments
 map positionally to `x0…x(n−1)`, pointer/integer results return in `x0`, and
 non-guest function addresses use the native fallback. The ARM64 fixture creates
 an array with guest retain/release callbacks and checks `retain_count = 2`,
-`release_count = 2` across create/count/destroy. Dictionary/Set collection
-callbacks and copy-description callbacks still need ARM64 end-to-end fixtures;
-other callback-bearing CoreFoundation APIs remain to be audited.
+`release_count = 2` across create/count/destroy. Dictionary/Set retain, release,
+equality, and hash callbacks also have ARM64 fixtures; copy-description callbacks
+and other callback-bearing CoreFoundation APIs remain to be audited.
+
+The same ARM64 import dispatcher now accepts `CFDictionaryCreate` and
+`CFSetCreate` after checking their pointer-vector and callback-table guest
+ranges. For a two-key dictionary, insertion compares each new key with the
+existing key, so the fixture verifies `key_equal_calls = 1`, two key retains,
+two value retains, and matching release counts at destruction. The Set fixture
+forces one hash collision and checks `hash_calls = 2`, `equal_calls = 1`, and
+two retain/release pairs. The count imports return through `x0`. These cases
+exercise both the argument vector and callback result vector for guest
+collections; mutable replacement/removal and description callbacks remain
+uncovered.

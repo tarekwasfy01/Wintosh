@@ -11,6 +11,20 @@ typedef struct CFArrayCallBacks {
 	const void *(*copyDescription)(const void *);
 	unsigned char (*equal)(const void *, const void *);
 } CFArrayCallBacks;
+typedef struct CFDictionaryKeyCallBacks {
+	CFIndex version;
+	const void *(*retain)(const void *, const void *);
+	void (*release)(const void *, const void *);
+	const void *(*copyDescription)(const void *);
+	unsigned char (*equal)(const void *, const void *);
+	unsigned long (*hash)(const void *);
+} CFDictionaryKeyCallBacks;
+typedef struct CFDictionaryValueCallBacks {
+	CFIndex version;
+	const void *(*retain)(const void *, const void *);
+	void (*release)(const void *, const void *);
+	const void *(*copyDescription)(const void *);
+} CFDictionaryValueCallBacks;
 typedef struct CFRunLoopSourceContext {
 	CFIndex version;
 	void *info;
@@ -43,6 +57,13 @@ extern void CFRelease(CFTypeRef);
 extern CFTypeRef CFArrayCreate(const void *, const void *const *, CFIndex,
 	const CFArrayCallBacks *);
 extern CFIndex CFArrayGetCount(CFTypeRef);
+extern CFTypeRef CFDictionaryCreate(const void *, const void *const *,
+	const void *const *, CFIndex, const CFDictionaryKeyCallBacks *,
+	const CFDictionaryValueCallBacks *);
+extern CFIndex CFDictionaryGetCount(CFTypeRef);
+extern CFTypeRef CFSetCreate(const void *, const void *const *, CFIndex,
+	const CFDictionaryKeyCallBacks *);
+extern CFIndex CFSetGetCount(CFTypeRef);
 
 static int scheduleCalls;
 static int cancelCalls;
@@ -52,6 +73,18 @@ static int arrayValueA;
 static int arrayValueB;
 static int arrayRetainCalls;
 static int arrayReleaseCalls;
+static int dictionaryKeyRetainCalls;
+static int dictionaryKeyReleaseCalls;
+static int dictionaryValueRetainCalls;
+static int dictionaryValueReleaseCalls;
+static int dictionaryEqualCalls;
+static int setRetainCalls;
+static int setReleaseCalls;
+static int setEqualCalls;
+static int setHashCalls;
+static int dictionaryKeyA, dictionaryKeyB;
+static int dictionaryValueA, dictionaryValueB;
+static int setValueA, setValueB;
 
 static const void *array_retain(const void *allocator, const void *value)
 {
@@ -64,6 +97,64 @@ static void array_release(const void *allocator, const void *value)
 {
 	(void)allocator;
 	if (value == &arrayValueA || value == &arrayValueB) ++arrayReleaseCalls;
+}
+
+static const void *dictionary_key_retain(const void *allocator, const void *value)
+{
+	(void)allocator;
+	if (value == &dictionaryKeyA || value == &dictionaryKeyB)
+		++dictionaryKeyRetainCalls;
+	return value;
+}
+static void dictionary_key_release(const void *allocator, const void *value)
+{
+	(void)allocator;
+	if (value == &dictionaryKeyA || value == &dictionaryKeyB)
+		++dictionaryKeyReleaseCalls;
+}
+static unsigned char dictionary_key_equal(const void *left, const void *right)
+{
+	++dictionaryEqualCalls;
+	return left == right;
+}
+static unsigned long dictionary_key_hash(const void *value)
+{
+	return (unsigned long)(unsigned long long)value;
+}
+static const void *dictionary_value_retain(const void *allocator, const void *value)
+{
+	(void)allocator;
+	if (value == &dictionaryValueA || value == &dictionaryValueB)
+		++dictionaryValueRetainCalls;
+	return value;
+}
+static void dictionary_value_release(const void *allocator, const void *value)
+{
+	(void)allocator;
+	if (value == &dictionaryValueA || value == &dictionaryValueB)
+		++dictionaryValueReleaseCalls;
+}
+static const void *set_retain(const void *allocator, const void *value)
+{
+	(void)allocator;
+	if (value == &setValueA || value == &setValueB) ++setRetainCalls;
+	return value;
+}
+static void set_release(const void *allocator, const void *value)
+{
+	(void)allocator;
+	if (value == &setValueA || value == &setValueB) ++setReleaseCalls;
+}
+static unsigned char set_equal(const void *left, const void *right)
+{
+	++setEqualCalls;
+	return left == right;
+}
+static unsigned long set_hash(const void *value)
+{
+	(void)value;
+	++setHashCalls;
+	return 1;
 }
 
 static void source_schedule(void *info, CFRunLoopRef loop, const void *mode)
@@ -92,6 +183,28 @@ int main(void)
 		return 17;
 	CFRelease(array);
 	if (arrayReleaseCalls != 2) return 18;
+	const void *dictionaryKeys[] = { &dictionaryKeyA, &dictionaryKeyB };
+	const void *dictionaryValues[] = { &dictionaryValueA, &dictionaryValueB };
+	CFDictionaryKeyCallBacks keyCallbacks = { 0, dictionary_key_retain,
+		dictionary_key_release, 0, dictionary_key_equal, dictionary_key_hash };
+	CFDictionaryValueCallBacks valueCallbacks = { 0, dictionary_value_retain,
+		dictionary_value_release, 0 };
+	CFTypeRef dictionary = CFDictionaryCreate(0, dictionaryKeys, dictionaryValues,
+		2, &keyCallbacks, &valueCallbacks);
+	if (dictionary == 0 || CFDictionaryGetCount(dictionary) != 2 ||
+		dictionaryKeyRetainCalls != 2 || dictionaryValueRetainCalls != 2 ||
+		dictionaryEqualCalls != 1) return 19;
+	CFRelease(dictionary);
+	if (dictionaryKeyReleaseCalls != 2 || dictionaryValueReleaseCalls != 2)
+		return 20;
+	const void *setValues[] = { &setValueA, &setValueB };
+	CFDictionaryKeyCallBacks setCallbacks = { 0, set_retain, set_release, 0,
+		set_equal, set_hash };
+	CFTypeRef set = CFSetCreate(0, setValues, 2, &setCallbacks);
+	if (set == 0 || CFSetGetCount(set) != 2 || setRetainCalls != 2 ||
+		setHashCalls != 2 || setEqualCalls != 1) return 21;
+	CFRelease(set);
+	if (setReleaseCalls != 2) return 22;
 	CFRunLoopSourceContext context;
 	context.version = 0;
 	context.info = &contextInfo;

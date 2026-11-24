@@ -1016,6 +1016,21 @@ and removes an integer preference entirely in memory, so it does not invoke
 disk synchronization. Full preferences-domain and managed-store parity remains
 incomplete.
 
+## CoreFoundation allocator bridge
+
+`CFAllocatorContext` is copied as a 72-byte ARM64 guest structure; its optional
+callback addresses must point into executable guest memory. The bridge
+transforms callback calls through the guest invoker with argument vectors
+`(info)`, `(size,hint,info)`, `(address,size,hint,info)`, and
+`(address,info)`, preserving the declared result in `x0`. Context input and
+output spans are checked as readable and writable respectively, and exposed
+allocation requests are capped at `2^30` bytes. The guest fixture creates a
+custom allocator, checks copied context, temporarily installs it as the
+thread's default, and verifies allocate/reallocate/deallocate/preferred-size
+callbacks plus retain/release balance. It uses the system allocator for the
+allocator object's own storage; special `kCFAllocatorUseContext` backing and
+full allocation lifetime mapping remain to be validated separately.
+
 ## CoreFoundation scalar bridge
 
 For a numeric guest value `x` requested in target type `T`, conversion is

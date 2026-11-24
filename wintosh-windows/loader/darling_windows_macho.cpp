@@ -116,7 +116,7 @@ bool DispatchArm64CoreFoundationRunLoopImport(const std::string& name,
 		name == "_CFRunLoopSourceGetTypeID" ||
 		name == "_CFRunLoopTimerGetTypeID" ||
 		name == "_CFRunLoopObserverGetTypeID" || name == "_CFStringGetTypeID" ||
-		name == "_CFMachPortGetTypeID") {
+		name == "_CFMachPortGetTypeID" || name == "_CFAllocatorGetTypeID") {
 		using Call = darling_windows_CFTypeID (DARLING_CF_GUEST_ABI *)();
 		resumed_state.x[0] = static_cast<std::uint64_t>(reinterpret_cast<Call>(target)());
 		return true;
@@ -125,6 +125,91 @@ bool DispatchArm64CoreFoundationRunLoopImport(const std::string& name,
 		using Call = std::uint8_t (DARLING_CF_GUEST_ABI *)(darling_windows_CFBooleanRef);
 		resumed_state.x[0] = reinterpret_cast<Call>(target)(
 			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0])));
+		return true;
+	}
+	if (name == "_CFAllocatorCreate") {
+		if (x[1] == 0 || !backend.ContainsGuestRange(x[1],
+			sizeof(DarlingCFAllocatorContext), false))
+			throw std::runtime_error("ARM64 CFAllocatorCreate import received an invalid context range");
+		const auto* context = reinterpret_cast<const DarlingCFAllocatorContext*>(
+			static_cast<std::uintptr_t>(x[1]));
+		const std::array<std::uintptr_t, 7> callbacks{
+			reinterpret_cast<std::uintptr_t>(context->retain),
+			reinterpret_cast<std::uintptr_t>(context->release),
+			reinterpret_cast<std::uintptr_t>(context->copy_description),
+			reinterpret_cast<std::uintptr_t>(context->allocate),
+			reinterpret_cast<std::uintptr_t>(context->reallocate),
+			reinterpret_cast<std::uintptr_t>(context->deallocate),
+			reinterpret_cast<std::uintptr_t>(context->preferred_size)};
+		for (const auto callback : callbacks)
+			if (callback != 0 && !backend.ContainsExecutableGuestAddress(callback))
+				throw std::runtime_error("ARM64 CFAllocatorCreate import received a non-executable callback");
+		using Call = darling_windows_CFAllocatorRef (DARLING_CF_GUEST_ABI *)(
+			const void*, const DarlingCFAllocatorContext*);
+		resumed_state.x[0] = reinterpret_cast<std::uintptr_t>(reinterpret_cast<Call>(target)(
+			reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[0])),
+			reinterpret_cast<const DarlingCFAllocatorContext*>(
+				static_cast<std::uintptr_t>(x[1]))));
+		return true;
+	}
+	if (name == "_CFAllocatorGetContext") {
+		if (x[1] == 0 || !backend.ContainsGuestRange(x[1],
+			sizeof(DarlingCFAllocatorContext), true))
+			throw std::runtime_error("ARM64 CFAllocatorGetContext import received an invalid output range");
+		using Call = void (DARLING_CF_GUEST_ABI *)(darling_windows_CFAllocatorRef,
+			DarlingCFAllocatorContext*);
+		reinterpret_cast<Call>(target)(reinterpret_cast<void*>(
+			static_cast<std::uintptr_t>(x[0])),
+			reinterpret_cast<DarlingCFAllocatorContext*>(static_cast<std::uintptr_t>(x[1])));
+		return true;
+	}
+	if (name == "_CFAllocatorAllocate") {
+		const auto size = static_cast<darling_windows_CFIndex>(x[1]);
+		if (size > (1ll << 30))
+			throw std::runtime_error("ARM64 CFAllocatorAllocate import exceeds the allocation bound");
+		using Call = void* (DARLING_CF_GUEST_ABI *)(darling_windows_CFAllocatorRef,
+			darling_windows_CFIndex, std::uint64_t);
+		resumed_state.x[0] = reinterpret_cast<std::uintptr_t>(reinterpret_cast<Call>(target)(
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0])),
+			size, x[2]));
+		return true;
+	}
+	if (name == "_CFAllocatorDeallocate") {
+		using Call = void (DARLING_CF_GUEST_ABI *)(darling_windows_CFAllocatorRef, void*);
+		reinterpret_cast<Call>(target)(reinterpret_cast<void*>(
+			static_cast<std::uintptr_t>(x[0])), reinterpret_cast<void*>(
+			static_cast<std::uintptr_t>(x[1])));
+		return true;
+	}
+	if (name == "_CFAllocatorReallocate") {
+		const auto size = static_cast<darling_windows_CFIndex>(x[2]);
+		if (size > (1ll << 30))
+			throw std::runtime_error("ARM64 CFAllocatorReallocate import exceeds the allocation bound");
+		using Call = void* (DARLING_CF_GUEST_ABI *)(darling_windows_CFAllocatorRef,
+			void*, darling_windows_CFIndex, std::uint64_t);
+		resumed_state.x[0] = reinterpret_cast<std::uintptr_t>(reinterpret_cast<Call>(target)(
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0])),
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[1])),
+			size, x[3]));
+		return true;
+	}
+	if (name == "_CFAllocatorGetPreferredSizeForSize") {
+		using Call = darling_windows_CFIndex (DARLING_CF_GUEST_ABI *)(
+			darling_windows_CFAllocatorRef, darling_windows_CFIndex, std::uint64_t);
+		resumed_state.x[0] = static_cast<std::uint64_t>(reinterpret_cast<Call>(target)(
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0])),
+			static_cast<darling_windows_CFIndex>(x[1]), x[2]));
+		return true;
+	}
+	if (name == "_CFAllocatorGetDefault") {
+		using Call = darling_windows_CFAllocatorRef (DARLING_CF_GUEST_ABI *)();
+		resumed_state.x[0] = reinterpret_cast<std::uintptr_t>(reinterpret_cast<Call>(target)());
+		return true;
+	}
+	if (name == "_CFAllocatorSetDefault") {
+		using Call = void (DARLING_CF_GUEST_ABI *)(darling_windows_CFAllocatorRef);
+		reinterpret_cast<Call>(target)(reinterpret_cast<void*>(
+			static_cast<std::uintptr_t>(x[0])));
 		return true;
 	}
 	if (name == "_CFURLCreateStringByReplacingPercentEscapes") {

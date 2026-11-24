@@ -28,6 +28,17 @@ typedef struct CFDictionaryValueCallBacks {
 	void (*release)(const void *, const void *);
 	const void *(*copyDescription)(const void *);
 } CFDictionaryValueCallBacks;
+typedef struct CFAllocatorContext {
+	CFIndex version;
+	void *info;
+	const void *(*retain)(const void *);
+	void (*release)(const void *);
+	const void *(*copyDescription)(const void *);
+	void *(*allocate)(CFIndex, unsigned long long, void *);
+	void *(*reallocate)(void *, CFIndex, unsigned long long, void *);
+	void (*deallocate)(void *, void *);
+	CFIndex (*preferredSize)(CFIndex, unsigned long long, void *);
+} CFAllocatorContext;
 typedef struct CFRunLoopSourceContext {
 	CFIndex version;
 	void *info;
@@ -69,6 +80,15 @@ extern unsigned char CFStringGetCharacters(CFStringRef, CFRange, unsigned short 
 extern CFIndex CFStringGetMaximumSizeForEncoding(CFIndex, unsigned int);
 extern CFIndex CFStringGetMaximumSizeOfFileSystemRepresentation(CFStringRef);
 extern unsigned char CFStringGetFileSystemRepresentation(CFStringRef, char *, CFIndex);
+extern CFTypeRef CFAllocatorCreate(const void *, const CFAllocatorContext *);
+extern void CFAllocatorGetContext(CFTypeRef, CFAllocatorContext *);
+extern void *CFAllocatorAllocate(CFTypeRef, CFIndex, unsigned long long);
+extern void CFAllocatorDeallocate(CFTypeRef, void *);
+extern void *CFAllocatorReallocate(CFTypeRef, void *, CFIndex, unsigned long long);
+extern CFIndex CFAllocatorGetPreferredSizeForSize(CFTypeRef, CFIndex,
+	unsigned long long);
+extern CFTypeRef CFAllocatorGetDefault(void);
+extern void CFAllocatorSetDefault(CFTypeRef);
 extern CFURLRef CFURLCreateWithFileSystemPath(const void *, CFStringRef, int,
 	unsigned char);
 extern CFURLRef CFURLCreateWithString(const void *, CFStringRef, CFURLRef);
@@ -212,6 +232,15 @@ static int dictionaryValueReleaseCalls;
 static int dictionaryEqualCalls;
 static int dictionaryKeyDescriptionCalls;
 static int dictionaryValueDescriptionCalls;
+static unsigned long long allocatorArena[512];
+static CFIndex allocatorArenaOffset;
+static int allocatorRetainCalls;
+static int allocatorReleaseCalls;
+static int allocatorAllocateCalls;
+static int allocatorReallocateCalls;
+static int allocatorDeallocateCalls;
+static int allocatorPreferredSizeCalls;
+static int allocatorContextInfo;
 static int setRetainCalls;
 static int setReleaseCalls;
 static int setEqualCalls;
@@ -344,6 +373,51 @@ static const void *set_description(const void *value)
 {
 	if (value == &setValueA || value == &setValueB) ++setDescriptionCalls;
 	return CFStringCreateWithCString(0, "set-value", 0x08000100u);
+}
+
+static const void *allocator_retain(const void *info)
+{
+	++allocatorRetainCalls;
+	return info;
+}
+
+static void allocator_release(const void *info)
+{
+	if (info == &allocatorContextInfo) ++allocatorReleaseCalls;
+}
+
+static void *allocator_allocate(CFIndex size, unsigned long long hint, void *info)
+{
+	CFIndex offset = (allocatorArenaOffset + 15) & ~15;
+	(void)hint;
+	if (info != &allocatorContextInfo || size <= 0 ||
+		offset + size > (CFIndex)sizeof(allocatorArena)) return 0;
+	allocatorArenaOffset = offset + size;
+	++allocatorAllocateCalls;
+	return (unsigned char *)allocatorArena + offset;
+}
+
+static void *allocator_reallocate(void *address, CFIndex size,
+	unsigned long long hint, void *info)
+{
+	(void)hint;
+	if (info != &allocatorContextInfo || address == 0 || size <= 0) return 0;
+	++allocatorReallocateCalls;
+	return address;
+}
+
+static void allocator_deallocate(void *address, void *info)
+{
+	if (address != 0 && info == &allocatorContextInfo) ++allocatorDeallocateCalls;
+}
+
+static CFIndex allocator_preferred_size(CFIndex size,
+	unsigned long long hint, void *info)
+{
+	(void)hint;
+	if (info != &allocatorContextInfo || size < 0) return 0;
+	++allocatorPreferredSizeCalls;
+	return size + 16;
 }
 
 static void source_schedule(void *info, CFRunLoopRef loop, const void *mode)
@@ -756,6 +830,32 @@ int main(void)
 	CFSetRemoveAllValues(mutableSet);
 	CFRelease(mutableSet);
 	if (setRetainCalls != setReleaseCalls) return 53;
+	CFAllocatorContext allocatorContext = { 0, &allocatorContextInfo,
+		allocator_retain, allocator_release, 0, allocator_allocate,
+		allocator_reallocate, allocator_deallocate, allocator_preferred_size };
+	CFAllocatorContext copiedAllocatorContext = { 0 };
+	CFTypeRef priorAllocator = CFAllocatorGetDefault();
+	CFTypeRef customAllocator = CFAllocatorCreate(0, &allocatorContext);
+	if (customAllocator == 0 || priorAllocator == 0) return 91;
+	CFAllocatorGetContext(customAllocator, &copiedAllocatorContext);
+	if (copiedAllocatorContext.info != &allocatorContextInfo ||
+		copiedAllocatorContext.allocate != allocator_allocate ||
+		allocatorRetainCalls != 1) return 92;
+	CFAllocatorSetDefault(customAllocator);
+	if (CFAllocatorGetDefault() != customAllocator) return 93;
+	void *allocatorMemory = CFAllocatorAllocate(customAllocator, 32, 5);
+	if (allocatorMemory == 0 ||
+		CFAllocatorGetPreferredSizeForSize(customAllocator, 32, 0) != 48 ||
+		allocatorPreferredSizeCalls != 1) return 94;
+	void *resizedAllocatorMemory = CFAllocatorReallocate(customAllocator,
+		allocatorMemory, 64, 7);
+	if (resizedAllocatorMemory != allocatorMemory || allocatorReallocateCalls != 1)
+		return 95;
+	CFAllocatorDeallocate(customAllocator, resizedAllocatorMemory);
+	CFAllocatorSetDefault(priorAllocator);
+	CFRelease(customAllocator);
+	if (allocatorAllocateCalls != 1 || allocatorDeallocateCalls != 1 ||
+		allocatorReleaseCalls != 1) return 96;
 	CFRunLoopSourceContext context;
 	context.version = 0;
 	context.info = &contextInfo;

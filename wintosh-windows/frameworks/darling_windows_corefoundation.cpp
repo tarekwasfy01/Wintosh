@@ -390,7 +390,7 @@ void ReleaseOwned(Object* object)
 		object->allocator_context_release_deferred = true;
 		object->~Object();
 		if (deallocate != nullptr) {
-			try { deallocate(object, const_cast<void*>(info)); }
+			try { InvokeGuestCallback(deallocate, object, const_cast<void*>(info)); }
 			catch (...) { /* Guest callbacks must not unwind through CoreFoundation. */ }
 		}
 		if (info != nullptr && release != nullptr) {
@@ -5087,8 +5087,9 @@ extern "C" DARLING_CF_GUEST_ABI darling_windows_CFAllocatorRef CFAllocatorCreate
 	Object* backing = nullptr;
 	void* storage = nullptr;
 	if (use_context) {
-		try { storage = context->allocate(static_cast<darling_windows_CFIndex>(sizeof(Object)),
-			0, const_cast<void*>(retained_info)); }
+		try { storage = InvokeGuestCallbackResult(context->allocate,
+			static_cast<darling_windows_CFIndex>(sizeof(Object)), std::uint64_t{0},
+			const_cast<void*>(retained_info)); }
 		catch (...) { storage = nullptr; }
 	} else {
 		backing = object_allocator == nullptr ? EffectiveCFAllocator(nullptr) :
@@ -5099,7 +5100,7 @@ extern "C" DARLING_CF_GUEST_ABI darling_windows_CFAllocatorRef CFAllocatorCreate
 	}
 	if (storage == nullptr) {
 		if (retained_info != nullptr && context->release != nullptr) {
-			try { InvokeContextRelease(context->release, retained_info); }
+			try { InvokeGuestCallback(context->release, retained_info); }
 			catch (...) { /* Guest callbacks must not unwind through CoreFoundation. */ }
 		}
 		return nullptr;
@@ -5108,11 +5109,12 @@ extern "C" DARLING_CF_GUEST_ABI darling_windows_CFAllocatorRef CFAllocatorCreate
 	try { allocator = new (storage) Object{}; }
 	catch (...) {
 		if (use_context) {
-			try { context->deallocate(storage, const_cast<void*>(retained_info)); }
+			try { InvokeGuestCallback(context->deallocate, storage,
+				const_cast<void*>(retained_info)); }
 			catch (...) { /* Guest callbacks must not unwind through CoreFoundation. */ }
 		} else if (backing != nullptr) CFAllocatorDeallocate(backing, storage);
 		if (retained_info != nullptr && context->release != nullptr) {
-			try { InvokeContextRelease(context->release, retained_info); }
+			try { InvokeGuestCallback(context->release, retained_info); }
 			catch (...) { /* Guest callbacks must not unwind through CoreFoundation. */ }
 		}
 		return nullptr;
@@ -5147,8 +5149,8 @@ extern "C" DARLING_CF_GUEST_ABI void* CFAllocatorAllocate(
 	if (value != nullptr && allocator == nullptr) return nullptr;
 	if (allocator == nullptr) return darling_windows_malloc(static_cast<std::size_t>(size));
 	if (allocator->allocator_context.allocate == nullptr) return nullptr;
-	try { return allocator->allocator_context.allocate(size, hint,
-		const_cast<void*>(allocator->allocator_info)); }
+	try { return InvokeGuestCallbackResult(allocator->allocator_context.allocate,
+		size, hint, const_cast<void*>(allocator->allocator_info)); }
 	catch (...) { return nullptr; }
 }
 
@@ -5160,7 +5162,7 @@ extern "C" DARLING_CF_GUEST_ABI void CFAllocatorDeallocate(
 	if (value != nullptr && allocator == nullptr) return;
 	if (allocator == nullptr) { darling_windows_free(address); return; }
 	if (allocator->allocator_context.deallocate == nullptr) return;
-	try { allocator->allocator_context.deallocate(address,
+	try { InvokeGuestCallback(allocator->allocator_context.deallocate, address,
 		const_cast<void*>(allocator->allocator_info)); }
 	catch (...) { /* Guest callbacks must not unwind through CoreFoundation. */ }
 }
@@ -5179,18 +5181,21 @@ extern "C" DARLING_CF_GUEST_ABI void* CFAllocatorReallocate(
 	const auto info = const_cast<void*>(allocator->allocator_info);
 	if (address == nullptr) {
 		if (size == 0 || allocator->allocator_context.allocate == nullptr) return nullptr;
-		try { return allocator->allocator_context.allocate(size, hint, info); }
+		try { return InvokeGuestCallbackResult(allocator->allocator_context.allocate,
+			size, hint, info); }
 		catch (...) { return nullptr; }
 	}
 	if (size == 0) {
 		if (allocator->allocator_context.deallocate != nullptr) {
-			try { allocator->allocator_context.deallocate(address, info); }
+			try { InvokeGuestCallback(allocator->allocator_context.deallocate,
+				address, info); }
 			catch (...) { /* Guest callbacks must not unwind through CoreFoundation. */ }
 		}
 		return nullptr;
 	}
 	if (allocator->allocator_context.reallocate == nullptr) return nullptr;
-	try { return allocator->allocator_context.reallocate(address, size, hint, info); }
+	try { return InvokeGuestCallbackResult(allocator->allocator_context.reallocate,
+		address, size, hint, info); }
 	catch (...) { return nullptr; }
 }
 
@@ -5202,8 +5207,8 @@ extern "C" DARLING_CF_GUEST_ABI darling_windows_CFIndex CFAllocatorGetPreferredS
 	if (value != nullptr && allocator == nullptr) return 0;
 	if (allocator == nullptr || allocator->allocator_context.preferred_size == nullptr)
 		return size;
-	try { return allocator->allocator_context.preferred_size(size, hint,
-		const_cast<void*>(allocator->allocator_info)); }
+	try { return InvokeGuestCallbackResult(allocator->allocator_context.preferred_size,
+		size, hint, const_cast<void*>(allocator->allocator_info)); }
 	catch (...) { return 0; }
 }
 

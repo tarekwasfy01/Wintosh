@@ -1080,3 +1080,8 @@ loop and mode in `x0`/`x1`. The ARM64 fixture covers main/current lookup, wake,
 waiting-state query, adding a common mode, copying all modes and reading its
 array count. It also queries the active mode from inside a guest observer
 callback, covering a nested ARM64 import while the interpreter is re-entered.
+
+Timer and observer context getters take the object in `x0` and a writable
+Darwin context record in `x1`. The adapter checks the complete 40-byte guest
+range before writing it; the fixture verifies the returned version and info
+pointer for both records, complementing the existing source-context coverage.

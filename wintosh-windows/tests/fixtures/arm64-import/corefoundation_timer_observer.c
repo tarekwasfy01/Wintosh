@@ -39,6 +39,7 @@ extern double CFRunLoopTimerGetInterval(CFRunLoopTimerRef);
 extern unsigned char CFRunLoopTimerDoesRepeat(CFRunLoopTimerRef);
 extern CFIndex CFRunLoopTimerGetOrder(CFRunLoopTimerRef);
 extern unsigned char CFRunLoopTimerIsValid(CFRunLoopTimerRef);
+extern void CFRunLoopTimerGetContext(CFRunLoopTimerRef, Context *);
 extern double CFRunLoopGetNextTimerFireDate(CFRunLoopRef, CFStringRef);
 extern CFRunLoopObserverRef CFRunLoopObserverCreate(const void *, CFOptionFlags,
 	unsigned char, CFIndex, void (*)(CFRunLoopObserverRef, CFOptionFlags, void *),
@@ -47,6 +48,7 @@ extern CFOptionFlags CFRunLoopObserverGetActivities(CFRunLoopObserverRef);
 extern unsigned char CFRunLoopObserverDoesRepeat(CFRunLoopObserverRef);
 extern CFIndex CFRunLoopObserverGetOrder(CFRunLoopObserverRef);
 extern unsigned char CFRunLoopObserverIsValid(CFRunLoopObserverRef);
+extern void CFRunLoopObserverGetContext(CFRunLoopObserverRef, Context *);
 extern void CFRunLoopAddObserver(CFRunLoopRef, CFRunLoopObserverRef, CFStringRef);
 extern void CFRunLoopRemoveObserver(CFRunLoopRef, CFRunLoopObserverRef, CFStringRef);
 extern unsigned char CFRunLoopContainsObserver(CFRunLoopRef,
@@ -144,6 +146,13 @@ int main(void)
 		CFRunLoopObserverDoesRepeat(observer) ||
 		CFRunLoopObserverGetOrder(observer) != 0 ||
 		!CFRunLoopObserverIsValid(observer)) return 28;
+	Context returnedTimerContext;
+	Context returnedObserverContext;
+	CFRunLoopTimerGetContext(timer, &returnedTimerContext);
+	CFRunLoopObserverGetContext(observer, &returnedObserverContext);
+	if (returnedTimerContext.version != 0 || returnedTimerContext.info != &timerInfo ||
+		returnedObserverContext.version != 0 ||
+		returnedObserverContext.info != &observerInfo) return 33;
 	CFRunLoopAddTimer(loop, timer, commonModes);
 	CFRunLoopAddObserver(loop, observer, mode);
 	if (!CFRunLoopContainsTimer(loop, timer, mode) ||

@@ -169,6 +169,19 @@ bool DispatchArm64CoreFoundationRunLoopImport(const std::string& name,
 			static_cast<std::uintptr_t>(x[0])));
 		return true;
 	}
+	if (name == "_CFRunLoopTimerGetContext" ||
+		name == "_CFRunLoopObserverGetContext") {
+		const auto context_size = name == "_CFRunLoopTimerGetContext" ?
+			sizeof(DarlingCFRunLoopTimerContext) :
+			sizeof(DarlingCFRunLoopObserverContext);
+		if (x[1] == 0 || !backend.ContainsGuestRange(x[1], context_size, true))
+			throw std::runtime_error("ARM64 CoreFoundation run-loop context import received an invalid output range");
+		using Call = void (DARLING_CF_GUEST_ABI *)(darling_windows_CFTypeRef, void*);
+		reinterpret_cast<Call>(target)(reinterpret_cast<void*>(
+			static_cast<std::uintptr_t>(x[0])), reinterpret_cast<void*>(
+			static_cast<std::uintptr_t>(x[1])));
+		return true;
+	}
 	if (name == "_CFRunLoopObserverCreate") {
 		if (x[5] != 0 && !backend.ContainsGuestRange(x[5],
 			sizeof(DarlingCFRunLoopObserverContext), false))

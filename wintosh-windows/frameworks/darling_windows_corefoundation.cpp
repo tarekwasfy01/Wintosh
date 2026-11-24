@@ -752,7 +752,8 @@ std::string PercentDecode(const std::string& input)
 }
 std::string PercentDecodeLeaving(const std::string& input, const std::string* leave_escaped)
 {
-	if (leave_escaped == nullptr) return input;
+	static const std::string leave_nothing;
+	if (leave_escaped == nullptr) leave_escaped = &leave_nothing;
 	std::string output;
 	for (std::size_t index = 0; index < input.size(); ++index) {
 		if (input[index] == '%' && index + 2 < input.size()) {
@@ -8869,6 +8870,8 @@ extern "C" std::uintptr_t darling_windows_corefoundation_symbol(const char* name
 		return reinterpret_cast<std::uintptr_t>(&CFURLGetBaseURL);
 	if (std::strcmp(name, "CFURLGetBytes") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFURLGetBytes);
+	if (std::strcmp(name, "CFURLGetByteRangeForComponent") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFURLGetByteRangeForComponent);
 	if (std::strcmp(name, "CFURLCopyFileSystemPath") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFURLCopyFileSystemPath);
 	if (std::strcmp(name, "CFURLCopyPath") == 0)

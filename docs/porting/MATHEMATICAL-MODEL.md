@@ -885,6 +885,14 @@ ensures a trailing `/`. The ARM64 fixture checks the exact byte string for
 `/tmp/Wintosh.app/Contents/`, filesystem representation, and HTTPS scheme, host,
 query, and fragment results. These selected checks establish those contracts,
 not complete CFURL semantic parity.
+Percent escaping is modeled bytewise over valid UTF-8: `decode(s,L)` replaces
+each valid `%HH` byte unless its decoded character is in leave-set `L` (with
+`L=∅` when no set is supplied), and `encode(s,U,F)` preserves legal URL bytes
+or bytes in unescaped set `U`, except forced escapes in `F`. The guest fixture
+checks `a%20b ↔ a b`, plus the query component's range and range including its
+separator. For the 64-bit `CFRange=(location,length)` result, ARM64 guest
+register return mapping is `(x0,x1)=(location,length)`; an optional output
+range is independently checked as writable before the host call.
 For a CFMachPort wrapper `p`, source delivery is `Deliver(p,m) = Valid(p) ∧
 Receive(GetPort(p),m)`, with the callback `Callout(p,m,size,info)` invoked once
 for each received message. `Invalidate(p)` performs the state transition

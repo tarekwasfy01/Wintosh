@@ -77,6 +77,11 @@ extern CFStringRef CFURLCopyPath(CFURLRef);
 extern CFStringRef CFURLCopyHostName(CFURLRef);
 extern CFStringRef CFURLCopyQueryString(CFURLRef, CFStringRef);
 extern CFStringRef CFURLCopyFragment(CFURLRef, CFStringRef);
+extern CFStringRef CFURLCreateStringByReplacingPercentEscapes(const void *, CFStringRef,
+	CFStringRef);
+extern CFStringRef CFURLCreateStringByAddingPercentEscapes(const void *, CFStringRef,
+	CFStringRef, CFStringRef, unsigned int);
+extern CFRange CFURLGetByteRangeForComponent(CFURLRef, int, CFRange *);
 extern CFIndex CFURLGetBytes(CFURLRef, unsigned char *, CFIndex);
 extern unsigned char CFURLGetFileSystemRepresentation(CFURLRef, unsigned char,
 	unsigned char *, CFIndex);
@@ -420,8 +425,14 @@ int main(void)
 	CFStringRef networkPath = CFURLCopyPath(networkURL);
 	CFStringRef networkQuery = CFURLCopyQueryString(networkURL, 0);
 	CFStringRef networkFragment = CFURLCopyFragment(networkURL, 0);
+	CFRange queryRangeIncludingSeparators = { -1, 0 };
+	CFRange queryRange = CFURLGetByteRangeForComponent(networkURL, 11,
+		&queryRangeIncludingSeparators);
 	if (networkURLString == 0 || networkURL == 0 || networkScheme == 0 ||
 		networkHost == 0 || networkPath == 0 || networkQuery == 0 || networkFragment == 0 ||
+		queryRange.location < 0 || queryRange.length != 3 ||
+		queryRangeIncludingSeparators.location + queryRangeIncludingSeparators.length <=
+			queryRange.location + queryRange.length ||
 		!CFStringGetCString(networkScheme, (char *)urlStringBytes,
 			sizeof(urlStringBytes), utf8Encoding) || urlStringBytes[0] != 'h' ||
 		urlStringBytes[4] != 's' ||
@@ -436,6 +447,24 @@ int main(void)
 	CFRelease(networkPath);
 	CFRelease(networkHost);
 	CFRelease(networkScheme);
+	CFStringRef escapedInput = CFStringCreateWithCString(0, "a%20b", utf8Encoding);
+	CFStringRef decodedInput = CFURLCreateStringByReplacingPercentEscapes(0,
+		escapedInput, 0);
+	if (escapedInput == 0 || decodedInput == 0 ||
+		!CFStringGetCString(decodedInput, (char *)urlStringBytes,
+			sizeof(urlStringBytes), utf8Encoding) || urlStringBytes[0] != 'a' ||
+		urlStringBytes[1] != ' ' || urlStringBytes[2] != 'b' || urlStringBytes[3] != 0)
+		return 81;
+	CFStringRef encodedInput = CFURLCreateStringByAddingPercentEscapes(0,
+		decodedInput, 0, 0, utf8Encoding);
+	if (encodedInput == 0 || !CFStringGetCString(encodedInput,
+		(char *)urlStringBytes, sizeof(urlStringBytes), utf8Encoding) ||
+		urlStringBytes[0] != 'a' || urlStringBytes[1] != '%' ||
+		urlStringBytes[2] != '2' || urlStringBytes[3] != '0' ||
+		urlStringBytes[4] != 'b' || urlStringBytes[5] != 0) return 82;
+	CFRelease(encodedInput);
+	CFRelease(decodedInput);
+	CFRelease(escapedInput);
 	CFRelease(networkURL);
 	CFRelease(networkURLString);
 	CFStringRef sourceString = CFStringCreateWithCString(0, "Darwin", utf8Encoding);

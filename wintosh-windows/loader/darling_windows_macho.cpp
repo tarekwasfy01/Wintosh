@@ -105,6 +105,57 @@ bool DispatchArm64CoreFoundationRunLoopImport(const std::string& name,
 	DarlingWindowsA64Backend& backend)
 {
 	const auto& x = state.x;
+	if (name == "_CFURLGetTypeID") {
+		using Call = darling_windows_CFTypeID (DARLING_CF_GUEST_ABI *)();
+		resumed_state.x[0] = static_cast<std::uint64_t>(reinterpret_cast<Call>(target)());
+		return true;
+	}
+	if (name == "_CFURLCreateStringByReplacingPercentEscapes") {
+		using Call = darling_windows_CFStringRef (DARLING_CF_GUEST_ABI *)(const void*,
+			darling_windows_CFStringRef, darling_windows_CFStringRef);
+		resumed_state.x[0] = reinterpret_cast<std::uintptr_t>(reinterpret_cast<Call>(target)(
+			reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[0])),
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[1])),
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[2]))));
+		return true;
+	}
+	if (name == "_CFURLCreateStringByReplacingPercentEscapesUsingEncoding") {
+		using Call = darling_windows_CFStringRef (DARLING_CF_GUEST_ABI *)(const void*,
+			darling_windows_CFStringRef, darling_windows_CFStringRef, std::uint32_t);
+		resumed_state.x[0] = reinterpret_cast<std::uintptr_t>(reinterpret_cast<Call>(target)(
+			reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[0])),
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[1])),
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[2])),
+			static_cast<std::uint32_t>(x[3])));
+		return true;
+	}
+	if (name == "_CFURLCreateStringByAddingPercentEscapes") {
+		using Call = darling_windows_CFStringRef (DARLING_CF_GUEST_ABI *)(const void*,
+			darling_windows_CFStringRef, darling_windows_CFStringRef,
+			darling_windows_CFStringRef, std::uint32_t);
+		resumed_state.x[0] = reinterpret_cast<std::uintptr_t>(reinterpret_cast<Call>(target)(
+			reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[0])),
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[1])),
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[2])),
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[3])),
+			static_cast<std::uint32_t>(x[4])));
+		return true;
+	}
+	if (name == "_CFURLGetByteRangeForComponent") {
+		if (x[2] != 0 && !backend.ContainsGuestRange(x[2],
+			sizeof(darling_windows_CFRange), true))
+			throw std::runtime_error("ARM64 CFURLGetByteRangeForComponent import received an invalid output range");
+		using Call = darling_windows_CFRange (DARLING_CF_GUEST_ABI *)(
+			darling_windows_CFURLRef, darling_windows_CFURLComponentType,
+			darling_windows_CFRange*);
+		const auto result = reinterpret_cast<Call>(target)(
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0])),
+			static_cast<darling_windows_CFURLComponentType>(x[1]),
+			reinterpret_cast<darling_windows_CFRange*>(static_cast<std::uintptr_t>(x[2])));
+		resumed_state.x[0] = static_cast<std::uint64_t>(result.location);
+		resumed_state.x[1] = static_cast<std::uint64_t>(result.length);
+		return true;
+	}
 	const auto set_double_return = [&](double value) {
 		std::memcpy(&resumed_state.v[0], &value, sizeof(value));
 	};

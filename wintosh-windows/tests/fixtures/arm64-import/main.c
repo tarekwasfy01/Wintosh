@@ -134,10 +134,31 @@ int main(int argc, char **argv, char **envp)
 	if (darwin_syscall5(93, 1, 0xdead, 0, 0, 0, &syscall_error) != 14 ||
 		syscall_error != 1)
 		return 15;
+	const long network_socket = darwin_syscall3(97, 2, 1, 6, &syscall_error);
+	if (network_socket < 0 || syscall_error != 0)
+		return 16;
+	int keepalive = 1;
+	unsigned int option_size = sizeof(keepalive);
+	if (darwin_syscall5(105, network_socket, 0xffff, 8, (long)&keepalive,
+		sizeof(keepalive), &syscall_error) != 0 || syscall_error != 0)
+		return 17;
+	keepalive = 0;
+	if (darwin_syscall5(118, network_socket, 0xffff, 8, (long)&keepalive,
+		(long)&option_size, &syscall_error) != 0 || syscall_error != 0)
+		return 18;
+	if (option_size == 0 || option_size > sizeof(keepalive))
+		return 19;
+	if (keepalive != 1)
+		return 20;
+	if (darwin_syscall5(118, network_socket, 0xffff, 8, 0xdead,
+		(long)&option_size, &syscall_error) != 14 || syscall_error != 1)
+		return 21;
+	if (darwin_syscall3(6, network_socket, 0, 0, 0) != 0)
+		return 22;
 	size_t (*volatile guest_strlen)(const char *) = strlen;
 	if (guest_strlen(argv[0]) == 0)
-		return 16;
-	static const char marker[] = "ARM64_SVC_IDENTITY_GROUP_SELECT_DESCRIPTOR_PROCESS_RLIMIT_IOCTL=PASS\n";
+		return 23;
+	static const char marker[] = "ARM64_SVC_IDENTITY_GROUP_SELECT_SOCKETOPT_DESCRIPTOR_PROCESS_RLIMIT_IOCTL=PASS\n";
 	return darwin_syscall3(4, 1, (long)marker, sizeof(marker) - 1, 0) ==
-		sizeof(marker) - 1 ? 42 : 17;
+		sizeof(marker) - 1 ? 42 : 24;
 }

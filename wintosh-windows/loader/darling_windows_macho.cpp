@@ -7508,6 +7508,75 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 							static_cast<int>(address_length));
 					break;
 				}
+				case 105: // SYS_setsockopt
+				case 118: { // SYS_getsockopt
+					if (arguments[0] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max()) ||
+						arguments[1] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max()) ||
+						arguments[2] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max())) {
+						error_number = EINVAL;
+						break;
+					}
+					constexpr std::uint64_t maximum_option_size = 1024 * 1024;
+					std::uint32_t option_size = 0;
+					if (syscall_number == 105) {
+						if (arguments[4] > maximum_option_size) {
+							error_number = EINVAL;
+							break;
+						}
+						option_size = static_cast<std::uint32_t>(arguments[4]);
+					} else {
+						if (!backend.ContainsGuestRange(arguments[4],
+								sizeof(option_size), false)) {
+							error_number = EFAULT;
+							break;
+						}
+						std::memcpy(&option_size, reinterpret_cast<const void*>(
+							static_cast<std::uintptr_t>(arguments[4])), sizeof(option_size));
+						if (option_size > maximum_option_size) {
+							error_number = EINVAL;
+							break;
+						}
+					}
+					if (option_size != 0 && (arguments[3] == 0 ||
+							!backend.ContainsGuestRange(arguments[3], option_size,
+								syscall_number == 118))) {
+						error_number = EFAULT;
+						break;
+					}
+					std::vector<unsigned char> option_value(option_size);
+					if (syscall_number == 105) {
+						if (option_size != 0)
+							std::memcpy(option_value.data(), reinterpret_cast<const void*>(
+								static_cast<std::uintptr_t>(arguments[3])), option_size);
+						syscall_result = darling_windows_setsockopt(
+							static_cast<int>(arguments[0]), static_cast<int>(arguments[1]),
+							static_cast<int>(arguments[2]),
+							option_size == 0 ? nullptr : option_value.data(),
+							static_cast<int>(option_size));
+					} else {
+						int actual_size = static_cast<int>(option_size);
+						syscall_result = darling_windows_getsockopt(
+							static_cast<int>(arguments[0]), static_cast<int>(arguments[1]),
+							static_cast<int>(arguments[2]),
+							option_size == 0 ? nullptr : option_value.data(), &actual_size);
+						if (syscall_result == 0 && actual_size >= 0 &&
+							static_cast<std::uint32_t>(actual_size) <= option_size) {
+							if (actual_size != 0)
+								std::memcpy(reinterpret_cast<void*>(static_cast<std::uintptr_t>(
+									arguments[3])), option_value.data(),
+									static_cast<std::size_t>(actual_size));
+							const auto guest_size = static_cast<std::uint32_t>(actual_size);
+							std::memcpy(reinterpret_cast<void*>(static_cast<std::uintptr_t>(
+								arguments[4])), &guest_size, sizeof(guest_size));
+						} else if (syscall_result == 0) {
+							error_number = EIO;
+						}
+					}
+					break;
+				}
 				case 106: // SYS_listen
 					if (arguments[0] > static_cast<std::uint64_t>(
 							std::numeric_limits<int>::max()) ||

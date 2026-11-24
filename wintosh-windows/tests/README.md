@@ -30,7 +30,8 @@ guest SVC calls for `fcntl` descriptor flag read/write, descriptor duplication,
 flag, plus `getlogin`/`setlogin`, `getgroups`/`setgroups`, same-ID
 `setuid`/`setgid`/`setegid`/`seteuid` and guest-buffer checks, `getdtablesize`,
 `select` writable-descriptor readiness and timeout copy-back, `setpgid`,
-`getpgid`, `setsid`, and nonblocking `flock` acquisition/release. The fixture also
+`setsockopt`/`getsockopt` round-trip, `getpgid`, `setsid`, and nonblocking
+`flock` acquisition/release. The fixture also
 covers Objective-C integer/double arguments and returns, object identity, pointer
 dereference, a stack-passed seventh integer, two-/four-double HFA returns, and
 a 24-byte indirect structure return through `objc_msgSend`. A guest method also

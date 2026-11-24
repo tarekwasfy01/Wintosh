@@ -55,6 +55,10 @@ extern void CFDataReplaceBytes(CFTypeRef, CFRange, const unsigned char *, CFInde
 extern void CFDataSetLength(CFTypeRef, CFIndex);
 extern CFStringRef CFStringCreateWithCharacters(const void *, const unsigned short *, CFIndex);
 extern CFStringRef CFStringCreateCopy(const void *, CFStringRef);
+extern CFStringRef CFStringCreateMutable(const void *, CFIndex);
+extern CFStringRef CFStringCreateMutableCopy(const void *, CFIndex, CFStringRef);
+extern void CFStringAppend(CFStringRef, CFStringRef);
+extern void CFStringAppendCString(CFStringRef, const char *, unsigned int);
 extern CFIndex CFStringGetLength(CFStringRef);
 extern unsigned char CFStringGetCString(CFStringRef, char *, CFIndex, unsigned int);
 extern unsigned short CFStringGetCharacterAtIndex(CFStringRef, CFIndex);
@@ -478,7 +482,7 @@ int main(void)
 	CFRelease(networkURL);
 	CFRelease(networkURLString);
 	CFStringRef sourceString = CFStringCreateWithCString(0, "Darwin", utf8Encoding);
-	char stringBuffer[16] = { 0 };
+	char stringBuffer[32] = { 0 };
 	unsigned short characters[6] = { 0 };
 	if (sourceString == 0 || CFStringGetLength(sourceString) != 6 ||
 		CFStringGetCharacterAtIndex(sourceString, 0) != 'D' ||
@@ -487,6 +491,21 @@ int main(void)
 		!CFStringGetCharacters(sourceString, (CFRange){ 0, 6 }, characters) ||
 		characters[0] != 'D' || characters[5] != 'n' ||
 		CFStringGetMaximumSizeForEncoding(6, utf8Encoding) < 6) return 61;
+	CFStringRef mutableString = CFStringCreateMutable(0, 16);
+	CFStringAppend(mutableString, sourceString);
+	CFStringAppendCString(mutableString, " Runtime", utf8Encoding);
+	CFStringRef mutableStringCopy = CFStringCreateMutableCopy(0, 32, mutableString);
+	CFStringAppend(mutableStringCopy, sourceString);
+	if (mutableString == 0 || mutableStringCopy == 0 ||
+		!CFStringGetCString(mutableString, stringBuffer, sizeof(stringBuffer), utf8Encoding) ||
+		stringBuffer[0] != 'D' || stringBuffer[6] != ' ' || stringBuffer[14] != 0 ||
+		!CFStringGetCString(mutableStringCopy, stringBuffer, sizeof(stringBuffer), utf8Encoding) ||
+		stringBuffer[14] != 'D' || stringBuffer[19] != 'n' || stringBuffer[20] != 0 ||
+		!CFStringGetCString(mutableString, stringBuffer, sizeof(stringBuffer), utf8Encoding) ||
+		stringBuffer[14] != 0)
+		return 88;
+	CFRelease(mutableStringCopy);
+	CFRelease(mutableString);
 	CFStringRef characterString = CFStringCreateWithCharacters(0, characters, 6);
 	CFStringRef copiedString = CFStringCreateCopy(0, sourceString);
 	if (characterString == 0 || copiedString == 0 ||

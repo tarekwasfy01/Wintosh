@@ -982,6 +982,18 @@ with the runtime: `retain(L) = L` and `release(L)` is a no-op. This lets generic
 `CFRetain`, `CFRelease`, and `CFGetTypeID` operate without converting the
 thread-local or main-loop handle into a caller-owned allocation.
 
+## Mutable CoreFoundation strings
+
+Mutable-string imports map guest registers positionally to allocator, capacity,
+and source object: `H = A·G`. For source `s` and appended value `t`,
+`append(s,t)=s·t`; the source remains unchanged when the mutable copy is
+modified. `CFStringAppendCString` accepts only the runtime's supported system
+encoding or UTF-8, and the ARM64 adapter verifies the NUL-terminated guest
+range before reading it. The guest fixture verifies
+`mutable("Darwin") + " Runtime" = "Darwin Runtime"`, then appends to a mutable
+copy and confirms its result is independent. This does not yet implement the
+full CoreFoundation mutable-string API surface.
+
 ## CoreFoundation scalar bridge
 
 For a numeric guest value `x` requested in target type `T`, conversion is

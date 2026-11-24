@@ -960,6 +960,11 @@ extern "C" DARLING_CF_GUEST_ABI darling_windows_CFMutableStringRef CFStringCreat
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFMutableStringRef CFStringCreateMutableCopy(
 	const void* allocator, darling_windows_CFIndex max_length,
 	darling_windows_CFStringRef value);
+extern "C" DARLING_CF_GUEST_ABI void CFStringAppend(
+	darling_windows_CFMutableStringRef value, darling_windows_CFStringRef appended);
+extern "C" DARLING_CF_GUEST_ABI void CFStringAppendCString(
+	darling_windows_CFMutableStringRef value, const char* appended,
+	std::uint32_t encoding);
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFURLRef CFURLCreateWithString(
 	const void* allocator, darling_windows_CFStringRef string,
 	darling_windows_CFURLRef base_url);

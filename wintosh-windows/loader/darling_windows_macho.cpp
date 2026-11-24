@@ -439,6 +439,41 @@ bool DispatchArm64CoreFoundationRunLoopImport(const std::string& name,
 			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[1]))));
 		return true;
 	}
+	if (name == "_CFStringCreateMutable") {
+		using Call = darling_windows_CFMutableStringRef (DARLING_CF_GUEST_ABI *)(
+			const void*, darling_windows_CFIndex);
+		resumed_state.x[0] = reinterpret_cast<std::uintptr_t>(reinterpret_cast<Call>(target)(
+			reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[0])),
+			static_cast<darling_windows_CFIndex>(x[1])));
+		return true;
+	}
+	if (name == "_CFStringCreateMutableCopy") {
+		using Call = darling_windows_CFMutableStringRef (DARLING_CF_GUEST_ABI *)(
+			const void*, darling_windows_CFIndex, darling_windows_CFStringRef);
+		resumed_state.x[0] = reinterpret_cast<std::uintptr_t>(reinterpret_cast<Call>(target)(
+			reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[0])),
+			static_cast<darling_windows_CFIndex>(x[1]),
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[2]))));
+		return true;
+	}
+	if (name == "_CFStringAppend") {
+		using Call = void (DARLING_CF_GUEST_ABI *)(darling_windows_CFMutableStringRef,
+			darling_windows_CFStringRef);
+		reinterpret_cast<Call>(target)(reinterpret_cast<void*>(
+			static_cast<std::uintptr_t>(x[0])), reinterpret_cast<void*>(
+			static_cast<std::uintptr_t>(x[1])));
+		return true;
+	}
+	if (name == "_CFStringAppendCString") {
+		if (x[1] != 0 && !backend.ContainsGuestCString(x[1], 1u << 20))
+			throw std::runtime_error("ARM64 CFStringAppendCString import received an invalid guest string");
+		using Call = void (DARLING_CF_GUEST_ABI *)(darling_windows_CFMutableStringRef,
+			const char*, std::uint32_t);
+		reinterpret_cast<Call>(target)(reinterpret_cast<void*>(
+			static_cast<std::uintptr_t>(x[0])), reinterpret_cast<const char*>(
+			static_cast<std::uintptr_t>(x[1])), static_cast<std::uint32_t>(x[2]));
+		return true;
+	}
 	if (name == "_CFStringGetLength") {
 		using Call = darling_windows_CFIndex (DARLING_CF_GUEST_ABI *)(
 		darling_windows_CFStringRef);

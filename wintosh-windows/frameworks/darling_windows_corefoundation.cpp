@@ -6377,6 +6377,20 @@ extern "C" DARLING_CF_GUEST_ABI darling_windows_CFMutableStringRef CFStringCreat
 	return object;
 }
 
+extern "C" DARLING_CF_GUEST_ABI void CFStringAppend(
+	darling_windows_CFMutableStringRef value, darling_windows_CFStringRef appended)
+{
+	(void)darling_windows_CFStringAppend(value, appended);
+}
+
+extern "C" DARLING_CF_GUEST_ABI void CFStringAppendCString(
+	darling_windows_CFMutableStringRef value, const char* appended,
+	std::uint32_t encoding)
+{
+	if (!DarlingCfSupportsStringEncoding(encoding)) return;
+	(void)darling_windows_CFStringAppendCString(value, appended);
+}
+
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFURLRef CFURLCreateWithString(
 	const void* allocator, darling_windows_CFStringRef string,
 	darling_windows_CFURLRef base_url)
@@ -8840,6 +8854,10 @@ extern "C" std::uintptr_t darling_windows_corefoundation_symbol(const char* name
 		return reinterpret_cast<std::uintptr_t>(&CFStringCreateMutable);
 	if (std::strcmp(name, "CFStringCreateMutableCopy") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFStringCreateMutableCopy);
+	if (std::strcmp(name, "CFStringAppend") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFStringAppend);
+	if (std::strcmp(name, "CFStringAppendCString") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFStringAppendCString);
 	if (std::strcmp(name, "CFURLCreateWithString") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFURLCreateWithString);
 	if (std::strcmp(name, "CFURLCreateWithFileSystemPath") == 0)

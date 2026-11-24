@@ -81,6 +81,7 @@ extern CFIndex CFStringGetMaximumSizeForEncoding(CFIndex, unsigned int);
 extern CFIndex CFStringGetMaximumSizeOfFileSystemRepresentation(CFStringRef);
 extern unsigned char CFStringGetFileSystemRepresentation(CFStringRef, char *, CFIndex);
 extern CFTypeRef CFAllocatorCreate(const void *, const CFAllocatorContext *);
+extern CFTypeRef kCFAllocatorUseContext;
 extern void CFAllocatorGetContext(CFTypeRef, CFAllocatorContext *);
 extern void *CFAllocatorAllocate(CFTypeRef, CFIndex, unsigned long long);
 extern void CFAllocatorDeallocate(CFTypeRef, void *);
@@ -835,7 +836,8 @@ int main(void)
 		allocator_reallocate, allocator_deallocate, allocator_preferred_size };
 	CFAllocatorContext copiedAllocatorContext = { 0 };
 	CFTypeRef priorAllocator = CFAllocatorGetDefault();
-	CFTypeRef customAllocator = CFAllocatorCreate(0, &allocatorContext);
+	CFTypeRef customAllocator = CFAllocatorCreate(kCFAllocatorUseContext,
+		&allocatorContext);
 	if (customAllocator == 0 || priorAllocator == 0) return 91;
 	CFAllocatorGetContext(customAllocator, &copiedAllocatorContext);
 	if (copiedAllocatorContext.info != &allocatorContextInfo ||
@@ -854,7 +856,7 @@ int main(void)
 	CFAllocatorDeallocate(customAllocator, resizedAllocatorMemory);
 	CFAllocatorSetDefault(priorAllocator);
 	CFRelease(customAllocator);
-	if (allocatorAllocateCalls != 1 || allocatorDeallocateCalls != 1 ||
+	if (allocatorAllocateCalls != 2 || allocatorDeallocateCalls != 2 ||
 		allocatorReleaseCalls != 1) return 96;
 	CFRunLoopSourceContext context;
 	context.version = 0;

@@ -5245,7 +5245,14 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 			if (address != 0 && bytes != 0)
 				guest_memory.push_back({address, bytes, true, false, true});
 			const auto& imports = candidate.Arm64HostImports();
-			arm64_host_imports.insert(arm64_host_imports.end(), imports.begin(), imports.end());
+			for (const auto& import : imports) {
+				if (import.identifier == 0) {
+					guest_memory.push_back({import.target, sizeof(std::uintptr_t),
+						true, false, false});
+				} else {
+					arm64_host_imports.push_back(import);
+				}
+			}
 		};
 		register_thunk_pool(mapping);
 		for (const auto& [image, image_mapping] : additional_images) {
@@ -7716,9 +7723,24 @@ std::uintptr_t MachOImage::Mapping::CreateArm64HostImportThunk(
 {
 	if (target == 0 || m_reservation == nullptr)
 		throw std::invalid_argument("ARM64 host import thunk requires a target and mapping");
+	static constexpr std::array<std::string_view, 6> pointer_data_symbols{
+		"_kCFAllocatorDefault", "_kCFAllocatorSystemDefault",
+		"_kCFAllocatorMalloc", "_kCFAllocatorMallocZone",
+		"_kCFAllocatorNull", "_kCFAllocatorUseContext"};
+	if (std::find(pointer_data_symbols.begin(), pointer_data_symbols.end(), symbol) !=
+		pointer_data_symbols.end()) {
+		const auto existing = std::find_if(m_arm64_host_imports.begin(),
+			m_arm64_host_imports.end(), [&symbol, target](const auto& item) {
+				return item.identifier == 0 && item.symbol == symbol &&
+					item.target == target;
+			});
+		if (existing == m_arm64_host_imports.end())
+			m_arm64_host_imports.push_back({0, symbol, target, target});
+		return target;
+	}
 	const auto existing = std::find_if(m_arm64_host_imports.begin(),
 		m_arm64_host_imports.end(), [&symbol, target](const auto& item) {
-			return item.symbol == symbol && item.target == target;
+			return item.identifier != 0 && item.symbol == symbol && item.target == target;
 		});
 	if (existing != m_arm64_host_imports.end())
 		return existing->thunk;

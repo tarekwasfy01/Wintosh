@@ -844,12 +844,13 @@ currently shares system-heap behavior. `CFAllocatorCreate` allocates its own
 object through its requested backing allocator and supports the context
 callbacks when `kCFAllocatorUseContext` is selected. Consistent use of custom
 allocators by every CF constructor remains outside the current implementation.
-The ARM64 source-callback fixture currently uses a null backing allocator. A
-guest call passing the imported `kCFAllocatorUseContext` data symbol faults at
-`0xFFFFFFFFFFFFFFFF`, while the null-backed path passes. Thus the host API's
-special-sentinel implementation is not proof that Mach-O guest data imports
-are correctly represented; data-symbol relocation/indirection is the next
-loader issue to resolve before advertising this path to ARM64 guests.
+ARM64 imports for the six `kCFAllocator…` pointer constants now bind to their
+read-only host data cells instead of function trampolines; those cells are
+registered as readable guest memory. The ARM64 source-callback fixture passes
+`kCFAllocatorUseContext`, verifies backing storage allocation and deallocation,
+and checks the custom allocation callbacks. This data-cell bridge currently
+covers these six known pointer constants; it does not yet infer arbitrary data
+symbol sizes or model writable imported globals.
 Guest `CFString` (CString/characters), `CFData`, `CFArray`, `CFDictionary`,
 `CFSet`, `CFNumber`, `CFDate`, and `CFMachPort` object blocks use the allocator
 passed to their constructor and retain it until `Release(object)`. Their

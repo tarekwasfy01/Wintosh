@@ -115,7 +115,8 @@ bool DispatchArm64CoreFoundationRunLoopImport(const std::string& name,
 		name == "_CFBooleanGetTypeID" || name == "_CFRunLoopGetTypeID" ||
 		name == "_CFRunLoopSourceGetTypeID" ||
 		name == "_CFRunLoopTimerGetTypeID" ||
-		name == "_CFRunLoopObserverGetTypeID") {
+		name == "_CFRunLoopObserverGetTypeID" || name == "_CFStringGetTypeID" ||
+		name == "_CFMachPortGetTypeID") {
 		using Call = darling_windows_CFTypeID (DARLING_CF_GUEST_ABI *)();
 		resumed_state.x[0] = static_cast<std::uint64_t>(reinterpret_cast<Call>(target)());
 		return true;
@@ -662,6 +663,132 @@ bool DispatchArm64CoreFoundationRunLoopImport(const std::string& name,
 		reinterpret_cast<Call>(target)(reinterpret_cast<void*>(
 			static_cast<std::uintptr_t>(x[0])),
 			static_cast<darling_windows_CFIndex>(x[1]));
+		return true;
+	}
+	if (name == "_CFPreferencesCopyAppValue" || name == "_CFPreferencesCopyValue") {
+		if (name == "_CFPreferencesCopyAppValue") {
+			using Call = darling_windows_CFTypeRef (DARLING_CF_GUEST_ABI *)(
+				darling_windows_CFStringRef, darling_windows_CFStringRef);
+			resumed_state.x[0] = reinterpret_cast<std::uintptr_t>(reinterpret_cast<Call>(target)(
+				reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0])),
+				reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[1]))));
+		} else {
+			using Call = darling_windows_CFTypeRef (DARLING_CF_GUEST_ABI *)(
+				darling_windows_CFStringRef, darling_windows_CFStringRef,
+				darling_windows_CFStringRef, darling_windows_CFStringRef);
+			resumed_state.x[0] = reinterpret_cast<std::uintptr_t>(reinterpret_cast<Call>(target)(
+				reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0])),
+				reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[1])),
+				reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[2])),
+				reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[3]))));
+		}
+		return true;
+	}
+	if (name == "_CFPreferencesSetAppValue" || name == "_CFPreferencesSetValue") {
+		if (name == "_CFPreferencesSetAppValue") {
+			using Call = void (DARLING_CF_GUEST_ABI *)(darling_windows_CFStringRef,
+				darling_windows_CFTypeRef, darling_windows_CFStringRef);
+			reinterpret_cast<Call>(target)(
+				reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0])),
+				reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[1])),
+				reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[2])));
+		} else {
+			using Call = void (DARLING_CF_GUEST_ABI *)(darling_windows_CFStringRef,
+				darling_windows_CFTypeRef, darling_windows_CFStringRef,
+				darling_windows_CFStringRef, darling_windows_CFStringRef);
+			reinterpret_cast<Call>(target)(
+				reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0])),
+				reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[1])),
+				reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[2])),
+				reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[3])),
+				reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[4])));
+		}
+		return true;
+	}
+	if (name == "_CFPreferencesAppSynchronize") {
+		using Call = bool (DARLING_CF_GUEST_ABI *)(darling_windows_CFStringRef);
+		resumed_state.x[0] = reinterpret_cast<Call>(target)(
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0]))) ? 1u : 0u;
+		return true;
+	}
+	if (name == "_CFPreferencesSynchronize") {
+		using Call = bool (DARLING_CF_GUEST_ABI *)(darling_windows_CFStringRef,
+			darling_windows_CFStringRef, darling_windows_CFStringRef);
+		resumed_state.x[0] = reinterpret_cast<Call>(target)(
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0])),
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[1])),
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[2]))) ? 1u : 0u;
+		return true;
+	}
+	if (name == "_CFPreferencesCopyMultiple" || name == "_CFPreferencesCopyKeyList") {
+		if (name == "_CFPreferencesCopyMultiple") {
+			using Call = darling_windows_CFDictionaryRef (DARLING_CF_GUEST_ABI *)(
+				darling_windows_CFArrayRef, darling_windows_CFStringRef,
+				darling_windows_CFStringRef, darling_windows_CFStringRef);
+			resumed_state.x[0] = reinterpret_cast<std::uintptr_t>(reinterpret_cast<Call>(target)(
+				reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0])),
+				reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[1])),
+				reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[2])),
+				reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[3]))));
+		} else {
+			using Call = darling_windows_CFArrayRef (DARLING_CF_GUEST_ABI *)(
+				darling_windows_CFStringRef, darling_windows_CFStringRef,
+				darling_windows_CFStringRef);
+			resumed_state.x[0] = reinterpret_cast<std::uintptr_t>(reinterpret_cast<Call>(target)(
+				reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0])),
+				reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[1])),
+				reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[2]))));
+		}
+		return true;
+	}
+	if (name == "_CFPreferencesSetMultiple") {
+		using Call = void (DARLING_CF_GUEST_ABI *)(darling_windows_CFDictionaryRef,
+			darling_windows_CFArrayRef, darling_windows_CFStringRef,
+			darling_windows_CFStringRef, darling_windows_CFStringRef);
+		reinterpret_cast<Call>(target)(
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0])),
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[1])),
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[2])),
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[3])),
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[4])));
+		return true;
+	}
+	if (name == "_CFPreferencesGetAppBooleanValue" ||
+		name == "_CFPreferencesGetAppIntegerValue") {
+		if (x[2] != 0 && !backend.ContainsGuestRange(x[2], sizeof(std::uint8_t), true))
+			throw std::runtime_error("ARM64 CFPreferences scalar import received an invalid output pointer");
+		if (name == "_CFPreferencesGetAppBooleanValue") {
+			using Call = std::uint8_t (DARLING_CF_GUEST_ABI *)(darling_windows_CFStringRef,
+				darling_windows_CFStringRef, std::uint8_t*);
+			resumed_state.x[0] = reinterpret_cast<Call>(target)(
+				reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0])),
+				reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[1])),
+				reinterpret_cast<std::uint8_t*>(static_cast<std::uintptr_t>(x[2])));
+		} else {
+			using Call = std::intptr_t (DARLING_CF_GUEST_ABI *)(darling_windows_CFStringRef,
+				darling_windows_CFStringRef, std::uint8_t*);
+			resumed_state.x[0] = static_cast<std::uint64_t>(reinterpret_cast<Call>(target)(
+				reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0])),
+				reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[1])),
+				reinterpret_cast<std::uint8_t*>(static_cast<std::uintptr_t>(x[2]))));
+		}
+		return true;
+	}
+	if (name == "_CFPreferencesAppValueIsForced") {
+		using Call = std::uint8_t (DARLING_CF_GUEST_ABI *)(darling_windows_CFStringRef,
+			darling_windows_CFStringRef);
+		resumed_state.x[0] = reinterpret_cast<Call>(target)(
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0])),
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[1])));
+		return true;
+	}
+	if (name == "_CFPreferencesAddSuitePreferencesToApp" ||
+		name == "_CFPreferencesRemoveSuitePreferencesFromApp") {
+		using Call = void (DARLING_CF_GUEST_ABI *)(darling_windows_CFStringRef,
+			darling_windows_CFStringRef);
+		reinterpret_cast<Call>(target)(
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0])),
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[1])));
 		return true;
 	}
 	if (name == "_CFDateCreate") {

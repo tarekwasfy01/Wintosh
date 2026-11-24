@@ -108,6 +108,10 @@ extern CFStringRef CFStringCreateWithCString(const void *, const char *,
 extern CFStringRef CFCopyDescription(const void *);
 extern CFTypeRef CFNumberCreate(const void *, CFNumberType, const void *);
 extern unsigned long CFNumberGetTypeID(void);
+extern void CFPreferencesSetAppValue(CFStringRef, CFTypeRef, CFStringRef);
+extern CFTypeRef CFPreferencesCopyAppValue(CFStringRef, CFStringRef);
+extern long CFPreferencesGetAppIntegerValue(CFStringRef, CFStringRef,
+	unsigned char *);
 extern unsigned char CFNumberGetValue(CFTypeRef, CFNumberType, void *);
 extern unsigned char CFNumberIsFloatType(CFTypeRef);
 extern long CFNumberCompare(CFTypeRef, CFTypeRef, const void *);
@@ -540,6 +544,22 @@ int main(void)
 		convertedInteger != 40 || CFNumberIsFloatType(integerNumber) ||
 		!CFNumberIsFloatType(realNumber) ||
 		CFNumberCompare(integerNumber, realNumber, 0) >= 0) return 59;
+	CFStringRef preferenceKey = CFStringCreateWithCString(0, "runtime-test-integer",
+		0x08000100u);
+	CFStringRef preferenceApp = CFStringCreateWithCString(0,
+		"org.wintosh.arm64-fixture", 0x08000100u);
+	CFPreferencesSetAppValue(preferenceKey, integerNumber, preferenceApp);
+	unsigned char preferenceExists = 0;
+	CFTypeRef copiedPreference = CFPreferencesCopyAppValue(preferenceKey, preferenceApp);
+	if (preferenceKey == 0 || preferenceApp == 0 || copiedPreference == 0 ||
+		CFPreferencesGetAppIntegerValue(preferenceKey, preferenceApp,
+			&preferenceExists) != 40 || !preferenceExists ||
+		CFNumberCompare(copiedPreference, integerNumber, 0) != 0) return 89;
+	CFPreferencesSetAppValue(preferenceKey, 0, preferenceApp);
+	if (CFPreferencesCopyAppValue(preferenceKey, preferenceApp) != 0) return 90;
+	CFRelease(copiedPreference);
+	CFRelease(preferenceApp);
+	CFRelease(preferenceKey);
 	CFRelease(integerNumber);
 	CFRelease(realNumber);
 	arrayValueA = 2;

@@ -994,6 +994,21 @@ range before reading it. The guest fixture verifies
 copy and confirms its result is independent. This does not yet implement the
 full CoreFoundation mutable-string API surface.
 
+## CoreFoundation preferences bridge
+
+Preference calls use the register matrix `G=(x0,…,x4)` for key, value or key
+array, application domain, user, and host; each selected wrapper forwards the
+matching argument prefix to the host implementation. Pending app preferences
+are a partial map `P : (domain,key) ⇀ XML`. `SetAppValue(k,v,a)` assigns
+`P[(domain(a),k)] = Serialize(v)`, while a null value stores a deletion
+tombstone; `CopyAppValue(k,a)` deserializes the pending value before consulting
+the persisted store and suites. `GetAppIntegerValue` and `GetAppBooleanValue`
+return a scalar in `x0` and optionally write the validity bit through `x2`,
+whose guest range is validated first. The ARM64 fixture sets, copies, converts,
+and removes an integer preference entirely in memory, so it does not invoke
+disk synchronization. Full preferences-domain and managed-store parity remains
+incomplete.
+
 ## CoreFoundation scalar bridge
 
 For a numeric guest value `x` requested in target type `T`, conversion is

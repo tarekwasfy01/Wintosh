@@ -59,12 +59,27 @@ int main(int argc, char **argv, char **envp)
 	if (darwin_syscall3(49, (long)login, sizeof(login), 0, 0) != 0 ||
 		login[0] == '\0' || darwin_syscall3(50, (long)login, 0, 0, 0) != 0)
 		return 9;
+	unsigned int groups[4] = {0};
+	const long group_count = darwin_syscall3(79, 0, 0, 0, 0);
+	if (group_count != 1 || darwin_syscall3(79, 4, (long)groups, 0, 0) != 1 ||
+		groups[0] != (unsigned int)darwin_syscall3(47, 0, 0, 0, 0) ||
+		darwin_syscall3(23, darwin_syscall3(24, 0, 0, 0, 0), 0, 0, 0) != 0 ||
+		darwin_syscall3(181, darwin_syscall3(47, 0, 0, 0, 0), 0, 0, 0) != 0 ||
+		darwin_syscall3(182, darwin_syscall3(43, 0, 0, 0, 0), 0, 0, 0) != 0 ||
+		darwin_syscall3(183, darwin_syscall3(25, 0, 0, 0, 0), 0, 0, 0) != 0)
+		return 10;
 	unsigned long syscall_error = 0;
 	if (darwin_syscall3(194, 8, 0, 0, &syscall_error) != 14 || syscall_error != 1 ||
 		darwin_syscall3(49, 0, sizeof(login), 0, &syscall_error) != 14 ||
 		syscall_error != 1 ||
+		darwin_syscall3(79, 1, 0, 0, &syscall_error) != 14 ||
+		syscall_error != 1 ||
+		darwin_syscall3(80, 1, 0, 0, &syscall_error) != 14 ||
+		syscall_error != 1 ||
+		darwin_syscall3(80, 1, (long)groups, 0, &syscall_error) != 1 ||
+		syscall_error != 1 ||
 		darwin_syscall3(54, 1, 0xdead, 0, &syscall_error) != 25 || syscall_error != 1)
-		return 10;
+		return 11;
 	register long pipe_read __asm__("x0") = 0;
 	register long pipe_write __asm__("x1") = 0;
 	register long pipe_call __asm__("x16") = 42;
@@ -93,7 +108,7 @@ int main(int argc, char **argv, char **envp)
 	size_t (*volatile guest_strlen)(const char *) = strlen;
 	if (guest_strlen(argv[0]) == 0)
 		return 14;
-	static const char marker[] = "ARM64_SVC_IDENTITY_DESCRIPTOR_PROCESS_RLIMIT_IOCTL=PASS\n";
+	static const char marker[] = "ARM64_SVC_IDENTITY_GROUP_DESCRIPTOR_PROCESS_RLIMIT_IOCTL=PASS\n";
 	return darwin_syscall3(4, 1, (long)marker, sizeof(marker) - 1, 0) ==
 		sizeof(marker) - 1 ? 42 : 15;
 }

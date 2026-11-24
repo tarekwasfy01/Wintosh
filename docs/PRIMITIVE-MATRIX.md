@@ -25,8 +25,9 @@ data rows use CSV quoting for embedded commas. The ARM64 UNIX-SVC row records
 the connected `fcntl`, resource-limit, and bounded `ioctl` adapters as partial:
 the `wintosh_arm64_host_import_e2e` guest fixture verifies descriptor changes,
 resource-limit copies, `FIONREAD` output from a guest pipe, Darwin error
-returns, the carry bit, login identity copies, selected process-group/session
-calls, and nonblocking file-lock acquire/release; terminal winsize requests remain unverified. The
+returns, the carry bit, login and UID/GID/group identity calls, selected
+process-group/session calls, and nonblocking file-lock acquire/release; terminal
+winsize requests remain unverified. The
 separate transformation-capability matrix and its Boolean
 composition tool are documented in [`TRANSFORM-CAPABILITIES.csv`](TRANSFORM-CAPABILITIES.csv).
 The consolidated cross-source extraction is [SOURCE-EXTRACTION-MATRIX.md](SOURCE-EXTRACTION-MATRIX.md).

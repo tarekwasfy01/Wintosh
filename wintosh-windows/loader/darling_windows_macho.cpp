@@ -6810,6 +6810,78 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 					syscall_result_x1 = static_cast<std::uint64_t>(
 						darling_windows_getppid());
 					break;
+				case 23: // SYS_setuid
+				case 181: // SYS_setgid
+				case 182: // SYS_setegid
+				case 183: // SYS_seteuid
+					if (arguments[0] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max())) {
+						error_number = EINVAL;
+						break;
+					}
+					switch (syscall_number) {
+					case 23:
+						syscall_result = darling_windows_setuid(
+							static_cast<int>(arguments[0]));
+						break;
+					case 181:
+						syscall_result = darling_windows_setgid(
+							static_cast<int>(arguments[0]));
+						break;
+					case 182:
+						syscall_result = darling_windows_setegid(
+							static_cast<int>(arguments[0]));
+						break;
+					default:
+						syscall_result = darling_windows_seteuid(
+							static_cast<int>(arguments[0]));
+						break;
+					}
+					break;
+				case 79: { // SYS_getgroups
+					if (arguments[0] > 1024) {
+						error_number = EINVAL;
+						break;
+					}
+					const auto count = static_cast<std::size_t>(arguments[0]);
+					if (count != 0 && (arguments[1] == 0 ||
+							!backend.ContainsGuestRange(arguments[1],
+								count * sizeof(std::uint32_t), true))) {
+						error_number = EFAULT;
+						break;
+					}
+					std::vector<std::uint32_t> groups(count);
+					syscall_result = darling_windows_getgroups(
+						static_cast<int>(count), count == 0 ? nullptr : groups.data());
+					if (syscall_result > 0 && count != 0) {
+						const auto copied = std::min<std::size_t>(
+							static_cast<std::size_t>(syscall_result), count);
+						std::memcpy(reinterpret_cast<void*>(static_cast<std::uintptr_t>(
+							arguments[1])), groups.data(), copied * sizeof(std::uint32_t));
+					}
+					break;
+				}
+				case 80: { // SYS_setgroups
+					if (arguments[0] > 1024) {
+						error_number = EINVAL;
+						break;
+					}
+					const auto count = static_cast<std::size_t>(arguments[0]);
+					if (count != 0 && (arguments[1] == 0 ||
+							!backend.ContainsGuestRange(arguments[1],
+								count * sizeof(std::uint32_t), false))) {
+						error_number = EFAULT;
+						break;
+					}
+					std::vector<std::uint32_t> groups(count);
+					if (count != 0)
+						std::memcpy(groups.data(), reinterpret_cast<const void*>(
+							static_cast<std::uintptr_t>(arguments[1])),
+							count * sizeof(std::uint32_t));
+					syscall_result = darling_windows_setgroups(
+						static_cast<int>(count), count == 0 ? nullptr : groups.data());
+					break;
+				}
 				case 82: // SYS_setpgid
 					if (arguments[0] > static_cast<std::uint64_t>(
 							std::numeric_limits<int>::max()) ||

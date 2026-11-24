@@ -27,8 +27,9 @@ runs them through the optional Dynarmic backend. It covers `_strlen` and
 guest SVC calls for `fcntl` descriptor flag read/write, descriptor duplication,
 `getrlimit`/`setrlimit` structure copies, invalid-pointer `EFAULT`, unsupported
 `ioctl` `ENOTTY`, successful `FIONREAD` pipe output, and Darwin's syscall carry
-flag, plus `getlogin`/`setlogin` guest-buffer copies, `getdtablesize`, `setpgid`,
-`getpgid`, `setsid`, and nonblocking `flock` acquisition/release. The fixture also
+flag, plus `getlogin`/`setlogin`, `getgroups`/`setgroups`, same-ID
+`setuid`/`setgid`/`setegid`/`seteuid` and guest-buffer checks, `getdtablesize`,
+`setpgid`, `getpgid`, `setsid`, and nonblocking `flock` acquisition/release. The fixture also
 covers Objective-C integer/double arguments and returns, object identity, pointer
 dereference, a stack-passed seventh integer, two-/four-double HFA returns, and
 a 24-byte indirect structure return through `objc_msgSend`. A guest method also

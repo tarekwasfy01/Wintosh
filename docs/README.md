@@ -47,6 +47,8 @@ must be implemented and tested family by family.
 - `../darling-source/src/native/windows/` — local comparison copy; the upstream
   source checkout is not vendored here.
 - `../wsl-source/` — local-only WSL reference checkout; it is not published here.
+- `../darling-computa-source/` — local-only Darwin_Computa/Boxedwine checkout;
+  its Linux runtime is the optional full-Darling backend reference.
 - `../licenses/` — collected licenses, notices, and the source-license inventory.
 - `../PRIMITIVE-MATRIX.csv` / `PRIMITIVE-MATRIX.md` — implementation and test map.
 - `SOURCE-EXTRACTION-MATRIX.md` — cross-project source and idea extraction map.

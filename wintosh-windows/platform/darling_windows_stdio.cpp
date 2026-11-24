@@ -3003,9 +3003,30 @@ extern "C" int darling_windows_unlinkat(int directory_descriptor, const char* pa
 		const auto resolved = ResolveAtPath(directory_descriptor, path);
 		if (resolved.empty())
 			return -1;
-		const auto utf8_path = Utf8String(resolved.wstring());
-		return (flags & at_removedir) != 0 ? darling_windows_rmdir(utf8_path.c_str()) :
-			darling_windows_unlink(utf8_path.c_str());
+		const DWORD attributes = GetFileAttributesW(resolved.c_str());
+		if (attributes == INVALID_FILE_ATTRIBUTES) {
+			darling::windows_host::DarwinErrno::SetFromWin32(GetLastError());
+			return -1;
+		}
+		const bool is_symlink = (attributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0;
+		const bool is_directory = (attributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+		if ((flags & at_removedir) != 0) {
+			if (!is_directory || is_symlink) {
+				darling::windows_host::DarwinErrno::Set(20);
+				return -1;
+			}
+			return RemoveDirectoryW(resolved.c_str()) ? 0 :
+				(darling::windows_host::DarwinErrno::SetFromWin32(GetLastError()), -1);
+		}
+		if (is_directory && !is_symlink) {
+			darling::windows_host::DarwinErrno::Set(21);
+			return -1;
+		}
+		if (is_directory && is_symlink)
+			return RemoveDirectoryW(resolved.c_str()) ? 0 :
+				(darling::windows_host::DarwinErrno::SetFromWin32(GetLastError()), -1);
+		return DeleteFileW(resolved.c_str()) ? 0 :
+			(darling::windows_host::DarwinErrno::SetFromWin32(GetLastError()), -1);
 	} catch (...) {
 		return -1;
 	}
@@ -3072,6 +3093,45 @@ extern "C" int darling_windows_symlink(const char* target, const char* link_path
 	}
 }
 
+extern "C" int darling_windows_symlinkat(const char* target,
+	int directory_descriptor, const char* link_path)
+{
+	try {
+		if (target == nullptr) {
+			darling::windows_host::DarwinErrno::Set(22);
+			return -1;
+		}
+		const auto resolved_link = ResolveAtPath(directory_descriptor, link_path);
+		if (resolved_link.empty())
+			return -1;
+		const auto utf8_link = Utf8String(resolved_link.wstring());
+		const auto wide_target = Utf8Path(target);
+		if (utf8_link.empty() || wide_target.empty()) {
+			darling::windows_host::DarwinErrno::Set(22);
+			return -1;
+		}
+		const auto target_for_type = wide_target.is_absolute() ? wide_target :
+			resolved_link.parent_path() / wide_target;
+		const DWORD attributes = GetFileAttributesW(target_for_type.c_str());
+		if (attributes == INVALID_FILE_ATTRIBUTES) {
+			darling::windows_host::DarwinErrno::SetFromWin32(GetLastError());
+			return -1;
+		}
+		DWORD flags = (attributes & FILE_ATTRIBUTE_DIRECTORY) != 0 ?
+			SYMBOLIC_LINK_FLAG_DIRECTORY : 0;
+		flags |= 0x2; // SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE
+		if (!CreateSymbolicLinkW(resolved_link.c_str(), wide_target.c_str(), flags) &&
+			!CreateSymbolicLinkW(resolved_link.c_str(), wide_target.c_str(),
+				flags & ~0x2u)) {
+			darling::windows_host::DarwinErrno::SetFromWin32(GetLastError());
+			return -1;
+		}
+		return 0;
+	} catch (...) {
+		return -1;
+	}
+}
+
 extern "C" std::int64_t darling_windows_readlink(const char* path, char* buffer,
 	std::size_t size)
 {
@@ -3121,11 +3181,29 @@ extern "C" std::int64_t darling_windows_readlink(const char* path, char* buffer,
 				guest_target = (std::filesystem::path(L"/") / relative.generic_string()).wstring();
 		}
 		const auto utf8 = Utf8String(guest_target);
-		if (size != 0) {
-			const auto copied = (std::min)(size, utf8.size());
+		const auto copied = (std::min)(size, utf8.size());
+		if (copied != 0) {
 			std::memcpy(buffer, utf8.data(), copied);
 		}
-		return static_cast<std::int64_t>(utf8.size());
+		return static_cast<std::int64_t>(copied);
+	} catch (...) {
+		return -1;
+	}
+}
+
+extern "C" std::int64_t darling_windows_readlinkat(int directory_descriptor,
+	const char* path, char* buffer, std::size_t size)
+{
+	try {
+		const auto resolved = ResolveAtPath(directory_descriptor, path);
+		if (resolved.empty())
+			return -1;
+		const auto utf8_path = Utf8String(resolved.wstring());
+		if (utf8_path.empty()) {
+			darling::windows_host::DarwinErrno::Set(22);
+			return -1;
+		}
+		return darling_windows_readlink(utf8_path.c_str(), buffer, size);
 	} catch (...) {
 		return -1;
 	}

@@ -16,7 +16,7 @@ file has been legally or semantically cleared for reuse.
 | touchHLE | HLE framework shims, app-driven API coverage | Foundation/UIKit prioritization | MPL source, GPL binary distribution, dependency licenses | reference only |
 | DirectHW | privileged Darwin hardware driver/framework | kernel/user boundary | signed Windows driver and security model | no user-mode hardware emulation |
 | Cocotron | historical Foundation/AppKit/Core* API inventory | framework layering and API grouping | old Xcode/Apple assumptions; nested components | no source copied; framework row remains missing |
-| Darwin_Computa | Boxedwine64 emulated Linux kernel + real Darling/darlingserver | highest-value modern architecture | GPLv2 plus Boxedwine/Darling/rootfs boundaries | WSL/backend contract added |
+| Darwin_Computa | Boxedwine64 emulated Linux kernel + real Darling/darlingserver; trace-driven bring-up and staged Darling rootfs | highest-value architecture for running real modern Darling userland | GPLv2 source boundary; current checked-in MSVC project does not enable/build the Darwin path; no local Windows binary/rootfs verification | full shallow reference checkout; analysis documented; no source copied into GPL-3 Wintosh tree |
 | macho-ld | in-memory Mach-O/dylib/fat/chained-fixup loader | loader edge-case fixtures | no verified top-level license; lacks ObjC init/weak bind/32-bit | extend Mach-O smoke matrix |
 | Classix | PEF/CFM/PowerPC VM/native resolver separation | explicit guest/native boundary | GPLv3; Mac OS 9 only; limited tests | architecture reference only |
 | VST-ace | mixed PE/Mach-O/CFM hosts and shims | integration and Objective-C gap evidence | third-party binaries/reverse-engineering corpus | no binaries/code copied |
@@ -48,7 +48,7 @@ WSL probe is implemented but this host returns `Wsl/E_ACCESSDENIED`.
 The named source checkouts represented here are `darling-source`,
 `wsl-source`, `puredarwin-source`, `ipasim-source`, `wine64-darwin-source`,
 `sherlockelf-source`, `touchhle-source`, `directhw-source`,
-`cocotron-source`, `darwin-computa-source`, `macho-ld-source`,
+`cocotron-source`, `darling-computa-source`, `macho-ld-source`,
 `classix-source`, and `vst-ace-source`. Their original license files remain
 inside those checkouts where available. The Darling-specific external audit is
 tracked separately in `licenses/EXTERNAL-COMPONENT-PROVENANCE.csv`: it has

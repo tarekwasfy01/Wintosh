@@ -17,7 +17,7 @@ cleared for redistribution.
 | `touchhle-source` | historical HLE/framework reference | `LICENSE` | reference-only; MPL/dependency review |
 | `directhw-source` | Darwin hardware boundary reference | `Copying.rtf` | reference-only; no driver code copied |
 | `cocotron-source` | Foundation/AppKit API inventory | `LICENSE.txt` | reference-only; no framework code copied |
-| `darwin-computa-source` | Boxedwine/real-Darling architecture reference | `license.txt` | reference-only; GPLv2/Boxedwine/Darling boundary |
+| `darling-computa-source` | Boxedwine/real-Darling architecture reference | `license.txt` | reference-only; GPLv2/Boxedwine/Darling boundary |
 | `macho-ld-source` | Mach-O loader reference | no root license file observed | reference-only; manual review required |
 | `classix-source` | PEF/CFM guest/native boundary reference | `LICENSE` | reference-only; GPLv3 boundary |
 | `vst-ace-source` | mixed binary-host/reference project | `LICENSE` | reference-only; third-party binary review |

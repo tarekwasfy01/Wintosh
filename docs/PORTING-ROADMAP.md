@@ -20,6 +20,11 @@ the named runtime gate and the semantic boundary must both be recorded.
    The detailed backend composition, memory invariants, and staged guest-to-host
    trap contract are recorded in
    [`AARCH64-X64-BACKEND.md`](porting/AARCH64-X64-BACKEND.md).
+   In parallel, the separate full-Darling route is wired as a WSL1 process
+   launcher: `wsl.exe -> Darwin_Computa/Boxedwine -> Darling`. The current
+   `DSERVER_INIT` demo is CLI-only; full launchd service bootstrap, app-bundle
+   staging, multi-process verification and Cocoa GUI remain gates. See
+   [`DARLING-WSL-BACKEND.md`](DARLING-WSL-BACKEND.md).
 2. **Foundation/CoreFoundation** — grow the existing C ABI in cohesive value,
    collection, plist, run-loop, and notification families. Gate each family in
    `corefoundation_smoke` and keep Apple/Cocotron provenance separate from

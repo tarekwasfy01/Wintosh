@@ -6721,6 +6721,53 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 						static_cast<int>(arguments[2]));
 					break;
 				}
+				case 473: { // SYS_readlinkat
+					int directory_descriptor = 0;
+					if (!DecodeDarwinAtDirectoryDescriptor(arguments[0], directory_descriptor)) {
+						error_number = EBADF;
+						break;
+					}
+					if (!backend.ContainsGuestCString(arguments[1], 32768)) {
+						error_number = EFAULT;
+						break;
+					}
+					constexpr std::uint64_t maximum_readlink_buffer = 16 * 1024 * 1024;
+					if (arguments[3] > maximum_readlink_buffer) {
+						error_number = EINVAL;
+						break;
+					}
+					const auto buffer_size = static_cast<std::size_t>(arguments[3]);
+					if (buffer_size != 0 && !backend.ContainsGuestRange(arguments[2],
+						buffer_size, true)) {
+						error_number = EFAULT;
+						break;
+					}
+					std::vector<char> link_target(buffer_size);
+					syscall_result = darling_windows_readlinkat(directory_descriptor,
+						reinterpret_cast<const char*>(static_cast<std::uintptr_t>(arguments[1])),
+						link_target.empty() ? nullptr : link_target.data(), buffer_size);
+					if (syscall_result > 0 && static_cast<std::uint64_t>(syscall_result) <= buffer_size)
+						std::memcpy(reinterpret_cast<void*>(static_cast<std::uintptr_t>(arguments[2])),
+							link_target.data(), static_cast<std::size_t>(syscall_result));
+					break;
+				}
+				case 474: { // SYS_symlinkat
+					int directory_descriptor = 0;
+					if (!DecodeDarwinAtDirectoryDescriptor(arguments[1], directory_descriptor)) {
+						error_number = EBADF;
+						break;
+					}
+					if (!backend.ContainsGuestCString(arguments[0], 32768) ||
+						!backend.ContainsGuestCString(arguments[2], 32768)) {
+						error_number = EFAULT;
+						break;
+					}
+					syscall_result = darling_windows_symlinkat(
+						reinterpret_cast<const char*>(static_cast<std::uintptr_t>(arguments[0])),
+						directory_descriptor,
+						reinterpret_cast<const char*>(static_cast<std::uintptr_t>(arguments[2])));
+					break;
+				}
 				case 475: { // SYS_mkdirat
 					int directory_descriptor = 0;
 					if (!DecodeDarwinAtDirectoryDescriptor(arguments[0], directory_descriptor)) {

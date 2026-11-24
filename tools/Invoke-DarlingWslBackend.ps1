@@ -1,8 +1,10 @@
 [CmdletBinding()]
 param(
-    [ValidateSet('Probe','Run')]
+    [ValidateSet('Probe','Run','DarwinComputa')]
     [string]$Mode = 'Probe',
     [string]$Distribution = '',
+    [string]$ComputaRoot = '',
+    [string]$GuestMachO = '/usr/bin/sw_vers',
     [string]$DarlingCommand = 'true',
     [string[]]$DarlingArgument = @()
 )
@@ -28,6 +30,22 @@ try {
         Write-Output 'DARLING_WSL_BACKEND=AVAILABLE'
         & wsl.exe -l -v
         exit $LASTEXITCODE
+    }
+
+    if ($Mode -eq 'DarwinComputa') {
+        if (-not $Distribution) {
+            throw 'DarwinComputa mode requires -Distribution.'
+        }
+        if (-not $ComputaRoot.StartsWith('/')) {
+            throw '-ComputaRoot must be an absolute Linux path inside the selected WSL distribution.'
+        }
+        if (-not $GuestMachO.StartsWith('/')) {
+            throw '-GuestMachO must be an absolute guest path such as /usr/bin/sw_vers.'
+        }
+        $launcher = $ComputaRoot.TrimEnd('/') + '/tools/run_darling_app.sh'
+        $computaArguments = @('--distribution', $Distribution, '--exec', $launcher, $GuestMachO) + $DarlingArgument
+        Invoke-WslChecked -Arguments $computaArguments
+        exit 0
     }
 
     $args = @()

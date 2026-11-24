@@ -289,8 +289,12 @@ extern "C" int darling_windows_unlinkat(int directory_descriptor, const char* pa
 extern "C" int darling_windows_rmdir(const char* path);
 extern "C" int darling_windows_link(const char* existing_path, const char* link_path);
 extern "C" int darling_windows_symlink(const char* target, const char* link_path);
+extern "C" int darling_windows_symlinkat(const char* target,
+	int directory_descriptor, const char* link_path);
 extern "C" std::int64_t darling_windows_readlink(const char* path, char* buffer,
 	std::size_t size);
+extern "C" std::int64_t darling_windows_readlinkat(int directory_descriptor,
+	const char* path, char* buffer, std::size_t size);
 extern "C" int darling_windows_access(const char* path, int mode);
 extern "C" int darling_windows_rename(const char* old_path, const char* new_path);
 extern "C" int darling_windows_renameat(int old_directory_descriptor, const char* old_path,

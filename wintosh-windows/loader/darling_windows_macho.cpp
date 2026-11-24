@@ -6836,6 +6836,17 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 					syscall_result = darling_windows_getpgid(
 						static_cast<int>(arguments[0]));
 					break;
+				case 131: // SYS_flock
+					if (arguments[0] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max()) ||
+						arguments[1] > static_cast<std::uint64_t>(
+							std::numeric_limits<int>::max())) {
+						error_number = EINVAL;
+						break;
+					}
+					syscall_result = darling_windows_flock(
+						static_cast<int>(arguments[0]), static_cast<int>(arguments[1]));
+					break;
 				case 37: // SYS_kill
 					if (arguments[0] > std::numeric_limits<std::uint32_t>::max() ||
 						arguments[1] > static_cast<std::uint64_t>(
@@ -7865,8 +7876,21 @@ std::uintptr_t MachOImage::Mapping::CreateArm64HostImportThunk(
 		(memory.Protect & (PAGE_GUARD | PAGE_NOACCESS)) == 0 &&
 		(memory.Protect & (PAGE_EXECUTE | PAGE_EXECUTE_READ |
 			PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY)) == 0) {
-		const auto data_region = reinterpret_cast<std::uintptr_t>(memory.BaseAddress);
-		const auto data_region_bytes = static_cast<std::size_t>(memory.RegionSize);
+		auto data_region = reinterpret_cast<std::uintptr_t>(memory.BaseAddress);
+		auto data_region_bytes = static_cast<std::size_t>(memory.RegionSize);
+		if (memory.Type == MEM_PRIVATE) {
+			// VirtualQuery coalesces private heap pages into large regions. Exposing
+			// that whole region as imported guest data makes later HeapAlloc-backed
+			// guest malloc registrations collide with unrelated host allocations.
+			const auto allocation_bytes = HeapSize(GetProcessHeap(), 0,
+				reinterpret_cast<const void*>(target));
+			if (allocation_bytes == static_cast<SIZE_T>(-1) || allocation_bytes == 0)
+				throw std::runtime_error(
+					"ARM64 private host data import is not a process-heap allocation base: " +
+					symbol);
+			data_region = target;
+			data_region_bytes = static_cast<std::size_t>(allocation_bytes);
+		}
 		const auto existing = std::find_if(m_arm64_host_imports.begin(),
 			m_arm64_host_imports.end(), [&symbol, target](const auto& item) {
 				return item.identifier == 0 && item.symbol == symbol &&

@@ -124,9 +124,13 @@ Initialisierer, `+load`, sowie `dlopen`/`dlsym`/`dlclose` mit einem ARM64-dylib
 ab. CoreFoundation-Fixtures belegen Run-Loop-, Timer-, Mach-Port- und
 Allocator-Pfade. Der Importpfad unterscheidet ausführbare Hostziele von
 lesbaren Windows-Datenbereichen anhand `VirtualQuery`; Datenbereiche werden
-mit ihren Windows-Lese-/Schreibrechten für den Gast registriert. Das behebt
-nicht die Darwin-ABI von beliebigen Host-Globals und ersetzt keine App-Bundle-
-Fixture.
+mit ihren Windows-Lese-/Schreibrechten für den Gast registriert. Bei
+`MEM_PRIVATE` begrenzt `HeapSize` den Gastbereich auf die einzelne
+Prozess-Heap-Allokation statt auf die von `VirtualQuery` zusammengefasste
+Heapregion; dadurch kollidieren spätere Gast-`malloc`-Aufrufe nicht mit
+unbeteiligten Host-Heapblöcken. Private Datenimporte, die nicht am Anfang einer
+bekannten Heap-Allokation liegen, schlagen geschlossen fehl. Das behebt nicht
+die Darwin-ABI beliebiger Host-Globals und ersetzt keine App-Bundle-Fixture.
 
 Der Backend-Build bleibt optional. `tools/Build-Dynarmic.ps1` pinnt den
 Upstream-Commit und `tools/dynarmic/vcpkg.json` die Boost-Baseline; der Build
@@ -192,8 +196,9 @@ Der Loader dispatcht bei `svc #0x80` die Darwin-UNIX-Aufrufe `exit`, `read`,
 `rmdir`, `fsync`, `fdatasync`, `stat`, `lstat`, `fstat`, `lseek`, `truncate`
 und `ftruncate` an vorhandene Wintosh-Adapter. `fcntl` deckt Descriptor-
 Duplikation und ausgewählte Flags ab; `getrlimit`/`setrlimit` kopieren geprüfte
-Gaststrukturen. Ein begrenztes `ioctl`-Subset leitet `TIOCGWINSZ`, `TIOCSWINSZ`
-und `FIONREAD` weiter. BSD-Socketaufrufe `socket`,
+Gaststrukturen. `flock` leitet Datei-Lock-/Unlock-Operationen weiter. Ein
+begrenztes `ioctl`-Subset leitet `TIOCGWINSZ`, `TIOCSWINSZ` und `FIONREAD`
+weiter. BSD-Socketaufrufe `socket`,
 `socketpair`, `connect`, `bind`, `listen`, `accept`, `recvfrom`, `sendto`,
 `getpeername`, `getsockname` und `shutdown` werden an WinSock-Adapter
 weitergereicht. Adressdaten laufen über begrenzte lokale Hostpuffer. Die
@@ -291,7 +296,7 @@ Lizenzabgleich bleiben Gates vor einer standardmäßigen Integration.
 | A64-Backend in Wintosh | optionaler Adapter lokal gebaut; mehrere ARM64-Runtime-Fixtures laufen auf x64 Windows |
 | A64-Trap-Zustand | x0–x30, v0–v31, SP, PC, PSTATE, FPCR und FPSR rückführbar und fortsetzbar |
 | Darwin-UNIX-SVC | `exit`, `wait4` (mit lokaler Status-/Rusage-Kopie), `read`, `write`, `readv`, `writev`, `pread`, `pwrite`, `open`, `close`, `fcntl` (Descriptor-Duplikation und ausgewählte Flags), `ioctl` (`TIOCGWINSZ`, `TIOCSWINSZ`, `FIONREAD`), `getrlimit`, `setrlimit`, `link`, `unlink`, `chdir`, `chmod`, `fchmod`, `symlink`, `readlink`, `umask`, Prozess-/Gruppen-ID-Aufrufe, `dup`, `dup2`, `pipe`, `socket`, `socketpair`, `connect`, `bind`, `listen`, `accept`, `recvfrom`, `sendto`, `getpeername`, `getsockname`, `shutdown`, `gettimeofday`, `getrusage`, `getpriority`, `setpriority`, `access`, `rename`, `mkdir`, `rmdir`, `fsync`, `fdatasync`, `stat`, `lstat`, `fstat`, `lseek`, `truncate`, `ftruncate`, `mmap`, `munmap` (nur ganzes Mapping), `mprotect`, `msync`, `madvise`, `sysctl` (implementierte zweistufige `KERN`-/`HW`-MIBs), `kill`, `sigaction`, `sigprocmask`; andere UNIX-Nummern liefern `ENOSYS`; kein Mach-Trap-Dispatcher |
-| Neue SVC-Adapter in diesem Stand | ARM64-Gastfixture belegt `getdtablesize`, `setpgid`, `getpgid`, `setsid`, `fcntl` (Lesen/Setzen/Duplizieren), `getrlimit`/`setrlimit`, `FIONREAD`-Pipe-Ausgabe, `EFAULT`/`ENOTTY` und Carry-Bit; Terminal-Winsize-Ausgaben bleiben ungeprüft |
+| Neue SVC-Adapter in diesem Stand | ARM64-Gastfixture belegt `getdtablesize`, `setpgid`, `getpgid`, `setsid`, `flock`, `fcntl` (Lesen/Setzen/Duplizieren), `getrlimit`/`setrlimit`, `FIONREAD`-Pipe-Ausgabe, `EFAULT`/`ENOTTY` und Carry-Bit; Terminal-Winsize-Ausgaben bleiben ungeprüft |
 | x64-Host-Gast-Speicherprüfung | Segmentrechte und Bereichsgrenzen umgesetzt; Image-, Startup-, Heap-, mmap- und Host-Datenbereiche werden geprüft bzw. registriert und in Fixtures ausgeführt |
 | A64-Import-Trampoline und ABI-Dispatcher | ausgewählte C-/Darwin-/Framework-Imports, Gastcallbacks, Heap-/Block- und Datenimporte, Stackargumente, HFA- und indirekte Struct-Rückgaben bestehen; übrige Aggregate und Signaturen bleiben offen |
 | Schmale ARM64 Mach-O Runtime-Fixtures auf x64 Windows | mehrere Source-Fixtures für Syscalls, dyld, Objective-C, CoreFoundation und Speicher; keine echte macOS-App oder vollständige Bundle-Ausführung belegt |

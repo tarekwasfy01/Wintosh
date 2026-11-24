@@ -12,7 +12,14 @@ powershell -ExecutionPolicy Bypass -File .\tools\Invoke-DarlingWslBackend.ps1 -M
 # WSL2 is permitted only for development and compatibility tests:
 powershell -ExecutionPolicy Bypass -File .\tools\Build-DarwinComputaWslBackend.ps1 -Distribution <name> -ComputaRoot /opt/Darwin_Computa -AllowWsl2ForDevelopment
 powershell -ExecutionPolicy Bypass -File .\tools\Invoke-DarlingWslBackend.ps1 -Mode DarwinComputa -Distribution <name> -ComputaRoot /opt/Darwin_Computa -AllowWsl2ForDevelopment
+# Run from an elevated PowerShell to enable WSL1 and convert Ubuntu:
+powershell -ExecutionPolicy Bypass -File .\tools\Enable-DarlingWsl1.ps1 -Distribution Ubuntu -BackupPath D:\Backups\Ubuntu-before-WSL1.tar
 ```
+
+The WSL1 preparation script must be run as Administrator. It enables the
+Windows optional feature without forcing an immediate reboot; if Windows
+requests a restart, restart and rerun the script. `-BackupPath` is optional;
+when supplied, the script exports the distribution before conversion.
 
 The build script checks the selected distribution version and build packages,
 sets the x86-64 guest and Darwin defines, builds the Linux target, then runs

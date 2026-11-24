@@ -68,6 +68,7 @@ extern void CFRunLoopRemoveTimer(CFRunLoopRef loop,
 	CFRunLoopTimerRef timer, CFStringRef mode);
 extern CFRunLoopSourceRef CFRunLoopSourceCreate(const void *allocator,
 	CFIndex order, const CFRunLoopSourceContext *context);
+extern CFIndex CFRunLoopSourceGetOrder(CFRunLoopSourceRef source);
 extern void CFRunLoopSourceGetContext(CFRunLoopSourceRef source,
 	CFRunLoopSourceContext *context);
 extern unsigned char CFRunLoopSourceIsValid(CFRunLoopSourceRef source);
@@ -246,8 +247,8 @@ int main(void)
 	sourceContext.schedule = 0;
 	sourceContext.cancel = 0;
 	sourceContext.perform = source_perform;
-	CFRunLoopSourceRef source = CFRunLoopSourceCreate(0, 0, &sourceContext);
-	if (source == 0) return 41;
+	CFRunLoopSourceRef source = CFRunLoopSourceCreate(0, 7, &sourceContext);
+	if (source == 0 || CFRunLoopSourceGetOrder(source) != 7) return 41;
 	CFRunLoopAddSource(loop, source, mode);
 	if (!CFRunLoopContainsSource(loop, source, mode)) return 42;
 	CFRunLoopSourceSignal(source);

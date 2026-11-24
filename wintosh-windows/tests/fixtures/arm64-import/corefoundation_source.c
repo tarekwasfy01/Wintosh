@@ -42,6 +42,15 @@ typedef struct CFRunLoopSourceContext {
 _Static_assert(sizeof(CFRunLoopSourceContext) == 80, "Darwin source context layout");
 
 extern CFStringRef CFStringCreateWithCString(const void *, const char *, unsigned int);
+extern CFStringRef CFStringCreateWithCharacters(const void *, const unsigned short *, CFIndex);
+extern CFStringRef CFStringCreateCopy(const void *, CFStringRef);
+extern CFIndex CFStringGetLength(CFStringRef);
+extern unsigned char CFStringGetCString(CFStringRef, char *, CFIndex, unsigned int);
+extern unsigned short CFStringGetCharacterAtIndex(CFStringRef, CFIndex);
+extern unsigned char CFStringGetCharacters(CFStringRef, CFRange, unsigned short *);
+extern CFIndex CFStringGetMaximumSizeForEncoding(CFIndex, unsigned int);
+extern CFIndex CFStringGetMaximumSizeOfFileSystemRepresentation(CFStringRef);
+extern unsigned char CFStringGetFileSystemRepresentation(CFStringRef, char *, CFIndex);
 extern CFRunLoopRef CFRunLoopGetCurrent(void);
 extern CFRunLoopSourceRef CFRunLoopSourceCreate(const void *, CFIndex,
 	const CFRunLoopSourceContext *);
@@ -301,6 +310,31 @@ static void source_perform(void *info)
 
 int main(void)
 {
+	const unsigned int utf8Encoding = 0x08000100u;
+	CFStringRef sourceString = CFStringCreateWithCString(0, "Darwin", utf8Encoding);
+	char stringBuffer[16] = { 0 };
+	unsigned short characters[6] = { 0 };
+	if (sourceString == 0 || CFStringGetLength(sourceString) != 6 ||
+		CFStringGetCharacterAtIndex(sourceString, 0) != 'D' ||
+		!CFStringGetCString(sourceString, stringBuffer, sizeof(stringBuffer), utf8Encoding) ||
+		stringBuffer[0] != 'D' || stringBuffer[5] != 'n' ||
+		!CFStringGetCharacters(sourceString, (CFRange){ 0, 6 }, characters) ||
+		characters[0] != 'D' || characters[5] != 'n' ||
+		CFStringGetMaximumSizeForEncoding(6, utf8Encoding) < 6) return 61;
+	CFStringRef characterString = CFStringCreateWithCharacters(0, characters, 6);
+	CFStringRef copiedString = CFStringCreateCopy(0, sourceString);
+	if (characterString == 0 || copiedString == 0 ||
+		!CFStringGetCString(characterString, stringBuffer, sizeof(stringBuffer), utf8Encoding) ||
+		stringBuffer[0] != 'D' ||
+		!CFStringGetCString(copiedString, stringBuffer, sizeof(stringBuffer), utf8Encoding) ||
+		stringBuffer[5] != 'n') return 62;
+	char fileSystemBuffer[16] = { 0 };
+	if (CFStringGetMaximumSizeOfFileSystemRepresentation(sourceString) != 7 ||
+		!CFStringGetFileSystemRepresentation(sourceString, fileSystemBuffer,
+			sizeof(fileSystemBuffer)) || fileSystemBuffer[5] != 'n') return 63;
+	CFRelease(characterString);
+	CFRelease(copiedString);
+	CFRelease(sourceString);
 	CFTypeRef laterDate = CFDateCreate(0, 123.25);
 	CFTypeRef earlierDate = CFDateCreate(0, 120.0);
 	const double dateDelta = CFDateGetTimeIntervalSinceDate(laterDate, earlierDate);

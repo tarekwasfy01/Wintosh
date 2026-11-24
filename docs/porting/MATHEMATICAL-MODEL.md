@@ -849,6 +849,13 @@ Guest `CFString` (CString/characters), `CFData`, `CFArray`, `CFDictionary`,
 passed to their constructor and retain it until `Release(object)`. Their
 variable-length STL payloads still use the host heap, so full allocator
 control of collection and byte-buffer storage is not yet true.
+The ARM64 string imports now include CString/UTF-16 construction, shallow copy,
+UTF-16 length and indexed/range reads, bounded CString and filesystem
+representation conversion, and maximum encoded-size queries. For output
+`(p,n)`, the bridge requires the full writable
+interval `[p,p+n)` before calling the host-backed implementation; character
+arrays use `2·length` bytes. The fixture round-trips the ASCII string “Darwin”
+through UTF-8 bytes and UTF-16 code units and checks its six-code-unit length.
 For a CFMachPort wrapper `p`, source delivery is `Deliver(p,m) = Valid(p) ∧
 Receive(GetPort(p),m)`, with the callback `Callout(p,m,size,info)` invoked once
 for each received message. `Invalidate(p)` performs the state transition

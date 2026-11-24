@@ -164,6 +164,98 @@ bool DispatchArm64CoreFoundationRunLoopImport(const std::string& name,
 			reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[2]))));
 		return true;
 	}
+	if (name == "_CFStringGetLength") {
+		using Call = darling_windows_CFIndex (DARLING_CF_GUEST_ABI *)(
+		darling_windows_CFStringRef);
+		resumed_state.x[0] = static_cast<std::uint64_t>(reinterpret_cast<Call>(target)(
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0]))));
+		return true;
+	}
+	if (name == "_CFStringCreateCopy") {
+		using Call = darling_windows_CFStringRef (DARLING_CF_GUEST_ABI *)(
+			const void*, darling_windows_CFStringRef);
+		resumed_state.x[0] = reinterpret_cast<std::uintptr_t>(reinterpret_cast<Call>(target)(
+			reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[0])),
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[1]))));
+		return true;
+	}
+	if (name == "_CFStringCreateWithCharacters") {
+		constexpr std::uint64_t max_string_characters = 1u << 20;
+		if (x[2] > max_string_characters || (x[2] != 0 && (x[1] == 0 ||
+			!backend.ContainsGuestRange(x[1], static_cast<std::size_t>(x[2]) *
+				sizeof(std::uint16_t), false))))
+			throw std::runtime_error("ARM64 CFStringCreateWithCharacters import received an invalid guest range");
+		using Call = darling_windows_CFStringRef (DARLING_CF_GUEST_ABI *)(
+			const void*, const std::uint16_t*, darling_windows_CFIndex);
+		resumed_state.x[0] = reinterpret_cast<std::uintptr_t>(reinterpret_cast<Call>(target)(
+			reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[0])),
+			reinterpret_cast<const std::uint16_t*>(static_cast<std::uintptr_t>(x[1])),
+			static_cast<darling_windows_CFIndex>(x[2])));
+		return true;
+	}
+	if (name == "_CFStringGetCString") {
+		constexpr std::uint64_t max_string_buffer_bytes = 1u << 20;
+		if (x[2] > max_string_buffer_bytes || (x[2] != 0 && (x[1] == 0 ||
+			!backend.ContainsGuestRange(x[1], static_cast<std::size_t>(x[2]), true))))
+			throw std::runtime_error("ARM64 CFStringGetCString import received an invalid output range");
+		using Call = std::uint8_t (DARLING_CF_GUEST_ABI *)(darling_windows_CFStringRef,
+			char*, darling_windows_CFIndex, std::uint32_t);
+		resumed_state.x[0] = reinterpret_cast<Call>(target)(reinterpret_cast<void*>(
+			static_cast<std::uintptr_t>(x[0])), reinterpret_cast<char*>(
+			static_cast<std::uintptr_t>(x[1])),
+			static_cast<darling_windows_CFIndex>(x[2]), static_cast<std::uint32_t>(x[3]));
+		return true;
+	}
+	if (name == "_CFStringGetCharacterAtIndex") {
+		using Call = std::uint16_t (DARLING_CF_GUEST_ABI *)(darling_windows_CFStringRef,
+			darling_windows_CFIndex);
+		resumed_state.x[0] = reinterpret_cast<Call>(target)(reinterpret_cast<void*>(
+			static_cast<std::uintptr_t>(x[0])),
+			static_cast<darling_windows_CFIndex>(x[1]));
+		return true;
+	}
+	if (name == "_CFStringGetCharacters") {
+		constexpr std::uint64_t max_string_characters = 1u << 20;
+		const auto length = static_cast<darling_windows_CFIndex>(x[2]);
+		if (length > static_cast<darling_windows_CFIndex>(max_string_characters) ||
+			(length > 0 && (x[3] == 0 || !backend.ContainsGuestRange(x[3],
+				static_cast<std::size_t>(length) * sizeof(std::uint16_t), true))))
+			throw std::runtime_error("ARM64 CFStringGetCharacters import received an invalid output range");
+		using Call = std::uint8_t (DARLING_CF_GUEST_ABI *)(darling_windows_CFStringRef,
+			darling_windows_CFRange, std::uint16_t*);
+		resumed_state.x[0] = reinterpret_cast<Call>(target)(reinterpret_cast<void*>(
+			static_cast<std::uintptr_t>(x[0])),
+			{static_cast<darling_windows_CFIndex>(x[1]), length},
+			reinterpret_cast<std::uint16_t*>(static_cast<std::uintptr_t>(x[3])));
+		return true;
+	}
+	if (name == "_CFStringGetMaximumSizeForEncoding") {
+		using Call = darling_windows_CFIndex (DARLING_CF_GUEST_ABI *)(
+			darling_windows_CFIndex, std::uint32_t);
+		resumed_state.x[0] = static_cast<std::uint64_t>(reinterpret_cast<Call>(target)(
+			static_cast<darling_windows_CFIndex>(x[0]), static_cast<std::uint32_t>(x[1])));
+		return true;
+	}
+	if (name == "_CFStringGetMaximumSizeOfFileSystemRepresentation") {
+		using Call = darling_windows_CFIndex (DARLING_CF_GUEST_ABI *)(
+			darling_windows_CFStringRef);
+		resumed_state.x[0] = static_cast<std::uint64_t>(reinterpret_cast<Call>(target)(
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0]))));
+		return true;
+	}
+	if (name == "_CFStringGetFileSystemRepresentation") {
+		constexpr std::uint64_t max_string_buffer_bytes = 1u << 20;
+		if (x[2] > max_string_buffer_bytes || (x[2] != 0 && (x[1] == 0 ||
+			!backend.ContainsGuestRange(x[1], static_cast<std::size_t>(x[2]), true))))
+			throw std::runtime_error("ARM64 CFStringGetFileSystemRepresentation import received an invalid output range");
+		using Call = std::uint8_t (DARLING_CF_GUEST_ABI *)(darling_windows_CFStringRef,
+			char*, darling_windows_CFIndex);
+		resumed_state.x[0] = reinterpret_cast<Call>(target)(reinterpret_cast<void*>(
+			static_cast<std::uintptr_t>(x[0])), reinterpret_cast<char*>(
+			static_cast<std::uintptr_t>(x[1])),
+			static_cast<darling_windows_CFIndex>(x[2]));
+		return true;
+	}
 	if (name == "_CFDateCreate") {
 		double absolute_time{};
 		std::memcpy(&absolute_time, &state.v[0], sizeof(absolute_time));

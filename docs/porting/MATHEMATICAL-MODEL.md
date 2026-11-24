@@ -985,14 +985,16 @@ thread-local or main-loop handle into a caller-owned allocation.
 ## Mutable CoreFoundation strings
 
 Mutable-string imports map guest registers positionally to allocator, capacity,
-and source object: `H = A·G`. For source `s` and appended value `t`,
-`append(s,t)=s·t`; the source remains unchanged when the mutable copy is
-modified. `CFStringAppendCString` accepts only the runtime's supported system
-encoding or UTF-8, and the ARM64 adapter verifies the NUL-terminated guest
-range before reading it. The guest fixture verifies
-`mutable("Darwin") + " Runtime" = "Darwin Runtime"`, then appends to a mutable
-copy and confirms its result is independent. This does not yet implement the
-full CoreFoundation mutable-string API surface.
+source object, `CFRange`, and replacement: `H = A·G`. For source `s` and
+appended value `t`, `append(s,t)=s·t`; replacing UTF-16 interval `[i,i+ℓ)` with
+`t` first maps those boundaries to UTF-8 storage offsets, then computes
+`s'=s[0:i]·t·s[i+ℓ:n]`. `CFStringAppendCString` accepts only the runtime's
+supported system encoding or UTF-8, and the ARM64 adapter verifies the
+NUL-terminated guest range before reading it. `CFStringAppendCharacters`
+validates a bounded UTF-16 input span. The guest fixture transforms
+`"Darwin Runtime"` into `"Darwin Darwin!"` by range replacement and a UTF-16
+append, then appends to a mutable copy and confirms its result is independent.
+This does not yet implement the full CoreFoundation mutable-string API surface.
 
 ## CoreFoundation preferences bridge
 

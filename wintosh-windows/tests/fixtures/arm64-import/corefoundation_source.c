@@ -59,6 +59,8 @@ extern CFStringRef CFStringCreateMutable(const void *, CFIndex);
 extern CFStringRef CFStringCreateMutableCopy(const void *, CFIndex, CFStringRef);
 extern void CFStringAppend(CFStringRef, CFStringRef);
 extern void CFStringAppendCString(CFStringRef, const char *, unsigned int);
+extern void CFStringAppendCharacters(CFStringRef, const unsigned short *, CFIndex);
+extern void CFStringReplace(CFStringRef, CFRange, CFStringRef);
 extern CFIndex CFStringGetLength(CFStringRef);
 extern unsigned char CFStringGetCString(CFStringRef, char *, CFIndex, unsigned int);
 extern unsigned short CFStringGetCharacterAtIndex(CFStringRef, CFIndex);
@@ -498,11 +500,15 @@ int main(void)
 	CFStringRef mutableString = CFStringCreateMutable(0, 16);
 	CFStringAppend(mutableString, sourceString);
 	CFStringAppendCString(mutableString, " Runtime", utf8Encoding);
+	CFStringReplace(mutableString, (CFRange){ 7, 7 }, sourceString);
+	const unsigned short punctuation = '!';
+	CFStringAppendCharacters(mutableString, &punctuation, 1);
 	CFStringRef mutableStringCopy = CFStringCreateMutableCopy(0, 32, mutableString);
 	CFStringAppend(mutableStringCopy, sourceString);
 	if (mutableString == 0 || mutableStringCopy == 0 ||
 		!CFStringGetCString(mutableString, stringBuffer, sizeof(stringBuffer), utf8Encoding) ||
-		stringBuffer[0] != 'D' || stringBuffer[6] != ' ' || stringBuffer[14] != 0 ||
+		stringBuffer[0] != 'D' || stringBuffer[6] != ' ' ||
+		stringBuffer[13] != '!' || stringBuffer[14] != 0 ||
 		!CFStringGetCString(mutableStringCopy, stringBuffer, sizeof(stringBuffer), utf8Encoding) ||
 		stringBuffer[14] != 'D' || stringBuffer[19] != 'n' || stringBuffer[20] != 0 ||
 		!CFStringGetCString(mutableString, stringBuffer, sizeof(stringBuffer), utf8Encoding) ||

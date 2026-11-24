@@ -665,6 +665,30 @@ bool DispatchArm64CoreFoundationRunLoopImport(const std::string& name,
 			static_cast<darling_windows_CFIndex>(x[1]));
 		return true;
 	}
+	if (name == "_CFStringAppendCharacters") {
+		constexpr std::uint64_t max_string_characters = 1u << 20;
+		if (x[2] > max_string_characters || (x[2] != 0 && (x[1] == 0 ||
+			!backend.ContainsGuestRange(x[1], static_cast<std::size_t>(x[2]) *
+				sizeof(std::uint16_t), false))))
+			throw std::runtime_error("ARM64 CFStringAppendCharacters import received an invalid guest range");
+		using Call = void (DARLING_CF_GUEST_ABI *)(darling_windows_CFMutableStringRef,
+			const std::uint16_t*, darling_windows_CFIndex);
+		reinterpret_cast<Call>(target)(reinterpret_cast<void*>(
+			static_cast<std::uintptr_t>(x[0])), reinterpret_cast<const std::uint16_t*>(
+			static_cast<std::uintptr_t>(x[1])),
+			static_cast<darling_windows_CFIndex>(x[2]));
+		return true;
+	}
+	if (name == "_CFStringReplace") {
+		using Call = void (DARLING_CF_GUEST_ABI *)(darling_windows_CFMutableStringRef,
+			darling_windows_CFRange, darling_windows_CFStringRef);
+		reinterpret_cast<Call>(target)(reinterpret_cast<void*>(
+			static_cast<std::uintptr_t>(x[0])),
+			{static_cast<darling_windows_CFIndex>(x[1]),
+			 static_cast<darling_windows_CFIndex>(x[2])},
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[3])));
+		return true;
+	}
 	if (name == "_CFPreferencesCopyAppValue" || name == "_CFPreferencesCopyValue") {
 		if (name == "_CFPreferencesCopyAppValue") {
 			using Call = darling_windows_CFTypeRef (DARLING_CF_GUEST_ABI *)(

@@ -346,6 +346,8 @@ extern "C" darling_windows_CFArrayRef darling_windows_CFStringCreateArrayBySepar
 	darling_windows_CFStringRef value, darling_windows_CFStringRef separator);
 extern "C" bool darling_windows_CFStringReplaceRange(darling_windows_CFStringRef value,
 	darling_windows_CFIndex location, darling_windows_CFIndex length, const char* replacement);
+extern "C" bool darling_windows_CFStringReplaceString(darling_windows_CFStringRef value,
+	darling_windows_CFRange range, darling_windows_CFStringRef replacement);
 extern "C" darling_windows_CFIndex darling_windows_CFStringGetBytes(
 	darling_windows_CFStringRef value, darling_windows_CFIndex location,
 	darling_windows_CFIndex length, char* output, darling_windows_CFIndex capacity);
@@ -965,6 +967,12 @@ extern "C" DARLING_CF_GUEST_ABI void CFStringAppend(
 extern "C" DARLING_CF_GUEST_ABI void CFStringAppendCString(
 	darling_windows_CFMutableStringRef value, const char* appended,
 	std::uint32_t encoding);
+extern "C" DARLING_CF_GUEST_ABI void CFStringAppendCharacters(
+	darling_windows_CFMutableStringRef value, const std::uint16_t* characters,
+	darling_windows_CFIndex length);
+extern "C" DARLING_CF_GUEST_ABI void CFStringReplace(
+	darling_windows_CFMutableStringRef value, darling_windows_CFRange range,
+	darling_windows_CFStringRef replacement);
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFURLRef CFURLCreateWithString(
 	const void* allocator, darling_windows_CFStringRef string,
 	darling_windows_CFURLRef base_url);

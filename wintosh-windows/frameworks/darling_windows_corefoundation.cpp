@@ -2157,6 +2157,23 @@ extern "C" bool darling_windows_CFStringReplaceRange(darling_windows_CFStringRef
 	return true;
 }
 
+extern "C" bool darling_windows_CFStringReplaceString(
+	darling_windows_CFStringRef value, darling_windows_CFRange range,
+	darling_windows_CFStringRef replacement)
+{
+	auto* object = As(value);
+	const auto* substitute = As(replacement);
+	if (object == nullptr || substitute == nullptr || object->kind != Kind::String ||
+		substitute->kind != Kind::String || range.location < 0 || range.length < 0 ||
+		range.location > std::numeric_limits<darling_windows_CFIndex>::max() - range.length)
+		return false;
+	const auto start = UTF8OffsetForUTF16(object->string, range.location);
+	const auto end = UTF8OffsetForUTF16(object->string, range.location + range.length);
+	if (start == std::string::npos || end == std::string::npos || start > end) return false;
+	object->string.replace(start, end - start, substitute->string);
+	return true;
+}
+
 extern "C" darling_windows_CFIndex darling_windows_CFStringGetBytes(
 	darling_windows_CFStringRef value, darling_windows_CFIndex location,
 	darling_windows_CFIndex length, char* output, darling_windows_CFIndex capacity)
@@ -6391,6 +6408,24 @@ extern "C" DARLING_CF_GUEST_ABI void CFStringAppendCString(
 	(void)darling_windows_CFStringAppendCString(value, appended);
 }
 
+extern "C" DARLING_CF_GUEST_ABI void CFStringAppendCharacters(
+	darling_windows_CFMutableStringRef value, const std::uint16_t* characters,
+	darling_windows_CFIndex length)
+{
+	if (length < 0 || (length != 0 && characters == nullptr)) return;
+	const auto suffix = darling_windows_CFStringCreateWithCharacters(characters, length);
+	if (suffix == nullptr) return;
+	(void)darling_windows_CFStringAppend(value, suffix);
+	darling_windows_CFRelease(suffix);
+}
+
+extern "C" DARLING_CF_GUEST_ABI void CFStringReplace(
+	darling_windows_CFMutableStringRef value, darling_windows_CFRange range,
+	darling_windows_CFStringRef replacement)
+{
+	(void)darling_windows_CFStringReplaceString(value, range, replacement);
+}
+
 extern "C" DARLING_CF_GUEST_ABI darling_windows_CFURLRef CFURLCreateWithString(
 	const void* allocator, darling_windows_CFStringRef string,
 	darling_windows_CFURLRef base_url)
@@ -8858,6 +8893,10 @@ extern "C" std::uintptr_t darling_windows_corefoundation_symbol(const char* name
 		return reinterpret_cast<std::uintptr_t>(&CFStringAppend);
 	if (std::strcmp(name, "CFStringAppendCString") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFStringAppendCString);
+	if (std::strcmp(name, "CFStringAppendCharacters") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFStringAppendCharacters);
+	if (std::strcmp(name, "CFStringReplace") == 0)
+		return reinterpret_cast<std::uintptr_t>(&CFStringReplace);
 	if (std::strcmp(name, "CFURLCreateWithString") == 0)
 		return reinterpret_cast<std::uintptr_t>(&CFURLCreateWithString);
 	if (std::strcmp(name, "CFURLCreateWithFileSystemPath") == 0)

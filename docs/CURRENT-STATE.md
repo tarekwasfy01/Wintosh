@@ -191,13 +191,15 @@ CoreFoundation smoke creates, configures, schedules, fires, and invalidates a
 one-shot timer, and verifies the nominal date remains unchanged when tolerance
 is set. The full framework/API surface remains partial.
 
-The same focused smoke now registers repeating and one-shot
-`CFRunLoopObserver` instances. It confirms entry, before-timer, before-source,
-before-wait, after-wait, and exit callbacks arrive in order; the one-shot
-observer fires once, invalidates, and is removed from the mode. The callback
-uses the Darwin guest ABI attribute, but execution from a loaded Mach-O guest
-callback is not yet proven. Real AppKit event integration and the broader
-CoreFoundation run-loop contract remain open.
+The focused smoke registers repeating and one-shot `CFRunLoopObserver`
+instances and confirms entry, before-timer, before-source, before-wait,
+after-wait, and exit callbacks in order. A new Clang-only
+`wintosh_corefoundation_observer_e2e` compiles and links an original x86_64
+Mach-O fixture, then executes its repeating and one-shot callbacks from guest
+memory through the loader and CoreFoundation resolver. CTest passed 1/1. The
+fixture verifies four repeating activities and one-shot invalidation. Guest
+context retain/release, all observer flags, real AppKit event integration, and
+the broader CoreFoundation run-loop contract remain open.
 
 The guest thread-destructor exports also now use explicit Darwin ABI bridges:
 `__cxa_thread_atexit_impl` accepts its DSO handle and registered guest

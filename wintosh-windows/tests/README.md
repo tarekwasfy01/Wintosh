@@ -4,6 +4,13 @@ Each `*_smoke.cpp` file is a focused runtime gate for one Wintosh family. A
 passing smoke test proves only the covered adapter behavior; it does not prove
 full Darling compatibility or arbitrary macOS application execution.
 
+The Clang-only `wintosh_corefoundation_observer_e2e` target compiles and links
+the original `fixtures/corefoundation-observer/observer.c` as an x86_64 Mach-O
+and runs it through `wintosh.exe`. The guest registers repeating and one-shot
+CoreFoundation observers; their callback functions execute from the loaded
+guest image. The fixture checks four activity callbacks and one-shot
+invalidation. It does not cover arbitrary framework startup or AppKit events.
+
 `arm64_import_e2e.ps1` builds two ARM64 Mach-O guests with Clang/ld64.lld and
 runs them through the optional Dynarmic backend. It covers `_strlen` and
 Objective-C integer/double arguments and returns, object identity, pointer

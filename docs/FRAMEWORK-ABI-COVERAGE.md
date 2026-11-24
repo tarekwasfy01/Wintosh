@@ -62,8 +62,11 @@ their first matching callback. Apple documents that sources, timers, and
 observers are activated by their registered modes; current evidence is
 the CoreFoundation ABI smoke: it checks phase order across entry, timer/source,
 waiting, and exit; it also checks one-shot invalidation and observer removal.
-The callback is compiled with the Darwin guest ABI attribute, but a callback
-executed from a loaded Mach-O fixture remains unverified.
+The Clang-only `wintosh_corefoundation_observer_e2e` additionally compiles and
+links a source-derived x86_64 Mach-O and executes its repeating and one-shot
+callbacks from guest memory through the runner. It confirms four repeating
+activities and one-shot invalidation. Guest callback context retain/release,
+all observer flags, and AppKit integration remain unverified.
 
 `CFMachPort` exports the type ID, create/create-with-port, run-loop source,
 port/context/validity queries, invalidation, and invalidation-callback accessors.

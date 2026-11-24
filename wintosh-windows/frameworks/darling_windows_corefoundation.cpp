@@ -4219,7 +4219,14 @@ void FireRunLoopTimer(Object* timer)
 	const auto callout = timer->run_loop_timer_callout;
 	void* info = const_cast<void*>(timer->run_loop_timer_info);
 	if (callout != nullptr) {
-		try { callout(timer, info); }
+		const std::array<std::uintptr_t, 2> arguments{
+			reinterpret_cast<std::uintptr_t>(timer),
+			reinterpret_cast<std::uintptr_t>(info)};
+		try {
+			if (!darling_objc_invoke_guest_function(
+				reinterpret_cast<std::uintptr_t>(callout), arguments.data(), arguments.size()))
+				callout(timer, info);
+		}
 		catch (...) { /* Guest callbacks must not unwind through CoreFoundation. */ }
 	}
 	if (timer->run_loop_timer_interval <= 0 || !CFRunLoopTimerIsValid(timer))
@@ -4254,7 +4261,15 @@ void NotifyRunLoopObservers(const std::shared_ptr<RunLoopState>& state,
 		void* info = const_cast<void*>(observer->run_loop_observer_info);
 		const bool repeats = observer->run_loop_observer_repeats;
 		if (callout != nullptr) {
-			try { callout(observer, activity, info); }
+			const std::array<std::uintptr_t, 3> arguments{
+				reinterpret_cast<std::uintptr_t>(observer),
+				static_cast<std::uintptr_t>(activity),
+				reinterpret_cast<std::uintptr_t>(info)};
+			try {
+				if (!darling_objc_invoke_guest_function(
+					reinterpret_cast<std::uintptr_t>(callout), arguments.data(), arguments.size()))
+					callout(observer, activity, info);
+			}
 			catch (...) { /* Guest callbacks must not unwind through CoreFoundation. */ }
 		}
 		if (!repeats) CFRunLoopObserverInvalidate(observer);

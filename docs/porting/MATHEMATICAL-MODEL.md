@@ -1022,3 +1022,28 @@ collection, and equality defines membership/search. A null callback pointer is
 the zeroed version-0 table (no retain/release and pointer equality). See Apple's
 [CFArrayCreateMutable](https://developer.apple.com/documentation/corefoundation/cfarraycreatemutable%28_%3A_%3A_%29)
 and [`kCFTypeArrayCallBacks`](https://developer.apple.com/documentation/corefoundation/kcftypearraycallbacks).
+
+## ARM64 CoreFoundation run-loop callbacks
+
+The AArch64 import bridge covers the CoreFoundation run-loop operations used
+to register and exercise guest source, timer, and observer callbacks. Guest
+callbacks run by entering the active AArch64 interpreter with an event-specific
+argument state; a guest virtual address is never called as a Windows function
+pointer. The callback runner restores the suspended import state on return.
+
+The callback argument vectors are `(source, info)` for a source, `(timer,
+info)` for a timer, and `(observer, activity, info)` for an observer. ARM64
+general-purpose and floating-point argument registers are allocated
+independently. Thus `CFRunLoopTimerCreate(allocator, fireDate, interval,
+flags, order, callout, context)` receives `fireDate` and `interval` in `v0` and
+`v1`; the remaining arguments occupy `x0` through `x4`. `CFRunLoopRunInMode`
+receives its `seconds` value in `v0`, and its mode and boolean flag in `x0` and
+`x1`. Observer creation uses `x0` through `x5`. These mappings follow the
+prototype types and AArch64 calling convention, rather than assigning a
+register from the argument's ordinal position.
+
+The focused ARM64 fixtures cover timer and observer creation, registration,
+invalidation/removal, mode execution, and synchronous guest callback dispatch.
+They do not establish full Darwin run-loop compatibility: timer rescheduling
+and tolerance, nested or concurrent run loops, every callback-context
+ownership case, and AppKit event delivery remain separate work.

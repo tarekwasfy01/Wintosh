@@ -1,0 +1,84 @@
+/* Wintosh original ARM64 Darwin guest fixture; GPL-3.0-only. */
+typedef long CFIndex;
+typedef unsigned long long CFOptionFlags;
+typedef void *CFTypeRef;
+typedef void *CFStringRef;
+typedef void *CFRunLoopRef;
+typedef void *CFRunLoopTimerRef;
+typedef void *CFRunLoopObserverRef;
+typedef struct {
+	CFIndex version;
+	void *info;
+	const void *(*retain)(const void *);
+	void (*release)(const void *);
+	const void *(*copyDescription)(const void *);
+} Context;
+_Static_assert(sizeof(Context) == 40, "Darwin run-loop context layout");
+
+extern CFStringRef CFStringCreateWithCString(const void *, const char *, unsigned int);
+extern CFRunLoopRef CFRunLoopGetCurrent(void);
+extern CFRunLoopTimerRef CFRunLoopTimerCreate(const void *, double, double,
+	CFOptionFlags, CFIndex, void (*)(CFRunLoopTimerRef, void *), const Context *);
+extern void CFRunLoopAddTimer(CFRunLoopRef, CFRunLoopTimerRef, CFStringRef);
+extern void CFRunLoopRemoveTimer(CFRunLoopRef, CFRunLoopTimerRef, CFStringRef);
+extern CFRunLoopObserverRef CFRunLoopObserverCreate(const void *, CFOptionFlags,
+	unsigned char, CFIndex, void (*)(CFRunLoopObserverRef, CFOptionFlags, void *),
+	const Context *);
+extern void CFRunLoopAddObserver(CFRunLoopRef, CFRunLoopObserverRef, CFStringRef);
+extern void CFRunLoopRemoveObserver(CFRunLoopRef, CFRunLoopObserverRef, CFStringRef);
+extern int CFRunLoopRunInMode(CFStringRef, double, unsigned char);
+extern void CFRelease(CFTypeRef);
+
+static int timerCalls;
+static int observerCalls;
+static int timerInfo;
+static int observerInfo;
+
+static void timer_callout(CFRunLoopTimerRef timer, void *info)
+{
+	if (timer != 0 && info == &timerInfo) ++timerCalls;
+}
+
+static void observer_callout(CFRunLoopObserverRef observer,
+	CFOptionFlags activity, void *info)
+{
+	if (observer != 0 && (activity & 1) != 0 && info == &observerInfo)
+		++observerCalls;
+}
+
+int main(void)
+{
+	Context timerContext;
+	timerContext.version = 0;
+	timerContext.info = &timerInfo;
+	timerContext.retain = 0;
+	timerContext.release = 0;
+	timerContext.copyDescription = 0;
+	Context observerContext;
+	observerContext.version = 0;
+	observerContext.info = &observerInfo;
+	observerContext.retain = 0;
+	observerContext.release = 0;
+	observerContext.copyDescription = 0;
+	CFStringRef mode = CFStringCreateWithCString(0,
+		"kCFRunLoopDefaultMode", 0x08000100u);
+	CFRunLoopRef loop = CFRunLoopGetCurrent();
+	CFRunLoopTimerRef timer = CFRunLoopTimerCreate(0, 0.0, 0.0, 0, 0,
+		timer_callout, &timerContext);
+	CFRunLoopObserverRef observer = CFRunLoopObserverCreate(0, 1, 0, 0,
+		observer_callout, &observerContext);
+	if (mode == 0) return 20;
+	if (loop == 0) return 21;
+	if (timer == 0) return 22;
+	if (observer == 0) return 23;
+	CFRunLoopAddTimer(loop, timer, mode);
+	CFRunLoopAddObserver(loop, observer, mode);
+	const int result = CFRunLoopRunInMode(mode, 0.01, 0);
+	if (result < 1 || timerCalls != 1 || observerCalls != 1) return 11;
+	CFRunLoopRemoveTimer(loop, timer, mode);
+	CFRunLoopRemoveObserver(loop, observer, mode);
+	CFRelease(timer);
+	CFRelease(observer);
+	CFRelease(mode);
+	return 42;
+}

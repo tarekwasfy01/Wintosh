@@ -67,8 +67,10 @@ links a source-derived x86_64 Mach-O and executes its repeating and one-shot
 callbacks from guest memory through the runner. It confirms four repeating
 activities, exact `context.info` forwarding for the repeating observer, a
 non-null one-shot context, and one-shot invalidation. Guest context
-retain/release callbacks, all observer flags, and AppKit integration remain
-unverified.
+retain/release callbacks and all observer flags remain unverified. The same
+guest creates and registers a one-shot `CFRunLoopTimer`, then verifies its
+guest callback runs once with non-null context and the timer invalidates.
+AppKit integration remains unverified.
 
 `CFMachPort` exports the type ID, create/create-with-port, run-loop source,
 port/context/validity queries, invalidation, and invalidation-callback accessors.

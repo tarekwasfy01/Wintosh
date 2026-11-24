@@ -5,6 +5,7 @@ typedef void *CFTypeRef;
 typedef void *CFRunLoopRef;
 typedef void *CFStringRef;
 typedef void *CFRunLoopObserverRef;
+typedef void *CFRunLoopTimerRef;
 typedef void (*CFRunLoopObserverCallout)(CFRunLoopObserverRef, CFOptionFlags, void *);
 typedef struct CFRunLoopObserverContext {
 	CFIndex version;
@@ -13,6 +14,13 @@ typedef struct CFRunLoopObserverContext {
 	void (*release)(const void *);
 	const void *(*copyDescription)(const void *);
 } CFRunLoopObserverContext;
+typedef struct CFRunLoopTimerContext {
+	CFIndex version;
+	void *info;
+	const void *(*retain)(const void *);
+	void (*release)(const void *);
+	const void *(*copyDescription)(const void *);
+} CFRunLoopTimerContext;
 _Static_assert(sizeof(CFRunLoopObserverContext) == 40, "Darwin observer context layout");
 _Static_assert(__builtin_offsetof(CFRunLoopObserverContext, info) == 8,
 	"Darwin observer info offset");
@@ -29,6 +37,16 @@ extern void CFRunLoopAddObserver(CFRunLoopRef loop,
 	CFRunLoopObserverRef observer, CFStringRef mode);
 extern void CFRunLoopRemoveObserver(CFRunLoopRef loop,
 	CFRunLoopObserverRef observer, CFStringRef mode);
+extern CFRunLoopTimerRef CFRunLoopTimerCreate(const void *allocator,
+	double fireDate, double interval, CFOptionFlags flags, CFIndex order,
+	void (*callout)(CFRunLoopTimerRef, void *),
+	const CFRunLoopTimerContext *context);
+extern unsigned char CFRunLoopTimerIsValid(CFRunLoopTimerRef timer);
+extern void CFRunLoopTimerInvalidate(CFRunLoopTimerRef timer);
+extern void CFRunLoopAddTimer(CFRunLoopRef loop,
+	CFRunLoopTimerRef timer, CFStringRef mode);
+extern void CFRunLoopRemoveTimer(CFRunLoopRef loop,
+	CFRunLoopTimerRef timer, CFStringRef mode);
 extern int CFRunLoopRunInMode(CFStringRef mode, double seconds,
 	unsigned char returnAfterSource);
 extern void CFRelease(CFTypeRef value);
@@ -48,6 +66,11 @@ struct CallbackState {
 };
 static struct CallbackState repeating;
 static struct CallbackState oneShot;
+struct TimerState {
+	int calls;
+	int context_matches;
+};
+static struct TimerState timerState;
 
 static void observer_callback(CFRunLoopObserverRef observer,
 	CFOptionFlags activity, void *info)
@@ -70,6 +93,12 @@ static void one_shot_callback(CFRunLoopObserverRef observer,
 	oneShot.activities |= activity;
 	++oneShot.calls;
 	oneShot.context_matches = info != 0;
+}
+static void timer_callback(CFRunLoopTimerRef timer, void *info)
+{
+	(void)timer;
+	++timerState.calls;
+	timerState.context_matches = info != 0;
 }
 
 int main(void)
@@ -115,9 +144,24 @@ int main(void)
 	CFRunLoopObserverInvalidate(oneShotObserver);
 	CFRelease(repeatingObserver);
 	CFRelease(oneShotObserver);
+	timerState = (struct TimerState){0, 0};
+	CFRunLoopTimerContext timerContext = {0, &timerState, 0, 0, 0};
+	CFRunLoopTimerRef timer = CFRunLoopTimerCreate(0, 0.0, 0.0,
+		0, 0, timer_callback, &timerContext);
+	if (timer == 0)
+		return 32;
+	CFRunLoopAddTimer(loop, timer, mode);
+	(void)CFRunLoopRunInMode(mode, 1.0, 0);
+	if (timerState.calls != 1) return 33;
+	if (!timerState.context_matches) return 34;
+	if (CFRunLoopTimerIsValid(timer)) return 35;
+	CFRunLoopRemoveTimer(loop, timer, mode);
+	CFRunLoopTimerInvalidate(timer);
+	CFRelease(timer);
 	CFRelease(mode);
 	if (!passed)
 		return 14;
 	puts("COREFOUNDATION_GUEST_OBSERVER=PASS");
+	puts("COREFOUNDATION_GUEST_TIMER=PASS");
 	return 0;
 }

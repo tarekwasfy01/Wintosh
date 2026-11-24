@@ -23,7 +23,8 @@ if ($LASTEXITCODE -ne 0) { throw "CoreFoundation observer Mach-O link failed: $L
 $output = & $Runner --startup-abi main $fixture 2>&1
 $code = $LASTEXITCODE
 $text = $output -join "`n"
-if ($code -ne 0 -or $text -notmatch 'COREFOUNDATION_GUEST_OBSERVER=PASS') {
+if ($code -ne 0 -or $text -notmatch 'COREFOUNDATION_GUEST_OBSERVER=PASS' -or
+	$text -notmatch 'COREFOUNDATION_GUEST_TIMER=PASS') {
 	throw "CoreFoundation observer E2E failed: exit=$code output=$text"
 }
 Write-Output 'WINTOSH_COREF_FOUNDATION_GUEST_OBSERVER_E2E=PASS'

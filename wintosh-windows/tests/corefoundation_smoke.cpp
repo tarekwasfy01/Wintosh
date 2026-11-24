@@ -420,14 +420,20 @@ int main()
 	const auto scheme_url = darling_windows_CFURLCreateWithFileSystemPath("https://example.test/a");
 	const auto relative_url_string = darling_windows_CFStringCreateWithCString("child");
 	const auto relative_url = darling_windows_CFURLCreateWithString(relative_url_string, scheme_url);
+	const auto relative_string_expected = darling_windows_CFStringCreateWithCString("child");
 	const auto relative_expected = darling_windows_CFStringCreateWithCString("https://example.test/child");
+	const auto relative_absolute_url = darling_windows_CFURLCopyAbsoluteURL(relative_url);
 	const auto parent_base = darling_windows_CFURLCreateWithFileSystemPath("https://example.test/dir/a");
 	const auto parent_string = darling_windows_CFStringCreateWithCString("../child");
 	const auto parent_url = darling_windows_CFURLCreateWithString(parent_string, parent_base);
+	const auto parent_string_expected = darling_windows_CFStringCreateWithCString("../child");
 	const auto parent_expected = darling_windows_CFStringCreateWithCString("https://example.test/child");
+	const auto parent_absolute_url = darling_windows_CFURLCopyAbsoluteURL(parent_url);
 	const auto url_dot_string = darling_windows_CFStringCreateWithCString("./child");
 	const auto url_dot = darling_windows_CFURLCreateWithString(url_dot_string, parent_base);
+	const auto url_dot_string_expected = darling_windows_CFStringCreateWithCString("./child");
 	const auto url_dot_expected = darling_windows_CFStringCreateWithCString("https://example.test/dir/child");
+	const auto url_dot_absolute = darling_windows_CFURLCopyAbsoluteURL(url_dot);
 	const auto extension_url = darling_windows_CFURLCreateWithFileSystemPath("C:/Wintosh/app.bin");
 	const auto directory_url = darling_windows_CFURLCreateWithFileSystemPath("C:/Wintosh/");
 	const unsigned char url_bytes[] = "C:/Wintosh/app";
@@ -443,9 +449,9 @@ int main()
 	const auto encoded_decoded_query = darling_windows_CFURLCopyQueryStringDecoded(encoded_url);
 	const auto encoded_decoded_fragment = darling_windows_CFURLCopyFragmentDecoded(encoded_url);
 	const auto encoded_raw_expected = darling_windows_CFStringCreateWithCString(
-		"https://example.test/a%20b/%E2%82%AC");
+		"/a%20b/%E2%82%AC");
 	const auto encoded_decoded_expected = darling_windows_CFStringCreateWithCString(
-		"https://example.test/a b/\xE2\x82\xAC");
+		"/a b/\xE2\x82\xAC");
 	const auto encoded_query_expected = darling_windows_CFStringCreateWithCString("q=a b");
 	const auto encoded_fragment_expected = darling_windows_CFStringCreateWithCString("f g");
 	const auto query_url = darling_windows_CFURLCreateWithFileSystemPath("C:/Wintosh/app?mode=fast#top");
@@ -481,6 +487,12 @@ int main()
 		static_cast<darling_windows_CFIndex>(sizeof(url_representation))) &&
 		std::strcmp(reinterpret_cast<const char*>(url_representation), "C:/Wintosh/app") == 0 &&
 		!darling_windows_CFURLGetFileSystemRepresentation(url, false, url_representation, 4);
+	const auto relative_url_string_value = darling_windows_CFURLGetString(relative_url);
+	const auto relative_absolute_string_value = darling_windows_CFURLGetString(relative_absolute_url);
+	const auto parent_url_string_value = darling_windows_CFURLGetString(parent_url);
+	const auto parent_absolute_string_value = darling_windows_CFURLGetString(parent_absolute_url);
+	const auto dot_url_string_value = darling_windows_CFURLGetString(url_dot);
+	const auto dot_absolute_string_value = darling_windows_CFURLGetString(url_dot_absolute);
 	const bool date_url_ok = date != nullptr && date_copy != nullptr && url_from_bytes != nullptr &&
 		encoded_url != nullptr && encoded_raw_path != nullptr && encoded_decoded_path != nullptr &&
 		encoded_decoded_query != nullptr && encoded_decoded_fragment != nullptr &&
@@ -489,26 +501,26 @@ int main()
 		darling_windows_CFStringCompare(encoded_decoded_query, encoded_query_expected) == 0 &&
 		darling_windows_CFStringCompare(encoded_decoded_fragment, encoded_fragment_expected) == 0 &&
 		url_from_string != nullptr && darling_windows_CFEqual(url_from_string, scheme_url) &&
-		relative_url != nullptr && darling_windows_CFURLGetString(relative_url) != nullptr &&
-		darling_windows_CFStringCompare(darling_windows_CFURLGetString(relative_url), relative_expected) == 0 &&
-		parent_url != nullptr && darling_windows_CFStringCompare(
-			darling_windows_CFURLGetString(parent_url), parent_expected) == 0 &&
-		url_dot != nullptr && darling_windows_CFStringCompare(
-			darling_windows_CFURLGetString(url_dot), url_dot_expected) == 0 &&
+		relative_url != nullptr && relative_absolute_url != nullptr &&
+		darling_windows_CFStringCompare(relative_url_string_value, relative_string_expected) == 0 &&
+		darling_windows_CFStringCompare(relative_absolute_string_value, relative_expected) == 0 &&
+		parent_url != nullptr && parent_absolute_url != nullptr &&
+		darling_windows_CFStringCompare(parent_url_string_value, parent_string_expected) == 0 &&
+		darling_windows_CFStringCompare(parent_absolute_string_value, parent_expected) == 0 &&
+		url_dot != nullptr && url_dot_absolute != nullptr &&
+		darling_windows_CFStringCompare(dot_url_string_value, url_dot_string_expected) == 0 &&
+		darling_windows_CFStringCompare(dot_absolute_string_value, url_dot_expected) == 0 &&
 		now_date != nullptr && darling_windows_CFDateGetTimeIntervalSinceDate(now_date, date) > 0.0 &&
 		absolute_url != nullptr &&
 		url_string != nullptr &&
 		darling_windows_CFURLGetTypeID() == darling_windows_CFGetTypeID(url) &&
-		!darling_windows_CFURLHasDirectoryPath(url) &&
-		darling_windows_CFURLHasDirectoryPath(directory_url) &&
+		!darling_windows_CFURLHasDirectoryPath(url) && darling_windows_CFURLHasDirectoryPath(directory_url) &&
 		darling_windows_CFEqual(date, date_copy) &&
 		darling_windows_CFDateGetTimeIntervalSinceReferenceDate(date) == 1234.5 &&
-		darling_windows_CFEqual(url, url_from_bytes) &&
-		darling_windows_CFEqual(url, absolute_url) &&
+		darling_windows_CFEqual(url, url_from_bytes) && darling_windows_CFEqual(url, absolute_url) &&
 		darling_windows_CFEqual(url_path, url_string) &&
 		ipv6_host != nullptr && darling_windows_CFStringCompare(ipv6_host, ipv6_expected) == 0 &&
-		ipv6_net_location != nullptr && darling_windows_CFStringCompare(ipv6_net_location,
-			ipv6_net_expected) == 0 &&
+		ipv6_net_location != nullptr && darling_windows_CFStringCompare(ipv6_net_location, ipv6_net_expected) == 0 &&
 		userinfo_name != nullptr && userinfo_password != nullptr &&
 		darling_windows_CFStringCompare(userinfo_name, userinfo_name_expected) == 0 &&
 		darling_windows_CFStringCompare(userinfo_password, userinfo_password_expected) == 0 &&
@@ -523,8 +535,7 @@ int main()
 		darling_windows_CFSetGetTypeID() == darling_windows_CFGetTypeID(set) &&
 		darling_windows_CFNumberGetTypeID() == darling_windows_CFGetTypeID(number) &&
 		darling_windows_CFDateGetTypeID() == darling_windows_CFGetTypeID(date) &&
-		url_representation_ok &&
-		darling_windows_CFDateGetAbsoluteTime(date) == 1234.5 && url != nullptr &&
+		url_representation_ok && darling_windows_CFDateGetAbsoluteTime(date) == 1234.5 && url != nullptr &&
 		url_path != nullptr && darling_windows_CFStringGetCString(url_path, url_buffer, sizeof(url_buffer)) &&
 		std::strcmp(url_buffer, "C:/Wintosh/app") == 0 && url_last_component != nullptr &&
 		url_parent != nullptr && darling_windows_CFStringGetCString(url_last_component, url_buffer, sizeof(url_buffer)) &&
@@ -1024,14 +1035,26 @@ int main()
 	darling_windows_CFRelease(url_source_string);
 	darling_windows_CFRelease(relative_url_string);
 	darling_windows_CFRelease(relative_url);
+	darling_windows_CFRelease(relative_url_string_value);
+	darling_windows_CFRelease(relative_absolute_string_value);
+	darling_windows_CFRelease(relative_string_expected);
 	darling_windows_CFRelease(relative_expected);
+	darling_windows_CFRelease(relative_absolute_url);
 	darling_windows_CFRelease(parent_base);
 	darling_windows_CFRelease(parent_string);
 	darling_windows_CFRelease(parent_url);
+	darling_windows_CFRelease(parent_url_string_value);
+	darling_windows_CFRelease(parent_absolute_string_value);
+	darling_windows_CFRelease(parent_string_expected);
 	darling_windows_CFRelease(parent_expected);
+	darling_windows_CFRelease(parent_absolute_url);
 	darling_windows_CFRelease(url_dot_string);
 	darling_windows_CFRelease(url_dot);
+	darling_windows_CFRelease(dot_url_string_value);
+	darling_windows_CFRelease(dot_absolute_string_value);
+	darling_windows_CFRelease(url_dot_string_expected);
 	darling_windows_CFRelease(url_dot_expected);
+	darling_windows_CFRelease(url_dot_absolute);
 	darling_windows_CFRelease(absolute_url);
 	darling_windows_CFRelease(url_string);
 	darling_windows_CFRelease(ipv6_url);
@@ -1102,7 +1125,7 @@ int main()
 			<< " one=" << one_source_ok << " second=" << source_queue_ok
 			<< " drain=" << drain_sources_ok << " timer=" << timer_ok
 			<< " notify=" << notification_ok << " delivered=" << delivered
-			<< " plist=" << plist_ok << " binary=" << binary_plist_ok << "\\n";
+			<< " plist=" << plist_ok << " binary=" << binary_plist_ok << '\n';
 	}
 	std::cout << "DARWIN_COREF_FOUNDATION=\"" << (corefoundation_ok ? "PASS" : "FAIL") << "\n";
 	if (!string_number_ok || !system_encoding_ok || !maximum_encoding_size_ok || !mutable_creation_ok || !find_replace_ok || !scoped_find_replace_ok || !unicode_replace_ok || !unicode_bytes_ok || !utf16_characters_ok || !utf16_character_at_index_ok || !backwards_find_ok || !oversized_find_ok || !unicode_find_range_ok || !compare_options_ok || !backwards_compare_ok || !numeric_compare_ok || !bounded_find_ok || !option_match_ok || !pascal_rejection_ok || !characters_creation_ok || !filesystem_string_ok || !filesystem_representation_ok || !string_split_ok) return 1;

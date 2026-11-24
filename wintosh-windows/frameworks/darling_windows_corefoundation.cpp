@@ -4653,7 +4653,16 @@ void* DARLING_CF_GUEST_ABI CFMachPortSourcePerform(void* message, darling_window
 		callback_info = const_cast<void*>(port->mach_port_info);
 	}
 	if (callout != nullptr) {
-		try { callout(port, message, size, callback_info); }
+		const std::array<std::uintptr_t, 4> arguments{
+			reinterpret_cast<std::uintptr_t>(port),
+			reinterpret_cast<std::uintptr_t>(message),
+			static_cast<std::uintptr_t>(size),
+			reinterpret_cast<std::uintptr_t>(callback_info)};
+		try {
+			if (!darling_objc_invoke_guest_function(
+				reinterpret_cast<std::uintptr_t>(callout), arguments.data(), arguments.size()))
+				callout(port, message, size, callback_info);
+		}
 		catch (...) { /* Guest callbacks must not unwind through CoreFoundation. */ }
 	}
 	return nullptr;
@@ -5208,7 +5217,15 @@ extern "C" DARLING_CF_GUEST_ABI void CFMachPortInvalidate(
 		ReleaseOwned(source);
 	}
 	if (invalidation_callout != nullptr) {
-		try { invalidation_callout(port, const_cast<void*>(info)); }
+		const std::array<std::uintptr_t, 2> arguments{
+			reinterpret_cast<std::uintptr_t>(port),
+			reinterpret_cast<std::uintptr_t>(const_cast<void*>(info))};
+		try {
+			if (!darling_objc_invoke_guest_function(
+				reinterpret_cast<std::uintptr_t>(invalidation_callout),
+				arguments.data(), arguments.size()))
+				invalidation_callout(port, const_cast<void*>(info));
+		}
 		catch (...) { /* Guest callbacks must not unwind through CoreFoundation. */ }
 	}
 	if (info != nullptr && release_context != nullptr) {

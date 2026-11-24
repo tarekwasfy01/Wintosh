@@ -276,6 +276,15 @@ if (WIN32)
                     -OutputDirectory "${CMAKE_CURRENT_BINARY_DIR}/arm64-corefoundation-timer-observer-e2e")
             set_tests_properties(wintosh_arm64_corefoundation_timer_observer_e2e
                 PROPERTIES RUN_SERIAL TRUE TIMEOUT 60)
+            add_test(NAME wintosh_arm64_corefoundation_mach_port_e2e
+                COMMAND powershell.exe -NoProfile -ExecutionPolicy Bypass -File
+                    "${CMAKE_CURRENT_SOURCE_DIR}/tests/arm64_corefoundation_mach_port_e2e.ps1"
+                    -Clang "${CMAKE_CXX_COMPILER}"
+                    -Linker "${WINTOSH_LD64_LLD}"
+                    -Runner "$<TARGET_FILE:wintosh>"
+                    -OutputDirectory "${CMAKE_CURRENT_BINARY_DIR}/arm64-corefoundation-mach-port-e2e")
+            set_tests_properties(wintosh_arm64_corefoundation_mach_port_e2e
+                PROPERTIES RUN_SERIAL TRUE TIMEOUT 60)
         endif()
         add_test(NAME wintosh_macho_printf_e2e
             COMMAND powershell.exe -NoProfile -ExecutionPolicy Bypass -File

@@ -224,6 +224,93 @@ bool DispatchArm64CoreFoundationRunLoopImport(const std::string& name,
 			static_cast<std::uintptr_t>(x[2])));
 		return true;
 	}
+	if (name == "_CFMachPortCreate") {
+		if (x[2] != 0 && !backend.ContainsGuestRange(x[2],
+			sizeof(DarlingCFMachPortContext), false))
+			throw std::runtime_error("ARM64 CFMachPortCreate received an invalid context");
+		if (x[3] != 0 && !backend.ContainsGuestRange(x[3], sizeof(std::uint8_t), true))
+			throw std::runtime_error("ARM64 CFMachPortCreate received an invalid output range");
+		using Call = darling_windows_CFMachPortRef (DARLING_CF_GUEST_ABI *)(
+			const void*, DarlingCFMachPortCallout, const DarlingCFMachPortContext*,
+			std::uint8_t*);
+		resumed_state.x[0] = reinterpret_cast<std::uintptr_t>(reinterpret_cast<Call>(target)(
+			reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[0])),
+			reinterpret_cast<DarlingCFMachPortCallout>(static_cast<std::uintptr_t>(x[1])),
+			reinterpret_cast<const DarlingCFMachPortContext*>(static_cast<std::uintptr_t>(x[2])),
+			reinterpret_cast<std::uint8_t*>(static_cast<std::uintptr_t>(x[3]))));
+		return true;
+	}
+	if (name == "_CFMachPortCreateWithPort") {
+		if (x[3] != 0 && !backend.ContainsGuestRange(x[3],
+			sizeof(DarlingCFMachPortContext), false))
+			throw std::runtime_error("ARM64 CFMachPortCreateWithPort received an invalid context");
+		if (x[4] != 0 && !backend.ContainsGuestRange(x[4], sizeof(std::uint8_t), true))
+			throw std::runtime_error("ARM64 CFMachPortCreateWithPort received an invalid output range");
+		using Call = darling_windows_CFMachPortRef (DARLING_CF_GUEST_ABI *)(
+			const void*, std::uint32_t, DarlingCFMachPortCallout,
+			const DarlingCFMachPortContext*, std::uint8_t*);
+		resumed_state.x[0] = reinterpret_cast<std::uintptr_t>(reinterpret_cast<Call>(target)(
+			reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[0])),
+			static_cast<std::uint32_t>(x[1]),
+			reinterpret_cast<DarlingCFMachPortCallout>(static_cast<std::uintptr_t>(x[2])),
+			reinterpret_cast<const DarlingCFMachPortContext*>(static_cast<std::uintptr_t>(x[3])),
+			reinterpret_cast<std::uint8_t*>(static_cast<std::uintptr_t>(x[4]))));
+		return true;
+	}
+	if (name == "_CFMachPortCreateRunLoopSource") {
+		using Call = darling_windows_CFTypeRef (DARLING_CF_GUEST_ABI *)(
+			const void*, darling_windows_CFMachPortRef, darling_windows_CFIndex);
+		resumed_state.x[0] = reinterpret_cast<std::uintptr_t>(reinterpret_cast<Call>(target)(
+			reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[0])),
+			reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[1])),
+			static_cast<darling_windows_CFIndex>(x[2])));
+		return true;
+	}
+	if (name == "_CFMachPortGetContext") {
+		if (x[1] == 0 || !backend.ContainsGuestRange(x[1],
+			sizeof(DarlingCFMachPortContext), true))
+			throw std::runtime_error("ARM64 CFMachPortGetContext received an invalid output range");
+		using Call = void (DARLING_CF_GUEST_ABI *)(
+			darling_windows_CFMachPortRef, DarlingCFMachPortContext*);
+		reinterpret_cast<Call>(target)(reinterpret_cast<const void*>(
+			static_cast<std::uintptr_t>(x[0])),
+			reinterpret_cast<DarlingCFMachPortContext*>(static_cast<std::uintptr_t>(x[1])));
+		return true;
+	}
+	if (name == "_CFMachPortGetPort") {
+		using Call = std::uint32_t (DARLING_CF_GUEST_ABI *)(darling_windows_CFMachPortRef);
+		resumed_state.x[0] = reinterpret_cast<Call>(target)(reinterpret_cast<const void*>(
+			static_cast<std::uintptr_t>(x[0])));
+		return true;
+	}
+	if (name == "_CFMachPortIsValid") {
+		using Call = std::uint8_t (DARLING_CF_GUEST_ABI *)(darling_windows_CFMachPortRef);
+		resumed_state.x[0] = reinterpret_cast<Call>(target)(reinterpret_cast<const void*>(
+			static_cast<std::uintptr_t>(x[0])));
+		return true;
+	}
+	if (name == "_CFMachPortInvalidate") {
+		using Call = void (DARLING_CF_GUEST_ABI *)(darling_windows_CFMachPortRef);
+		reinterpret_cast<Call>(target)(reinterpret_cast<const void*>(
+			static_cast<std::uintptr_t>(x[0])));
+		return true;
+	}
+	if (name == "_CFMachPortSetInvalidationCallBack") {
+		using Call = void (DARLING_CF_GUEST_ABI *)(darling_windows_CFMachPortRef,
+			DarlingCFMachPortInvalidationCallout);
+		reinterpret_cast<Call>(target)(reinterpret_cast<const void*>(
+			static_cast<std::uintptr_t>(x[0])),
+			reinterpret_cast<DarlingCFMachPortInvalidationCallout>(
+				static_cast<std::uintptr_t>(x[1])));
+		return true;
+	}
+	if (name == "_CFMachPortGetInvalidationCallBack") {
+		using Call = DarlingCFMachPortInvalidationCallout (DARLING_CF_GUEST_ABI *)(
+			darling_windows_CFMachPortRef);
+		resumed_state.x[0] = reinterpret_cast<std::uintptr_t>(reinterpret_cast<Call>(target)(
+			reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[0]))));
+		return true;
+	}
 	if (name == "_CFRunLoopTimerGetContext" ||
 		name == "_CFRunLoopObserverGetContext") {
 		const auto context_size = name == "_CFRunLoopTimerGetContext" ?

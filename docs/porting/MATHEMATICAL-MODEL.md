@@ -1098,3 +1098,11 @@ CoreFoundation import dispatcher as timer and observer operations. Context
 input/output ranges are checked there before host code reads or writes guest
 memory, so nested guest callbacks and top-level imports follow one signature
 mapping.
+
+The ARM64 CFMachPort adapters now cover create, context/port/validity queries,
+invalidation callback access, invalidation, and creation of a Source-1 run-loop
+source. Guest invalidation callbacks receive `(port, info)` through the active
+interpreter callback bridge. Port invalidation transitions the wrapper to
+invalid and invalidates its registered run-loop sources. The fixture verifies
+that lifecycle and callback path; delivery of an actual Mach message through
+the CFMachPort message callout still needs a guest message-send fixture.

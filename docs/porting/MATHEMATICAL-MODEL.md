@@ -1036,6 +1036,19 @@ the zeroed version-0 table (no retain/release and pointer equality). See Apple's
 [CFArrayCreateMutable](https://developer.apple.com/documentation/corefoundation/cfarraycreatemutable%28_%3A_%3A_%29)
 and [`kCFTypeArrayCallBacks`](https://developer.apple.com/documentation/corefoundation/kcftypearraycallbacks).
 
+The ARM64 import layer now exposes the array operations needed to construct and
+mutate a guest-owned sequence: `CFArrayCreateMutable`, `CFArrayGetValueAtIndex`,
+`CFArrayGetValues`, `CFArrayContainsValue`, append, insert, set, remove-at-index,
+and remove-all. The bridge represents a `CFRange` as `(location,length)` in the
+Darwin ARM64 argument registers and validates bulk output spans before writing
+guest memory. For a valid sequence `A` with `n` elements, insertion at `i`
+obeys `0≤i≤n` and `A'=A[0:i]·[x]·A[i:n]`; removal obeys `0≤i<n` and
+`A'=A[0:i]·A[i+1:n]`; replacing index `i` preserves `n`. The ARM64 fixture
+checks these transforms, range membership and extraction, and the ownership
+conservation equation `retains - releases = |A|` after destruction. Copy APIs
+are bridged too, while bulk range replacement, sorting/comparison callbacks,
+and the remaining array surface are still pending ARM64 import coverage.
+
 ## ARM64 CoreFoundation run-loop callbacks
 
 The AArch64 import bridge covers the CoreFoundation run-loop operations used

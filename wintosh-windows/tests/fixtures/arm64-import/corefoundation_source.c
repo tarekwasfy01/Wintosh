@@ -1,5 +1,6 @@
 /* Wintosh original ARM64 Darwin guest fixture; GPL-3.0-only. */
 typedef long CFIndex;
+typedef struct CFRange { CFIndex location; CFIndex length; } CFRange;
 typedef void *CFTypeRef;
 typedef void *CFStringRef;
 typedef void *CFRunLoopRef;
@@ -59,6 +60,16 @@ extern CFStringRef CFStringCreateWithCString(const void *, const char *,
 extern CFStringRef CFCopyDescription(const void *);
 extern CFTypeRef CFArrayCreate(const void *, const void *const *, CFIndex,
 	const CFArrayCallBacks *);
+extern CFTypeRef CFArrayCreateMutable(const void *, CFIndex,
+	const CFArrayCallBacks *);
+extern void CFArrayAppendValue(CFTypeRef, CFTypeRef);
+extern void CFArrayInsertValueAtIndex(CFTypeRef, CFIndex, CFTypeRef);
+extern void CFArraySetValueAtIndex(CFTypeRef, CFIndex, CFTypeRef);
+extern void CFArrayRemoveValueAtIndex(CFTypeRef, CFIndex);
+extern void CFArrayRemoveAllValues(CFTypeRef);
+extern const void *CFArrayGetValueAtIndex(CFTypeRef, CFIndex);
+extern unsigned char CFArrayContainsValue(CFTypeRef, CFRange, CFTypeRef);
+extern void CFArrayGetValues(CFTypeRef, CFRange, const void **);
 extern CFIndex CFArrayGetCount(CFTypeRef);
 extern CFTypeRef CFDictionaryCreate(const void *, const void *const *,
 	const void *const *, CFIndex, const CFDictionaryKeyCallBacks *,
@@ -229,6 +240,24 @@ int main(void)
 	CFRelease(arrayDescription);
 	CFRelease(array);
 	if (arrayReleaseCalls != 2) return 18;
+	CFTypeRef mutableArray = CFArrayCreateMutable(0, 0, &arrayCallbacks);
+	if (mutableArray == 0) return 36;
+	CFArrayAppendValue(mutableArray, &arrayValueA);
+	CFArrayInsertValueAtIndex(mutableArray, 0, &arrayValueB);
+	const void *arraySnapshot[2] = { 0, 0 };
+	CFArrayGetValues(mutableArray, (CFRange){ 0, 2 }, arraySnapshot);
+	if (CFArrayGetCount(mutableArray) != 2 || arraySnapshot[0] != &arrayValueB ||
+		arraySnapshot[1] != &arrayValueA ||
+		!CFArrayContainsValue(mutableArray, (CFRange){ 0, 2 }, &arrayValueA))
+		return 37;
+	CFArraySetValueAtIndex(mutableArray, 1, &arrayValueB);
+	if (CFArrayGetValueAtIndex(mutableArray, 1) != &arrayValueB) return 38;
+	CFArrayRemoveValueAtIndex(mutableArray, 0);
+	CFArrayAppendValue(mutableArray, &arrayValueA);
+	CFArrayRemoveAllValues(mutableArray);
+	if (CFArrayGetCount(mutableArray) != 0) return 39;
+	CFRelease(mutableArray);
+	if (arrayRetainCalls != arrayReleaseCalls) return 40;
 	const void *dictionaryKeys[] = { &dictionaryKeyA, &dictionaryKeyB };
 	const void *dictionaryValues[] = { &dictionaryValueA, &dictionaryValueB };
 	CFDictionaryKeyCallBacks keyCallbacks = { 0, dictionary_key_retain,

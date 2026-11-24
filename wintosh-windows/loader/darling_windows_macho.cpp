@@ -156,6 +156,96 @@ bool DispatchArm64CoreFoundationRunLoopImport(const std::string& name,
 			reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[0]))));
 		return true;
 	}
+	if (name == "_CFArrayCreateMutable") {
+		if (x[2] != 0 && !backend.ContainsGuestRange(x[2],
+			sizeof(DarlingCFArrayCallbacks), false))
+			throw std::runtime_error("ARM64 CFArrayCreateMutable import received an invalid callback range");
+		using Call = darling_windows_CFArrayRef (DARLING_CF_GUEST_ABI *)(
+			const void*, darling_windows_CFIndex, const DarlingCFArrayCallbacks*);
+		resumed_state.x[0] = reinterpret_cast<std::uintptr_t>(reinterpret_cast<Call>(target)(
+			reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[0])),
+			static_cast<darling_windows_CFIndex>(x[1]),
+			reinterpret_cast<const DarlingCFArrayCallbacks*>(
+				static_cast<std::uintptr_t>(x[2]))));
+		return true;
+	}
+	if (name == "_CFArrayCreateCopy" || name == "_CFArrayCreateMutableCopy") {
+		using Call = darling_windows_CFArrayRef (DARLING_CF_GUEST_ABI *)(
+			const void*, darling_windows_CFIndex, darling_windows_CFArrayRef);
+		if (name == "_CFArrayCreateCopy") {
+			using CopyCall = darling_windows_CFArrayRef (DARLING_CF_GUEST_ABI *)(
+				const void*, darling_windows_CFArrayRef);
+			resumed_state.x[0] = reinterpret_cast<std::uintptr_t>(reinterpret_cast<CopyCall>(target)(
+				reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[0])),
+				reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[1]))));
+		} else {
+			resumed_state.x[0] = reinterpret_cast<std::uintptr_t>(reinterpret_cast<Call>(target)(
+				reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[0])),
+				static_cast<darling_windows_CFIndex>(x[1]),
+				reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[2]))));
+		}
+		return true;
+	}
+	if (name == "_CFArrayGetValueAtIndex") {
+		using Call = darling_windows_CFTypeRef (DARLING_CF_GUEST_ABI *)(
+			darling_windows_CFArrayRef, darling_windows_CFIndex);
+		resumed_state.x[0] = reinterpret_cast<std::uintptr_t>(reinterpret_cast<Call>(target)(
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0])),
+			static_cast<darling_windows_CFIndex>(x[1])));
+		return true;
+	}
+	if (name == "_CFArrayAppendValue" || name == "_CFArrayInsertValueAtIndex" ||
+		name == "_CFArraySetValueAtIndex" || name == "_CFArrayRemoveValueAtIndex") {
+		if (name == "_CFArrayAppendValue") {
+			using Call = void (DARLING_CF_GUEST_ABI *)(darling_windows_CFArrayRef,
+				darling_windows_CFTypeRef);
+			reinterpret_cast<Call>(target)(reinterpret_cast<void*>(
+				static_cast<std::uintptr_t>(x[0])), reinterpret_cast<void*>(
+				static_cast<std::uintptr_t>(x[1])));
+		} else if (name == "_CFArrayRemoveValueAtIndex") {
+			using Call = void (DARLING_CF_GUEST_ABI *)(darling_windows_CFArrayRef,
+				darling_windows_CFIndex);
+			reinterpret_cast<Call>(target)(reinterpret_cast<void*>(
+				static_cast<std::uintptr_t>(x[0])), static_cast<darling_windows_CFIndex>(x[1]));
+		} else {
+			using Call = void (DARLING_CF_GUEST_ABI *)(darling_windows_CFArrayRef,
+				darling_windows_CFIndex, darling_windows_CFTypeRef);
+			reinterpret_cast<Call>(target)(reinterpret_cast<void*>(
+				static_cast<std::uintptr_t>(x[0])), static_cast<darling_windows_CFIndex>(x[1]),
+				reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[2])));
+		}
+		return true;
+	}
+	if (name == "_CFArrayGetValues") {
+		const auto start = static_cast<darling_windows_CFIndex>(x[1]);
+		const auto length = static_cast<darling_windows_CFIndex>(x[2]);
+		if (length < 0 || length > (1 << 20) || (length != 0 &&
+			(x[3] == 0 || !backend.ContainsGuestRange(x[3],
+				static_cast<std::size_t>(length) * sizeof(void*), true))))
+			throw std::runtime_error("ARM64 CFArrayGetValues import received an invalid output range");
+		using Call = void (DARLING_CF_GUEST_ABI *)(darling_windows_CFArrayRef,
+			darling_windows_CFRange, const void**);
+		reinterpret_cast<Call>(target)(reinterpret_cast<void*>(
+			static_cast<std::uintptr_t>(x[0])), {start, length},
+			reinterpret_cast<const void**>(static_cast<std::uintptr_t>(x[3])));
+		return true;
+	}
+	if (name == "_CFArrayContainsValue") {
+		using Call = std::uint8_t (DARLING_CF_GUEST_ABI *)(darling_windows_CFArrayRef,
+			darling_windows_CFRange, darling_windows_CFTypeRef);
+		resumed_state.x[0] = reinterpret_cast<Call>(target)(reinterpret_cast<void*>(
+			static_cast<std::uintptr_t>(x[0])),
+			{static_cast<darling_windows_CFIndex>(x[1]),
+			 static_cast<darling_windows_CFIndex>(x[2])},
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[3])));
+		return true;
+	}
+	if (name == "_CFArrayRemoveAllValues") {
+		using Call = void (DARLING_CF_GUEST_ABI *)(darling_windows_CFArrayRef);
+		reinterpret_cast<Call>(target)(reinterpret_cast<void*>(
+			static_cast<std::uintptr_t>(x[0])));
+		return true;
+	}
 	if (name == "_CFArrayCreate") {
 		constexpr std::uint64_t max_array_elements = 1u << 20;
 		if (x[2] > max_array_elements || (x[2] != 0 &&

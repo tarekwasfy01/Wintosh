@@ -351,7 +351,10 @@ port. Native multi-port wait remains unsupported. `CFMachPort` wraps receive rig
 `CFMachPortCreate`, exposes validity/context/invalidation callbacks, and creates
 a source-1 run-loop source that forwards messages to the wrapper callout.
 `CFMachPortCreateWithPort` leaves the supplied right caller-owned. Guest ABI
-callbacks and full Mach right/message ownership still need a Mach-O fixture.
+callbacks and the local message path now have an ARM64 Mach-O fixture; it sends
+with `mach_msg`, dispatches through a Source-1 run-loop source, and verifies one
+guest callout. Full Mach right/message ownership and broker-backed delivery
+remain incomplete.
 `CFAllocator` supports custom context creation, allocation, reallocation,
 deallocation, preferred-size queries, and per-thread default selection.
 Default allocations use the guest heap. `CFAllocatorCreate` uses its requested

@@ -1104,8 +1104,14 @@ invalidation callback access, invalidation, and creation of a Source-1 run-loop
 source. Guest invalidation callbacks receive `(port, info)` through the active
 interpreter callback bridge. Port invalidation transitions the wrapper to
 invalid and invalidates its registered run-loop sources. The fixture verifies
-that lifecycle and callback path; delivery of an actual Mach message through
-the CFMachPort message callout still needs a guest message-send fixture.
+that lifecycle and callback path. It also sends a message to the port with
+`mach_msg`, runs the active mode, and asserts that the guest message callout
+receives exactly one message with the original context. The x64-host ARM64
+import adapter validates guest message ranges and forwards `mach_msg` using
+Darwin's seven-register argument map; it is also available to nested guest
+callbacks. This proves the current local send → queued receive → Source-1
+perform → guest callout path. Message-ID/payload preservation and broker-backed
+cross-process delivery remain separate acceptance cases.
 
 Context retain/release callbacks for run-loop sources, timers, observers,
 allocators, and CFMachPorts now share the callback dispatch rule

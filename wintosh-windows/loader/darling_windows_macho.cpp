@@ -12,6 +12,7 @@
 #include "../platform/darling_windows_signals.h"
 #include "darling_windows_abi_bridge.h"
 #include "../abi/darling_windows_objc.h"
+#include "../abi/darling_windows_mach.h"
 #include "darling_windows_tlv.h"
 #include "../frameworks/darling_windows_corefoundation.h"
 #if defined(WINTOSH_HAS_DYNARMIC)
@@ -63,6 +64,41 @@ thread_local Arm64GuestCallbackRunner* active_arm64_callback_runner = nullptr;
 thread_local A64CpuState* active_arm64_seed = nullptr;
 thread_local unsigned* active_arm64_depth = nullptr;
 thread_local const void* active_arm64_dso_handle = nullptr;
+
+bool DispatchArm64MachMsgImport(const std::string& name, std::uintptr_t target,
+	const A64CpuState& state, A64CpuState& resumed_state,
+	DarlingWindowsA64Backend& backend)
+{
+	if (name != "_mach_msg") return false;
+	const auto& x = state.x;
+	constexpr std::uint64_t max_message_bytes = 1ull << 30;
+	const auto option = static_cast<std::uint32_t>(x[1]);
+	const auto send_size = static_cast<std::uint32_t>(x[2]);
+	const auto receive_size = static_cast<std::uint32_t>(x[3]);
+	if (x[2] > max_message_bytes || x[3] > max_message_bytes || x[4] >
+		std::numeric_limits<darling_mach_port_name_t>::max() || x[5] >
+		std::numeric_limits<std::uint32_t>::max() || x[6] >
+		std::numeric_limits<darling_mach_port_name_t>::max())
+		throw std::runtime_error("ARM64 mach_msg import has an out-of-range argument");
+	if ((option & darling_mach_send_msg) != 0 &&
+		(send_size < sizeof(darling_mach_msg_header) ||
+			!backend.ContainsGuestRange(x[0], send_size, false)))
+		throw std::runtime_error("ARM64 mach_msg send has an invalid guest message range");
+	if ((option & darling_mach_receive_msg) != 0 &&
+		(receive_size < sizeof(darling_mach_msg_header) ||
+			!backend.ContainsGuestRange(x[0], receive_size, true)))
+		throw std::runtime_error("ARM64 mach_msg receive has an invalid guest message range");
+	using Call = darling_kern_return_t (*)(darling_mach_msg_header*, std::uint32_t,
+		std::uint32_t, std::uint32_t, darling_mach_port_name_t, std::uint32_t,
+		darling_mach_port_name_t);
+	resumed_state.x[0] = static_cast<std::uint64_t>(static_cast<std::int64_t>(
+		reinterpret_cast<Call>(target)(reinterpret_cast<darling_mach_msg_header*>(
+			static_cast<std::uintptr_t>(x[0])), option, send_size, receive_size,
+			static_cast<darling_mach_port_name_t>(x[4]),
+			static_cast<std::uint32_t>(x[5]),
+			static_cast<darling_mach_port_name_t>(x[6]))));
+	return true;
+}
 
 bool DispatchArm64CoreFoundationRunLoopImport(const std::string& name,
 	std::uintptr_t target, const A64CpuState& state, A64CpuState& resumed_state,
@@ -4336,6 +4372,12 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 			initializer_depth = depth;
 			const auto& x = trap.state.x;
 			const auto& name = imported->symbol;
+			if (DispatchArm64MachMsgImport(name, imported->target, trap.state,
+				resumed, backend)) {
+				initializer_seed = trap.state;
+				initializer_depth = depth;
+				return resumed;
+			}
 			if (DispatchArm64CoreFoundationRunLoopImport(name, imported->target,
 				trap.state, resumed, backend)) {
 				initializer_seed = trap.state;
@@ -4703,6 +4745,12 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 					initializer_depth = 0;
 					const auto& x = result.state.x;
 					const auto& name = imported->symbol;
+					if (DispatchArm64MachMsgImport(name, imported->target,
+						result.state, cpu, backend)) {
+						initializer_seed = result.state;
+						initializer_depth = 0;
+						continue;
+					}
 					if (DispatchArm64CoreFoundationRunLoopImport(name, imported->target,
 						result.state, cpu, backend)) {
 						initializer_seed = result.state;

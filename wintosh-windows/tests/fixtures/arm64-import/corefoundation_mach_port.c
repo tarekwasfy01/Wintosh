@@ -6,6 +6,14 @@ typedef void *CFRunLoopRef;
 typedef void *CFRunLoopSourceRef;
 typedef const void *CFMachPortRef;
 typedef struct {
+	unsigned int bits;
+	unsigned int size;
+	unsigned int remotePort;
+	unsigned int localPort;
+	unsigned int voucherPort;
+	int id;
+} MachMessage;
+typedef struct {
 	CFIndex version;
 	void *info;
 	const void *(*retain)(const void *);
@@ -30,15 +38,19 @@ extern void (*CFMachPortGetInvalidationCallBack(CFMachPortRef))(
 	CFMachPortRef, void *);
 extern void CFRunLoopAddSource(CFRunLoopRef, CFRunLoopSourceRef, CFStringRef);
 extern void CFRunLoopRemoveSource(CFRunLoopRef, CFRunLoopSourceRef, CFStringRef);
+extern int CFRunLoopRunInMode(CFStringRef, double, unsigned char);
 extern unsigned char CFRunLoopContainsSource(CFRunLoopRef, CFRunLoopSourceRef,
 	CFStringRef);
 extern unsigned char CFRunLoopSourceIsValid(CFRunLoopSourceRef);
 extern void CFRelease(CFTypeRef);
+extern int mach_msg(MachMessage *, unsigned int, unsigned int, unsigned int,
+	unsigned int, unsigned int, unsigned int);
 
 static int callbackInfo;
 static int retainCalls;
 static int releaseCalls;
 static int invalidationCalls;
+static int messageCalls;
 static const void *retain_context(const void *info)
 {
 	if (info == &callbackInfo) ++retainCalls;
@@ -50,7 +62,10 @@ static void release_context(const void *info)
 }
 static void mach_message(CFMachPortRef port, void *message, CFIndex size, void *info)
 {
-	(void)port; (void)message; (void)size; (void)info;
+	if (port != 0 && message != 0 && size >= (CFIndex)sizeof(MachMessage) &&
+		info == &callbackInfo) {
+		++messageCalls;
+	}
 }
 static void mach_invalidated(CFMachPortRef port, void *info)
 {
@@ -78,13 +93,19 @@ int main(void)
 	if (loop == 0 || mode == 0 || source == 0) return 23;
 	CFRunLoopAddSource(loop, source, mode);
 	if (!CFRunLoopContainsSource(loop, source, mode)) return 24;
+	MachMessage outgoing = { 19, sizeof(MachMessage), CFMachPortGetPort(port),
+		0, 0, 0x57494e54 };
+	if (mach_msg(&outgoing, 1, sizeof(outgoing), 0, 0, 0, 0) != 0)
+		return 26;
+	if (CFRunLoopRunInMode(mode, 0.0, 1) != 4) return 27;
+	if (messageCalls != 1) return 28;
 	CFMachPortInvalidate(port);
 	if (CFMachPortIsValid(port) || invalidationCalls != 1 || releaseCalls != 1 ||
 		CFRunLoopSourceIsValid(source) ||
 		CFRunLoopContainsSource(loop, source, mode)) return 25;
 	CFRunLoopRemoveSource(loop, source, mode);
 	CFRelease(source);
-	CFRelease(port);
+	CFRelease((CFTypeRef)port);
 	CFRelease(mode);
 	return 42;
 }

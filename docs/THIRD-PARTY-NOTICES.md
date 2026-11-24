@@ -14,6 +14,11 @@ The most important boundary is:
   macho-ld, Classix, VST-ace, DirectHW, and SherlockElf — reference checkouts
   with project-specific license terms; inspect each original license before
   copying or redistributing code.
+- [Dynarmic](https://github.com/yuzu-mirror/dynarmic) — optional AArch64
+  backend, pinned at `9d4582339990d4eae53f1dc7160686920fc2075c`. Its 0BSD
+  notice and the Boost, fmt, mcl, oaknut, robin-map, Xbyak, Zydis, and Zycore
+  dependency notices are in `../licenses/dynarmic/`; see the provenance CSV
+  for exact bundled tree IDs and the vcpkg baseline.
 
 No source tree is automatically relicensed by the Wintosh-original MIT
 notice. The inventory intentionally keeps unresolved or review-required

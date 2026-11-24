@@ -47,8 +47,8 @@ foreach ($status in @('present', 'header-evidence', 'review-required')) {
     $count = if ($statusCounts.ContainsKey($status)) { $statusCounts[$status] } else { 0 }
     Write-Output ("STATUS_{0}={1}" -f $status.ToUpper().Replace('-', '_'), $count)
 }
-if (@($provenance).Count -ne 150 -or
-    $statusCounts['present'] -ne 2 -or
+if (@($provenance).Count -ne 159 -or
+	$statusCounts['present'] -ne 11 -or
     $statusCounts['header-evidence'] -ne 1 -or
     $statusCounts['review-required'] -ne 147) {
     Write-Output 'PROVENANCE_EXPECTATIONS=FAIL'

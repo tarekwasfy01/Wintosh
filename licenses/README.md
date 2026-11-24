@@ -31,6 +31,14 @@ is intentionally compatible with GPL combination requirements, but it applies
 only where the source is genuinely original and explicitly identified as such;
 it does not relicense Darling-derived or other third-party code.
 
+The optional ARM64 guest backend links a pinned Dynarmic build and static
+dependencies. Their license texts are collected in `dynarmic/`; component
+origins, Dynarmic commit, bundled source-tree IDs, and the vcpkg baseline are
+recorded in `EXTERNAL-COMPONENT-PROVENANCE.csv`. The backend build script and
+patch are local build tooling; no Dynarmic or dependency source is copied into
+the Wintosh source tree. Keep these notices with any binary containing the
+optional statically linked backend.
+
 The current Mach-O ABI, dyld, runner, and Windows assembly additions introduce
 no new third-party source dependency and therefore require no new external
 license file. They retain the GPL-3.0 headers and the existing Darling

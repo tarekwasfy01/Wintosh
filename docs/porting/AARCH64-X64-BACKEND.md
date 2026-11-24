@@ -72,7 +72,7 @@ Referenzen:
 
 | Welle | Implementierung | Eintrittsbedingung für nächste Welle |
 |---|---|---|
-| 0. Abhängigkeit | Dynarmic `9d458233` x64-Windows lokal gebaut; alle gebauten Abhängigkeitslizenzen inventarisieren und reproduzierbaren Upstream-Build ohne lokale Probeänderung herstellen | Upstream-Pin und Dependency-Build sind in Projektmetadaten und CI reproduzierbar |
+| 0. Abhängigkeit | Dynarmic `9d458233`, vcpkg-Baseline und Abhängigkeitsnotizen sind fixiert; Offline-Scriptlauf aus sauberem Quellcheckout baut `dynarmic.lib` | Standardmäßiger vcpkg-Manifestmodus mit Netz sowie erneuter Lizenzabgleich der tatsächlich gelinkten Teilmengen |
 | 1. CPU-Adapter | `A64::Jit` hinter Wintosh-Backend; registrierter Gastadressraum, Rechteprüfungen und Registerzustand sind durch ARM64-Fixtures belegt | bleibt offen für nicht getestete Instruktionsgruppen und native Windows ARM64 End-to-End-Ausführung |
 | 2. Trap-Pfad | SVC, Gast-Exit und Fehlerzustand sind angebunden; ein begrenzter Darwin-UNIX-SVC-Satz ist in Loader-Fixtures abgedeckt | zusätzliche Syscalls, Mach-Traps und Kernelzustandsparität |
 | 3. Import-Brücke | symbolgebundene ARM64-Trampoline, ausgewählte skalare/Pointer- und Callback-Signaturen, verschachtelte SVCs, Gast-Datenbereiche und Objective-C-Dispatch sind belegt | übrige Aggregate, Variadics, Block-Closures und nicht katalogisierte Imports |
@@ -128,11 +128,16 @@ mit ihren Windows-Lese-/Schreibrechten für den Gast registriert. Das behebt
 nicht die Darwin-ABI von beliebigen Host-Globals und ersetzt keine App-Bundle-
 Fixture.
 
-Der Backend-Build bleibt optional und hängt von einem extern bereitgestellten
-Dynarmic-Source- und Build-Verzeichnis ab. Der geprüfte Upstream-Commit ist
-`9d4582339990d4eae53f1dc7160686920fc2075c`; ein reproduzierbarer Fetch-/Build-
-Pfad ohne lokale CMake-Probeänderung und die Abhängigkeitslizenzprüfung bleiben
-offen.
+Der Backend-Build bleibt optional. `tools/Build-Dynarmic.ps1` pinnt den
+Upstream-Commit und `tools/dynarmic/vcpkg.json` die Boost-Baseline; der Build
+wendet außerdem die reproduzierte MSVC-PDB-Anpassung aus der lokalen Probe an.
+Der Offline-Scriptpfad wurde aus einem sauberen, gepinnten Quellcheckout gegen
+die vorhandenen x64-windows-Boost-Header ausgeführt; CMake-Konfiguration und
+alle 133 Compile-/Linkschritte waren erfolgreich. Der vcpkg-Manifestmodus
+konnte wegen fehlender DNS-/Netzwerkverbindung nicht geprüft werden. Die
+Lizenztexte liegen unter `licenses/dynarmic/`; die Provenienzprüfung erkennt
+jetzt neun zusätzliche Notices. Ein komponentengenauer Abgleich der
+tatsächlich gelinkten Teilmengen bleibt offen.
 
 ### Windows-Buildprobe und erste Wintosh-Anbindung (2026-11-23)
 
@@ -270,17 +275,16 @@ Eingabewerte werden vorab kopiert beziehungsweise geprüft; Ausgaben laufen
 über einen begrenzten Hostpuffer und werden danach in den Gast geschrieben.
 Weitere Unix-Syscalls, Mach-Traps, Host-Imports und Cocoa bleiben offen.
 
-Der Upstream-Commit ist noch nicht in der Projektkonfiguration festgeschrieben;
-die optionalen Pfade setzen einen separat gebauten Checkout voraus. Vor einer
-standardmäßigen Integration müssen Upstream-Pin, Reproduzierbarkeit und
-Lizenzen der tatsächlich gebauten Abhängigkeiten in den Projektmetadaten
-festgelegt werden.
+Die optionale CMake-Integration erwartet weiterhin separat gebaute Bibliotheken.
+Der Upstream-Pin, vcpkg-Baseline und Buildschritte sind im Repo dokumentiert;
+der netzwerkgestützte vcpkg-Manifestmodus und der komponentengenaue
+Lizenzabgleich bleiben Gates vor einer standardmäßigen Integration.
 
 | Fähigkeit | Stand |
 |---|---|
 | ARM64 parse/map/Relokations-Subset | implementiert, bestehende Grenzen gelten |
 | Dynarmic-Commit lokal untersucht | `9d458233`; Windows-x64-A64 statisch gebaut |
-| Dynarmic-Abhängigkeit reproduzierbar gebaut | lokaler Release-Build mit Probe-CMake-Dateianpassung; noch nicht im Projekt fixiert |
+| Dynarmic-Abhängigkeit reproduzierbar gebaut | Offline-Buildscript aus sauberem Quellcheckout erfolgreich; vcpkg-Manifestmodus wegen DNS nicht validiert |
 | A64-Backend in Wintosh | optionaler Adapter lokal gebaut; mehrere ARM64-Runtime-Fixtures laufen auf x64 Windows |
 | A64-Trap-Zustand | x0–x30, v0–v31, SP, PC, PSTATE, FPCR und FPSR rückführbar und fortsetzbar |
 | Darwin-UNIX-SVC | `exit`, `wait4` (mit lokaler Status-/Rusage-Kopie), `read`, `write`, `readv`, `writev`, `pread`, `pwrite`, `open`, `close`, `link`, `unlink`, `chdir`, `chmod`, `fchmod`, `symlink`, `readlink`, `umask`, Prozess-/Gruppen-ID-Aufrufe, `dup`, `dup2`, `pipe`, `socket`, `socketpair`, `connect`, `bind`, `listen`, `accept`, `recvfrom`, `sendto`, `getpeername`, `getsockname`, `shutdown`, `gettimeofday`, `getrusage`, `getpriority`, `setpriority`, `access`, `rename`, `mkdir`, `rmdir`, `fsync`, `fdatasync`, `stat`, `lstat`, `fstat`, `lseek`, `truncate`, `ftruncate`, `mmap`, `munmap` (nur ganzes Mapping), `mprotect`, `msync`, `madvise`, `sysctl` (implementierte zweistufige `KERN`-/`HW`-MIBs), `kill`, `sigaction`, `sigprocmask`; andere UNIX-Nummern liefern `ENOSYS`; kein Mach-Trap-Dispatcher |

@@ -2,7 +2,7 @@
 
 | Project | Layer | What it supplies | What remains for macOS apps | Wintosh use |
 |---|---|---|---|---|
-| [Dynarmic](https://github.com/yuzu-mirror/dynarmic) | ARM32/AArch64 dynamic recompiler | A64 guest execution on x86-64 or AArch64 hosts, user-mode hooks and caller-owned memory callbacks; Windows is listed as a host | Darwin syscalls, Mach services, dyld, Objective-C, Cocoa and app resources; exact instruction/ABI coverage needs fixtures | Optional backend integrated for ARM64 Mach-O on x64 Windows and locally exercised; upstream pin/build are not yet reproducible from project metadata, and bundled dependency licenses need review |
+| [Dynarmic](https://github.com/yuzu-mirror/dynarmic) | ARM32/AArch64 dynamic recompiler | A64 guest execution on x86-64 or AArch64 hosts, user-mode hooks and caller-owned memory callbacks; Windows is listed as a host | Darwin syscalls, Mach services, dyld, Objective-C, Cocoa and app resources; exact instruction/ABI coverage needs fixtures | Optional backend integrated for ARM64 Mach-O on x64 Windows and locally exercised; pinned offline build script succeeded from a clean checkout with existing Boost headers; network vcpkg install remains unverified |
 | [Icicle](https://github.com/icicle-emu/icicle-emu) | Multi-architecture CPU/VM framework | AArch64 target triples, p-code VM and caller-provided execution environment | Experimental fuzzing focus, Rust integration, Darwin/Mach-O runtime and GUI services | Alternate CPU-backend research candidate; MIT/Apache-2.0, no local build or guest execution |
 | [Unicorn](https://github.com/unicorn-engine/unicorn) | CPU instruction emulation | Multi-architecture CPU execution and register/memory control; Windows supported | Darwin syscalls, Mach services, dyld, Objective-C, Cocoa and app resources; GPL-2.0-only provenance needs compatibility review | Keep as an isolated oracle candidate; do not fold its code into the GPL-3.0 runtime without a license analysis |
 | [Qiling](https://github.com/qilingframework/qiling) | OS-aware emulation built over Unicorn | Loader and selected OS syscall models useful for analysis | Validate exact Darwin/Mach-O support per version; GUI, frameworks and arbitrary apps are not implied | Use only as a research oracle and fixture source until reproduced locally |
@@ -14,8 +14,9 @@ Upstream checks on 2026-11-23 confirm Dynarmic describes AArch64 guest support,
 x86-64/AArch64 host support, Windows support, caller-owned memory callbacks,
 and a 0BSD core license. Wintosh now has an optional integration using the
 locally built `yuzu-mirror/dynarmic` commit `9d4582339990d4eae53f1dc7160686920fc2075c`;
-the configured CMake paths require an external source/build tree and a local
-probe adjustment, so this is not yet a reproducible default build. Dynarmic's
+the opt-in build script pins it and applies the local probe adjustment, but a
+offline clean-checkout script run was successful; network-enabled vcpkg
+manifest installation remains unverified. Dynarmic's
 README lists separately licensed bundled dependencies and describes user-mode
 emulation, not a system emulator. Icicle documents `aarch64-linux` targets and dual MIT/Apache licensing, but is
 experimental and fuzzing-oriented. Unicorn documents Windows support and

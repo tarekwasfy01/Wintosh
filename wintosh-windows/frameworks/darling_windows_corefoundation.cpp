@@ -4354,17 +4354,27 @@ extern "C" int darling_windows_CFRunLoopRunInModeForLoop(
 						pending.source->run_loop_source_is_v1;
 				}
 				if (valid) {
-					try {
-						auto* reply = static_cast<darling_mach_msg_header*>(pending.perform(pending.bytes.data(),
-						static_cast<darling_windows_CFIndex>(pending.bytes.size()),
-						pending.allocator, pending.info));
-						if (reply != nullptr) {
-							if (reply->msgh_size >= sizeof(darling_mach_msg_header))
-								(void)darling_windows_mach_msg(reply, darling_mach_send_msg,
-									reply->msgh_size, 0, 0, 0, 0);
-							CFAllocatorDeallocate(pending.allocator, reply);
+					const bool guest_callback = darling_objc_has_guest_function_invoker();
+					const bool guest_memory_mapped = !guest_callback ||
+						darling_objc_change_guest_memory_region(pending.bytes.data(),
+							pending.bytes.size(), true, true);
+					if (guest_memory_mapped) {
+						try {
+							auto* reply = static_cast<darling_mach_msg_header*>(pending.perform(pending.bytes.data(),
+							static_cast<darling_windows_CFIndex>(pending.bytes.size()),
+							pending.allocator, pending.info));
+							if (reply != nullptr) {
+								if (reply->msgh_size >= sizeof(darling_mach_msg_header))
+									(void)darling_windows_mach_msg(reply, darling_mach_send_msg,
+										reply->msgh_size, 0, 0, 0, 0);
+								CFAllocatorDeallocate(pending.allocator, reply);
+							}
+						} catch (...) { /* Guest callbacks must not unwind through CoreFoundation. */ }
+					}
+					if (guest_callback && guest_memory_mapped) {
+						(void)darling_objc_change_guest_memory_region(pending.bytes.data(),
+							pending.bytes.size(), true, false);
 						}
-					} catch (...) { /* Guest callbacks must not unwind through CoreFoundation. */ }
 				}
 				ReleaseOwned(pending.source);
 			}

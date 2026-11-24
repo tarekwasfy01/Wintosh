@@ -1109,9 +1109,12 @@ that lifecycle and callback path. It also sends a message to the port with
 receives exactly one message with the original context. The x64-host ARM64
 import adapter validates guest message ranges and forwards `mach_msg` using
 Darwin's seven-register argument map; it is also available to nested guest
-callbacks. This proves the current local send → queued receive → Source-1
-perform → guest callout path. Message-ID/payload preservation and broker-backed
-cross-process delivery remain separate acceptance cases.
+callbacks. Before callback execution, the host-owned receive buffer is
+temporarily registered as a readable/writable guest mapping and removed after
+the callback returns, allowing the guest to inspect the actual message bytes.
+This proves the current local send → queued receive → Source-1 perform → guest
+callout path. Message-ID and payload preservation are asserted by the fixture;
+broker-backed cross-process delivery remains a separate acceptance case.
 
 Context retain/release callbacks for run-loop sources, timers, observers,
 allocators, and CFMachPorts now share the callback dispatch rule

@@ -88,6 +88,8 @@ using darling_objc_guest_method_invoker = void (*)(IMP implementation,
 using darling_objc_guest_function_invoker = bool (*)(std::uintptr_t function,
 	const std::uintptr_t* arguments, std::size_t argument_count,
 	std::uintptr_t* result, void* context);
+using darling_objc_guest_memory_mapper = bool (*)(void* address,
+	std::size_t bytes, bool guest_writes, bool map, void* context);
 using darling_objc_guest_block_allocate = void* (*)(std::size_t bytes,
 	void* context);
 using darling_objc_guest_block_deallocate = void (*)(void* allocation,
@@ -103,6 +105,12 @@ bool darling_objc_invoke_guest_function(std::uintptr_t function,
 bool darling_objc_invoke_guest_function_result(std::uintptr_t function,
 	const std::uintptr_t* arguments, std::size_t argument_count,
 	std::uintptr_t* result);
+darling_objc_guest_memory_mapper darling_objc_set_guest_memory_mapper(
+	darling_objc_guest_memory_mapper mapper, void* context,
+	void** previous_context);
+bool darling_objc_change_guest_memory_region(void* address, std::size_t bytes,
+	bool guest_writes, bool map);
+bool darling_objc_has_guest_function_invoker();
 void DARLING_OBJC_GUEST_ABI darling_objc_set_guest_block_allocator(
 	darling_objc_guest_block_allocate allocate,
 	darling_objc_guest_block_deallocate deallocate, void* context,

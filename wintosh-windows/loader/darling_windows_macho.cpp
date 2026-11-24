@@ -4354,6 +4354,19 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 				*returned_value = static_cast<std::uintptr_t>(result.state.x[0]);
 			return true;
 		};
+		const auto map_guest_callback_memory = +[](void* address,
+			std::size_t bytes, bool guest_writes, bool map, void* opaque) -> bool {
+			auto& context = *static_cast<GuestInitializerContext*>(opaque);
+			if (context.backend == nullptr || address == nullptr || bytes == 0)
+				return false;
+			const auto guest_address = reinterpret_cast<std::uintptr_t>(address);
+			if (!map)
+				return context.backend->RemoveDynamicGuestMapping(guest_address);
+			if (context.backend->ContainsGuestRange(guest_address, bytes, false))
+				return false;
+			return context.backend->RegisterDynamicGuestMapping({guest_address,
+				bytes, true, guest_writes, false, true, guest_address, bytes, false});
+		};
 		dispatch_guest_import = [&](const A64ExecutionResult& trap,
 			unsigned depth) -> A64CpuState {
 			if (!trap.svc || *trap.svc != 0x82)
@@ -4697,6 +4710,19 @@ int MachOImage::ExecuteEntry(const Mapping& mapping,
 			}
 		} restore_function_invoker{previous_function_invoker,
 			previous_function_invoker_context};
+		void* previous_memory_mapper_context = nullptr;
+		const auto previous_memory_mapper = darling_objc_set_guest_memory_mapper(
+			map_guest_callback_memory, &initializer_context,
+			&previous_memory_mapper_context);
+		struct RestoreGuestMemoryMapper final {
+			darling_objc_guest_memory_mapper mapper;
+			void* context;
+			~RestoreGuestMemoryMapper()
+			{
+				(void)darling_objc_set_guest_memory_mapper(mapper, context, nullptr);
+			}
+		} restore_memory_mapper{previous_memory_mapper,
+			previous_memory_mapper_context};
 		darling_objc_guest_block_allocate previous_block_allocate = nullptr;
 		darling_objc_guest_block_deallocate previous_block_deallocate = nullptr;
 		void* previous_block_allocator_context = nullptr;

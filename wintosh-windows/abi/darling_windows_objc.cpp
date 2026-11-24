@@ -204,6 +204,8 @@ thread_local darling_objc_guest_method_invoker active_guest_method_invoker = nul
 thread_local void* active_guest_method_invoker_context = nullptr;
 thread_local darling_objc_guest_function_invoker active_guest_function_invoker = nullptr;
 thread_local void* active_guest_function_invoker_context = nullptr;
+thread_local darling_objc_guest_memory_mapper active_guest_memory_mapper = nullptr;
+thread_local void* active_guest_memory_mapper_context = nullptr;
 thread_local darling_objc_guest_block_allocate active_guest_block_allocate = nullptr;
 thread_local darling_objc_guest_block_deallocate active_guest_block_deallocate = nullptr;
 thread_local void* active_guest_block_allocator_context = nullptr;
@@ -920,6 +922,32 @@ extern "C" bool darling_objc_invoke_guest_function_result(std::uintptr_t functio
 		return false;
 	return active_guest_function_invoker(function, arguments, argument_count,
 		result, active_guest_function_invoker_context);
+}
+
+extern "C" darling_objc_guest_memory_mapper darling_objc_set_guest_memory_mapper(
+	darling_objc_guest_memory_mapper mapper, void* context,
+	void** previous_context)
+{
+	const auto previous = active_guest_memory_mapper;
+	if (previous_context != nullptr)
+		*previous_context = active_guest_memory_mapper_context;
+	active_guest_memory_mapper = mapper;
+	active_guest_memory_mapper_context = context;
+	return previous;
+}
+
+extern "C" bool darling_objc_change_guest_memory_region(void* address,
+	std::size_t bytes, bool guest_writes, bool map)
+{
+	if (address == nullptr || bytes == 0 || active_guest_memory_mapper == nullptr)
+		return false;
+	return active_guest_memory_mapper(address, bytes, guest_writes, map,
+		active_guest_memory_mapper_context);
+}
+
+extern "C" bool darling_objc_has_guest_function_invoker()
+{
+	return active_guest_function_invoker != nullptr;
 }
 
 extern "C" void darling_objc_set_guest_block_allocator(

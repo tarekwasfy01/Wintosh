@@ -12,6 +12,7 @@ typedef struct {
 	unsigned int localPort;
 	unsigned int voucherPort;
 	int id;
+	unsigned int payload;
 } MachMessage;
 typedef struct {
 	CFIndex version;
@@ -51,6 +52,8 @@ static int retainCalls;
 static int releaseCalls;
 static int invalidationCalls;
 static int messageCalls;
+static int receivedMessageId;
+static unsigned int receivedPayload;
 static const void *retain_context(const void *info)
 {
 	if (info == &callbackInfo) ++retainCalls;
@@ -65,6 +68,9 @@ static void mach_message(CFMachPortRef port, void *message, CFIndex size, void *
 	if (port != 0 && message != 0 && size >= (CFIndex)sizeof(MachMessage) &&
 		info == &callbackInfo) {
 		++messageCalls;
+		MachMessage *received = (MachMessage *)message;
+		receivedMessageId = received->id;
+		receivedPayload = received->payload;
 	}
 }
 static void mach_invalidated(CFMachPortRef port, void *info)
@@ -94,11 +100,12 @@ int main(void)
 	CFRunLoopAddSource(loop, source, mode);
 	if (!CFRunLoopContainsSource(loop, source, mode)) return 24;
 	MachMessage outgoing = { 19, sizeof(MachMessage), CFMachPortGetPort(port),
-		0, 0, 0x57494e54 };
+		0, 0, 0x57494e54, 0x4150504c };
 	if (mach_msg(&outgoing, 1, sizeof(outgoing), 0, 0, 0, 0) != 0)
 		return 26;
 	if (CFRunLoopRunInMode(mode, 0.0, 1) != 4) return 27;
-	if (messageCalls != 1) return 28;
+	if (messageCalls != 1 || receivedMessageId != 0x57494e54 ||
+		receivedPayload != 0x4150504c) return 28;
 	CFMachPortInvalidate(port);
 	if (CFMachPortIsValid(port) || invalidationCalls != 1 || releaseCalls != 1 ||
 		CFRunLoopSourceIsValid(source) ||

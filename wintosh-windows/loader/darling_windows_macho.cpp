@@ -182,6 +182,17 @@ bool DispatchArm64CoreFoundationRunLoopImport(const std::string& name,
 			static_cast<std::int32_t>(x[2]), static_cast<std::uint8_t>(x[3])));
 		return true;
 	}
+	if (name == "_CFURLCreateWithFileSystemPathRelativeToBase") {
+		using Call = darling_windows_CFURLRef (DARLING_CF_GUEST_ABI *)(const void*,
+			darling_windows_CFStringRef, std::int32_t, std::uint8_t,
+			darling_windows_CFURLRef);
+		resumed_state.x[0] = reinterpret_cast<std::uintptr_t>(reinterpret_cast<Call>(target)(
+			reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[0])),
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[1])),
+			static_cast<std::int32_t>(x[2]), static_cast<std::uint8_t>(x[3]),
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[4]))));
+		return true;
+	}
 	if (name == "_CFURLCreateFromFileSystemRepresentation") {
 		constexpr std::uint64_t max_url_bytes = 1u << 20;
 		if (x[2] > max_url_bytes || (x[2] != 0 && (x[1] == 0 ||
@@ -193,6 +204,44 @@ bool DispatchArm64CoreFoundationRunLoopImport(const std::string& name,
 			reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[0])),
 			reinterpret_cast<const std::uint8_t*>(static_cast<std::uintptr_t>(x[1])),
 			static_cast<darling_windows_CFIndex>(x[2]), static_cast<std::uint8_t>(x[3])));
+		return true;
+	}
+	if (name == "_CFURLCreateFromFileSystemRepresentationRelativeToBase" ||
+		name == "_CFURLCreateWithBytes" || name == "_CFURLCreateAbsoluteURLWithBytes") {
+		constexpr std::uint64_t max_url_bytes = 1u << 20;
+		constexpr unsigned length_index = 2;
+		if (x[length_index] > max_url_bytes || (x[length_index] != 0 && (x[1] == 0 ||
+			!backend.ContainsGuestRange(x[1], static_cast<std::size_t>(x[length_index]), false))))
+			throw std::runtime_error("ARM64 CFURL byte-based creation import received an invalid guest byte range");
+		if (name == "_CFURLCreateFromFileSystemRepresentationRelativeToBase") {
+			using Call = darling_windows_CFURLRef (DARLING_CF_GUEST_ABI *)(const void*,
+				const std::uint8_t*, darling_windows_CFIndex, std::uint8_t,
+				darling_windows_CFURLRef);
+			resumed_state.x[0] = reinterpret_cast<std::uintptr_t>(reinterpret_cast<Call>(target)(
+				reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[0])),
+				reinterpret_cast<const std::uint8_t*>(static_cast<std::uintptr_t>(x[1])),
+				static_cast<darling_windows_CFIndex>(x[2]), static_cast<std::uint8_t>(x[3]),
+				reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[4]))));
+		} else if (name == "_CFURLCreateWithBytes") {
+			using Call = darling_windows_CFURLRef (DARLING_CF_GUEST_ABI *)(const void*,
+				const std::uint8_t*, darling_windows_CFIndex, std::uint32_t,
+				darling_windows_CFURLRef);
+			resumed_state.x[0] = reinterpret_cast<std::uintptr_t>(reinterpret_cast<Call>(target)(
+				reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[0])),
+				reinterpret_cast<const std::uint8_t*>(static_cast<std::uintptr_t>(x[1])),
+				static_cast<darling_windows_CFIndex>(x[2]), static_cast<std::uint32_t>(x[3]),
+				reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[4]))));
+		} else {
+			using Call = darling_windows_CFURLRef (DARLING_CF_GUEST_ABI *)(const void*,
+				const std::uint8_t*, darling_windows_CFIndex, std::uint32_t,
+				darling_windows_CFURLRef, std::uint8_t);
+			resumed_state.x[0] = reinterpret_cast<std::uintptr_t>(reinterpret_cast<Call>(target)(
+				reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[0])),
+				reinterpret_cast<const std::uint8_t*>(static_cast<std::uintptr_t>(x[1])),
+				static_cast<darling_windows_CFIndex>(x[2]), static_cast<std::uint32_t>(x[3]),
+				reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[4])),
+				static_cast<std::uint8_t>(x[5])));
+		}
 		return true;
 	}
 	if (name == "_CFURLGetString" || name == "_CFURLGetBaseURL" ||
@@ -232,6 +281,49 @@ bool DispatchArm64CoreFoundationRunLoopImport(const std::string& name,
 		using Call = darling_windows_CFStringRef (DARLING_CF_GUEST_ABI *)(
 			darling_windows_CFURLRef);
 		resumed_state.x[0] = reinterpret_cast<std::uintptr_t>(reinterpret_cast<Call>(target)(
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0]))));
+		return true;
+	}
+	if (name == "_CFURLCopyPath" || name == "_CFURLCopyLastPathComponent" ||
+		name == "_CFURLCopyPathExtension" || name == "_CFURLCopyResourceSpecifier" ||
+		name == "_CFURLCopyHostName" || name == "_CFURLCopyNetLocation" ||
+		name == "_CFURLCopyUserName" || name == "_CFURLCopyPassword") {
+		using Call = darling_windows_CFStringRef (DARLING_CF_GUEST_ABI *)(darling_windows_CFURLRef);
+		resumed_state.x[0] = reinterpret_cast<std::uintptr_t>(reinterpret_cast<Call>(target)(
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0]))));
+		return true;
+	}
+	if (name == "_CFURLCopyStrictPath") {
+		if (x[1] != 0 && !backend.ContainsGuestRange(x[1], sizeof(std::uint8_t), true))
+			throw std::runtime_error("ARM64 CFURLCopyStrictPath import received an invalid output range");
+		using Call = darling_windows_CFStringRef (DARLING_CF_GUEST_ABI *)(
+			darling_windows_CFURLRef, std::uint8_t*);
+		resumed_state.x[0] = reinterpret_cast<std::uintptr_t>(reinterpret_cast<Call>(target)(
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0])),
+			reinterpret_cast<std::uint8_t*>(static_cast<std::uintptr_t>(x[1]))));
+		return true;
+	}
+	if (name == "_CFURLCopyParameterString" || name == "_CFURLCopyQueryString" ||
+		name == "_CFURLCopyFragment") {
+		using Call = darling_windows_CFStringRef (DARLING_CF_GUEST_ABI *)(
+			darling_windows_CFURLRef, darling_windows_CFStringRef);
+		resumed_state.x[0] = reinterpret_cast<std::uintptr_t>(reinterpret_cast<Call>(target)(
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0])),
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[1]))));
+		return true;
+	}
+	if (name == "_CFURLCreateCopyAppendingPathExtension") {
+		using Call = darling_windows_CFURLRef (DARLING_CF_GUEST_ABI *)(const void*,
+			darling_windows_CFURLRef, darling_windows_CFStringRef);
+		resumed_state.x[0] = reinterpret_cast<std::uintptr_t>(reinterpret_cast<Call>(target)(
+			reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[0])),
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[1])),
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[2]))));
+		return true;
+	}
+	if (name == "_CFURLGetPortNumber") {
+		using Call = std::int32_t (DARLING_CF_GUEST_ABI *)(darling_windows_CFURLRef);
+		resumed_state.x[0] = static_cast<std::uint64_t>(reinterpret_cast<Call>(target)(
 			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0]))));
 		return true;
 	}

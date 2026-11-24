@@ -869,14 +869,22 @@ previously exposed pointer range is re-registered with its prior read/write
 permission. Object release removes an active mapping. The fixture dereferences
 both const and mutable byte pointers, writes through the mutable pointer, and
 then observes the changed byte through `CFDataGetBytes`.
-The ARM64 URL bridge now covers filesystem-path and byte-representation
-construction, path-component appending, absolute copying, borrowed URL-string
-access, filesystem-path copying, byte extraction, and filesystem-representation
-output. For base path `P` and component `c`, appending is modeled as
+The ARM64 URL bridge covers filesystem-path and byte-representation
+construction (including relative bases), path-component and extension changes,
+absolute copying, borrowed URL-string access, filesystem-path copying, byte
+extraction, and filesystem-representation output. URL component queries expose
+path, host, user, password, resource specifier, parameter, query, fragment, and
+port. The guest-to-host call mapping is `H = A·G`: `G=(x0,…,x5)` is the guest
+register vector, and each import's sparse adapter `A` applies the declared
+pointer/integer casts and forwards only that symbol's argument prefix. For
+byte constructors, the safety invariant is `0 ≤ n ≤ 2^20 ∧ (n=0 ∨
+GuestRange(p,n,readable))`; output buffers use the corresponding writable-range
+predicate. For base path `P` and component `c`, appending is modeled as
 `append(P,c,d)=P'` where separators are normalized and directory flag `d=1`
-ensures a trailing `/`. Each variable-length input/output is range-checked in
-guest memory. The fixture checks the exact byte string for
-`/tmp/Wintosh.app/Contents/` and the NUL-terminated filesystem form.
+ensures a trailing `/`. The ARM64 fixture checks the exact byte string for
+`/tmp/Wintosh.app/Contents/`, filesystem representation, and HTTPS scheme, host,
+query, and fragment results. These selected checks establish those contracts,
+not complete CFURL semantic parity.
 For a CFMachPort wrapper `p`, source delivery is `Deliver(p,m) = Valid(p) ∧
 Receive(GetPort(p),m)`, with the callback `Callout(p,m,size,info)` invoked once
 for each received message. `Invalidate(p)` performs the state transition

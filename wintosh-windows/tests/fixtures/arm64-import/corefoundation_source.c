@@ -73,6 +73,10 @@ extern CFURLRef CFURLCopyAbsoluteURL(CFURLRef);
 extern CFStringRef CFURLGetString(CFURLRef);
 extern CFStringRef CFURLCopyFileSystemPath(CFURLRef, int);
 extern CFStringRef CFURLCopyScheme(CFURLRef);
+extern CFStringRef CFURLCopyPath(CFURLRef);
+extern CFStringRef CFURLCopyHostName(CFURLRef);
+extern CFStringRef CFURLCopyQueryString(CFURLRef, CFStringRef);
+extern CFStringRef CFURLCopyFragment(CFURLRef, CFStringRef);
 extern CFIndex CFURLGetBytes(CFURLRef, unsigned char *, CFIndex);
 extern unsigned char CFURLGetFileSystemRepresentation(CFURLRef, unsigned char,
 	unsigned char *, CFIndex);
@@ -409,13 +413,28 @@ int main(void)
 	CFRelease(childName);
 	CFRelease(basePath);
 	CFStringRef networkURLString = CFStringCreateWithCString(0,
-		"https://example.test/path", utf8Encoding);
+		"https://example.test/path?q=1#part", utf8Encoding);
 	CFURLRef networkURL = CFURLCreateWithString(0, networkURLString, 0);
 	CFStringRef networkScheme = CFURLCopyScheme(networkURL);
+	CFStringRef networkHost = CFURLCopyHostName(networkURL);
+	CFStringRef networkPath = CFURLCopyPath(networkURL);
+	CFStringRef networkQuery = CFURLCopyQueryString(networkURL, 0);
+	CFStringRef networkFragment = CFURLCopyFragment(networkURL, 0);
 	if (networkURLString == 0 || networkURL == 0 || networkScheme == 0 ||
+		networkHost == 0 || networkPath == 0 || networkQuery == 0 || networkFragment == 0 ||
 		!CFStringGetCString(networkScheme, (char *)urlStringBytes,
 			sizeof(urlStringBytes), utf8Encoding) || urlStringBytes[0] != 'h' ||
-		urlStringBytes[4] != 's') return 80;
+		urlStringBytes[4] != 's' ||
+		!CFStringGetCString(networkHost, (char *)urlStringBytes,
+			sizeof(urlStringBytes), utf8Encoding) || urlStringBytes[0] != 'e' ||
+		!CFStringGetCString(networkQuery, (char *)urlStringBytes,
+			sizeof(urlStringBytes), utf8Encoding) || urlStringBytes[0] != 'q' ||
+		!CFStringGetCString(networkFragment, (char *)urlStringBytes,
+			sizeof(urlStringBytes), utf8Encoding) || urlStringBytes[0] != 'p') return 80;
+	CFRelease(networkFragment);
+	CFRelease(networkQuery);
+	CFRelease(networkPath);
+	CFRelease(networkHost);
 	CFRelease(networkScheme);
 	CFRelease(networkURL);
 	CFRelease(networkURLString);

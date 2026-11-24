@@ -208,6 +208,53 @@ bool DispatchArm64CoreFoundationRunLoopImport(const std::string& name,
 			reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[0]))));
 		return true;
 	}
+	if (name == "_CFDictionaryCreateMutable") {
+		if (x[2] != 0 && !backend.ContainsGuestRange(x[2],
+			sizeof(DarlingCFDictionaryKeyCallbacks), false))
+			throw std::runtime_error("ARM64 CFDictionaryCreateMutable import received an invalid callback range");
+		if (x[3] != 0 && !backend.ContainsGuestRange(x[3],
+			sizeof(DarlingCFDictionaryValueCallbacks), false))
+			throw std::runtime_error("ARM64 CFDictionaryCreateMutable import received an invalid value callback range");
+		using Call = darling_windows_CFDictionaryRef (DARLING_CF_GUEST_ABI *)(
+			const void*, darling_windows_CFIndex, const void*, const void*);
+		resumed_state.x[0] = reinterpret_cast<std::uintptr_t>(reinterpret_cast<Call>(target)(
+			reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[0])),
+			static_cast<darling_windows_CFIndex>(x[1]),
+			reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[2])),
+			reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[3]))));
+		return true;
+	}
+	if (name == "_CFDictionaryGetValue" || name == "_CFDictionaryContainsKey" ||
+		name == "_CFDictionarySetValue" || name == "_CFDictionaryAddValue" ||
+		name == "_CFDictionaryReplaceValue" || name == "_CFDictionaryRemoveValue") {
+		if (name == "_CFDictionaryContainsKey") {
+			using Call = std::uint8_t (DARLING_CF_GUEST_ABI *)(
+				darling_windows_CFDictionaryRef, const void*);
+			resumed_state.x[0] = reinterpret_cast<Call>(target)(reinterpret_cast<void*>(
+				static_cast<std::uintptr_t>(x[0])), reinterpret_cast<const void*>(
+				static_cast<std::uintptr_t>(x[1])));
+		} else if (name == "_CFDictionaryGetValue") {
+			using Call = darling_windows_CFTypeRef (DARLING_CF_GUEST_ABI *)(
+				darling_windows_CFDictionaryRef, const void*);
+			resumed_state.x[0] = reinterpret_cast<std::uintptr_t>(reinterpret_cast<Call>(target)(
+				reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0])),
+				reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[1]))));
+		} else {
+			using Call = void (DARLING_CF_GUEST_ABI *)(darling_windows_CFDictionaryRef,
+				const void*, const void*);
+			reinterpret_cast<Call>(target)(reinterpret_cast<void*>(
+				static_cast<std::uintptr_t>(x[0])), reinterpret_cast<const void*>(
+				static_cast<std::uintptr_t>(x[1])), reinterpret_cast<const void*>(
+				static_cast<std::uintptr_t>(x[2])));
+		}
+		return true;
+	}
+	if (name == "_CFDictionaryRemoveAllValues") {
+		using Call = void (DARLING_CF_GUEST_ABI *)(darling_windows_CFDictionaryRef);
+		reinterpret_cast<Call>(target)(reinterpret_cast<void*>(
+			static_cast<std::uintptr_t>(x[0])));
+		return true;
+	}
 	if (name == "_CFSetCreate") {
 		constexpr std::uint64_t max_set_elements = 1u << 20;
 		const auto count = x[2];
@@ -232,6 +279,42 @@ bool DispatchArm64CoreFoundationRunLoopImport(const std::string& name,
 			darling_windows_CFSetRef);
 		resumed_state.x[0] = static_cast<std::uint64_t>(reinterpret_cast<Call>(target)(
 			reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[0]))));
+		return true;
+	}
+	if (name == "_CFSetCreateMutable") {
+		if (x[2] != 0 && !backend.ContainsGuestRange(x[2],
+			sizeof(DarlingCFDictionaryKeyCallbacks), false))
+			throw std::runtime_error("ARM64 CFSetCreateMutable import received an invalid callback range");
+		using Call = darling_windows_CFSetRef (DARLING_CF_GUEST_ABI *)(
+			const void*, darling_windows_CFIndex, const void*);
+		resumed_state.x[0] = reinterpret_cast<std::uintptr_t>(reinterpret_cast<Call>(target)(
+			reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[0])),
+			static_cast<darling_windows_CFIndex>(x[1]),
+			reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[2]))));
+		return true;
+	}
+	if (name == "_CFSetContainsValue" || name == "_CFSetAddValue" ||
+		name == "_CFSetSetValue" || name == "_CFSetReplaceValue" ||
+		name == "_CFSetRemoveValue") {
+		if (name == "_CFSetContainsValue") {
+			using Call = std::uint8_t (DARLING_CF_GUEST_ABI *)(darling_windows_CFSetRef,
+				const void*);
+			resumed_state.x[0] = reinterpret_cast<Call>(target)(reinterpret_cast<void*>(
+				static_cast<std::uintptr_t>(x[0])), reinterpret_cast<const void*>(
+				static_cast<std::uintptr_t>(x[1])));
+		} else {
+			using Call = void (DARLING_CF_GUEST_ABI *)(darling_windows_CFSetRef,
+				const void*);
+			reinterpret_cast<Call>(target)(reinterpret_cast<void*>(
+				static_cast<std::uintptr_t>(x[0])), reinterpret_cast<const void*>(
+				static_cast<std::uintptr_t>(x[1])));
+		}
+		return true;
+	}
+	if (name == "_CFSetRemoveAllValues") {
+		using Call = void (DARLING_CF_GUEST_ABI *)(darling_windows_CFSetRef);
+		reinterpret_cast<Call>(target)(reinterpret_cast<void*>(
+			static_cast<std::uintptr_t>(x[0])));
 		return true;
 	}
 	if (name == "_CFRunLoopPerformBlock") {

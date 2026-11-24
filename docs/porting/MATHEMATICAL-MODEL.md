@@ -979,8 +979,21 @@ Mutable operations are enabled only for dictionaries created by
 `CFDictionaryCreateMutable` or `CFDictionaryCreateMutableCopy`; mutation calls
 on immutable guest objects are ignored. `CFDictionaryApplyFunction` adapts the
 guest callback synchronously and holds the internal snapshot through the pass.
-This mapping currently targets the Darwin x86_64 ABI and does not imply ARM64
-support.
+The ARM64 import bridge now dispatches mutable construction, lookup,
+contains-key, set/add/replace/remove, and remove-all calls. If the guest state is
+`D=(K,V)`, insertion is `D' = D ∪ {(k,v)}` when `k` is new; otherwise the
+equal key's associated value is replaced. Removal is `D' = D \ {(k,v)}` for
+the pair whose key compares equal. Every transition is routed through the
+guest callback table, so ownership counts satisfy
+`retains - releases = live stored representatives` per collection.
+
+The ARM64 set bridge covers mutable construction, membership, add/set/replace,
+remove, and remove-all. Its state transition is `S'=S∪{x}` for add,
+`S'=(S\{y | y~x})∪{x}` for set, and `S'=S\{y | y~x}` for remove, where `~`
+is callback equality. The ARM64 guest fixture checks duplicate-add idempotence,
+lookup, replacement, emptying, and collection release. These import paths do
+not imply full CoreFoundation coverage: allocator semantics, all remaining
+collection APIs, and broad application compatibility are still separate work.
 
 `CFSet` uses the set invariant `∀x,y ∈ S: x ≠ y` under the set's equality
 callback (pointer identity when it is null). Add is

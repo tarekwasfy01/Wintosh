@@ -209,6 +209,13 @@ Mutable-copy constructors `CFArrayCreateMutableCopy`,
 independent retained container state and pass mutation checks on x64 and
 Win32. The capacity argument remains a non-binding reservation hint.
 
+The ARM64 Mach-O import bridge now also routes mutable dictionary and set
+construction, lookup/membership, mutation, removal, and remove-all calls into
+these Windows-backed CoreFoundation objects. The guest fixture exercises
+dictionary value replacement and key removal as well as set duplicate-add
+idempotence and membership. This is a selected-import increment; it does not
+provide general CoreFoundation or Cocoa compatibility.
+
 `CFRunLoopGetMain` now exposes the process main run loop alongside
 `CFRunLoopGetCurrent`; the current minimal single-process model keeps the
 main loop Windows-backed and distinct from worker-thread run-loop state.

@@ -1,6 +1,6 @@
 # AArch64 Mach-O auf x64 Windows: Backend-Integrationsvertrag
 
-Stand: 2026-11-23. Dieses Dokument beschreibt den ARM64-Gastpfad auf
+Stand: 2026-11-24. Dieses Dokument beschreibt den ARM64-Gastpfad auf
 x64-Windows und kennzeichnet getrennt, was implementiert und was zur Laufzeit
 noch nicht belegt ist.
 
@@ -16,8 +16,8 @@ Beide Pfade sind noch nicht end-to-end mit einer realen macOS-Anwendung belegt:
 |---|---:|---:|
 | ARM64-Mach-O lesen und CPU-Slice auswählen | vorhanden | vorhanden |
 | Segmente mappen und unterstützte Relokationen anwenden | vorhanden | vorhanden |
-| ARM64-Instruktionen ausführen | Dynarmic-Backend mit ARM64-`main`-Fixture belegt | native CPU, noch nicht end-to-end belegt |
-| Darwin-Imports aus ARM64-Gastcode aufrufen | `_strlen` und Objective-C-Gastcallbacks mit Integer-/Double-Argumenten und -Rückgaben über SVC end-to-end belegt; weitere Imports nur teilweise | teilweise vorhandene ABI-Brücke |
+| ARM64-Instruktionen ausführen | optionales Dynarmic-Backend; ARM64-`main`-, syscall-, heap-, mmap-, file-, callback- und dylib-Fixtures belegt | native CPU, noch nicht end-to-end belegt |
+| Darwin-Imports aus ARM64-Gastcode aufrufen | ausgewählte UNIX-SVCs, dyld-, Objective-C- und CoreFoundation-Imports mit Fixtures belegt; Signatur- und Symbolumfang bleibt begrenzt | teilweise vorhandene ABI-Brücke |
 | Darwin-Systemdienste und GUI aus dem ARM64-Gast bedienen | fehlt | bestehende Windows-Implementierungen, ARM64-Gastbelege fehlen |
 
 Ein CPU-Backend allein schließt somit nicht den Ausführungspfad.
@@ -72,12 +72,12 @@ Referenzen:
 
 | Welle | Implementierung | Eintrittsbedingung für nächste Welle |
 |---|---|---|
-| 0. Abhängigkeit | festen Upstream-Commit wählen; `0BSD`-Kern und Lizenzen aller tatsächlich gebauten Abhängigkeiten inventarisieren; x64-Windows-Build reproduzieren | keine implizite, bewegliche Branch-Abhängigkeit; reproduzierbarer Build |
-| 1. CPU-Adapter | `A64::Jit` hinter Wintosh-Backend kapseln; `Mapping` als kontrollierten Gastadressraum anbinden; Lese-/Schreibzugriffe mit Segmentgrenzen und Darwin-Schutzrechten prüfen | künstliches A64-Programm läuft bis zu einer definierten Haltbedingung und liefert Registerzustand zurück |
-| 2. Trap-Pfad | SVC, Gast-Exit und undefinierte Instruktion in explizite Wintosh-Trap-Ereignisse übersetzen | CPU-Zustand samt PC, x0-x30, SIMD/PSTATE und Fehlerstatus ist rückführbar; der UNIX-SVC-Dispatcher unterstützt exit/wait4/read/write/readv/writev/pread/pwrite/open/close/link/unlink/chdir/chmod/fchmod/symlink/readlink/umask/getpid/getppid/getuid/geteuid/getgid/getegid/getpgrp/dup/dup2/pipe/socket/socketpair/connect/bind/listen/accept/recvfrom/sendto/getpeername/getsockname/shutdown/gettimeofday/getrusage/getpriority/setpriority/access/rename/mkdir/rmdir/fsync/fdatasync/stat/lstat/fstat/lseek/truncate/ftruncate/mmap/munmap/mprotect/msync/madvise/sysctl/kill/sigaction/sigprocmask |
-| 3. Import-Brücke | ARM64-Import-Stubs in Gastcode erzeugen; symbolgebundene Stub-ID trappt; Signatur-Metadaten marshallen Gastregister zum Host-ABI | skalare und Pointer-Importe laufen mit begrenzter, dokumentierter Signaturmenge |
-| 4. Darwin-Eintritt | `MachOImage::ExecuteEntry` auf Backend-Auswahl erweitern; `DarwinStart`-Stack, argc/argv/envp/apple, TLS und Initializer an den A64-Kontext binden | ARM64-Mach-O ohne Frameworks startet, ruft Darwin-Imports auf und beendet sich korrekt |
-| 5. Frameworks | bestehende Foundation/CoreFoundation/AppKit-Symbole über dieselbe Import-Brücke erreichbar machen; ARM64-Objective-C-Argumente und Rückgaben pro Typ abdecken | echte ARM64-Gast-App-Fixtures belegen jeden genutzten Frameworkpfad |
+| 0. Abhängigkeit | Dynarmic `9d458233` x64-Windows lokal gebaut; alle gebauten Abhängigkeitslizenzen inventarisieren und reproduzierbaren Upstream-Build ohne lokale Probeänderung herstellen | Upstream-Pin und Dependency-Build sind in Projektmetadaten und CI reproduzierbar |
+| 1. CPU-Adapter | `A64::Jit` hinter Wintosh-Backend; registrierter Gastadressraum, Rechteprüfungen und Registerzustand sind durch ARM64-Fixtures belegt | bleibt offen für nicht getestete Instruktionsgruppen und native Windows ARM64 End-to-End-Ausführung |
+| 2. Trap-Pfad | SVC, Gast-Exit und Fehlerzustand sind angebunden; ein begrenzter Darwin-UNIX-SVC-Satz ist in Loader-Fixtures abgedeckt | zusätzliche Syscalls, Mach-Traps und Kernelzustandsparität |
+| 3. Import-Brücke | symbolgebundene ARM64-Trampoline, ausgewählte skalare/Pointer- und Callback-Signaturen, verschachtelte SVCs, Gast-Datenbereiche und Objective-C-Dispatch sind belegt | übrige Aggregate, Variadics, Block-Closures und nicht katalogisierte Imports |
+| 4. Darwin-Eintritt | ARM64-`main`, Argument-/Umgebungsstart, ausgewählte Initialisierer, Objective-C `+load`, `dlopen`/`dlsym`/`dlclose` und DSO-Abbau haben Fixtures | vollständige dyld- und Prozesssemantik; echte signierte/gebündelte macOS-Anwendung |
+| 5. Frameworks | ausgewählte Foundation/CoreFoundation/Mach-/AppKit-Slices werden über dieselbe ABI-Brücke aufgerufen | echte ARM64-App-Fixtures und vollständige framework-/ressourcenbezogene Startpfade |
 
 Die Abhängigkeitswelle darf nicht als Integration gelten, solange Welle 1 bis
 4 nicht den kontrollierten End-to-End-Aufruf bilden. Arbiträre AppKit-
@@ -114,6 +114,25 @@ Service-Namespaces und dürfen nicht durch bloße Nummernidentität vermischt
 werden.
 
 ## Status
+
+### Aktualisierung des ARM64-Gastpfads (2026-11-24)
+
+Die optionale Dynarmic-Anbindung führt inzwischen mehr als die anfängliche
+`main`-Fixture aus: lokale ARM64-Gäste decken ausgewählte UNIX-SVCs, Gast-Heap,
+`mmap`/`mprotect`/`munmap`, Datei-I/O, Objective-C-Callbacks und -Blöcke,
+Initialisierer, `+load`, sowie `dlopen`/`dlsym`/`dlclose` mit einem ARM64-dylib
+ab. CoreFoundation-Fixtures belegen Run-Loop-, Timer-, Mach-Port- und
+Allocator-Pfade. Der Importpfad unterscheidet ausführbare Hostziele von
+lesbaren Windows-Datenbereichen anhand `VirtualQuery`; Datenbereiche werden
+mit ihren Windows-Lese-/Schreibrechten für den Gast registriert. Das behebt
+nicht die Darwin-ABI von beliebigen Host-Globals und ersetzt keine App-Bundle-
+Fixture.
+
+Der Backend-Build bleibt optional und hängt von einem extern bereitgestellten
+Dynarmic-Source- und Build-Verzeichnis ab. Der geprüfte Upstream-Commit ist
+`9d4582339990d4eae53f1dc7160686920fc2075c`; ein reproduzierbarer Fetch-/Build-
+Pfad ohne lokale CMake-Probeänderung und die Abhängigkeitslizenzprüfung bleiben
+offen.
 
 ### Windows-Buildprobe und erste Wintosh-Anbindung (2026-11-23)
 
@@ -261,13 +280,13 @@ festgelegt werden.
 |---|---|
 | ARM64 parse/map/Relokations-Subset | implementiert, bestehende Grenzen gelten |
 | Dynarmic-Commit lokal untersucht | `9d458233`; Windows-x64-A64 statisch gebaut |
-| Dynarmic-Abhängigkeit reproduzierbar gebaut | lokal mit Probe-CMake-Dateianpassung; noch nicht im Projekt fixiert |
-| A64-Backend in Wintosh | optionaler Adapter lokal gebaut; ARM64-Import-Fixture läuft auf x64 Windows |
+| Dynarmic-Abhängigkeit reproduzierbar gebaut | lokaler Release-Build mit Probe-CMake-Dateianpassung; noch nicht im Projekt fixiert |
+| A64-Backend in Wintosh | optionaler Adapter lokal gebaut; mehrere ARM64-Runtime-Fixtures laufen auf x64 Windows |
 | A64-Trap-Zustand | x0–x30, v0–v31, SP, PC, PSTATE, FPCR und FPSR rückführbar und fortsetzbar |
 | Darwin-UNIX-SVC | `exit`, `wait4` (mit lokaler Status-/Rusage-Kopie), `read`, `write`, `readv`, `writev`, `pread`, `pwrite`, `open`, `close`, `link`, `unlink`, `chdir`, `chmod`, `fchmod`, `symlink`, `readlink`, `umask`, Prozess-/Gruppen-ID-Aufrufe, `dup`, `dup2`, `pipe`, `socket`, `socketpair`, `connect`, `bind`, `listen`, `accept`, `recvfrom`, `sendto`, `getpeername`, `getsockname`, `shutdown`, `gettimeofday`, `getrusage`, `getpriority`, `setpriority`, `access`, `rename`, `mkdir`, `rmdir`, `fsync`, `fdatasync`, `stat`, `lstat`, `fstat`, `lseek`, `truncate`, `ftruncate`, `mmap`, `munmap` (nur ganzes Mapping), `mprotect`, `msync`, `madvise`, `sysctl` (implementierte zweistufige `KERN`-/`HW`-MIBs), `kill`, `sigaction`, `sigprocmask`; andere UNIX-Nummern liefern `ENOSYS`; kein Mach-Trap-Dispatcher |
-| x64-Host-Gast-Speicherprüfung | Segmentrechte und Bereichsgrenzen im Callback umgesetzt; Hauptexecutable, Bootstrap-dylibs, Startpuffer und dynamische Mappings werden registriert; keine Laufzeit-Fixture |
-| A64-Import-Trampoline und ABI-Dispatcher | teilweise: `_strlen`, verschachtelte Objective-C-/String-/Heap-Imports, Heap-Schreib-/Lese-/Resize-/Freigabezugriff, Objekt-/Zeigerwerte, Integer-/Double-Callbacks, Stackargument, 2-/4-Double-HFAs und indirektes 24-Byte-Struct-Return bestehen; übrige Aggregate/Blocks/Variadics bleiben offen |
-| Schmale ARM64 Mach-O Runtime-Fixtures auf x64 Windows | `_strlen` und ein Objective-C-Gastcallback bestehen; App-Bundles/Frameworkstart fehlen |
+| x64-Host-Gast-Speicherprüfung | Segmentrechte und Bereichsgrenzen umgesetzt; Image-, Startup-, Heap-, mmap- und Host-Datenbereiche werden geprüft bzw. registriert und in Fixtures ausgeführt |
+| A64-Import-Trampoline und ABI-Dispatcher | ausgewählte C-/Darwin-/Framework-Imports, Gastcallbacks, Heap-/Block- und Datenimporte, Stackargumente, HFA- und indirekte Struct-Rückgaben bestehen; übrige Aggregate und Signaturen bleiben offen |
+| Schmale ARM64 Mach-O Runtime-Fixtures auf x64 Windows | mehrere Source-Fixtures für Syscalls, dyld, Objective-C, CoreFoundation und Speicher; keine echte macOS-App oder vollständige Bundle-Ausführung belegt |
 
 Die lokalen Fixtures belegen nur die jeweils beschriebenen AArch64-Instruktions-
 und Importpfade im Wintosh-Runner. Sie sind kein Beleg für eine ausführbare

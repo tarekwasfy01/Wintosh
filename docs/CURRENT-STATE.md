@@ -1,5 +1,21 @@
 # Complete current workspace state
 
+This document contains dated evidence snapshots; later updates supersede older
+test-count and feature-status statements. As of 2026-11-24, the configured
+Clang build registers 78 CTest cases. The latest focused CoreFoundation set
+passed 4/4; this does not assert that the full suite passed at this revision.
+
+## ARM64 CoreFoundation data imports, 2026-11-24
+
+The ARM64 loader classifies resolved host targets with `VirtualQuery`:
+executable targets use per-image SVC trampolines, while committed readable
+non-executable regions are registered in guest memory with matching
+writability. The CoreFoundation allocator fixture now passes the imported
+`kCFAllocatorUseContext`, allocates and frees allocator-object storage through
+guest callbacks, and passes the focused CoreFoundation test set. This does not
+make arbitrary host-global object layouts or stored host function pointers
+Darwin-compatible.
+
 ## ARM64 Objective-C Blocks ABI, 2026-11-24
 
 The ARM64 Objective-C end-to-end fixture now compiles and invokes Clang block
@@ -598,8 +614,10 @@ exit status.
 The follow-up ABI gates now verify the complete controlled boundary: the
 session probe observes activation from the binding layer, and the host symbol
 table resolves `_dyld_stub_binder` to the exported Clang x86_64 assembler
-entry. The full native suite remains at 60/60 passing. This is stronger than
-the earlier metadata-only proof, but it still does not claim arbitrary
+entry. At that validation snapshot, the full native suite passed 60/60. The
+current checkout registers 78 CTest cases; a full run at the present revision
+has not been recorded. This is stronger than the earlier metadata-only proof,
+but it still does not claim arbitrary
 third-party Mach-O lazy stubs, multi-image binder context, or Apple framework
 compatibility.
 
@@ -748,13 +766,15 @@ The same typed Super surface now covers Boolean, signed 32-bit, and signed
 64-bit results with zero- and one-argument forms (`B`, `i`, and `q`). The
 Objective-C smoke verifies all six additional entry points.
 
-The Release Clang build currently passes 60/60 CTest entries, including the
-Mach-O printf bundle end-to-end test. The latest five local commits are ahead
-of the configured remote and have not been pushed in this work cycle.
+At the historical validation snapshot, the Release Clang build passed 60/60
+CTest entries, including the Mach-O printf bundle end-to-end test. The
+configured suite has since grown to 78 entries; see the dated update at the
+top of this file for current verification scope.
 
-The Mach-O smoke also verifies the ARM64 execution boundary on x86_64 Windows:
-ARM64 headers, relocation records, and chained fixups are parsed and patched,
-but `ExecuteEntryNoArgs` rejects ARM64 with a deterministic fail-closed error.
+Without the optional Dynarmic backend, the x64 runner still rejects ARM64
+execution. With Dynarmic configured, the separate ARM64 guest fixtures verify
+selected entry, syscall, import, Objective-C, dyld, and framework paths; they do
+not establish arbitrary ARM64 application support.
 This is an execution-boundary test, not ARM64 runtime support; native ARM64
 execution still requires an ARM64 Windows backend and a valid executable
 fixture.

@@ -49,6 +49,11 @@ cmake --build build-windows-clang
 
 Build configuration and available targets can vary by generator and host SDK.
 The CI packaging workflow is [`.github/workflows/wintosh-release.yml`](.github/workflows/wintosh-release.yml).
+ARM64 Mach-O execution on x64 Windows is optional and currently requires an
+external Dynarmic checkout and build, supplied through
+`WINTOSH_DYNARMIC_SOURCE_DIR` and `WINTOSH_DYNARMIC_BUILD_DIR`. The tested
+integration is not yet pinned or built reproducibly by the default project
+configuration; see the [AArch64 backend notes](docs/porting/AARCH64-X64-BACKEND.md).
 
 The current Foundation URL slice connects `NSURL` to the Windows CoreFoundation
 URL objects. It supports file URLs, string and relative-to-base construction,

@@ -2,7 +2,7 @@
 
 | Project | Layer | What it supplies | What remains for macOS apps | Wintosh use |
 |---|---|---|---|---|
-| [Dynarmic](https://github.com/yuzu-mirror/dynarmic) | ARM32/AArch64 dynamic recompiler | A64 guest execution on x86-64 or AArch64 hosts, user-mode hooks and caller-owned memory callbacks; Windows is listed as a host | Darwin syscalls, Mach services, dyld, Objective-C, Cocoa and app resources; exact instruction/ABI coverage needs fixtures | First candidate to evaluate for ARM64 Mach-O on x64 Windows; 0BSD core, but CMake requires Boost and all bundled dependency licenses need review before integration |
+| [Dynarmic](https://github.com/yuzu-mirror/dynarmic) | ARM32/AArch64 dynamic recompiler | A64 guest execution on x86-64 or AArch64 hosts, user-mode hooks and caller-owned memory callbacks; Windows is listed as a host | Darwin syscalls, Mach services, dyld, Objective-C, Cocoa and app resources; exact instruction/ABI coverage needs fixtures | Optional backend integrated for ARM64 Mach-O on x64 Windows and locally exercised; upstream pin/build are not yet reproducible from project metadata, and bundled dependency licenses need review |
 | [Icicle](https://github.com/icicle-emu/icicle-emu) | Multi-architecture CPU/VM framework | AArch64 target triples, p-code VM and caller-provided execution environment | Experimental fuzzing focus, Rust integration, Darwin/Mach-O runtime and GUI services | Alternate CPU-backend research candidate; MIT/Apache-2.0, no local build or guest execution |
 | [Unicorn](https://github.com/unicorn-engine/unicorn) | CPU instruction emulation | Multi-architecture CPU execution and register/memory control; Windows supported | Darwin syscalls, Mach services, dyld, Objective-C, Cocoa and app resources; GPL-2.0-only provenance needs compatibility review | Keep as an isolated oracle candidate; do not fold its code into the GPL-3.0 runtime without a license analysis |
 | [Qiling](https://github.com/qilingframework/qiling) | OS-aware emulation built over Unicorn | Loader and selected OS syscall models useful for analysis | Validate exact Darwin/Mach-O support per version; GUI, frameworks and arbitrary apps are not implied | Use only as a research oracle and fixture source until reproduced locally |
@@ -12,12 +12,16 @@
 
 Upstream checks on 2026-11-23 confirm Dynarmic describes AArch64 guest support,
 x86-64/AArch64 host support, Windows support, caller-owned memory callbacks,
-and a 0BSD core license. Its README also lists separately licensed bundled
-dependencies and warns that it is user-mode emulation, not a system emulator.
-Icicle documents `aarch64-linux` targets and dual MIT/Apache licensing, but is
+and a 0BSD core license. Wintosh now has an optional integration using the
+locally built `yuzu-mirror/dynarmic` commit `9d4582339990d4eae53f1dc7160686920fc2075c`;
+the configured CMake paths require an external source/build tree and a local
+probe adjustment, so this is not yet a reproducible default build. Dynarmic's
+README lists separately licensed bundled dependencies and describes user-mode
+emulation, not a system emulator. Icicle documents `aarch64-linux` targets and dual MIT/Apache licensing, but is
 experimental and fuzzing-oriented. Unicorn documents Windows support and
-GPL-2.0-only. These are research findings, not local integration or runtime
-evidence. No third-party CPU engine has been added to Wintosh.
+GPL-2.0-only. These are research findings; Dynarmic guest fixtures are local
+runtime evidence for the covered paths, not arbitrary application support.
+No third-party engine source has been copied into Wintosh.
 
 ## Compatibility composition
 
@@ -38,8 +42,9 @@ The route is viable only if every required contract has an end-to-end path:
 edge by itself: [Microsoft describes WSL1 as a Linux syscall translation layer](https://learn.microsoft.com/en-us/windows/wsl/compare-versions),
 while macOS guests require Darwin syscalls, Mach IPC and dyld. Adding WSL therefore
 does not fill that missing edge. A more direct x64 Windows route is
-`Mach-O loader ⊙ AArch64 CPU backend ⊙ Darwin ABI/services`; Dynarmic is the
-current CPU candidate, not an implemented capability. WSL2 supplies a Linux
+`Mach-O loader ⊙ AArch64 CPU backend ⊙ Darwin ABI/services`; Dynarmic supplies
+the optional CPU backend, while Darwin and framework compatibility remain
+partial. WSL2 supplies a Linux
 kernel rather than WSL1's syscall translation layer, but still does not turn a
 Mach-O/Darwin program into a Linux ELF program.
 

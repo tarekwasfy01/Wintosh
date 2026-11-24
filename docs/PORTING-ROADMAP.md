@@ -6,18 +6,17 @@ the named runtime gate and the semantic boundary must both be recorded.
 
 ## Next implementation order
 
-1. **Darwin startup and Mach-O execution** — extend the existing x86_64 Clang
-   path from the chained/classic fixtures to additional real relocation,
-   lazy-binding, and startup-stack fixtures. Gate: `wintosh_macho_printf_e2e`
-   plus the isolated license-clear startup trampoline and the explicit ARM64
-   fail-closed gate. Classic x86_64 lazy binds now resolve through the
-   stub-helper on first call, but still need a real Mach-O runtime fixture.
-   Remaining: an AArch64 CPU backend for x64 Windows (Dynarmic is the first
-   candidate to evaluate; source pinning, dependency-license review and local
-   build evaluation are pending), full dyld protocol parity, and arbitrary
-   Apple frameworks. WSL1 does not supply the missing Darwin-to-Linux syscall
-   edge. The controlled x86_64 binder trampoline is verified
-   separately; end-to-end lazy-stub behavior is not yet verified.
+1. **Darwin startup and Mach-O execution** — preserve the x86_64 relocation,
+   startup and lazy-binding gates, then broaden ARM64 application coverage.
+   An optional Dynarmic A64 backend now runs ARM64 Mach-O on x64 Windows with
+   selected UNIX SVCs, dyld imports, Objective-C startup callbacks and
+   CoreFoundation fixtures. Remaining: pin and reproducibly build Dynarmic
+   from project metadata, review all built dependency licenses, implement more
+   dyld/kernel contracts, and validate real app bundles. Windows ARM64 native
+   execution still lacks equivalent end-to-end coverage. WSL1 does not supply
+   the missing Darwin-to-Linux syscall edge. The controlled x86_64 binder
+   trampoline is verified separately; end-to-end lazy-stub behavior still
+   needs a real Mach-O runtime fixture.
    The detailed backend composition, memory invariants, and staged guest-to-host
    trap contract are recorded in
    [`AARCH64-X64-BACKEND.md`](porting/AARCH64-X64-BACKEND.md).
@@ -42,11 +41,12 @@ the named runtime gate and the semantic boundary must both be recorded.
 
 ## Current verified baseline
 
-The native Clang Release suite has 60/60 passing tests. The verified subset
-includes x86_64 Mach-O execution, fixed-arity and narrow variadic bridges,
-Darwin-like prefix paths, Mach IPC adapters, CoreFoundation primitives,
-Preferences persistence/managed views/cross-process FIFO events and recovery,
-reentrant observer delivery, and selected pthread synchronization behavior.
+The current Clang build registers 78 CTest cases. The most recent focused
+CoreFoundation run passed 4/4, including ARM64 allocator callbacks using the
+imported `kCFAllocatorUseContext` data symbol. This is not a claim that all 78
+tests or arbitrary macOS applications pass. Verified families and limits are
+recorded in [`PRIMITIVE-MATRIX.csv`](../PRIMITIVE-MATRIX.csv) and
+[`AARCH64-X64-BACKEND.md`](porting/AARCH64-X64-BACKEND.md).
 
 The current branch is still a partial compatibility layer. The exact status of
 each family is in [`PRIMITIVE-MATRIX.csv`](../PRIMITIVE-MATRIX.csv), while

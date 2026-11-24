@@ -1036,8 +1036,10 @@ allocation requests are capped at `2^30` bytes. The guest fixture creates a
 custom allocator, checks copied context, temporarily installs it as the
 thread's default, and verifies allocate/reallocate/deallocate/preferred-size
 callbacks plus retain/release balance. It uses the system allocator for the
-allocator object's own storage; special `kCFAllocatorUseContext` backing and
-full allocation lifetime mapping remain to be validated separately.
+allocator object's own storage only when the default allocator is requested;
+the fixture now also verifies `kCFAllocatorUseContext` backing through guest
+allocate/deallocate callbacks. General allocator-controlled payload lifetime
+and arbitrary imported-data ABI compatibility remain incomplete.
 
 ## CoreFoundation scalar bridge
 

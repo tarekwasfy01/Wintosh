@@ -155,12 +155,17 @@ extern void CFDictionaryApplyFunction(CFTypeRef,
 extern CFTypeRef CFSetCreate(const void *, const void *const *, CFIndex,
 	const CFDictionaryKeyCallBacks *);
 extern CFIndex CFSetGetCount(CFTypeRef);
+extern unsigned long CFSetGetTypeID(void);
+extern CFIndex CFSetGetCountOfValue(CFTypeRef, const void *);
 extern CFTypeRef CFSetCreateMutable(const void *, CFIndex,
 	const CFDictionaryKeyCallBacks *);
 extern unsigned char CFSetContainsValue(CFTypeRef, const void *);
 extern void CFSetAddValue(CFTypeRef, const void *);
 extern void CFSetRemoveValue(CFTypeRef, const void *);
 extern void CFSetRemoveAllValues(CFTypeRef);
+extern void CFSetUnion(CFTypeRef, CFTypeRef);
+extern void CFSetIntersect(CFTypeRef, CFTypeRef);
+extern void CFSetSubtract(CFTypeRef, CFTypeRef);
 extern CFTypeRef CFSetCreateCopy(const void *, CFTypeRef);
 extern CFTypeRef CFSetCreateMutableCopy(const void *, CFIndex, CFTypeRef);
 extern const void *CFSetGetValue(CFTypeRef, const void *);
@@ -642,7 +647,7 @@ int main(void)
 		set_equal, set_hash };
 	setCallbacks.copyDescription = set_description;
 	CFTypeRef set = CFSetCreate(0, setValues, 2, &setCallbacks);
-	if (set == 0 || CFSetGetCount(set) != 2 || setRetainCalls != 2 ||
+	if (set == 0 || CFSetGetTypeID() == 0 || CFSetGetCount(set) != 2 || setRetainCalls != 2 ||
 		setHashCalls != 2 || setEqualCalls != 1) return 21;
 	CFTypeRef setDescription = CFCopyDescription(set);
 	if (setDescription == 0 || setDescriptionCalls != 2) return 25;
@@ -675,6 +680,17 @@ int main(void)
 	CFTypeRef mutableSetCopy = CFSetCreateMutableCopy(0, 0, mutableSet);
 	if (setCopy == 0 || mutableSetCopy == 0 || CFSetGetCount(setCopy) != 1 ||
 		CFSetGetCount(mutableSetCopy) != 1) return 51;
+	CFTypeRef otherSet = CFSetCreate(0, &setValues[1], 1, &setCallbacks);
+	if (otherSet == 0) return 83;
+	CFSetUnion(mutableSet, otherSet);
+	if (CFSetGetCount(mutableSet) != 2 ||
+		CFSetGetCountOfValue(mutableSet, &setValueA) != 1) return 84;
+	CFSetIntersect(mutableSet, otherSet);
+	if (CFSetGetCount(mutableSet) != 1 || !CFSetContainsValue(mutableSet, &setValueB))
+		return 85;
+	CFSetSubtract(mutableSet, otherSet);
+	if (CFSetGetCount(mutableSet) != 0) return 86;
+	CFRelease(otherSet);
 	CFSetRemoveValue(mutableSet, &setValueA);
 	if (CFSetGetCount(setCopy) != 1 || CFSetGetCount(mutableSetCopy) != 1)
 		return 52;

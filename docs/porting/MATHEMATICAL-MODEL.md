@@ -1241,15 +1241,18 @@ equality, and hash callbacks also have ARM64 fixtures; copy-description callback
 are now exercised through `CFCopyDescription`; other callback-bearing
 CoreFoundation APIs remain to be audited.
 
-The same ARM64 import dispatcher now accepts `CFDictionaryCreate` and
-`CFSetCreate` after checking their pointer-vector and callback-table guest
+The same ARM64 import dispatcher accepts the `CFSet` constructor, query,
+mutation, and algebra imports after checking their pointer-vector,
+callback-table, and output-buffer guest
 ranges. For a two-key dictionary, insertion compares each new key with the
 existing key, so the fixture verifies `key_equal_calls = 1`, two key retains,
 two value retains, and matching release counts at destruction. The Set fixture
 forces one hash collision and checks `hash_calls = 2`, `equal_calls = 1`, and
 two retain/release pairs. The count imports return through `x0`. These cases
 exercise both the argument vector and callback result vector for guest
-collections; mutable replacement/removal remain uncovered. `CFCopyDescription`
+collections. The ARM64 set fixture also exercises union, intersection,
+subtraction, and count-of-value; dictionary mutation and the remaining set
+replacement variants still need broader fixture coverage. `CFCopyDescription`
 now formats arrays, dictionaries, and sets from
 the callback-produced CFStrings, returns a new CFString, and releases each
 temporary callback result after conversion. The fixture checks two description

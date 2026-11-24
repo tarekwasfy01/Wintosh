@@ -1038,6 +1038,11 @@ bool DispatchArm64CoreFoundationRunLoopImport(const std::string& name,
 			reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[3]))));
 		return true;
 	}
+	if (name == "_CFSetGetTypeID") {
+		using Call = darling_windows_CFTypeID (DARLING_CF_GUEST_ABI *)();
+		resumed_state.x[0] = static_cast<std::uint64_t>(reinterpret_cast<Call>(target)());
+		return true;
+	}
 	if (name == "_CFSetGetCount") {
 		using Call = darling_windows_CFIndex (DARLING_CF_GUEST_ABI *)(
 			darling_windows_CFSetRef);
@@ -1080,6 +1085,14 @@ bool DispatchArm64CoreFoundationRunLoopImport(const std::string& name,
 				static_cast<std::uintptr_t>(x[1])), reinterpret_cast<const void**>(
 				static_cast<std::uintptr_t>(x[2])));
 		}
+		return true;
+	}
+	if (name == "_CFSetGetCountOfValue") {
+		using Call = darling_windows_CFIndex (DARLING_CF_GUEST_ABI *)(
+			darling_windows_CFSetRef, const void*);
+		resumed_state.x[0] = static_cast<std::uint64_t>(reinterpret_cast<Call>(target)(
+			reinterpret_cast<void*>(static_cast<std::uintptr_t>(x[0])),
+			reinterpret_cast<const void*>(static_cast<std::uintptr_t>(x[1]))));
 		return true;
 	}
 	if (name == "_CFSetGetValues") {
@@ -1139,6 +1152,15 @@ bool DispatchArm64CoreFoundationRunLoopImport(const std::string& name,
 		using Call = void (DARLING_CF_GUEST_ABI *)(darling_windows_CFSetRef);
 		reinterpret_cast<Call>(target)(reinterpret_cast<void*>(
 			static_cast<std::uintptr_t>(x[0])));
+		return true;
+	}
+	if (name == "_CFSetUnion" || name == "_CFSetIntersect" ||
+		name == "_CFSetSubtract") {
+		using Call = void (DARLING_CF_GUEST_ABI *)(darling_windows_CFSetRef,
+			darling_windows_CFSetRef);
+		reinterpret_cast<Call>(target)(reinterpret_cast<void*>(
+			static_cast<std::uintptr_t>(x[0])), reinterpret_cast<void*>(
+			static_cast<std::uintptr_t>(x[1])));
 		return true;
 	}
 	if (name == "_CFRunLoopPerformBlock") {

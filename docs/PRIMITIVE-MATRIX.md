@@ -24,8 +24,9 @@ The tracked source is [PRIMITIVE-MATRIX.csv](../PRIMITIVE-MATRIX.csv). Its 36
 data rows use CSV quoting for embedded commas. The ARM64 UNIX-SVC row records
 the connected `fcntl`, resource-limit, and bounded `ioctl` adapters as partial:
 the `wintosh_arm64_host_import_e2e` guest fixture verifies descriptor changes,
-resource-limit copies, Darwin error returns, and the carry bit, while successful
-terminal-ioctl outputs remain unverified. The separate transformation-capability matrix and its Boolean
+resource-limit copies, `FIONREAD` output from a guest pipe, Darwin error
+returns, and the carry bit; terminal winsize requests remain unverified. The
+separate transformation-capability matrix and its Boolean
 composition tool are documented in [`TRANSFORM-CAPABILITIES.csv`](TRANSFORM-CAPABILITIES.csv).
 The consolidated cross-source extraction is [SOURCE-EXTRACTION-MATRIX.md](SOURCE-EXTRACTION-MATRIX.md).
 

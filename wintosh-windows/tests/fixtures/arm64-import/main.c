@@ -51,10 +51,35 @@ int main(int argc, char **argv, char **envp)
 	if (darwin_syscall3(194, 8, 0, 0, &syscall_error) != 14 || syscall_error != 1 ||
 		darwin_syscall3(54, 1, 0xdead, 0, &syscall_error) != 25 || syscall_error != 1)
 		return 7;
+	register long pipe_read __asm__("x0") = 0;
+	register long pipe_write __asm__("x1") = 0;
+	register long pipe_call __asm__("x16") = 42;
+	__asm__ volatile("svc #0x80"
+		: "+r"(pipe_read), "+r"(pipe_write), "+r"(pipe_call)
+		:
+		: "memory", "cc");
+	static const char pipe_payload[] = "pipe";
+	if (pipe_read < 0 || pipe_write < 0 ||
+		darwin_syscall3(4, pipe_write, (long)pipe_payload,
+			sizeof(pipe_payload) - 1, 0) != sizeof(pipe_payload) - 1)
+		return 8;
+	unsigned int available = 0;
+	if (darwin_syscall3(54, pipe_read, 0x4004667f, (long)&available,
+		&syscall_error) != 0 || syscall_error != 0 ||
+		available != sizeof(pipe_payload) - 1)
+		return 9;
+	char pipe_result[sizeof(pipe_payload)] = {0};
+	if (darwin_syscall3(3, pipe_read, (long)pipe_result,
+		sizeof(pipe_result) - 1, 0) != sizeof(pipe_result) - 1 ||
+		pipe_result[0] != 'p' || pipe_result[1] != 'i' ||
+		pipe_result[2] != 'p' || pipe_result[3] != 'e' ||
+		darwin_syscall3(6, pipe_read, 0, 0, 0) != 0 ||
+		darwin_syscall3(6, pipe_write, 0, 0, 0) != 0)
+		return 10;
 	size_t (*volatile guest_strlen)(const char *) = strlen;
 	if (guest_strlen(argv[0]) == 0)
-		return 8;
-	static const char marker[] = "ARM64_SVC_DESCRIPTOR_RLIMIT=PASS\n";
+		return 11;
+	static const char marker[] = "ARM64_SVC_DESCRIPTOR_RLIMIT_IOCTL=PASS\n";
 	return darwin_syscall3(4, 1, (long)marker, sizeof(marker) - 1, 0) ==
-		sizeof(marker) - 1 ? 42 : 9;
+		sizeof(marker) - 1 ? 42 : 12;
 }

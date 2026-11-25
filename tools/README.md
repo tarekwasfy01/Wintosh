@@ -3,6 +3,16 @@
 These scripts support the native Windows port without bundling upstream
 Darling source code.
 
+## Darwin_Computa through WSL1
+
+`Invoke-DarlingWslBackend.ps1 -Mode DarwinComputa` routes one Mach-O command
+through WSL1, Darwin_Computa/Boxedwine, and Darling. The paired
+`run-darwin-computa-once.sh` waits for the guest process exit, forwards its
+output and exit status to the PowerShell caller, then stops only the Boxedwine
+process it started.
+`DSERVER_INIT` accepts a path only, so this mode does not yet pass guest argv.
+See [the backend contract and verified limits](../docs/DARLING-WSL-BACKEND.md).
+
 ## Mathematical capability report
 
 `python tools/porting_matrix.py` composes Boolean transformation bounds for

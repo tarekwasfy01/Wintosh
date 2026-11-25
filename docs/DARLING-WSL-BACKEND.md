@@ -29,9 +29,18 @@ both upstream self-tests. Install these packages in the distribution first:
 downstream compatibility fix for a packed ELF field in `loader64.cpp`; the
 script reports the compiler failure and does not patch the external checkout.
 
-In `DarwinComputa` mode, `-ComputaRoot` points to a Linux build of the Darwin_Computa checkout inside WSL. The wrapper checks the selected distribution's WSL version and requires **WSL1** by default; WSL2 needs the explicit `-AllowWsl2ForDevelopment` switch. It runs `project/linux/Build/Release/boxedwine --darwin-run /usr/bin/darlingserver` with `DSERVER_INIT=<GuestMachO>`. This is the project's direct-init demo path; it bypasses full `launchd` service bootstrap. Upstream currently forwards only the executable path, not its argv.
+In `DarwinComputa` mode, `-ComputaRoot` points to the Darwin_Computa checkout inside WSL. The wrapper checks the selected distribution's WSL version and requires **WSL1** by default; WSL2 needs the explicit `-AllowWsl2ForDevelopment` switch. It calls `tools/run-darwin-computa-once.sh`, which invokes `project/linux/Build/Release/boxedwine --darwin-run /usr/bin/darlingserver` with `DSERVER_INIT=<GuestMachO>`. This is the project's direct-init demo path; it bypasses full `launchd` service bootstrap. `DSERVER_INIT` currently forwards only the executable path, not its argv.
 
 `Windows/WintOS -> wsl.exe -> WSL Linux process -> Boxedwine CPU + Linux kernel emulator -> Darling/darlingserver -> Mach-O`
+
+Darwin_Computa's direct-init mode leaves the `darlingserver` process alive after
+the guest command exits. `tools/run-darwin-computa-once.sh` supervises that
+one-shot path, waits for the guest `mldr` exit record, returns its exit status,
+and force-stops only the Boxedwine process it started. Guest stdout/stderr is
+emitted without the emulator's log prefix, and the PowerShell launcher returns
+the guest's exit code. This is a bounded one-command
+lifecycle, not a graceful service shutdown, persistent service, or launchd
+replacement.
 
 WSL1 is a Windows-provided Linux-to-Windows syscall compatibility layer, not a library embedded in WintOS. Boxedwine is an ordinary process that emulates the Linux kernel in userspace. WintOS can orchestrate these existing components, but cannot turn WSL1 itself into an in-process WintOS module. The Darwin_Computa checkout's MSVC project does not build its Darwin path, so this backend uses its Linux target inside WSL. A Windows `.app` still needs a staging bridge to the Darwin guest filesystem.
 
@@ -60,6 +69,6 @@ Do not label this a full Darling runtime until those gates pass. Exit `20` means
 
 On 2026-11-25, Ubuntu was converted to and verified as **WSL1**. The Darwin_Computa checkout was copied from the Windows workspace into `/home/tarek/Darwin_Computa` so compilation runs on the WSL Linux filesystem. Its x86-64 Linux target was rebuilt with `BOXEDWINE_GUEST_X64=1` and `BOXEDWINE_DARWIN=1`; `--x64-selftest` passed 234/234 and `--darwin-selftest` passed 12/12. GCC 15 required a one-line packed-field value copy in this disposable WSL checkout; the Windows source checkout was not modified.
 
-The official Darling package zips were present in the local rootfs. In WSL1, the real `/usr/bin/sw_vers` Mach-O loaded through `mldr`, ran under `darlingserver`, and exited with status 0 after printing `ProductName: macOS`, `ProductVersion: 11.7.4`, and `BuildVersion: Darling`. This is the first verified Mach-O command-line program through the Darwin_Computa/Boxedwine/Darling path on WSL1. The parent `darlingserver` remained alive after the guest command exited, so the harness was stopped; graceful service shutdown and exit-status forwarding are not yet implemented. Logs also include unsupported shared-memfd behavior, missing `xdg-user-dir`, and Linux syscall 166. This does not demonstrate a GUI app or complete Darling compatibility.
+The official Darling package zips were present in the local rootfs. In WSL1, the real `/usr/bin/sw_vers` Mach-O loaded through `mldr`, ran under `darlingserver`, and exited with status 0 after printing `ProductName: macOS`, `ProductVersion: 11.7.4`, and `BuildVersion: Darling`. This is the first verified Mach-O command-line program through the Darwin_Computa/Boxedwine/Darling path on WSL1. The direct-init service stays alive after the guest exits; the new WintOS supervisor detects the guest exit, returns its status and force-stops its own Boxedwine process. A graceful shutdown protocol is still missing. Logs also include unsupported shared-memfd behavior, missing `xdg-user-dir`, and Linux syscall 166. This does not demonstrate a GUI app or complete Darling compatibility.
 
-The WSL1 build and narrow `sw_vers` run are now verified. Remaining work is to make the Darling service lifecycle terminate cleanly, complete the prefix/bootstrap requirements, stage `.app` bundles and argv, then verify launchd, GUI windows, input/output, and multiple applications. Do not label this a full Darling runtime until those gates pass.
+The WSL1 build and supervised `sw_vers` run are now verified. A second run of `/usr/bin/false` returned guest exit code 1 through the PowerShell launcher, confirming nonzero status forwarding. Remaining work is to implement a graceful Darling service shutdown, complete prefix/bootstrap requirements, stage `.app` bundles and argv, then verify launchd, GUI windows, input/output, and multiple applications. Do not label this a full Darling runtime until those gates pass.

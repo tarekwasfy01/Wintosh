@@ -17,10 +17,14 @@ was made only in the WSL build copy, not the Windows source checkout.
 The real Darling `/usr/bin/sw_vers` Mach-O then ran under the WSL1
 Darwin_Computa/Boxedwine path via `mldr` and exited with status 0, printing
 macOS 11.7.4 (`BuildVersion: Darling`). The `darlingserver` parent stayed
-alive after that guest command and was manually stopped after the bounded
-runtime check. Unsupported shared memfd behavior, a missing `xdg-user-dir`,
-and Linux syscall 166 remain visible in the trace. This verifies one CLI
-Mach-O path, not launchd, AppKit, GUI output, or general app compatibility.
+alive after that guest command. A WintOS one-shot supervisor now detects the
+guest exit, returns its status, and force-stops only the Boxedwine process it
+started. `/usr/bin/false` also returned guest status 1 through the PowerShell
+launcher, confirming nonzero status forwarding; a graceful service shutdown
+protocol remains open. Unsupported shared
+memfd behavior, a missing `xdg-user-dir`, and Linux syscall 166 remain visible
+in the trace. This verifies one CLI Mach-O path, not launchd, AppKit, GUI
+output, or general app compatibility.
 
 ## ARM64 CoreFoundation data imports, 2026-11-24
 

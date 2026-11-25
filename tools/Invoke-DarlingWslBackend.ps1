@@ -64,11 +64,25 @@ try {
         if ($DarlingArgument.Count -ne 0) {
             throw 'Darwin_Computa currently forwards only the executable path; upstream DSERVER_INIT does not yet forward argv.'
         }
-        $runtime = $ComputaRoot.TrimEnd('/') + '/project/linux/Build/Release/boxedwine'
-        $computaArguments = @('--distribution', $Distribution, '--exec', 'env',
-            "DSERVER_INIT=$GuestMachO", $runtime, '--darwin-run', '/usr/bin/darlingserver')
-        Invoke-WslChecked -Arguments $computaArguments
-        exit 0
+        $helperWindowsPath = Join-Path $PSScriptRoot 'run-darwin-computa-once.sh'
+        $helperPath = (& wsl.exe --distribution $Distribution --exec wslpath -u $helperWindowsPath 2>&1 | Out-String).Trim()
+        if ($LASTEXITCODE -ne 0 -or -not $helperPath.StartsWith('/')) {
+            throw "Could not map the WintOS Darling helper into the WSL filesystem.`n$helperPath"
+        }
+        $computaArguments = @('--distribution', $Distribution, '--exec', 'bash',
+            $helperPath, $ComputaRoot, $GuestMachO)
+        $computaOutput = & wsl.exe @computaArguments
+        $computaStatus = $LASTEXITCODE
+        if ($computaStatus -ne 0) {
+            throw "Darwin_Computa supervisor failed with exit code $computaStatus.`n$($computaOutput -join [Environment]::NewLine)"
+        }
+        $guestExitLine = $computaOutput | Where-Object { $_ -match '^WINTOSH_DARWIN_GUEST_EXIT=(-?\d+)$' } | Select-Object -Last 1
+        if (-not $guestExitLine) {
+            throw "Darwin_Computa finished without reporting a guest exit status.`n$($computaOutput -join [Environment]::NewLine)"
+        }
+        $computaOutput | Where-Object { $_ -notmatch '^WINTOSH_DARWIN_GUEST_EXIT=-?\d+$' } | ForEach-Object { Write-Output $_ }
+        $guestExitCode = [int]([regex]::Match($guestExitLine, '-?\d+').Value)
+        exit $guestExitCode
     }
 
     $args = @()

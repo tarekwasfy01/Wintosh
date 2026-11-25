@@ -28,13 +28,11 @@ output, or general app compatibility.
 
 Follow-up CLI checks confirmed `uname` returns `Darwin`, `date` returns a
 formatted timestamp, and `defaults` reaches its argument-validation path
-(expected status 1 without arguments). `/usr/bin/whoami` currently fails
-earlier: it is a symlink to `id` in the Darling package, and `mldr` exits with
-“Exec format error” before starting the guest. Direct `/usr/bin/id` succeeds
-and prints `uid=0 gid=0`, pointing to symlink handling in the Darling rootfs
-or exec path. The PowerShell launcher now detects a symlinked system executable
-in `darling.zip`, copies its target into the writable rootfs overlay, and then
-launches it; `/usr/bin/whoami` returned `0` with this workaround.
+(expected status 1 without arguments). `/usr/bin/whoami` is a symlink to `id`
+in the Darling package. The PowerShell launcher detects a symlinked system
+executable in `darling.zip`, copies its target into the writable rootfs
+overlay, and then launches it; `/usr/bin/whoami` returned `0` with this
+workaround.
 
 The PowerShell launcher also accepts a Windows `.app` directory plus an
 `Contents/MacOS` executable name, discovered from XML or binary Info.plist
@@ -43,8 +41,11 @@ containing the `sw_vers` Mach-O was copied into a unique temporary Darling
 rootfs directory, launched successfully, and removed afterward. This verifies
 the staging and path-translation mechanism only. Binary Info.plist
 `CFBundleExecutable` discovery and a bundle name containing spaces were
-exercised by successful staged runs. Symlink/permission preservation, argv,
-XML-plist execution, and real application resources remain unverified.
+exercised by successful staged runs. A further fixture with a relative
+`Contents/MacOS` symlink to a Mach-O under `Contents/Resources` also launched
+successfully after the launcher materialized the target in the writable
+overlay. Real bundle resource/framework links, argv, XML-plist execution, and
+GUI behavior remain unverified.
 
 ## ARM64 CoreFoundation data imports, 2026-11-24
 

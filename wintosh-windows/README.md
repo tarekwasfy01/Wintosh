@@ -40,7 +40,9 @@ stays alive after the guest exits; the WintOS supervisor returns the guest exit
 status and force-stops only its own Boxedwine process. Graceful service
 shutdown and GUI apps are not yet verified. The PowerShell launcher stages a
 Windows `.app` folder and discovers its executable from Info.plist. Real app
-resource handling and bundle-internal symlink behavior remain open. Start point and verified limits are in
+resource handling beyond the main executable and framework loading remain
+open. The main executable may be a relative symlink to a regular file in the
+bundle; this path is materialized in the Darling overlay. Start point and verified limits are in
 [`docs/DARLING-WSL-BACKEND.md`](../docs/DARLING-WSL-BACKEND.md); the current
 cross-layer application run remains incomplete.
 

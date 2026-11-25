@@ -33,10 +33,11 @@ script reports the compiler failure and does not patch the external checkout.
 In `DarwinComputa` mode, `-ComputaRoot` points to the Darwin_Computa checkout inside WSL. The wrapper checks the selected distribution's WSL version and requires **WSL1** by default; WSL2 needs the explicit `-AllowWsl2ForDevelopment` switch. It calls `tools/run-darwin-computa-once.sh`, which invokes `project/linux/Build/Release/boxedwine --darwin-run /usr/bin/darlingserver` with `DSERVER_INIT=<GuestMachO>`. This is the project's direct-init demo path; it bypasses full `launchd` service bootstrap. `DSERVER_INIT` currently forwards only the executable path, not its argv.
 
 Before launch, the wrapper checks whether the requested system executable is a
-symlink in `darling.zip`. If so, it copies the resolved Mach-O to the same path
+symlink in `darling.zip` or in the staged writable overlay. If so, it copies the resolved Mach-O to the same path
 in the writable rootfs overlay. This works around the current direct-init
 symlink-to-executable failure while preserving the archive and original
-Darling package. Bundle-internal symlinks are not rewritten by this step.
+Darling package. This also handles a bundle's `Contents/MacOS` executable
+symlink when its target is another regular file in the staged bundle.
 
 `Windows/WintOS -> wsl.exe -> WSL Linux process -> Boxedwine CPU + Linux kernel emulator -> Darling/darlingserver -> Mach-O`
 
@@ -45,9 +46,10 @@ copies a Windows `.app` directory into a unique temporary location inside the
 Darling rootfs, checks the executable path, runs it, and removes the staged
 copy afterward. It reads `CFBundleExecutable` from XML or binary `Contents/Info.plist`
 with Python's `plistlib`; without a plist, it falls back to the bundle name.
-`-GuestBundleExecutable` can override discovery. Copying the bundle preserves its files, but
-Windows-to-WSL symlink and permission behavior still needs validation on real
-applications.
+`-GuestBundleExecutable` can override discovery. A fixture with a relative
+`Contents/MacOS` symlink to a Mach-O under `Contents/Resources` was staged and
+launched successfully. This validates that specific symlink and path flow; it
+does not establish compatibility with arbitrary real app bundles.
 
 Darwin_Computa's direct-init mode leaves the `darlingserver` process alive after
 the guest command exits. `tools/run-darwin-computa-once.sh` supervises that
@@ -76,7 +78,7 @@ substitute. Sources: [Microsoft's WSL component and source status](https://learn
 1. **Complete:** Build Darwin_Computa's x86-64 Linux target inside the deployment WSL1 distribution with `BOXEDWINE_GUEST_X64=1` and `BOXEDWINE_DARWIN=1`; preserve the GPLv2 component boundary.
 2. **Partial:** Stage the Darling rootfs and dependency closure; `mldr` has now run a real Mach-O CLI tool, but the full `launchd`/framework closure is not verified.
 3. Boot normal `launchd` and complete its system-job bootstrap for `launchctl`, `shellspawn` and service processes.
-4. **Partial:** Stage a Windows `.app` directory into the Darling rootfs and discover its executable; validate symlink/permission handling on real bundles and add argv forwarding.
+4. **Partial:** Stage a Windows `.app` directory into the Darling rootfs, discover its executable, and materialize an executable symlink. Validate resource/framework symlinks on real bundles and add argv forwarding.
 5. Verify multiple apps, lifecycle and IPC, then Cocoa/AppKit windows and input/output through the SDL/graphics bridge.
 
 Do not label this a full Darling runtime until those gates pass. Exit `20` means WSL is unavailable/access denied; exit `21` means the invocation failed. A successful WSL probe does not prove a Mach-O app runs.

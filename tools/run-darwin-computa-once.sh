@@ -44,6 +44,14 @@ while (( SECONDS < 240 )); do
         EXIT_LINE=$(grep -E "CPU64: exit_group syscall, status=-?[0-9]+  pid=$APP_PID exe=" "$LOG" \
             | tail -n 1 || true)
         [[ -n "$EXIT_LINE" ]] && break
+    else
+        bootstrap_exit=$(grep -E "CPU64: exit_group syscall, status=-?[0-9]+  pid=[0-9]+ exe='.*/mldr'" "$LOG" \
+            | tail -n 1 || true)
+        if [[ -n "$bootstrap_exit" ]]; then
+            echo "Darling mldr exited before starting the requested guest: $GUEST_MACHO" >&2
+            tail -n 80 "$LOG" >&2
+            exit 1
+        fi
     fi
     if ! kill -0 "$RUNTIME_PID" 2>/dev/null; then
         wait "$RUNTIME_PID"
@@ -53,7 +61,7 @@ while (( SECONDS < 240 )); do
                 | tail -n 1 || true)
             [[ -n "$EXIT_LINE" ]] && break
         fi
-        cat "$LOG" >&2
+        tail -n 80 "$LOG" >&2
         exit "$runtime_status"
     fi
     sleep 1
@@ -61,7 +69,7 @@ done
 
 if [[ -z "$EXIT_LINE" ]]; then
     echo "Darling guest did not report an exit within 240 seconds: $GUEST_MACHO" >&2
-    cat "$LOG" >&2
+    tail -n 80 "$LOG" >&2
     exit 124
 fi
 

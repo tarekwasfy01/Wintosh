@@ -9,6 +9,7 @@ powershell -ExecutionPolicy Bypass -File .\tools\Invoke-DarlingWslBackend.ps1 -M
 powershell -ExecutionPolicy Bypass -File .\tools\Invoke-DarlingWslBackend.ps1 -Mode Run -Distribution <name> -DarlingCommand <path> -DarlingArgument <args>
 powershell -ExecutionPolicy Bypass -File .\tools\Build-DarwinComputaWslBackend.ps1 -Distribution <name> -ComputaRoot /opt/Darwin_Computa
 powershell -ExecutionPolicy Bypass -File .\tools\Invoke-DarlingWslBackend.ps1 -Mode DarwinComputa -Distribution <name> -ComputaRoot /opt/Darwin_Computa -GuestMachO /usr/bin/sw_vers
+powershell -ExecutionPolicy Bypass -File .\tools\Invoke-DarlingWslBackend.ps1 -Mode DarwinComputa -Distribution <name> -ComputaRoot /opt/Darwin_Computa -WindowsAppPath 'C:\Apps\Example.app' -GuestBundleExecutable Example
 # WSL2 is permitted only for development and compatibility tests:
 powershell -ExecutionPolicy Bypass -File .\tools\Build-DarwinComputaWslBackend.ps1 -Distribution <name> -ComputaRoot /opt/Darwin_Computa -AllowWsl2ForDevelopment
 powershell -ExecutionPolicy Bypass -File .\tools\Invoke-DarlingWslBackend.ps1 -Mode DarwinComputa -Distribution <name> -ComputaRoot /opt/Darwin_Computa -AllowWsl2ForDevelopment
@@ -33,14 +34,22 @@ In `DarwinComputa` mode, `-ComputaRoot` points to the Darwin_Computa checkout in
 
 `Windows/WintOS -> wsl.exe -> WSL Linux process -> Boxedwine CPU + Linux kernel emulator -> Darling/darlingserver -> Mach-O`
 
+With `-WindowsAppPath` and `-GuestBundleExecutable`, the PowerShell wrapper
+copies a Windows `.app` directory into a unique temporary location inside the
+Darling rootfs, checks the executable path, runs it, and removes the staged
+copy afterward. The executable name must be supplied explicitly; Info.plist
+discovery is not implemented yet. Copying the bundle preserves its files, but
+Windows-to-WSL symlink and permission behavior still needs validation on real
+applications.
+
 Darwin_Computa's direct-init mode leaves the `darlingserver` process alive after
 the guest command exits. `tools/run-darwin-computa-once.sh` supervises that
 one-shot path, waits for the guest `mldr` exit record, returns its exit status,
 and force-stops only the Boxedwine process it started. Guest stdout/stderr is
 emitted without the emulator's log prefix, and the PowerShell launcher returns
-the guest's exit code. This is a bounded one-command
-lifecycle, not a graceful service shutdown, persistent service, or launchd
-replacement.
+the guest's exit code. It also fails early if `mldr` exits before the requested
+guest starts. This is a bounded one-command lifecycle, not a graceful service
+shutdown, persistent service, or launchd replacement.
 
 WSL1 is a Windows-provided Linux-to-Windows syscall compatibility layer, not a library embedded in WintOS. Boxedwine is an ordinary process that emulates the Linux kernel in userspace. WintOS can orchestrate these existing components, but cannot turn WSL1 itself into an in-process WintOS module. The Darwin_Computa checkout's MSVC project does not build its Darwin path, so this backend uses its Linux target inside WSL. A Windows `.app` still needs a staging bridge to the Darwin guest filesystem.
 
@@ -60,7 +69,7 @@ substitute. Sources: [Microsoft's WSL component and source status](https://learn
 1. **Complete:** Build Darwin_Computa's x86-64 Linux target inside the deployment WSL1 distribution with `BOXEDWINE_GUEST_X64=1` and `BOXEDWINE_DARWIN=1`; preserve the GPLv2 component boundary.
 2. **Partial:** Stage the Darling rootfs and dependency closure; `mldr` has now run a real Mach-O CLI tool, but the full `launchd`/framework closure is not verified.
 3. Boot normal `launchd` and complete its system-job bootstrap for `launchctl`, `shellspawn` and service processes.
-4. Stage app bundles and resources into guest-visible paths while preserving arguments.
+4. **Partial:** Stage a Windows `.app` directory into the Darling rootfs when its executable name is supplied; add Info.plist discovery, symlink/permission handling, and argv forwarding.
 5. Verify multiple apps, lifecycle and IPC, then Cocoa/AppKit windows and input/output through the SDL/graphics bridge.
 
 Do not label this a full Darling runtime until those gates pass. Exit `20` means WSL is unavailable/access denied; exit `21` means the invocation failed. A successful WSL probe does not prove a Mach-O app runs.
@@ -71,4 +80,4 @@ On 2026-11-25, Ubuntu was converted to and verified as **WSL1**. The Darwin_Comp
 
 The official Darling package zips were present in the local rootfs. In WSL1, the real `/usr/bin/sw_vers` Mach-O loaded through `mldr`, ran under `darlingserver`, and exited with status 0 after printing `ProductName: macOS`, `ProductVersion: 11.7.4`, and `BuildVersion: Darling`. This is the first verified Mach-O command-line program through the Darwin_Computa/Boxedwine/Darling path on WSL1. The direct-init service stays alive after the guest exits; the new WintOS supervisor detects the guest exit, returns its status and force-stops its own Boxedwine process. A graceful shutdown protocol is still missing. Logs also include unsupported shared-memfd behavior, missing `xdg-user-dir`, and Linux syscall 166. This does not demonstrate a GUI app or complete Darling compatibility.
 
-The WSL1 build and supervised `sw_vers` run are now verified. A second run of `/usr/bin/false` returned guest exit code 1 through the PowerShell launcher, confirming nonzero status forwarding. Remaining work is to implement a graceful Darling service shutdown, complete prefix/bootstrap requirements, stage `.app` bundles and argv, then verify launchd, GUI windows, input/output, and multiple applications. Do not label this a full Darling runtime until those gates pass.
+The WSL1 build and supervised `sw_vers` run are now verified. Follow-up commands showed `/usr/bin/uname` returning `Darwin` and `/bin/date` returning a formatted timestamp. `/usr/bin/defaults` reached argument validation and returned its expected status 1 when invoked without required arguments. `/usr/bin/false` returned guest exit code 1 through the PowerShell launcher, confirming nonzero status forwarding. A Windows `.app`-shaped directory containing the same Mach-O at `Contents/MacOS/WintoshProbe` was staged into a temporary Darling rootfs path and launched successfully; the wrapper removed its temporary copy afterward. This validates path translation and file staging, not Info.plist discovery, real bundle resources, or a GUI application. `/usr/bin/whoami` currently fails in Darling's earlier `vchroot` bootstrap with “Exec format error”; the supervisor detects this early `mldr` exit. Remaining work is to implement a graceful Darling service shutdown, complete prefix/bootstrap requirements, support Info.plist discovery and argv, then verify launchd, GUI windows, input/output, and multiple applications. Do not label this a full Darling runtime until those gates pass.

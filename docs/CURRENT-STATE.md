@@ -26,6 +26,21 @@ memfd behavior, a missing `xdg-user-dir`, and Linux syscall 166 remain visible
 in the trace. This verifies one CLI Mach-O path, not launchd, AppKit, GUI
 output, or general app compatibility.
 
+Follow-up CLI checks confirmed `uname` returns `Darwin`, `date` returns a
+formatted timestamp, and `defaults` reaches its argument-validation path
+(expected status 1 without arguments). `/usr/bin/whoami` currently fails
+earlier: Darling's `mldr` exits with “Exec format error” while starting its
+`vchroot` path. The supervisor now detects an early `mldr` exit rather than
+waiting for the full guest timeout.
+
+The PowerShell launcher also accepts a Windows `.app` directory plus an
+explicit `Contents/MacOS` executable name. A bundle-shaped `WintoshProbe.app`
+containing the `sw_vers` Mach-O was copied into a unique temporary Darling
+rootfs directory, launched successfully, and removed afterward. This verifies
+the staging and path-translation mechanism only; Info.plist discovery,
+symlink/permission preservation, argv, and real application resources remain
+unverified.
+
 ## ARM64 CoreFoundation data imports, 2026-11-24
 
 The ARM64 loader classifies resolved host targets with `VirtualQuery`:

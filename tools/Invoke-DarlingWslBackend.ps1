@@ -5,12 +5,16 @@ param(
     [string]$Distribution = '',
     [string]$ComputaRoot = '',
     [string]$GuestMachO = '/usr/bin/sw_vers',
+    [string]$WindowsAppPath = '',
+    [string]$GuestBundleExecutable = '',
     [string]$DarlingCommand = 'true',
     [string[]]$DarlingArgument = @(),
     [switch]$AllowWsl2ForDevelopment
 )
 
 $ErrorActionPreference = 'Stop'
+$stagedAppRoot = ''
+$stagedAppsRoot = ''
 
 function Invoke-WslChecked {
     param([string[]]$Arguments)
@@ -40,8 +44,58 @@ try {
         if (-not $ComputaRoot.StartsWith('/')) {
             throw '-ComputaRoot must be an absolute Linux path inside the selected WSL distribution.'
         }
-        if (-not $GuestMachO.StartsWith('/')) {
+        if (-not $WindowsAppPath -and -not $GuestMachO.StartsWith('/')) {
             throw '-GuestMachO must be an absolute guest path such as /usr/bin/sw_vers.'
+        }
+        if ($WindowsAppPath) {
+            if (-not $GuestBundleExecutable) {
+                throw '-WindowsAppPath requires -GuestBundleExecutable (the file under Contents/MacOS).'
+            }
+            if ($GuestBundleExecutable.Contains('/') -or $GuestBundleExecutable.Contains([char]92)) {
+                throw '-GuestBundleExecutable must be a filename, not a path.'
+            }
+            $resolvedAppPath = (Resolve-Path -LiteralPath $WindowsAppPath).Path
+            if (-not (Test-Path -LiteralPath $resolvedAppPath -PathType Container) -or
+                -not $resolvedAppPath.EndsWith('.app', [StringComparison]::OrdinalIgnoreCase)) {
+                throw '-WindowsAppPath must point to an existing .app directory.'
+            }
+            $guestBundleBinary = Join-Path $resolvedAppPath ("Contents\MacOS\" + $GuestBundleExecutable)
+            if (-not (Test-Path -LiteralPath $guestBundleBinary -PathType Leaf)) {
+                throw "Bundle executable was not found: $guestBundleBinary"
+            }
+
+            $linuxHome = (& wsl.exe --distribution $Distribution --exec sh -lc 'printf "%s" "$HOME"' 2>&1 | Out-String).Trim()
+            if ($LASTEXITCODE -ne 0 -or -not $linuxHome.StartsWith('/')) {
+                throw "Could not determine the home directory in WSL.`n$linuxHome"
+            }
+            $linuxAppPath = (& wsl.exe --distribution $Distribution --exec wslpath -u $resolvedAppPath 2>&1 | Out-String).Trim()
+            if ($LASTEXITCODE -ne 0 -or -not $linuxAppPath.StartsWith('/')) {
+                throw "Could not map the Windows app bundle into WSL.`n$linuxAppPath"
+            }
+
+            $bundleName = Split-Path -Leaf $resolvedAppPath
+            $stageToken = 'Wintosh-' + [guid]::NewGuid().ToString('N')
+            $stagedAppsRoot = "$linuxHome/.local/share/Boxedwine/rootfs-darling/root/usr/libexec/darling/Applications"
+            $stagedAppRoot = "$stagedAppsRoot/$stageToken"
+            $stagedBundlePath = "$stagedAppRoot/$bundleName"
+            & wsl.exe --distribution $Distribution --exec mkdir -p $stagedAppRoot
+            if ($LASTEXITCODE -ne 0) {
+                throw 'Could not create a temporary Darling Applications staging directory.'
+            }
+            & wsl.exe --distribution $Distribution --exec cp -a $linuxAppPath $stagedAppRoot
+            if ($LASTEXITCODE -ne 0) {
+                throw 'Could not copy the Windows .app bundle into the Darling rootfs.'
+            }
+            $stagedBinaryPath = "$stagedBundlePath/Contents/MacOS/$GuestBundleExecutable"
+            & wsl.exe --distribution $Distribution --exec chmod +x $stagedBinaryPath
+            if ($LASTEXITCODE -ne 0) {
+                throw 'Could not mark the staged bundle executable as executable in WSL.'
+            }
+            & wsl.exe --distribution $Distribution --exec test -x $stagedBinaryPath
+            if ($LASTEXITCODE -ne 0) {
+                throw "Staged bundle executable is not runnable: $stagedBinaryPath"
+            }
+            $GuestMachO = "/Applications/$stageToken/$bundleName/Contents/MacOS/$GuestBundleExecutable"
         }
         $distributionList = (& wsl.exe --list --verbose 2>&1 | Out-String) -replace "`0", ''
         if ($LASTEXITCODE -ne 0) {
@@ -93,4 +147,12 @@ try {
 } catch {
     [Console]::Error.WriteLine($_.Exception.Message)
     exit 21
+} finally {
+    if ($stagedAppRoot -and $stagedAppsRoot -and
+        $stagedAppRoot.StartsWith($stagedAppsRoot.TrimEnd('/') + '/')) {
+        & wsl.exe --distribution $Distribution --exec rm -rf -- $stagedAppRoot 2>$null
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warning "Could not remove temporary Darling staging directory: $stagedAppRoot"
+        }
+    }
 }

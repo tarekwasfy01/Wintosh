@@ -48,20 +48,10 @@ try {
             throw '-GuestMachO must be an absolute guest path such as /usr/bin/sw_vers.'
         }
         if ($WindowsAppPath) {
-            if (-not $GuestBundleExecutable) {
-                throw '-WindowsAppPath requires -GuestBundleExecutable (the file under Contents/MacOS).'
-            }
-            if ($GuestBundleExecutable.Contains('/') -or $GuestBundleExecutable.Contains([char]92)) {
-                throw '-GuestBundleExecutable must be a filename, not a path.'
-            }
             $resolvedAppPath = (Resolve-Path -LiteralPath $WindowsAppPath).Path
             if (-not (Test-Path -LiteralPath $resolvedAppPath -PathType Container) -or
                 -not $resolvedAppPath.EndsWith('.app', [StringComparison]::OrdinalIgnoreCase)) {
                 throw '-WindowsAppPath must point to an existing .app directory.'
-            }
-            $guestBundleBinary = Join-Path $resolvedAppPath ("Contents\MacOS\" + $GuestBundleExecutable)
-            if (-not (Test-Path -LiteralPath $guestBundleBinary -PathType Leaf)) {
-                throw "Bundle executable was not found: $guestBundleBinary"
             }
 
             $linuxHome = (& wsl.exe --distribution $Distribution --exec sh -lc 'printf "%s" "$HOME"' 2>&1 | Out-String).Trim()
@@ -74,6 +64,31 @@ try {
             }
 
             $bundleName = Split-Path -Leaf $resolvedAppPath
+            if (-not $GuestBundleExecutable) {
+                $infoPlistPath = Join-Path $resolvedAppPath 'Contents\Info.plist'
+                if (Test-Path -LiteralPath $infoPlistPath -PathType Leaf) {
+                    $linuxInfoPlist = "$linuxAppPath/Contents/Info.plist"
+                    $plistReaderWindowsPath = Join-Path $PSScriptRoot 'read-bundle-executable.py'
+                    $plistReaderPath = (& wsl.exe --distribution $Distribution --exec wslpath -u $plistReaderWindowsPath 2>&1 | Out-String).Trim()
+                    if ($LASTEXITCODE -ne 0 -or -not $plistReaderPath.StartsWith('/')) {
+                        throw "Could not map the Info.plist reader into WSL.`n$plistReaderPath"
+                    }
+                    $GuestBundleExecutable = (& wsl.exe --distribution $Distribution --exec python3 $plistReaderPath $linuxInfoPlist 2>&1 | Out-String).Trim()
+                    if ($LASTEXITCODE -ne 0 -or -not $GuestBundleExecutable) {
+                        throw "Could not read CFBundleExecutable from $infoPlistPath. Install python3 in WSL or pass -GuestBundleExecutable explicitly.`n$GuestBundleExecutable"
+                    }
+                } else {
+                    $GuestBundleExecutable = [IO.Path]::GetFileNameWithoutExtension($bundleName)
+                }
+            }
+            if ($GuestBundleExecutable.Contains('/') -or $GuestBundleExecutable.Contains([char]92)) {
+                throw '-GuestBundleExecutable must be a filename, not a path.'
+            }
+            $guestBundleBinary = Join-Path $resolvedAppPath ("Contents\MacOS\" + $GuestBundleExecutable)
+            if (-not (Test-Path -LiteralPath $guestBundleBinary -PathType Leaf)) {
+                throw "Bundle executable was not found: $guestBundleBinary"
+            }
+
             $stageToken = 'Wintosh-' + [guid]::NewGuid().ToString('N')
             $stagedAppsRoot = "$linuxHome/.local/share/Boxedwine/rootfs-darling/root/usr/libexec/darling/Applications"
             $stagedAppRoot = "$stagedAppsRoot/$stageToken"

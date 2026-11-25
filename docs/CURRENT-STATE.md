@@ -34,12 +34,14 @@ earlier: Darling's `mldr` exits with “Exec format error” while starting its
 waiting for the full guest timeout.
 
 The PowerShell launcher also accepts a Windows `.app` directory plus an
-explicit `Contents/MacOS` executable name. A bundle-shaped `WintoshProbe.app`
+`Contents/MacOS` executable name, discovered from XML or binary Info.plist
+(or an explicit override). A bundle-shaped `WintoshProbe.app`
 containing the `sw_vers` Mach-O was copied into a unique temporary Darling
 rootfs directory, launched successfully, and removed afterward. This verifies
-the staging and path-translation mechanism only; Info.plist discovery,
-symlink/permission preservation, argv, and real application resources remain
-unverified.
+the staging and path-translation mechanism only. Binary Info.plist
+`CFBundleExecutable` discovery and a bundle name containing spaces were
+exercised by successful staged runs. Symlink/permission preservation, argv,
+XML-plist execution, and real application resources remain unverified.
 
 ## ARM64 CoreFoundation data imports, 2026-11-24
 

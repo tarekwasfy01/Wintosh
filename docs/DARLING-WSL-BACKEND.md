@@ -37,8 +37,9 @@ In `DarwinComputa` mode, `-ComputaRoot` points to the Darwin_Computa checkout in
 With `-WindowsAppPath` and `-GuestBundleExecutable`, the PowerShell wrapper
 copies a Windows `.app` directory into a unique temporary location inside the
 Darling rootfs, checks the executable path, runs it, and removes the staged
-copy afterward. The executable name must be supplied explicitly; Info.plist
-discovery is not implemented yet. Copying the bundle preserves its files, but
+copy afterward. It reads `CFBundleExecutable` from XML or binary `Contents/Info.plist`
+with Python's `plistlib`; without a plist, it falls back to the bundle name.
+`-GuestBundleExecutable` can override discovery. Copying the bundle preserves its files, but
 Windows-to-WSL symlink and permission behavior still needs validation on real
 applications.
 
@@ -69,7 +70,7 @@ substitute. Sources: [Microsoft's WSL component and source status](https://learn
 1. **Complete:** Build Darwin_Computa's x86-64 Linux target inside the deployment WSL1 distribution with `BOXEDWINE_GUEST_X64=1` and `BOXEDWINE_DARWIN=1`; preserve the GPLv2 component boundary.
 2. **Partial:** Stage the Darling rootfs and dependency closure; `mldr` has now run a real Mach-O CLI tool, but the full `launchd`/framework closure is not verified.
 3. Boot normal `launchd` and complete its system-job bootstrap for `launchctl`, `shellspawn` and service processes.
-4. **Partial:** Stage a Windows `.app` directory into the Darling rootfs when its executable name is supplied; add Info.plist discovery, symlink/permission handling, and argv forwarding.
+4. **Partial:** Stage a Windows `.app` directory into the Darling rootfs and discover its executable; validate symlink/permission handling on real bundles and add argv forwarding.
 5. Verify multiple apps, lifecycle and IPC, then Cocoa/AppKit windows and input/output through the SDL/graphics bridge.
 
 Do not label this a full Darling runtime until those gates pass. Exit `20` means WSL is unavailable/access denied; exit `21` means the invocation failed. A successful WSL probe does not prove a Mach-O app runs.

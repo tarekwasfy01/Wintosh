@@ -11,11 +11,13 @@ through WSL1, Darwin_Computa/Boxedwine, and Darling. The paired
 output and exit status to the PowerShell caller, then stops only the Boxedwine
 process it started.
 `DSERVER_INIT` accepts a path only, so this mode does not yet pass guest argv.
-Pass `-WindowsAppPath <bundle.app> -GuestBundleExecutable <name>` to copy a
-Windows app bundle temporarily into Darling's guest-visible `Applications`
-directory and run its `Contents/MacOS/<name>` executable. The wrapper removes
-the temporary staging directory when the run ends; it does not yet parse the
-bundle's Info.plist.
+Pass `-WindowsAppPath <bundle.app>` and optionally
+`-GuestBundleExecutable <name>` to copy a Windows app bundle temporarily into
+Darling's guest-visible `Applications` directory and run its `Contents/MacOS`
+executable. If the executable name is
+omitted, the wrapper reads `CFBundleExecutable` from XML or binary Info.plist
+using Python `plistlib`, then falls back to the bundle name. The wrapper removes
+the temporary staging directory when the run ends.
 See [the backend contract and verified limits](../docs/DARLING-WSL-BACKEND.md).
 
 ## Mathematical capability report

@@ -29,9 +29,12 @@ output, or general app compatibility.
 Follow-up CLI checks confirmed `uname` returns `Darwin`, `date` returns a
 formatted timestamp, and `defaults` reaches its argument-validation path
 (expected status 1 without arguments). `/usr/bin/whoami` currently fails
-earlier: Darling's `mldr` exits with “Exec format error” while starting its
-`vchroot` path. The supervisor now detects an early `mldr` exit rather than
-waiting for the full guest timeout.
+earlier: it is a symlink to `id` in the Darling package, and `mldr` exits with
+“Exec format error” before starting the guest. Direct `/usr/bin/id` succeeds
+and prints `uid=0 gid=0`, pointing to symlink handling in the Darling rootfs
+or exec path. The PowerShell launcher now detects a symlinked system executable
+in `darling.zip`, copies its target into the writable rootfs overlay, and then
+launches it; `/usr/bin/whoami` returned `0` with this workaround.
 
 The PowerShell launcher also accepts a Windows `.app` directory plus an
 `Contents/MacOS` executable name, discovered from XML or binary Info.plist

@@ -18,6 +18,9 @@ executable. If the executable name is
 omitted, the wrapper reads `CFBundleExecutable` from XML or binary Info.plist
 using Python `plistlib`, then falls back to the bundle name. The wrapper removes
 the temporary staging directory when the run ends.
+Before execution it also materializes a requested symlinked system executable
+from `darling.zip` into the writable Darling rootfs overlay so its Mach-O target
+can be launched by the current direct-init path.
 See [the backend contract and verified limits](../docs/DARLING-WSL-BACKEND.md).
 
 ## Mathematical capability report

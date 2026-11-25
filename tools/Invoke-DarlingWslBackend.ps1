@@ -138,6 +138,21 @@ try {
         if ($LASTEXITCODE -ne 0 -or -not $helperPath.StartsWith('/')) {
             throw "Could not map the WintOS Darling helper into the WSL filesystem.`n$helperPath"
         }
+        $linuxHomeForRootfs = (& wsl.exe --distribution $Distribution --exec sh -lc 'printf "%s" "$HOME"' 2>&1 | Out-String).Trim()
+        if ($LASTEXITCODE -ne 0 -or -not $linuxHomeForRootfs.StartsWith('/')) {
+            throw "Could not determine the WSL home directory for Darling's rootfs.`n$linuxHomeForRootfs"
+        }
+        $materializerWindowsPath = Join-Path $PSScriptRoot 'materialize-darling-executable.py'
+        $materializerPath = (& wsl.exe --distribution $Distribution --exec wslpath -u $materializerWindowsPath 2>&1 | Out-String).Trim()
+        if ($LASTEXITCODE -ne 0 -or -not $materializerPath.StartsWith('/')) {
+            throw "Could not map the Darling symlink materializer into WSL.`n$materializerPath"
+        }
+        $darlingZip = "$linuxHomeForRootfs/.local/share/Boxedwine/rootfs-darling/dist/darling.zip"
+        $darlingOverlay = "$linuxHomeForRootfs/.local/share/Boxedwine/rootfs-darling/root"
+        & wsl.exe --distribution $Distribution --exec python3 $materializerPath $darlingZip $darlingOverlay $GuestMachO
+        if ($LASTEXITCODE -ne 0) {
+            throw "Could not prepare the Darling guest executable path (exit code $LASTEXITCODE)."
+        }
         $computaArguments = @('--distribution', $Distribution, '--exec', 'bash',
             $helperPath, $ComputaRoot, $GuestMachO)
         $computaOutput = & wsl.exe @computaArguments
